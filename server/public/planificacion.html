@@ -3827,8 +3827,7 @@
             const query = (document.getElementById('planning-search')?.value || '').toLowerCase();
             const planningMonth = document.getElementById('planning-month-select');
             const month = planningMonth ? planningMonth.value : 'enero';
-            
-            filteredPlanning = planningData.filter(t => {
+            const baseMatch = (t, includeMonth = true) => {
                 const matchesSearch = (t.driver || '').toLowerCase().includes(query) || 
                                      (t.zone || '').toLowerCase().includes(query) || 
                                      (getLocalidadFromZone(t.zone) || '').toLowerCase().includes(query) ||
@@ -3842,13 +3841,14 @@
                     if (fType === 'tercerizado' || fType === 'externo') matchesContract = (tType === 'tercerizado' || tType === 'externo');
                     else matchesContract = (tType === fType);
                 }
-                
+
+                if (!includeMonth) return matchesSearch && matchesContract;
                 if (!t.date) return false;
                 // Safer parsing for varied formats
                 const cleanDate = t.date.includes(' ') ? t.date.replace(/ /g, 'T') : t.date;
                 const tripDate = new Date(cleanDate);
                 if(isNaN(tripDate)) return false;
-                
+
                 // Lenient month match: check local AND UTC month to avoid timezone shifts hiding data
                 const localMonthNum = tripDate.getMonth();
                 const utcMonthNum = tripDate.getUTCMonth();
@@ -3859,7 +3859,14 @@
                 };
                 const matchesMonth = monthMap[localMonthNum] === month || monthMap[utcMonthNum] === month;
                 return matchesSearch && matchesContract && matchesMonth;
-            });
+            };
+
+            filteredPlanning = planningData.filter((t) => baseMatch(t, true));
+            if (filteredPlanning.length === 0 && planningData.length > 0) {
+                // Fallback anti-vista vacía: si el mes no coincide, mostramos lista filtrada sin mes.
+                filteredPlanning = planningData.filter((t) => baseMatch(t, false));
+                addNotification('info', 'Sin coincidencias por mes', 'Mostrando viajes de otros meses para evitar grilla vacía.');
+            }
             
             renderPlanningTable(filteredPlanning);
         }
