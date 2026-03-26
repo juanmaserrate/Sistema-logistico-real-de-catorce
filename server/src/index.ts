@@ -175,6 +175,9 @@ app.post('/api/auth/login', async (req, res) => {
         // Search in User model (New)
         const user = await prisma.user.findUnique({ where: { username } });
         if (user && user.password === password) {
+            if (String(user.role || '').toUpperCase() === 'BLOCKED') {
+                return res.status(403).json({ error: "Usuario bloqueado. Contactá al administrador." });
+            }
             return res.json({ success: true, user: { id: user.id, fullName: user.fullName, role: user.role, tenantId: user.tenantId } });
         }
         res.status(401).json({ error: "Credenciales inválidas" });
@@ -2673,6 +2676,151 @@ app.get('/api/v1/drivers', async (req, res) => {
         });
         res.json(users);
     } catch (e: any) {
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+// Gestión de usuarios (credenciales) desde planificación
+app.get('/api/v1/users', async (req, res) => {
+    try {
+        const roleRaw = String(req.query.role || '').trim().toUpperCase();
+        const q = String(req.query.q || '').trim();
+        const where: any = {
+            tenantId: 'default-tenant'
+        };
+        if (roleRaw) where.role = roleRaw;
+        if (q) {
+            where.OR = [
+                { username: { contains: q } },
+                { fullName: { contains: q } }
+            ];
+        }
+        const users = await prisma.user.findMany({
+            where,
+            orderBy: [{ role: 'asc' }, { username: 'asc' }],
+            select: { id: true, username: true, fullName: true, role: true, tenantId: true, createdAt: true }
+        });
+        res.json(users);
+    } catch (e: any) {
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+app.post('/api/v1/users', async (req, res) => {
+    try {
+        const username = String(req.body?.username || '').trim();
+        const password = String(req.body?.password || '').trim();
+        const fullName = String(req.body?.fullName || username).trim();
+        const role = String(req.body?.role || 'DRIVER').trim().toUpperCase();
+
+        if (!username) return res.status(400).json({ error: 'username es obligatorio' });
+        if (!password) return res.status(400).json({ error: 'password es obligatorio' });
+        if (!['DRIVER', 'ADMIN'].includes(role)) {
+            return res.status(400).json({ error: 'role inválido (usar DRIVER o ADMIN)' });
+        }
+
+        await prisma.tenant.upsert({
+            where: { id: 'default-tenant' },
+            update: {},
+            create: { id: 'default-tenant', name: 'Real de Catorce' }
+        });
+
+        const user = await prisma.user.create({
+            data: {
+                username,
+                password,
+                fullName: fullName || username,
+                role,
+                tenantId: 'default-tenant'
+            },
+            select: { id: true, username: true, fullName: true, role: true, tenantId: true, createdAt: true }
+        });
+        res.status(201).json(user);
+    } catch (e: any) {
+        if (e?.code === 'P2002') return res.status(409).json({ error: 'El usuario ya existe' });
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+app.patch('/api/v1/users/:id/password', async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        const password = String(req.body?.password || '').trim();
+        if (!id) return res.status(400).json({ error: 'id es obligatorio' });
+        if (!password) return res.status(400).json({ error: 'password es obligatorio' });
+
+        const existing = await prisma.user.findUnique({ where: { id }, select: { id: true } });
+        if (!existing) return res.status(404).json({ error: 'Usuario no encontrado' });
+
+        await prisma.user.update({ where: { id }, data: { password } });
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+app.patch('/api/v1/users/:id', async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        const fullNameRaw = req.body?.fullName;
+        const roleRaw = req.body?.role;
+        if (!id) return res.status(400).json({ error: 'id es obligatorio' });
+
+        const data: any = {};
+        if (fullNameRaw !== undefined) {
+            const fullName = String(fullNameRaw || '').trim();
+            if (!fullName) return res.status(400).json({ error: 'fullName no puede estar vacío' });
+            data.fullName = fullName;
+        }
+        if (roleRaw !== undefined) {
+            const role = String(roleRaw || '').trim().toUpperCase();
+            if (!['DRIVER', 'ADMIN', 'BLOCKED'].includes(role)) {
+                return res.status(400).json({ error: 'role inválido (usar DRIVER, ADMIN o BLOCKED)' });
+            }
+            data.role = role;
+        }
+        if (Object.keys(data).length === 0) return res.status(400).json({ error: 'Sin cambios para actualizar' });
+
+        const user = await prisma.user.update({
+            where: { id },
+            data,
+            select: { id: true, username: true, fullName: true, role: true, tenantId: true, createdAt: true }
+        });
+        res.json(user);
+    } catch (e: any) {
+        if (e?.code === 'P2025') return res.status(404).json({ error: 'Usuario no encontrado' });
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+app.patch('/api/v1/users/:id/block', async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!id) return res.status(400).json({ error: 'id es obligatorio' });
+        const blocked = Boolean(req.body?.blocked);
+        let role = blocked ? 'BLOCKED' : String(req.body?.role || 'DRIVER').trim().toUpperCase();
+        if (!['DRIVER', 'ADMIN'].includes(role) && !blocked) role = 'DRIVER';
+
+        const user = await prisma.user.update({
+            where: { id },
+            data: { role },
+            select: { id: true, username: true, fullName: true, role: true, tenantId: true, createdAt: true }
+        });
+        res.json(user);
+    } catch (e: any) {
+        if (e?.code === 'P2025') return res.status(404).json({ error: 'Usuario no encontrado' });
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+app.delete('/api/v1/users/:id', async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!id) return res.status(400).json({ error: 'id es obligatorio' });
+        await prisma.user.delete({ where: { id } });
+        res.json({ success: true });
+    } catch (e: any) {
+        if (e?.code === 'P2025') return res.status(404).json({ error: 'Usuario no encontrado' });
         res.status(500).json({ error: (e as Error).message });
     }
 });

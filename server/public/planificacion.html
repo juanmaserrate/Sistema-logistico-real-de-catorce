@@ -45,7 +45,7 @@
         }
 
         body { font-family: 'Outfit', sans-serif; background-color: var(--bg-body); color: var(--text-main); }
-
+        
         .card-dark { 
             background: white; 
             border: none; 
@@ -61,9 +61,9 @@
             align-items: center;
             gap: 0.4rem;
             padding: 0.45rem 0.65rem;
-            border-radius: 12px;
+            border-radius: 12px; 
             font-size: 11px;
-            font-weight: 700;
+            font-weight: 700; 
             color: rgba(255, 255, 255, 0.62);
             transition: color 0.2s, background 0.2s, box-shadow 0.2s;
             white-space: nowrap;
@@ -103,7 +103,7 @@
             flex-shrink: 0;
             margin: 0 0.25rem;
         }
-
+        
         .header-area {
             background: var(--header-gradient);
             height: 300px;
@@ -177,7 +177,7 @@
             border-radius: 20px; 
             border: none; 
             overflow: hidden; 
-            box-shadow: var(--card-shadow);
+            box-shadow: var(--card-shadow); 
             max-width: 100%;
             min-width: 0;
             box-sizing: border-box;
@@ -281,11 +281,11 @@
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         .view-animate { animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
 
-        .notification-panel {
+        .notification-panel { 
             position: absolute;
             top: calc(100% + 10px);
             right: 0;
-            border-radius: 20px;
+            border-radius: 20px; 
             box-shadow: 0px 40px 60px rgba(112, 144, 176, 0.25);
             background: #ffffff !important;
             background-color: #ffffff !important;
@@ -352,44 +352,44 @@
     <!-- Main Content Master -->
     <main class="flex-1 flex flex-col overflow-hidden relative min-h-0 min-w-0 w-full max-w-full">
         <div class="header-area"></div>
-
+        
         <header class="app-header min-w-0 max-w-full box-border">
             <div class="top-nav">
                 <div class="flex items-center gap-3 min-w-0">
                     <div class="bg-white/15 p-2.5 rounded-2xl shrink-0 shadow-lg shadow-black/10 ring-1 ring-white/10">
                         <i data-lucide="truck" class="text-white w-6 h-6"></i>
-                    </div>
+                </div>
                     <div class="min-w-0">
                         <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-white leading-none uppercase truncate">Real <span class="text-white/90">R14</span></h1>
                         <p class="text-[10px] font-bold text-white/45 uppercase tracking-widest mt-1 hidden sm:block">Gestión logística</p>
-                    </div>
+            </div>
                 </div>
-
+                
                 <div class="flex items-center gap-3 sm:gap-4 flex-1 justify-end min-w-0 flex-wrap">
                     <div id="api-status-text" class="flex items-center gap-2 text-[10px] font-bold text-white/55 uppercase tracking-wide whitespace-nowrap">
                         <div id="api-status-dot" class="w-2 h-2 rounded-full bg-white/35 shrink-0"></div>
                         <span id="api-status-label">Server</span>
                     </div>
                     <div class="flex items-center gap-3 shrink-0">
-                        <div class="relative">
+                    <div class="relative">
                             <button onclick="toggleNotifications()" class="btn-icon-glass relative" type="button" aria-label="Notificaciones">
-                                <i data-lucide="bell" class="w-5 h-5"></i>
-                                <div id="notif-count" class="absolute -top-1 -right-1 bg-rose-500 w-4 h-4 rounded-full border-2 border-[#11047A] text-[9px] font-black flex items-center justify-center hidden">0</div>
-                            </button>
+                            <i data-lucide="bell" class="w-5 h-5"></i>
+                            <div id="notif-count" class="absolute -top-1 -right-1 bg-rose-500 w-4 h-4 rounded-full border-2 border-[#11047A] text-[9px] font-black flex items-center justify-center hidden">0</div>
+                        </button>
                             <div id="notif-panel" class="notification-panel z-[60] bg-white min-w-[280px] max-w-[min(100vw-2rem,380px)]" style="display: none;">
-                                <div class="p-5 border-b border-[#F4F7FE] flex justify-between items-center">
-                                    <h4 class="text-sm font-bold text-[#1B2559]">Notificaciones <span id="notif-total" class="text-[10px] text-slate-400 font-normal ml-2"></span></h4>
+                            <div class="p-5 border-b border-[#F4F7FE] flex justify-between items-center">
+                                <h4 class="text-sm font-bold text-[#1B2559]">Notificaciones <span id="notif-total" class="text-[10px] text-slate-400 font-normal ml-2"></span></h4>
                                     <button onclick="clearNotifications()" class="text-[11px] font-bold text-indigo-600 hover:text-indigo-800" type="button">Limpiar</button>
-                                </div>
-                                <div id="notif-list" class="max-h-[350px] overflow-y-auto custom-scrollbar">
-                                    <div class="p-8 text-center text-slate-400 text-xs italic">No hay notificaciones nuevas</div>
-                                </div>
+                            </div>
+                            <div id="notif-list" class="max-h-[350px] overflow-y-auto custom-scrollbar">
+                                <div class="p-8 text-center text-slate-400 text-xs italic">No hay notificaciones nuevas</div>
                             </div>
                         </div>
-
+                    </div>
+                    
                         <div class="w-10 h-10 rounded-full border-2 border-white/25 overflow-hidden shadow-lg shrink-0">
                             <img src="https://ui-avatars.com/api/?name=Admin+R14&background=4318FF&color=fff" alt="Usuario">
-                        </div>
+                    </div>
                     </div>
                 </div>
             </div>
@@ -417,6 +417,9 @@
                     </button>
                     <button type="button" onclick="showSection('routes')" id="btn-routes" class="header-nav-item">
                         <i data-lucide="route" class="w-4 h-4"></i> Rutas Predefinidas
+                    </button>
+                    <button type="button" onclick="showSection('users')" id="btn-users" class="header-nav-item">
+                        <i data-lucide="key-round" class="w-4 h-4"></i> Usuarios
                     </button>
                     <span class="nav-section-divider" aria-hidden="true"></span>
                     <span class="nav-section-label">Datos</span>
@@ -783,7 +786,7 @@
                             <p class="text-sm text-[#A3AED0] font-medium mt-1">Mapa filtrable por zona, localidad y unidad de negocio; al cargar un reparto podés ver solo esas escuelas en el mapa.</p>
                         </div>
                         <div class="p-6 space-y-5 flex-1 overflow-y-auto custom-scrollbar">
-                            <div>
+                                <div>
                                 <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Buscar cliente / escuela</label>
                                 <div class="flex gap-2">
                                     <input type="text" id="vrp-client-search" list="vrp-client-datalist" placeholder="Nombre, zona o dirección…" autocomplete="off" class="flex-1 bg-[#F4F7FE] border-0 rounded-2xl px-4 py-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500/25" onkeydown="if(event.key==='Enter'){event.preventDefault();vrpGoToSearchClient();}">
@@ -800,21 +803,21 @@
                                 <select id="vrp-origin-select" onchange="updateOrigin()" class="w-full bg-[#F4F7FE] border-0 rounded-2xl p-4 text-sm font-bold text-[#1B2559] outline-none">
                                     <option value="dep_1">Depósito Principal (Burzaco)</option>
                                     <option value="dep_2">Segundo Depósito (Lomas)</option>
-                                </select>
-                            </div>
-                            <div>
+                                    </select>
+                                </div>
+                                <div>
                                 <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Cargar reparto (plantilla)</label>
                                 <div class="flex gap-2">
                                     <select id="vrp-template-select" class="flex-1 bg-[#F4F7FE] border-0 rounded-2xl p-4 text-sm font-bold text-[#1B2559] outline-none min-w-0">
                                         <option value="">— Elegir reparto —</option>
-                                    </select>
+                                        </select>
                                     <button type="button" onclick="loadVrpFromTemplate(document.getElementById('vrp-template-select').value)" class="shrink-0 px-4 py-3 rounded-2xl bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase hover:bg-indigo-100 border border-indigo-100">Cargar</button>
-                                </div>
+                                    </div>
                                 <label class="mt-3 flex items-start gap-2 cursor-pointer select-none">
                                     <input type="checkbox" id="vrp-solo-reparto-mapa" class="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" onchange="updateVrpMarkersStatus()">
                                     <span class="text-[11px] font-bold text-slate-600 leading-snug">Solo mostrar en el mapa las escuelas del reparto (se activa al cargar una plantilla; podés desmarcar para ver el resto según filtros).</span>
                                 </label>
-                            </div>
+                                </div>
                             <div>
                                 <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Filtros del mapa y listado</label>
                                 <div class="grid grid-cols-1 gap-2">
@@ -828,12 +831,12 @@
                                         <option value="">Todas las U.N.</option>
                                     </select>
                                     <button type="button" onclick="clearVrpMapFilters()" class="text-[10px] font-black uppercase text-indigo-600 hover:text-indigo-800 py-1 text-left">Quitar filtros de zona / localidad / U.N.</button>
-                                </div>
-                            </div>
+                                        </div>
+                                    </div>
                             <div>
                                 <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Filtrar listado</label>
                                 <input type="text" id="vrp-search-schools" oninput="filterVrpList()" placeholder="Filtrar escuelas…" class="w-full bg-[#F4F7FE] border-0 rounded-2xl px-4 py-3 text-sm font-bold text-[#1B2559] outline-none">
-                            </div>
+                                    </div>
                             <div>
                                 <div class="flex justify-between items-center mb-2">
                                     <span class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Clientes (<span id="vrp-selected-count">0</span> en ruta)</span>
@@ -846,24 +849,24 @@
                                 <div class="flex flex-wrap items-center gap-2 mb-2">
                                     <button type="button" id="vrp-tour-prev" onclick="vrpRouteTourAdvance(-1)" disabled class="flex items-center justify-center w-10 h-10 rounded-xl bg-white border border-[#E0E5F2] text-[#1B2559] hover:bg-indigo-50 hover:border-indigo-200 disabled:opacity-40 disabled:pointer-events-none shrink-0" title="Parada anterior (←)">
                                         <i data-lucide="chevron-left" class="w-5 h-5"></i>
-                                    </button>
+                            </button>
                                     <p id="vrp-route-tour-label" class="flex-1 min-w-[140px] text-center text-[11px] font-bold text-slate-600 leading-tight px-1">Sin paradas en la ruta</p>
                                     <button type="button" id="vrp-tour-next" onclick="vrpRouteTourAdvance(1)" disabled class="flex items-center justify-center w-10 h-10 rounded-xl bg-white border border-[#E0E5F2] text-[#1B2559] hover:bg-indigo-50 hover:border-indigo-200 disabled:opacity-40 disabled:pointer-events-none shrink-0" title="Siguiente parada (→)">
                                         <i data-lucide="chevron-right" class="w-5 h-5"></i>
-                                    </button>
-                                </div>
+                            </button>
+                        </div>
                                 <p class="text-[9px] text-[#A3AED0] font-medium mb-2">Teclado: <kbd class="px-1 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[8px]">←</kbd> <kbd class="px-1 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[8px]">→</kbd> para ir parada a parada en orden.</p>
                                 <div id="vrp-selected-sequence" class="min-h-[100px] max-h-[180px] overflow-y-auto custom-scrollbar bg-[#F4F7FE]/60 rounded-2xl p-3 space-y-2 border border-dashed border-[#E0E5F2]">
                                     <div class="text-center py-6 text-[#A3AED0] text-xs font-medium italic">Marcá escuelas arriba o cargá un reparto</div>
-                                </div>
+                    </div>
                             </div>
                             <div id="vrp-route-summary" class="hidden rounded-2xl bg-slate-900 text-white p-4 space-y-1">
                                 <p class="text-[9px] font-black uppercase tracking-widest text-white/50">Último cálculo</p>
                                 <div class="flex flex-wrap gap-4">
                                     <div><span class="text-[10px] text-white/60">Distancia</span><p id="vrp-sum-km" class="text-lg font-black text-emerald-300">—</p></div>
                                     <div><span class="text-[10px] text-white/60">Tiempo (estim.)</span><p id="vrp-sum-time" class="text-lg font-black">—</p></div>
-                                </div>
-                            </div>
+                        </div>
+                    </div>
                             <div class="grid grid-cols-2 gap-3 pt-1">
                                 <button type="button" onclick="runVrpOptimization()" id="vrp-btn-optimize" class="bg-indigo-600 py-3.5 rounded-2xl font-black text-[11px] text-white flex items-center justify-center gap-2 hover:bg-indigo-700 shadow-lg uppercase tracking-wide">
                                     <i data-lucide="zap" class="w-4 h-4"></i> Optimizar
@@ -871,13 +874,13 @@
                                 <button type="button" onclick="runVrpOptimization({fixed:true})" id="vrp-btn-fixed" class="bg-[#11047A] py-3.5 rounded-2xl font-black text-[11px] text-white flex items-center justify-center gap-2 hover:bg-[#1e0a9e] shadow-lg uppercase tracking-wide">
                                     <i data-lucide="list-ordered" class="w-4 h-4"></i> Orden actual
                                 </button>
-                            </div>
+                </div>
                             <div id="vrp-results" class="hidden border-t border-[#F4F7FE] pt-4 space-y-3">
                                 <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Detalle del recorrido</p>
                                 <div id="vrp-steps-list" class="text-sm space-y-2 max-h-[280px] overflow-y-auto custom-scrollbar"></div>
-                            </div>
+            </div>
                         </div>
-                    </div>
+                                </div>
                     <div class="xl:col-span-8 relative card-dark vrp-map-host map-no-hover-lift overflow-hidden min-h-[420px] xl:min-h-0 min-w-0 rounded-3xl border border-[#E8ECF8]">
                         <div id="map" class="h-full w-full min-h-[420px] xl:min-h-full bg-slate-100"></div>
                         <div class="absolute top-4 right-4 z-[5] flex flex-col gap-2 items-end">
@@ -890,11 +893,11 @@
                                 <div class="mt-2 pt-2 border-t border-slate-100 flex items-center gap-2">
                                     <span id="traffic-indicator" class="w-2 h-2 rounded-full bg-slate-300 shrink-0"></span>
                                     <span class="text-slate-500">Tráfico: <span id="traffic-status" class="text-slate-800">OFF</span></span>
-                                </div>
+                    </div>
                             </div>
                         </div>
+                        </div>
                     </div>
-                </div>
             </div>
 
             <!-- VIEW: MANTENIMIENTO VEHICULAR -->
@@ -1005,6 +1008,64 @@
                 </div>
             </div>
 
+            <!-- VIEW: USUARIOS / CREDENCIALES -->
+            <div id="view-users" class="hidden view-animate space-y-8">
+                <div class="card-dark p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div>
+                        <h3 class="text-2xl font-bold text-[#1B2559]">Gestión de Usuarios</h3>
+                        <p class="text-sm text-[#A3AED0] font-medium">Alta y administración de credenciales para choferes y administradores</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <input
+                            type="text"
+                            id="users-search"
+                            oninput="renderUsersTable()"
+                            placeholder="Buscar por usuario o nombre..."
+                            class="w-72 bg-[#F4F7FE] border-0 rounded-2xl px-4 py-3 text-sm font-medium text-[#1B2559] outline-none"
+                        />
+                        <button onclick="loadUsers()" class="px-5 py-3 rounded-2xl bg-indigo-50 text-indigo-700 text-xs font-bold hover:bg-indigo-100 transition-all">
+                            Recargar
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card-dark p-8">
+                    <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-5">Crear usuario</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
+                        <input id="new-user-username" type="text" placeholder="Usuario (ej. JUANMA)" class="bg-[#F4F7FE] border-0 rounded-2xl px-4 py-3 text-sm font-medium text-[#1B2559] outline-none">
+                        <input id="new-user-fullname" type="text" placeholder="Nombre completo" class="bg-[#F4F7FE] border-0 rounded-2xl px-4 py-3 text-sm font-medium text-[#1B2559] outline-none">
+                        <select id="new-user-role" class="bg-[#F4F7FE] border-0 rounded-2xl px-4 py-3 text-sm font-bold text-[#1B2559] outline-none">
+                            <option value="DRIVER">DRIVER</option>
+                            <option value="ADMIN">ADMIN</option>
+                        </select>
+                        <input id="new-user-password" type="text" placeholder="Contraseña" class="bg-[#F4F7FE] border-0 rounded-2xl px-4 py-3 text-sm font-medium text-[#1B2559] outline-none">
+                        <button onclick="createUserFromPlanning()" class="px-6 py-3 rounded-2xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">
+                            Crear
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card-dark overflow-hidden">
+                    <div class="table-container border-0 rounded-0 shadow-none">
+                        <div class="overflow-x-auto custom-scrollbar">
+                            <table class="w-full min-w-[920px] text-left whitespace-nowrap">
+                                <thead>
+                                    <tr>
+                                        <th>Usuario</th>
+                                        <th>Nombre</th>
+                                        <th>Rol</th>
+                                        <th>Creado</th>
+                                        <th>Nueva contraseña</th>
+                                        <th>Acciones</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="users-table-body" class="divide-y divide-[#F4F7FE]"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- Modal: Nueva/Editar Reparación -->
             <div id="modal-repair" class="fixed inset-0 z-50 hidden">
                 <div class="modal-overlay absolute inset-0" onclick="closeRepairModal()"></div>
@@ -1041,6 +1102,29 @@
                             <button type="button" onclick="closeRepairModal()" class="px-6 py-3 border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-50">Cancelar</button>
                         </div>
                     </form>
+                </div>
+            </div>
+
+            <!-- Modal: Elegir rol al desbloquear usuario -->
+            <div id="modal-unblock-role" class="fixed inset-0 z-[120] hidden">
+                <div class="modal-overlay absolute inset-0" onclick="resolveUnblockRole(null)"></div>
+                <div class="modal-content absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md p-8">
+                    <h3 id="modal-unblock-role-title" class="text-xl font-bold text-slate-900 mb-2">Desbloquear usuario</h3>
+                    <p class="text-sm text-slate-500 mb-6">Elegí el rol con el que querés habilitar este usuario.</p>
+                    <p id="modal-unblock-role-hint" class="text-xs text-indigo-600 font-bold mb-4">Recomendado (último usado): DRIVER</p>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <button id="modal-unblock-role-driver" type="button" onclick="resolveUnblockRole('DRIVER')" class="px-5 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all">
+                            DRIVER
+                        </button>
+                        <button id="modal-unblock-role-admin" type="button" onclick="resolveUnblockRole('ADMIN')" class="px-5 py-3 rounded-xl bg-rose-600 text-white text-sm font-bold hover:bg-rose-700 transition-all">
+                            ADMIN
+                        </button>
+                    </div>
+                    <div class="mt-4 text-right">
+                        <button type="button" onclick="resolveUnblockRole(null)" class="px-5 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50 transition-all">
+                            Cancelar
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -1671,6 +1755,7 @@
                 costs: 'Motor de Costos Operativos',
                 maintenance: 'Mantenimiento de Flota',
                 employees: 'Gestión de Personal',
+                users: 'Gestión de Usuarios',
                 salaries: 'Liquidación de Sueldos',
                 schools: 'Base de Clientes',
                 routes: 'Editor de Rutas'
@@ -1684,6 +1769,7 @@
                 costs: 'Motor financiero para el cálculo de rentabilidad y gastos fijos/variables',
                 maintenance: 'Seguimiento técnico preventivo y correctivo de la flota propia',
                 employees: 'Acceso unificado a legajos de choferes, auxiliares y liquidaciones',
+                users: 'Administración manual de credenciales para choferes y administradores',
                 salaries: 'Nómina detallada con cálculo de adicionales, jornales y brutos',
                 schools: 'Directorio Maestro de Clientes, ubicaciones y zonas logísticas',
                 routes: 'Diseño y estructuración de recorridos predefinidos'
@@ -1697,17 +1783,250 @@
             if(id === 'vrp') setTimeout(initVrpMap, 100);
             if(id === 'maintenance') loadMaintenanceData();
             if(id === 'routes') loadRouteTemplates();
+            if(id === 'users') loadUsers();
+        }
+
+        // --- USERS MODULE ---
+        let usersData = [];
+        let unblockRoleResolver = null;
+        const UNBLOCK_ROLE_LAST_KEY = 'r14_last_unblock_role';
+
+        function notifyUsers(message, type = 'info') {
+            if (typeof addNotification === 'function') {
+                addNotification(type, 'Usuarios', message);
+                return;
+            }
+            alert(message);
+        }
+
+        function roleBadgeClass(role) {
+            const normalized = String(role || '').toUpperCase();
+            if (normalized === 'ADMIN') return 'bg-rose-100 text-rose-700';
+            if (normalized === 'BLOCKED') return 'bg-slate-200 text-slate-700';
+            return 'bg-indigo-100 text-indigo-700';
+        }
+
+        function openUnblockRoleModal(username) {
+            const modal = document.getElementById('modal-unblock-role');
+            const title = document.getElementById('modal-unblock-role-title');
+            const hint = document.getElementById('modal-unblock-role-hint');
+            const btnDriver = document.getElementById('modal-unblock-role-driver');
+            const btnAdmin = document.getElementById('modal-unblock-role-admin');
+            if (!modal) return;
+            if (title) title.innerText = `Desbloquear ${username}`;
+            const last = (localStorage.getItem(UNBLOCK_ROLE_LAST_KEY) || 'DRIVER').toUpperCase();
+            const recommended = ['DRIVER', 'ADMIN'].includes(last) ? last : 'DRIVER';
+            if (hint) hint.innerText = `Recomendado (último usado): ${recommended}`;
+
+            // Reset visual recommendation state
+            if (btnDriver) {
+                btnDriver.classList.remove('ring-2', 'ring-indigo-400', 'ring-offset-2');
+                btnDriver.classList.add('opacity-80');
+            }
+            if (btnAdmin) {
+                btnAdmin.classList.remove('ring-2', 'ring-rose-400', 'ring-offset-2');
+                btnAdmin.classList.add('opacity-80');
+            }
+            if (recommended === 'DRIVER' && btnDriver) {
+                btnDriver.classList.add('ring-2', 'ring-indigo-400', 'ring-offset-2');
+                btnDriver.classList.remove('opacity-80');
+            }
+            if (recommended === 'ADMIN' && btnAdmin) {
+                btnAdmin.classList.add('ring-2', 'ring-rose-400', 'ring-offset-2');
+                btnAdmin.classList.remove('opacity-80');
+            }
+            modal.classList.remove('hidden');
+        }
+
+        function closeUnblockRoleModal() {
+            const modal = document.getElementById('modal-unblock-role');
+            if (!modal) return;
+            modal.classList.add('hidden');
+        }
+
+        function resolveUnblockRole(value) {
+            if (value && ['DRIVER', 'ADMIN'].includes(String(value).toUpperCase())) {
+                localStorage.setItem(UNBLOCK_ROLE_LAST_KEY, String(value).toUpperCase());
+            }
+            if (typeof unblockRoleResolver === 'function') {
+                unblockRoleResolver(value);
+            }
+            unblockRoleResolver = null;
+            closeUnblockRoleModal();
+        }
+
+        function askUnblockRole(username) {
+            return new Promise((resolve) => {
+                unblockRoleResolver = resolve;
+                openUnblockRoleModal(username);
+            });
+        }
+
+        async function loadUsers() {
+            try {
+                const res = await fetch(`${API_URL}/users`);
+                if (!res.ok) throw new Error('No se pudo cargar usuarios');
+                const data = await res.json();
+                usersData = Array.isArray(data) ? data : [];
+                renderUsersTable();
+            } catch (e) {
+                console.error('Error loading users', e);
+                notifyUsers('No se pudieron cargar los usuarios.', 'warning');
+            }
+        }
+
+        function renderUsersTable() {
+            const body = document.getElementById('users-table-body');
+            if (!body) return;
+            const query = (document.getElementById('users-search')?.value || '').toLowerCase().trim();
+            const rows = (usersData || []).filter((u) => {
+                if (!query) return true;
+                const hay = `${u?.username || ''} ${u?.fullName || ''} ${u?.role || ''}`.toLowerCase();
+                return hay.includes(query);
+            });
+
+            if (rows.length === 0) {
+                body.innerHTML = `
+                    <tr>
+                        <td colspan="6" class="text-center py-8 text-sm text-[#A3AED0] font-medium">No hay usuarios para mostrar</td>
+                    </tr>
+                `;
+                return;
+            }
+
+            body.innerHTML = rows.map((u) => `
+                <tr>
+                    <td class="font-bold text-[#1B2559]">${u.username || ''}</td>
+                    <td class="text-[#5B6B9E]">${u.fullName || ''}</td>
+                    <td><span class="inline-flex px-3 py-1 rounded-full text-[11px] font-black ${roleBadgeClass(u.role)}">${u.role || ''}</span></td>
+                    <td class="text-[#7C8DB5] text-xs">${u.createdAt ? new Date(u.createdAt).toLocaleString('es-AR') : '-'}</td>
+                    <td>
+                        <input id="pwd-${u.id}" type="text" placeholder="Nueva contraseña" class="w-48 bg-[#F4F7FE] border-0 rounded-xl px-3 py-2 text-xs font-medium text-[#1B2559] outline-none" />
+                    </td>
+                    <td>
+                        <button onclick="resetUserPassword('${u.id}', '${(u.username || '').replace(/'/g, "\\'")}')" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-all">
+                            Guardar contraseña
+                        </button>
+                        <button onclick="toggleUserBlocked('${u.id}', '${(u.username || '').replace(/'/g, "\\'")}', '${String(u.role || '').toUpperCase()}')" class="ml-2 px-4 py-2 rounded-xl bg-amber-100 text-amber-800 text-xs font-bold hover:bg-amber-200 transition-all">
+                            ${String(u.role || '').toUpperCase() === 'BLOCKED' ? 'Desbloquear' : 'Bloquear'}
+                        </button>
+                        <button onclick="deleteUserFromPlanning('${u.id}', '${(u.username || '').replace(/'/g, "\\'")}')" class="ml-2 px-4 py-2 rounded-xl bg-rose-100 text-rose-700 text-xs font-bold hover:bg-rose-200 transition-all">
+                            Eliminar
+                        </button>
+                    </td>
+                </tr>
+            `).join('');
+        }
+
+        async function createUserFromPlanning() {
+            const username = (document.getElementById('new-user-username')?.value || '').trim();
+            const fullName = (document.getElementById('new-user-fullname')?.value || '').trim();
+            const role = (document.getElementById('new-user-role')?.value || 'DRIVER').trim().toUpperCase();
+            const password = (document.getElementById('new-user-password')?.value || '').trim();
+
+            if (!username || !password) {
+                notifyUsers('Usuario y contraseña son obligatorios.', 'warning');
+                return;
+            }
+
+            try {
+                const res = await fetch(`${API_URL}/users`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, fullName, role, password })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data?.error || 'No se pudo crear el usuario');
+
+                notifyUsers(`Usuario ${username} creado correctamente.`, 'success');
+                document.getElementById('new-user-username').value = '';
+                document.getElementById('new-user-fullname').value = '';
+                document.getElementById('new-user-password').value = '';
+                await loadUsers();
+            } catch (e) {
+                notifyUsers(`Error al crear usuario: ${e?.message || e}`, 'warning');
+            }
+        }
+
+        async function resetUserPassword(userId, username) {
+            const input = document.getElementById(`pwd-${userId}`);
+            const password = (input?.value || '').trim();
+            if (!password) {
+                notifyUsers('Ingresá una nueva contraseña.', 'warning');
+                return;
+            }
+            try {
+                const res = await fetch(`${API_URL}/users/${userId}/password`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data?.error || 'No se pudo cambiar la contraseña');
+                input.value = '';
+                notifyUsers(`Contraseña actualizada para ${username}.`, 'success');
+            } catch (e) {
+                notifyUsers(`Error al actualizar contraseña: ${e?.message || e}`, 'warning');
+            }
+        }
+
+        async function toggleUserBlocked(userId, username, currentRole) {
+            const isBlocked = String(currentRole || '').toUpperCase() === 'BLOCKED';
+            const action = isBlocked ? 'desbloquear' : 'bloquear';
+            if (!confirm(`¿Querés ${action} al usuario ${username}?`)) return;
+            let nextRole = 'DRIVER';
+            if (isBlocked) {
+                const selected = await askUnblockRole(username);
+                if (!selected) return;
+                nextRole = selected;
+            }
+            try {
+                const res = await fetch(`${API_URL}/users/${userId}/block`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ blocked: !isBlocked, role: nextRole })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data?.error || `No se pudo ${action} el usuario`);
+                notifyUsers(
+                    `Usuario ${username} ${isBlocked ? `desbloqueado como ${nextRole}` : 'bloqueado'}.`,
+                    'success'
+                );
+                await loadUsers();
+            } catch (e) {
+                notifyUsers(`Error al ${action} usuario: ${e?.message || e}`, 'warning');
+            }
+        }
+
+        async function deleteUserFromPlanning(userId, username) {
+            if (!confirm(`¿Eliminar usuario ${username}? Esta acción no se puede deshacer.`)) return;
+            try {
+                const res = await fetch(`${API_URL}/users/${userId}`, { method: 'DELETE' });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data?.error || 'No se pudo eliminar el usuario');
+                notifyUsers(`Usuario ${username} eliminado.`, 'success');
+                await loadUsers();
+            } catch (e) {
+                notifyUsers(`Error al eliminar usuario: ${e?.message || e}`, 'warning');
+            }
         }
 
         // --- RUTAS MODULE ---
         let routeTemplates = [];
         let currentlyEditingRoute = null;
 
+        function routeTemplateNameSort(a, b) {
+            return String(a || '').localeCompare(String(b || ''), 'es', { numeric: true, sensitivity: 'base' });
+        }
+
         async function loadRouteTemplates() {
             try {
                 const res = await fetch(`${API_URL}/route-templates`);
                 if (!res.ok) throw new Error('Failed to fetch templates');
-                routeTemplates = await res.json();
+                const data = await res.json();
+                routeTemplates = (Array.isArray(data) ? data : []).sort((x, y) =>
+                    routeTemplateNameSort(x?.name, y?.name)
+                );
                 renderRouteTemplatesList();
                 renderVrpTemplateSelect();
                 console.log(`Loaded ${routeTemplates.length} route templates`);
@@ -1723,12 +2042,12 @@
             if (!statusText || !dot) return;
             statusText.classList.remove('text-emerald-200', 'text-rose-200', 'text-white/45');
             const origin = typeof getServerOrigin === 'function' ? getServerOrigin() : '';
-            if (connected) {
+                if (connected) {
                 dot.className = 'w-2 h-2 rounded-full bg-emerald-400 shrink-0 ring-2 ring-emerald-300/50';
                 statusText.classList.add('text-emerald-200');
                 if (label) label.textContent = 'API en línea';
                 statusText.removeAttribute('title');
-            } else {
+                } else {
                 dot.className = 'w-2 h-2 rounded-full bg-rose-400 animate-pulse shrink-0';
                 statusText.classList.add('text-rose-200');
                 if (label) label.textContent = 'Sin conexión';
@@ -2751,8 +3070,8 @@
                             <button type="button" onclick="toggleSchoolSelection('${c.id}', event)" class="w-5 h-5 rounded-md border ${selectedSchoolsForDelete.has(c.id) ? 'bg-red-500 border-red-500 text-white' : 'bg-white border-slate-300 text-transparent'} flex items-center justify-center">
                                 <i data-lucide="check" class="w-3 h-3"></i>
                             </button>
-                            <div class="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                                <i data-lucide="school" class="text-blue-600 w-5 h-5"></i>
+                        <div class="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center group-hover:bg-blue-100 transition-colors">
+                            <i data-lucide="school" class="text-blue-600 w-5 h-5"></i>
                             </div>
                         </div>
                         <span class="text-[9px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded uppercase tracking-widest">${c.barrio || c.zone || 'SIN BARRIO'}</span>
@@ -2953,10 +3272,10 @@
                     const id = currentlyEditingSchoolId;
                     if (!id) throw new Error('Sin cliente seleccionado');
                     res = await fetch(`${API_URL}/clients/${id}`, {
-                        method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(payload)
-                    });
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
                     if (!res.ok) {
                         const err = await res.json().catch(() => ({}));
                         throw new Error(err.error || 'Error al actualizar');
@@ -3026,8 +3345,8 @@
             }
 
             if (query) {
-                filtered = filtered.filter(s =>
-                    (s.name && s.name.toLowerCase().includes(query)) ||
+            filtered = filtered.filter(s => 
+                (s.name && s.name.toLowerCase().includes(query)) || 
                     (s.address && s.address.toLowerCase().includes(query)) ||
                     (s.zone && s.zone.toLowerCase().includes(query)) ||
                     (s.barrio && s.barrio.toLowerCase().includes(query))
@@ -3564,7 +3883,7 @@
             const body = document.getElementById('weekly-table-body');
             weeklyTripStopsBuffers = {};
             weeklyTripStopsFetched = {};
-
+            
             body.innerHTML = data.map(t => {
                 const isPropio = t.contractType === 'Propio';
                 const cost = isPropio ? getTripCalculatedCost(t) : (Number(t.value) || 0);
@@ -3577,8 +3896,8 @@
                                     <i data-lucide="chevron-down" id="weekly-chev-${t.id}" class="w-4 h-4 transition-transform duration-200"></i>
                                 </button>
                                 <div>
-                                    <div class="text-[13px]">#${t.id}</div>
-                                    <div class="text-[10px] text-slate-400 uppercase font-black">${new Date(t.date).toLocaleDateString()}</div>
+                           <div class="text-[13px]">#${t.id}</div>
+                           <div class="text-[10px] text-slate-400 uppercase font-black">${new Date(t.date).toLocaleDateString()}</div>
                                 </div>
                            </div>
                         </td>
@@ -3841,14 +4160,14 @@
                     if (fType === 'tercerizado' || fType === 'externo') matchesContract = (tType === 'tercerizado' || tType === 'externo');
                     else matchesContract = (tType === fType);
                 }
-
+                
                 if (!includeMonth) return matchesSearch && matchesContract;
                 if (!t.date) return false;
                 // Safer parsing for varied formats
                 const cleanDate = t.date.includes(' ') ? t.date.replace(/ /g, 'T') : t.date;
                 const tripDate = new Date(cleanDate);
                 if(isNaN(tripDate)) return false;
-
+                
                 // Lenient month match: check local AND UTC month to avoid timezone shifts hiding data
                 const localMonthNum = tripDate.getMonth();
                 const utcMonthNum = tripDate.getUTCMonth();
@@ -3863,9 +4182,8 @@
 
             filteredPlanning = planningData.filter((t) => baseMatch(t, true));
             if (filteredPlanning.length === 0 && planningData.length > 0) {
-                // Fallback anti-vista vacía: si el mes no coincide, mostramos lista filtrada sin mes.
-                filteredPlanning = planningData.filter((t) => baseMatch(t, false));
-                addNotification('info', 'Sin coincidencias por mes', 'Mostrando viajes de otros meses para evitar grilla vacía.');
+                // No mezclar meses automáticamente: evita confusión cuando un mes no tiene viajes.
+                addNotification('info', 'Sin viajes en el mes', 'No hay viajes para el mes seleccionado con los filtros actuales.');
             }
             
             renderPlanningTable(filteredPlanning);
@@ -4203,14 +4521,14 @@
                 try {
                     if (visible) {
                         vrpMarkerClusterer.addMarker(marker);
-                    } else {
+                } else {
                         vrpMarkerClusterer.removeMarker(marker);
                         marker.setMap(null);
                     }
                 } catch (_) {
                     marker.setMap(visible ? vrpMap : null);
                 }
-            } else {
+                    } else {
                 marker.setMap(visible ? vrpMap : null);
             }
         }
@@ -4407,7 +4725,7 @@
 
                 renderSelectedSequence(); 
                 updateVrpMarkersStatus();
-
+                
                 const formatDuration = (sec) => {
                     const adjustedSec = sec * trafficFactor;
                     const min = Math.round(adjustedSec / 60);
@@ -4415,7 +4733,7 @@
                     const m = min % 60;
                     return h > 0 ? `${h} h ${m} min` : `${m} min`;
                 };
-
+                
                 const legs = tripData.legs;
                 const totalDur = tripData.duration;
                 const totalDist = tripData.distance / 1000;
@@ -4711,7 +5029,7 @@
                 m.setMap(null);
             });
             vrpMarkersByClientId.clear();
-
+            
             if (allSchools.length === 0) {
                 try {
                     const res = await fetch(`${API_URL}/clients`);
@@ -4942,7 +5260,7 @@
         }
 
         window.addEventListener('load', () => {
-            initApp();
+             initApp();
             setInterval(refreshApiStatusFromHealth, 45000);
             document.addEventListener('keydown', vrpRouteTourOnKeydown);
         });
@@ -6891,24 +7209,24 @@
                 if (id) {
                     const oneDate = targetDates[0];
                     const tripData = { ...baseTripData, date: new Date(oneDate + 'T12:00:00').toISOString() };
-                    if (document.getElementById('new-trip-exit').value) {
-                        const [h, m] = document.getElementById('new-trip-exit').value.split(':');
+            if (document.getElementById('new-trip-exit').value) {
+                const [h, m] = document.getElementById('new-trip-exit').value.split(':');
                         const d = new Date(oneDate + 'T00:00:00');
-                        d.setHours(parseInt(h), parseInt(m), 0);
-                        tripData.exitTime = d.toISOString();
-                    }
-                    if (document.getElementById('new-trip-return').value) {
-                        const [h, m] = document.getElementById('new-trip-return').value.split(':');
+                d.setHours(parseInt(h), parseInt(m), 0);
+                tripData.exitTime = d.toISOString();
+            }
+            if (document.getElementById('new-trip-return').value) {
+                const [h, m] = document.getElementById('new-trip-return').value.split(':');
                         const d = new Date(oneDate + 'T00:00:00');
-                        d.setHours(parseInt(h), parseInt(m), 0);
-                        tripData.returnTime = d.toISOString();
-                    }
+                d.setHours(parseInt(h), parseInt(m), 0);
+                tripData.returnTime = d.toISOString();
+            }
                     applyVueltaFromModalToPayload(tripData);
                     const res = await fetch(`${API_URL}/trips/${id}`, {
                         method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(tripData)
-                    });
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(tripData)
+                });
                     if (!res.ok) throw new Error('Error al actualizar el viaje');
                     await saveTripDeliveryStops(parseInt(id, 10));
                 } else {
@@ -7054,9 +7372,9 @@
                         <option value="2">2ª vuelta</option>
                         <option value="3">3ª vuelta o más</option>
                         <option value="auto">Automático (hora de salida y patente)</option>
-                    </select>
+                        </select>
                     <p class="text-[10px] text-slate-400 mt-1.5 leading-snug">2ª y 3ª+ comparten la misma regla: no se vuelve a prorratear el auxiliar con jornal. Solo contrato Propio.</p>
-                </div>
+                    </div>
 
                 <div id="new-trip-date-single-wrap">
                     <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Fecha</label>
