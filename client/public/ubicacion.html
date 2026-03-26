@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Compartir ubicación - R14</title>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; margin: 0; padding: 24px; min-height: 100vh; background: #F8F9FB; display: flex; align-items: center; justify-content: center; }
+    .card { background: #fff; border-radius: 24px; padding: 32px; max-width: 400px; width: 100%; box-shadow: 0 4px 24px rgba(0,0,0,0.06); border: 1px solid #E5E7EB; }
+    h1 { font-size: 22px; color: #1C1C1E; margin: 0 0 8px; }
+    p { font-size: 14px; color: #8E8E93; margin: 0 0 24px; }
+    label { display: block; font-size: 12px; font-weight: bold; color: #8E8E93; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 8px; }
+    input[type="text"] { width: 100%; padding: 14px 16px; border: none; border-radius: 16px; background: #F2F2F7; font-size: 15px; margin-bottom: 24px; }
+    .btn { width: 100%; padding: 16px; background: #007AFF; color: #fff; border: none; border-radius: 16px; font-size: 16px; font-weight: bold; cursor: pointer; }
+    .btn:disabled { opacity: 0.7; cursor: not-allowed; }
+    .msg { padding: 16px; border-radius: 16px; margin-bottom: 16px; font-size: 14px; }
+    .msg.ok { background: #E8F5E9; color: #1B5E20; }
+    .msg.err { background: #FFEBEE; color: #B71C1C; }
+    .small { font-size: 12px; color: #8E8E93; margin-top: 24px; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Compartir mi ubicación</h1>
+    <p>Enviá tu posición al rastreo cada 30 segundos. Dejá esta página abierta.</p>
+    <label>Tu nombre (opcional)</label>
+    <input type="text" id="label" placeholder="Ej. Chofer Juan" />
+    <div id="msg"></div>
+    <button class="btn" id="btn">Comenzar a enviar ubicación</button>
+    <p class="small" id="last"></p>
+  </div>
+  <script>
+    (function() {
+      var deviceId = localStorage.getItem('tracking_device_id');
+      if (!deviceId) { deviceId = 'device_' + Math.random().toString(36).slice(2, 10); localStorage.setItem('tracking_device_id', deviceId); }
+      var intervalId = null;
+      function showMsg(text, isError) {
+        var el = document.getElementById('msg');
+        el.textContent = text;
+        el.className = 'msg ' + (isError ? 'err' : 'ok');
+        el.style.display = text ? 'block' : 'none';
+      }
+      function sendPosition(position) {
+        var label = document.getElementById('label').value.trim() || null;
+        fetch('/api/v1/tracking/location', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            deviceId: deviceId,
+            deviceLabel: label,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            accuracy: position.coords.accuracy || null
+          })
+        }).then(function(r) {
+          if (r.ok) {
+            document.getElementById('last').textContent = 'Última actualización: ' + new Date().toLocaleTimeString('es-AR');
+            showMsg('Ubicación enviada. Se actualiza cada 30 s.', false);
+          } else { return r.json().then(function(e) { throw new Error(e.error || 'Error'); }); }
+        }).catch(function(e) {
+          showMsg(e.message || 'No se pudo enviar.', true);
+        });
+      }
+      document.getElementById('btn').onclick = function() {
+        if (!navigator.geolocation) { showMsg('Tu navegador no soporta ubicación.', true); return; }
+        this.disabled = true;
+        showMsg('Solicitando ubicación...', false);
+        navigator.geolocation.getCurrentPosition(
+          function(pos) {
+            sendPosition(pos);
+            if (intervalId) clearInterval(intervalId);
+            intervalId = setInterval(function() {
+              navigator.geolocation.getCurrentPosition(sendPosition, function() { showMsg('No se pudo obtener la ubicación.', true); });
+            }, 30000);
+          },
+          function(err) {
+            document.getElementById('btn').disabled = false;
+            showMsg(err.message === 'User denied Geolocation' ? 'Permití el acceso a la ubicación.' : err.message, true);
+          },
+          { enableHighAccuracy: true, timeout: 15000, maximumAge: 0 }
+        );
+      };
+    })();
+  </script>
+</body>
+</html>

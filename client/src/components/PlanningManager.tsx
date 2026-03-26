@@ -1,0 +1,346 @@
+import { useState, useEffect } from 'react';
+import { Calendar, User, Truck, MapPin, Plus, Trash2, Loader2, ChevronDown } from 'lucide-react';
+
+interface Client {
+    id: string;
+    name: string;
+    address?: string | null;
+    zone?: string | null;
+}
+
+interface Stop {
+    id: number;
+    sequence: number;
+    status: string;
+    client: Client;
+}
+
+interface Route {
+    id: number;
+    date: string;
+    status: string;
+    driverId: string | null;
+    driver?: { fullName: string; username: string } | null;
+    vehicle?: { plate: string } | null;
+    stops: Stop[];
+}
+
+interface Driver {
+    id: string;
+    fullName: string;
+    username: string;
+}
+
+const PlanningManager = () => {
+    const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+    const [routes, setRoutes] = useState<Route[]>([]);
+    const [drivers, setDrivers] = useState<Driver[]>([]);
+    const [clients, setClients] = useState<Client[]>([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
+    const [showForm, setShowForm] = useState(false);
+    const [saving, setSaving] = useState(false);
+    const [driverName, setDriverName] = useState('');
+    const [vehicleId, setVehicleId] = useState('');
+    const [stops, setStops] = useState<{ clientId: string; clientName: string }[]>([]);
+    const [clientSearch, setClientSearch] = useState('');
+    const [searchResults, setSearchResults] = useState<Client[]>([]);
+
+    const fetchRoutes = async () => {
+        setLoading(true);
+        setError('');
+        try {
+            const res = await fetch(`/api/v1/routes?date=${date}`);
+            if (!res.ok) throw new Error('Error al cargar rutas');
+            const data = await res.json();
+            setRoutes(data);
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Error');
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    useEffect(() => {
+        fetchRoutes();
+    }, [date]);
+
+    useEffect(() => {
+        fetch('/api/v1/drivers')
+            .then((r) => r.json())
+            .then(setDrivers)
+            .catch(() => setDrivers([]));
+        fetch('/api/v1/clients')
+            .then((r) => r.json())
+            .then(setClients)
+            .catch(() => setClients([]));
+    }, []);
+
+    useEffect(() => {
+        if (!clientSearch.trim()) {
+            setSearchResults([]);
+            return;
+        }
+        const q = clientSearch.toLowerCase();
+        const filtered = clients.filter(
+            (c) =>
+                c.name.toLowerCase().includes(q) ||
+                (c.address && c.address.toLowerCase().includes(q)) ||
+                (c.zone && c.zone.toLowerCase().includes(q))
+        );
+        setSearchResults(filtered.slice(0, 8));
+    }, [clientSearch, clients]);
+
+    const addStop = (c: Client) => {
+        if (stops.some((s) => s.clientId === c.id)) return;
+        setStops((prev) => [...prev, { clientId: c.id, clientName: c.name }]);
+        setClientSearch('');
+        setSearchResults([]);
+    };
+
+    const removeStop = (index: number) => {
+        setStops((prev) => prev.filter((_, i) => i !== index));
+    };
+
+    const moveStop = (index: number, dir: 'up' | 'down') => {
+        setStops((prev) => {
+            const next = [...prev];
+            const j = dir === 'up' ? index - 1 : index + 1;
+            if (j < 0 || j >= next.length) return prev;
+            [next[index], next[j]] = [next[j], next[index]];
+            return next;
+        });
+    };
+
+    const handleCreateRoute = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!driverName.trim()) {
+            setError('Ingresá el nombre del chofer.');
+            return;
+        }
+        if (stops.length === 0) {
+            setError('Agregá al menos una parada.');
+            return;
+        }
+        setSaving(true);
+        setError('');
+        try {
+            const res = await fetch('/api/v1/routes-direct', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    date: new Date(date).toISOString().slice(0, 10),
+                    driverName: driverName.trim(),
+                    vehicleId: vehicleId.trim() || undefined,
+                    stops: stops.map((s, i) => ({ clientId: s.clientId, sequence: i + 1 })),
+                }),
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data?.error || data?.details || 'Error al crear la ruta');
+            setShowForm(false);
+            setDriverName('');
+            setVehicleId('');
+            setStops([]);
+            fetchRoutes();
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Error al guardar');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    return (
+        <div className="space-y-6">
+            {error && (
+                <div className="bg-red-50 border border-red-200 text-red-700 px-4 py-3 rounded-xl flex items-center justify-between">
+                    <span className="text-sm font-medium">{error}</span>
+                    <button type="button" onClick={() => setError('')} className="text-red-800 font-bold text-sm underline">
+                        Cerrar
+                    </button>
+                </div>
+            )}
+
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="flex items-center gap-3">
+                    <label className="text-sm font-semibold text-[#1C1C1E]">Fecha</label>
+                    <input
+                        type="date"
+                        value={date}
+                        onChange={(e) => setDate(e.target.value)}
+                        className="rounded-xl border border-[#E5E7EB] px-3 py-2 text-[#1C1C1E] bg-white"
+                    />
+                </div>
+                <button
+                    type="button"
+                    onClick={() => { setShowForm(true); setError(''); }}
+                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#007AFF] text-white font-semibold text-sm"
+                >
+                    <Plus className="w-4 h-4" />
+                    Nueva ruta
+                </button>
+            </div>
+
+            {showForm && (
+                <div className="bg-white rounded-2xl border border-[#E5E7EB] p-6 shadow-sm">
+                    <h3 className="text-lg font-bold text-[#1C1C1E] mb-4">Asignar ruta</h3>
+                    <form onSubmit={handleCreateRoute} className="space-y-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-sm font-medium text-[#636366] mb-1">Chofer</label>
+                                <div className="flex gap-2">
+                                    <select
+                                        value={driverName}
+                                        onChange={(e) => setDriverName(e.target.value)}
+                                        onBlur={() => {}}
+                                        className="flex-1 rounded-xl border border-[#E5E7EB] px-3 py-2 text-[#1C1C1E] bg-[#F2F2F7]"
+                                    >
+                                        <option value="">Seleccionar o escribir abajo</option>
+                                        {drivers.map((d) => (
+                                            <option key={d.id} value={d.fullName || d.username}>
+                                                {d.fullName || d.username}
+                                            </option>
+                                        ))}
+                                    </select>
+                                    <input
+                                        type="text"
+                                        placeholder="Nombre chofer"
+                                        value={driverName}
+                                        onChange={(e) => setDriverName(e.target.value)}
+                                        className="flex-1 rounded-xl border border-[#E5E7EB] px-3 py-2 text-[#1C1C1E]"
+                                    />
+                                </div>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-[#636366] mb-1">Patente / vehículo (opcional)</label>
+                                <input
+                                    type="text"
+                                    placeholder="Ej. AB 123 CD"
+                                    value={vehicleId}
+                                    onChange={(e) => setVehicleId(e.target.value)}
+                                    className="w-full rounded-xl border border-[#E5E7EB] px-3 py-2 text-[#1C1C1E]"
+                                />
+                            </div>
+                        </div>
+
+                        <div className="relative">
+                            <label className="block text-sm font-medium text-[#636366] mb-1">Paradas (orden de visita)</label>
+                            <div className="relative mb-2">
+                                <input
+                                    type="text"
+                                    placeholder="Buscar cliente por nombre, dirección o zona..."
+                                    value={clientSearch}
+                                    onChange={(e) => setClientSearch(e.target.value)}
+                                    className="w-full rounded-xl border border-[#E5E7EB] pl-10 pr-3 py-2 text-[#1C1C1E]"
+                                />
+                                <MapPin className="absolute left-3 top-2.5 w-4 h-4 text-[#8E8E93]" />
+                            </div>
+                            {searchResults.length > 0 && (
+                                <ul className="absolute z-10 left-0 right-0 mt-1 bg-white border border-[#E5E7EB] rounded-xl shadow-lg max-h-60 overflow-auto">
+                                    {searchResults.map((c) => (
+                                        <li key={c.id}>
+                                            <button
+                                                type="button"
+                                                onClick={() => addStop(c)}
+                                                className="w-full text-left px-4 py-2.5 hover:bg-[#F2F2F7] border-b border-[#F2F2F7] last:border-0"
+                                            >
+                                                <span className="font-medium text-[#1C1C1E]">{c.name}</span>
+                                                {c.address && <span className="block text-xs text-[#8E8E93]">{c.address}</span>}
+                                            </button>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                            <ul className="mt-2 space-y-1.5">
+                                {stops.map((s, i) => (
+                                    <li
+                                        key={`${s.clientId}-${i}`}
+                                        className="flex items-center gap-2 rounded-xl bg-[#F2F2F7] px-3 py-2"
+                                    >
+                                        <span className="text-[#8E8E93] font-mono text-sm w-6">{i + 1}.</span>
+                                        <span className="flex-1 font-medium text-[#1C1C1E] truncate">{s.clientName}</span>
+                                        <div className="flex items-center gap-1">
+                                            <button type="button" onClick={() => moveStop(i, 'up')} disabled={i === 0} className="p-1 rounded hover:bg-[#E5E7EB] disabled:opacity-40" aria-label="Subir">
+                                                <ChevronDown className="w-4 h-4 rotate-180" />
+                                            </button>
+                                            <button type="button" onClick={() => moveStop(i, 'down')} disabled={i === stops.length - 1} className="p-1 rounded hover:bg-[#E5E7EB] disabled:opacity-40" aria-label="Bajar">
+                                                <ChevronDown className="w-4 h-4" />
+                                            </button>
+                                            <button type="button" onClick={() => removeStop(i)} className="p-1 rounded hover:bg-red-100 text-red-600" aria-label="Quitar">
+                                                <Trash2 className="w-4 h-4" />
+                                            </button>
+                                        </div>
+                                    </li>
+                                ))}
+                            </ul>
+                        </div>
+
+                        <div className="flex gap-2 pt-2">
+                            <button
+                                type="button"
+                                onClick={() => { setShowForm(false); setError(''); }}
+                                className="px-4 py-2.5 rounded-xl border border-[#E5E7EB] text-[#1C1C1E] font-medium"
+                            >
+                                Cancelar
+                            </button>
+                            <button
+                                type="submit"
+                                disabled={saving}
+                                className="px-4 py-2.5 rounded-xl bg-[#007AFF] text-white font-medium disabled:opacity-50 flex items-center gap-2"
+                            >
+                                {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                                Crear ruta
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            )}
+
+            <div className="bg-white rounded-2xl border border-[#E5E7EB] overflow-hidden">
+                <div className="px-6 py-4 border-b border-[#E5E7EB]">
+                    <h2 className="text-lg font-bold text-[#1C1C1E]">Rutas del día</h2>
+                    <p className="text-sm text-[#8E8E93]">Estas rutas aparecen en la app de los choferes para la fecha seleccionada.</p>
+                </div>
+                {loading ? (
+                    <div className="flex justify-center py-12">
+                        <Loader2 className="w-8 h-8 text-[#007AFF] animate-spin" />
+                    </div>
+                ) : routes.length === 0 ? (
+                    <div className="px-6 py-12 text-center text-[#8E8E93]">
+                        <Calendar className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                        <p className="font-medium">No hay rutas para esta fecha</p>
+                        <p className="text-sm mt-1">Creá una con &quot;Nueva ruta&quot; y asigná chofer y paradas.</p>
+                    </div>
+                ) : (
+                    <ul className="divide-y divide-[#E5E7EB]">
+                        {routes.map((r) => (
+                            <li key={r.id} className="px-6 py-4 hover:bg-[#F8F9FB]">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-2 min-w-0">
+                                        <User className="w-4 h-4 text-[#007AFF] flex-shrink-0" />
+                                        <span className="font-semibold text-[#1C1C1E] truncate">{r.driver?.fullName || r.driver?.username || 'Sin chofer'}</span>
+                                    </div>
+                                    {r.vehicle?.plate && (
+                                        <div className="flex items-center gap-1.5 text-[#8E8E93] text-sm">
+                                            <Truck className="w-4 h-4" />
+                                            {r.vehicle.plate}
+                                        </div>
+                                    )}
+                                    <span className="text-sm text-[#8E8E93]">{r.stops.length} parada{r.stops.length !== 1 ? 's' : ''}</span>
+                                    <span className="ml-auto text-xs font-medium px-2 py-0.5 rounded-full bg-[#E5E7EB] text-[#636366]">{r.status}</span>
+                                </div>
+                                <ul className="mt-2 pl-6 text-sm text-[#8E8E93] space-y-0.5">
+                                    {r.stops.slice(0, 5).map((s) => (
+                                        <li key={s.id}>{s.sequence}. {s.client.name}</li>
+                                    ))}
+                                    {r.stops.length > 5 && <li>… y {r.stops.length - 5} más</li>}
+                                </ul>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+            </div>
+        </div>
+    );
+};
+
+export default PlanningManager;

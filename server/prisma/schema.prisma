@@ -1,0 +1,314 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Tenant {
+  id       String    @id @default(uuid())
+  name     String
+  settings String?
+  clients  Client[]
+  routes   Route[]
+  users    User[]
+  vehicles Vehicle[]
+}
+
+model User {
+  id           String   @id @default(uuid())
+  tenantId     String
+  username     String   @unique
+  password     String
+  fullName     String
+  role         String   @default("DRIVER")
+  createdAt    DateTime @default(now())
+  driverRoutes Route[]  @relation("DriverRoutes")
+  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+}
+
+model Vehicle {
+  id             String  @id @default(uuid())
+  tenantId       String
+  plate          String  @unique
+  model          String?
+  capacityWeight Float?
+  capacityVolume Float?
+  isRefrigerated Boolean @default(false)
+  status         String  @default("ACTIVE")
+  contractType   String?
+  driverName     String?
+  fuelType       String?
+  insurance      String?
+  usefulLife     String?
+  vehicleType    String?
+  routes         Route[]
+  tenant         Tenant  @relation(fields: [tenantId], references: [id])
+}
+
+model Client {
+  id              String  @id @default(uuid())
+  tenantId        String
+  name            String
+  address         String?
+  latitude        Float?
+  longitude       Float?
+  timeWindowStart String?
+  timeWindowEnd   String?
+  serviceTime     Int     @default(15)
+  zone            String?
+  priority        Int     @default(0)
+  barrio                   String?
+  tenant                   Tenant  @relation(fields: [tenantId], references: [id])
+  stops                    Stop[]
+  establishmentMappings    EstablishmentMapping[]
+}
+
+model Route {
+  id              Int       @id @default(autoincrement())
+  tenantId        String
+  date            DateTime
+  status          String    @default("PLANNED")
+  vehicleId       String?
+  driverId        String?
+  tripId          Int?      @unique
+  totalKm         Float?
+  estimatedTime   Int?
+  actualStartTime DateTime?
+  actualEndTime   DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  driver          User?     @relation("DriverRoutes", fields: [driverId], references: [id])
+  vehicle         Vehicle?  @relation(fields: [vehicleId], references: [id])
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+  trip            Trip?     @relation(fields: [tripId], references: [id])
+  stops           Stop[]
+
+  @@index([date])
+  @@index([status])
+}
+
+model Stop {
+  id              Int       @id @default(autoincrement())
+  routeId         Int
+  clientId        String
+  sequence        Int
+  plannedEta      DateTime?
+  actualArrival   DateTime?
+  actualDeparture DateTime?
+  status          String    @default("PENDING")
+  reasonCode      String?
+  observations    String?
+  proofPhotoUrl   String?
+  /// true = chofer marcó «entrega sin problemas»; null = no indicado
+  deliveryWithoutIssues Boolean?
+  signatureUrl    String?
+  client          Client    @relation(fields: [clientId], references: [id])
+  route           Route     @relation(fields: [routeId], references: [id])
+
+  @@index([status])
+}
+
+model Trip {
+  id               Int            @id @default(autoincrement())
+  date             DateTime
+  priority         String?
+  zone             String?
+  vehicle          String?
+  driver           String?
+  provider         String?
+  auxiliar         String?
+  auxiliar2        String?
+  auxiliar3        String?
+  businessUnit     String?
+  distributionType String?
+  contractType     String?
+  vehicleType      String?
+  tripType         String?
+  entryTime        String?
+  exitTime         DateTime?
+  returnTime       DateTime?
+  value            Decimal?       @default(0)
+  paymentStatus    String?
+  paymentDate      DateTime?
+  observations     String?
+  notes            String?
+  status           String         @default("PENDING") // PENDING, OUT_OF_PLANT, RETURNED, COMPLETED
+  startedAt        DateTime?
+  completedAt      DateTime?
+  driverComments   String?
+  proofPhotoUrl    String?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  arrivalTime      String?
+  departureTime    String?
+  isRefrigerated   Boolean?
+  kmArrival        String?
+  kmDeparture      String?
+  reason           String?
+  temperature      String?
+  reparto          String?
+  locality         String?
+  /// 1 = primera vuelta del día (costo auxiliar jornal completo); 2 o 3 = siguientes (misma regla de costo). null = calcular por hora/patente (legacy).
+  vuelta           Int?
+  stops            TripStop[]
+  locations        TripLocation[]
+  linkedRoute      Route?
+
+  @@index([date])
+  @@index([driver])
+  @@index([status])
+}
+
+model TripStop {
+  id              Int       @id @default(autoincrement())
+  tripId          Int
+  name            String
+  clientId        String?
+  sequence        Int
+  actualArrival   DateTime?
+  actualDeparture DateTime?
+  status          String    @default("PENDING") // PENDING, ARRIVED, COMPLETED, FAILED
+  observations    String?
+  failedReason    String?   // Checkbox/Text for why it failed
+  latitude        Float?    
+  longitude       Float?
+
+  trip            Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
+}
+
+model TripLocation {
+  id        Int      @id @default(autoincrement())
+  tripId    Int
+  latitude  Float
+  longitude Float
+  timestamp DateTime @default(now())
+
+  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@index([tripId])
+}
+
+
+model RouteTemplate {
+  id        String              @id @default(uuid())
+  name      String              @unique
+  stops     RouteStopTemplate[]
+  createdAt DateTime            @default(now())
+  updatedAt DateTime            @updatedAt
+}
+
+model RouteStopTemplate {
+  id              String        @id @default(uuid())
+  routeTemplateId String
+  name            String
+  sequence        Int
+  routeTemplate   RouteTemplate @relation(fields: [routeTemplateId], references: [id], onDelete: Cascade)
+
+  @@index([routeTemplateId])
+}
+
+model EmployeeSalary {
+  id          String   @id @default(uuid())
+  month       String
+  firstName   String?
+  lastName    String
+  role        String?
+  grossSalary Float?   @default(0)
+  dailyWage   Float?   @default(0)
+  seniority   Int?     @default(0)
+  baseScale   Float?   @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([month, lastName])
+}
+
+model MaintenanceRecord {
+  id          String   @id @default(uuid())
+  plate       String
+  category    String?
+  month       String?
+  date        String?
+  mileage     Float?
+  workshop    String?
+  workDone    String?
+  cost        Float?
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model AppSettings {
+  id          String   @id @default(uuid())
+  key         String   @unique
+  value       String
+  updatedAt   DateTime @updatedAt
+}
+
+model Alert {
+  id          String   @id @default(uuid())
+  tenantId    String?  @default("default-tenant")
+  type        String   // 'info', 'warning', 'critical', 'success'
+  title       String
+  text        String
+  timeLabel   String?  // 'Ahora', '2 horas', etc.
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+}
+
+// Repartos (desde Excel): nombre del reparto + establecimientos
+model Reparto {
+  id        String   @id @default(uuid())
+  name      String   // nombre del reparto (col 1 Excel)
+  tenantId  String   @default("default-tenant")
+  createdAt DateTime @default(now())
+  stops     RepartoEstablishment[]
+}
+
+model RepartoEstablishment {
+  id         Int     @id @default(autoincrement())
+  repartoId  String
+  excelName  String  // nombre en el Excel (col 2)
+  sequence   Int     @default(0)
+  reparto    Reparto @relation(fields: [repartoId], references: [id], onDelete: Cascade)
+
+  @@index([repartoId])
+}
+
+// Mapeo: nombre del Excel -> cliente del sistema (para los que no coinciden exactamente)
+model EstablishmentMapping {
+  id        String   @id @default(uuid())
+  excelName String   @unique // nombre tal como viene en el Excel
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@index([clientId])
+}
+
+// Rastreo satelital: ubicaciones enviadas por la app móvil de choferes
+model DeviceLocation {
+  id               String   @id @default(uuid())
+  deviceId         String   // identificador estable del dispositivo
+  deviceLabel      String?  // nombre visible (ej. chofer)
+  driverId         String?  // User.id del chofer (cuando la app lo envía)
+  routeId          Int?     // Route.id del recorrido activo
+  latitude         Float
+  longitude        Float
+  accuracy         Float? // precisión GPS (m)
+  speed            Float? // m/s si el cliente lo envía
+  heading          Float? // grados
+  offRouteMeters   Float? // distancia mínima a la polilínea planificada (m), si aplica
+  timestamp        DateTime @default(now())
+  createdAt        DateTime @default(now())
+
+  @@index([deviceId])
+  @@index([timestamp])
+  @@index([routeId, timestamp])
+  @@index([driverId])
+}

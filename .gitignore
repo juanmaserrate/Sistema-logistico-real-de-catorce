@@ -1,0 +1,29 @@
+# Dependencias
+node_modules/
+
+# Variables y secretos (usar .env.example como plantilla)
+.env
+.env.*
+!.env.example
+
+# Base SQLite local y subidas (Railway usa volumen)
+server/prisma/*.db
+server/prisma/*.db-journal
+server/uploads/
+
+# Logs y cachés
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+*.tsbuildinfo
+
+# Expo / Metro (mobile tiene su .gitignore; esto refuerza desde la raíz)
+.expo/
+dist/
+web-build/
+.metro-health-check*
+
+# SO / IDE
+.DS_Store
+Thumbs.db
+*.pem

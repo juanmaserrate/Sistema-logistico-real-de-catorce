@@ -1,0 +1,15 @@
+// prisma/schema.prisma
+
+// ... (previous models)
+
+model Alert {
+  id        String   @id @default(uuid())
+  tenantId  String
+  type      String   // 'info', 'warning', 'critical', 'success'
+  title     String
+  text      String
+  timeLabel String?  // 'Ahora', '2 horas', etc.
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+}
