@@ -1,5 +1,7 @@
 # Desplegar en Railway
 
+**Guía narrada para alguien que nunca desplegó:** [docs/DEPLOY-ONLINE.md](../docs/DEPLOY-ONLINE.md) (desde la raíz del repo).
+
 ## Checklist rápida
 
 - [ ] Repo en GitHub/GitLab y conectado a Railway.

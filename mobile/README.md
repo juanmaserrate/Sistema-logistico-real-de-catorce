@@ -1,5 +1,7 @@
 # R14 Seguimiento (app móvil)
 
+**Deploy online (Railway + EAS en orden):** [docs/DEPLOY-ONLINE.md](../docs/DEPLOY-ONLINE.md).
+
 ## Expo Go vs build propia
 
 **Expo Go** sirve para prototipos con APIs que ya trae el cliente genérico. Esta app usa **código nativo** (Navigation SDK de Google, tareas de ubicación en segundo plano, etc.), así que **no corre completa en Expo Go**.
