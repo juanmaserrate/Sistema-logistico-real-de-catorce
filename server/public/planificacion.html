@@ -3803,15 +3803,17 @@
         async function loadWeeklyData() {
             try {
                 console.log("Cargando datos semanales...");
-                const planningMonth = document.getElementById('planning-month-select');
-                const month = planningMonth ? planningMonth.value : 'enero';
-                
-                const url = `${API_URL}/trips?month=${month}`;
+                // Traemos todo y filtramos por mes en front para evitar
+                // inconsistencias de filtros entre backend/cliente.
+                const url = `${API_URL}/trips`;
                 const res = await fetch(url);
                 if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
                 
                 planningData = await res.json();
                 console.log(`Datos cargados: ${planningData.length} registros found.`);
+                if ((planningData || []).length === 0) {
+                    addNotification('warning', 'Sin viajes', 'La base está vacía en producción. Importá/sincronizá viajes para ver la logística semanal.');
+                }
                 filterWeeklyData();
             } catch(e) {
                 console.error("Error loading weekly data:", e);
