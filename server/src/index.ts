@@ -63,7 +63,35 @@ async function initTenant() {
         create: { id: tenantId, name: 'Real de Catorce' }
     });
 }
-initTenant();
+
+function runPrismaDbPush(): Promise<void> {
+    return new Promise((resolve, reject) => {
+        const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
+        const child = spawn(npxCmd, ['prisma', 'db', 'push', '--accept-data-loss'], {
+            cwd: path.join(__dirname, '..'),
+            stdio: 'inherit'
+        });
+
+        child.on('error', reject);
+        child.on('close', (code) => {
+            if (code === 0) resolve();
+            else reject(new Error(`prisma db push failed with exit code ${code}`));
+        });
+    });
+}
+
+async function ensureSchemaReady() {
+    try {
+        // Prueba rápida: si esta tabla no existe, la DB no está inicializada.
+        await prisma.$queryRawUnsafe('SELECT 1 FROM Tenant LIMIT 1');
+    } catch (err: any) {
+        if (err?.code !== 'P2021') throw err;
+        console.warn('[startup] Missing Prisma tables, running `prisma db push`...');
+        await runPrismaDbPush();
+        await prisma.$queryRawUnsafe('SELECT 1 FROM Tenant LIMIT 1');
+        console.log('[startup] Prisma schema applied successfully.');
+    }
+}
 
 /** Usuario chofer para rutas vinculadas a viajes semanales (username = nombre en mayúsculas). */
 async function upsertDriverUserForPlanning(driverName: string | null | undefined, tenantId: string) {
@@ -2743,7 +2771,19 @@ app.put('/api/v1/route-templates/:id', async (req, res) => {
 });
 
 const host = process.env.HOST || '0.0.0.0';
-app.listen(port, host, () => {
-    console.log(`R14 server listening on ${host}:${port}`);
-    backfillAddressesFromCoords().catch(() => {});
-});
+
+async function bootstrap() {
+    try {
+        await ensureSchemaReady();
+        await initTenant();
+        app.listen(port, host, () => {
+            console.log(`R14 server listening on ${host}:${port}`);
+            backfillAddressesFromCoords().catch(() => {});
+        });
+    } catch (err) {
+        console.error('[startup] Fatal startup error:', err);
+        process.exit(1);
+    }
+}
+
+bootstrap();
