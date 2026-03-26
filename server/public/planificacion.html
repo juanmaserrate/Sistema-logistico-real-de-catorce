@@ -6072,9 +6072,91 @@
         }
 
         function addNotification(type, title, text) {
-            notifications.unshift({ id: Date.now(), type, title, text, time: 'Ahora' });
+            const normalizedType = ['info', 'warning', 'critical', 'success'].includes(type) ? type : 'info';
+            notifications.unshift({ id: Date.now(), type: normalizedType, title, text, time: 'Ahora' });
             renderNotifications();
+            showToastNotification(normalizedType, title, text);
         }
+
+        function getToastContainer() {
+            let el = document.getElementById('toast-container');
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'toast-container';
+                el.className = 'fixed top-6 right-6 z-[140] space-y-2 pointer-events-none';
+                document.body.appendChild(el);
+            }
+            return el;
+        }
+
+        function showToastNotification(type, title, text) {
+            const container = getToastContainer();
+            const toast = document.createElement('div');
+            const palette = {
+                info: 'bg-indigo-600 text-white',
+                success: 'bg-emerald-600 text-white',
+                warning: 'bg-amber-500 text-slate-900',
+                critical: 'bg-rose-600 text-white'
+            };
+            const color = palette[type] || palette.info;
+            toast.className = `pointer-events-auto max-w-sm rounded-2xl shadow-xl px-4 py-3 text-sm font-medium transition-all duration-300 opacity-0 translate-y-2 ${color}`;
+            toast.innerHTML = `
+                <div class="font-black text-xs uppercase tracking-wide">${title || 'Notificación'}</div>
+                <div class="mt-1 text-xs leading-relaxed">${text || ''}</div>
+            `;
+            container.appendChild(toast);
+            requestAnimationFrame(() => {
+                toast.classList.remove('opacity-0', 'translate-y-2');
+            });
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3200);
+        }
+
+        // Modo estricto: toast automático para TODA mutación HTTP.
+        (function enableGlobalMutationToasts() {
+            if (!window.fetch || window.__r14MutationToastsPatched) return;
+            window.__r14MutationToastsPatched = true;
+            const baseFetch = window.fetch.bind(window);
+            const mutationMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+            const skipPatterns = [
+                /\/api\/v1\/alerts\/cleanup$/i // proceso de mantenimiento silencioso
+            ];
+
+            function shouldSkipToast(url) {
+                return skipPatterns.some((rx) => rx.test(url));
+            }
+
+            function extractUrl(input) {
+                if (typeof input === 'string') return input;
+                if (input && typeof input.url === 'string') return input.url;
+                return '';
+            }
+
+            window.fetch = async function patchedFetch(input, init) {
+                const method = String(init?.method || input?.method || 'GET').toUpperCase();
+                const url = extractUrl(input);
+                const isMutation = mutationMethods.has(method);
+                const skipToast = shouldSkipToast(url);
+                try {
+                    const res = await baseFetch(input, init);
+                    if (isMutation && !skipToast) {
+                        if (res.ok) {
+                            showToastNotification('success', 'Operación guardada', `${method} completado correctamente.`);
+                        } else {
+                            showToastNotification('warning', 'Operación con error', `${method} respondió ${res.status}.`);
+                        }
+                    }
+                    return res;
+                } catch (e) {
+                    if (isMutation && !skipToast) {
+                        showToastNotification('critical', 'Error de red', `${method} no pudo completarse.`);
+                    }
+                    throw e;
+                }
+            };
+        })();
 
         function removeNotification(id) {
             notifications = notifications.filter(n => n.id !== id);
