@@ -95,7 +95,12 @@ async function ensureSchemaReady() {
         // Prueba rápida: si esta tabla no existe, la DB no está inicializada.
         await prisma.$queryRawUnsafe('SELECT 1 FROM Tenant LIMIT 1');
     } catch (err: any) {
-        if (err?.code !== 'P2021') throw err;
+        const code = err?.code;
+        const msg = String(err?.message || '');
+        const missingTable =
+            code === 'P2021' ||
+            (code === 'P2010' && /no such table:\s*tenant/i.test(msg));
+        if (!missingTable) throw err;
         console.warn('[startup] Missing Prisma tables, running `prisma db push`...');
         await runPrismaDbPush();
         await prisma.$queryRawUnsafe('SELECT 1 FROM Tenant LIMIT 1');
