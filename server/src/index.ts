@@ -11,11 +11,21 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
+// Defaults robustos para Railway/local cuando faltan variables.
+if (!process.env.DATABASE_URL) {
+    process.env.DATABASE_URL = process.env.RAILWAY_ENVIRONMENT ? 'file:/data/r14.db' : 'file:./prisma/r14.db';
+}
+if (!process.env.UPLOADS_DIR && process.env.RAILWAY_ENVIRONMENT) {
+    process.env.UPLOADS_DIR = '/data/uploads';
+}
+
 const app = express();
 /** Detrás de proxy (Railway, etc.) para IPs y HTTPS correctos */
 app.set('trust proxy', 1);
 const prisma = new PrismaClient();
 const port = Number(process.env.PORT) || 3002;
+let startupReady = false;
+let startupError: string | null = null;
 
 const uploadsDir = process.env.UPLOADS_DIR
     ? path.resolve(process.env.UPLOADS_DIR)
@@ -145,7 +155,12 @@ app.get('/', (req, res) => {
 
 // Health check (para que el cliente detecte si la API está online)
 app.get('/api/health', (req, res) => {
-    res.json({ ok: true, timestamp: new Date().toISOString() });
+    res.json({
+        ok: true,
+        ready: startupReady,
+        startupError,
+        timestamp: new Date().toISOString()
+    });
 });
 
 // Auth
@@ -2772,18 +2787,28 @@ app.put('/api/v1/route-templates/:id', async (req, res) => {
 
 const host = process.env.HOST || '0.0.0.0';
 
-async function bootstrap() {
+async function bootstrapData() {
     try {
         await ensureSchemaReady();
         await initTenant();
-        app.listen(port, host, () => {
-            console.log(`R14 server listening on ${host}:${port}`);
-            backfillAddressesFromCoords().catch(() => {});
-        });
+        startupReady = true;
+        startupError = null;
+        console.log('[startup] Data initialization complete.');
+        backfillAddressesFromCoords().catch(() => {});
     } catch (err) {
         console.error('[startup] Fatal startup error:', err);
-        process.exit(1);
+        startupError = (err as any)?.message || String(err);
+        // Dejamos logs visibles unos segundos y reiniciamos el contenedor.
+        setTimeout(() => process.exit(1), 2000);
     }
 }
 
-bootstrap();
+app.listen(port, host, () => {
+    console.log(`R14 server listening on ${host}:${port}`);
+    // No bloquea el healthcheck de Railway.
+    bootstrapData().catch((err) => {
+        console.error('[startup] Unexpected bootstrap failure:', err);
+        startupError = (err as any)?.message || String(err);
+        setTimeout(() => process.exit(1), 2000);
+    });
+});
