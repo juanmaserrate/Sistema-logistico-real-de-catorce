@@ -2688,6 +2688,12 @@ app.get('/api/v1/route-templates', async (req, res) => {
         const templates = await (prisma as any).routeTemplate.findMany({
             include: { stops: { orderBy: { sequence: 'asc' } } }
         });
+        templates.sort((a: any, b: any) =>
+            String(a?.name || '').localeCompare(String(b?.name || ''), 'es', {
+                numeric: true,
+                sensitivity: 'base'
+            })
+        );
         res.json(templates);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
