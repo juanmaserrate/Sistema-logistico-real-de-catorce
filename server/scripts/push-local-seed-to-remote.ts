@@ -14,13 +14,20 @@ function toPlain<T>(obj: T): any {
 }
 
 async function postJson(baseUrl: string, path: string, body: any): Promise<void> {
-    const res = await fetch(`${baseUrl}${path}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body)
-    });
-    if (!res.ok) {
+    let attempts = 0;
+    while (attempts < 5) {
+        attempts++;
+        const res = await fetch(`${baseUrl}${path}`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        if (res.ok) return;
         const txt = await res.text().catch(() => '');
+        if ((res.status === 503 || res.status === 502 || res.status === 429) && attempts < 5) {
+            await new Promise((r) => setTimeout(r, attempts * 800));
+            continue;
+        }
         throw new Error(`${path} -> HTTP ${res.status} ${txt}`.slice(0, 400));
     }
 }
@@ -50,8 +57,10 @@ async function syncCollection<T>(
 
 async function main() {
     const argUrl = process.argv[2] || process.env.REMOTE_API_URL || '';
+    const only = (process.argv[3] || process.env.SYNC_ONLY || '').trim().toLowerCase();
     const baseUrl = normalizeBaseUrl(argUrl);
     console.log(`[push] Destino: ${baseUrl}`);
+    if (only) console.log(`[push] Solo: ${only}`);
 
     const health = await fetch(`${baseUrl}/api/health`).then((r) => r.json()).catch(() => null);
     if (!health?.ok) throw new Error('El destino no responde /api/health correctamente.');
@@ -70,7 +79,7 @@ async function main() {
         })
     ]);
 
-    await syncCollection('vehicles', vehicles, async (v: any) => {
+    if (!only || only === 'vehicles') await syncCollection('vehicles', vehicles, async (v: any) => {
         await postJson(baseUrl, '/api/v1/vehicles', {
             plate: v.plate,
             model: v.model ?? '',
@@ -83,7 +92,7 @@ async function main() {
         });
     });
 
-    await syncCollection('clients', clients, async (c: any) => {
+    if (!only || only === 'clients') await syncCollection('clients', clients, async (c: any) => {
         await postJson(baseUrl, '/api/v1/clients', {
             name: c.name,
             address: c.address,
@@ -98,11 +107,11 @@ async function main() {
         });
     });
 
-    await syncCollection('settings', settings, async (s: any) => {
+    if (!only || only === 'settings') await syncCollection('settings', settings, async (s: any) => {
         await postJson(baseUrl, '/api/v1/settings', { key: s.key, value: s.value });
     });
 
-    await syncCollection('salaries', salaries, async (s: any) => {
+    if (!only || only === 'salaries') await syncCollection('salaries', salaries, async (s: any) => {
         await postJson(baseUrl, '/api/v1/salaries', {
             month: s.month,
             Nombre: s.firstName ?? '',
@@ -115,14 +124,14 @@ async function main() {
         });
     });
 
-    await syncCollection('maintenance', maintenance, async (m: any) => {
+    if (!only || only === 'maintenance') await syncCollection('maintenance', maintenance, async (m: any) => {
         const row = toPlain(m);
         delete row.createdAt;
         delete row.updatedAt;
         await postJson(baseUrl, '/api/v1/maintenance', row);
     });
 
-    await syncCollection('trips', trips, async (t: any) => {
+    if (!only || only === 'trips') await syncCollection('trips', trips, async (t: any) => {
         const row = toPlain(t);
         delete row.id;
         delete row.createdAt;
@@ -130,8 +139,8 @@ async function main() {
         await postJson(baseUrl, '/api/v1/trips', row);
     });
 
-    await syncCollection('route-templates', routeTemplates as any[], async (rt: any) => {
-        await postJson(baseUrl, '/api/v1/route-templates', {
+    if (!only || only === 'route-templates') await syncCollection('route-templates', routeTemplates as any[], async (rt: any) => {
+        await postJson(baseUrl, '/api/v1/admin/route-templates', {
             name: rt.name,
             stops: (rt.stops || []).map((s: any) => s.name)
         });

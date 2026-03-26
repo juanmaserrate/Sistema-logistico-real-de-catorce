@@ -2694,46 +2694,56 @@ app.get('/api/v1/route-templates', async (req, res) => {
     }
 });
 
+async function upsertRouteTemplateByName(nameRaw: any, stopsRawInput: any) {
+    const name = String(nameRaw || '').trim();
+    const stopsRaw = Array.isArray(stopsRawInput) ? stopsRawInput : [];
+    if (!name) throw new Error('name es obligatorio');
+    if (stopsRaw.length === 0) throw new Error('stops es obligatorio');
+    const stops = stopsRaw
+        .map((s: any) => (typeof s === 'string' ? s : s?.name))
+        .map((s: any) => String(s || '').trim())
+        .filter(Boolean);
+    if (stops.length === 0) throw new Error('stops vacío');
+
+    const all = await (prisma as any).routeTemplate.findMany({ select: { id: true, name: true } });
+    const existing = all.find((t: any) => String(t.name || '').trim().toUpperCase() === name.toUpperCase());
+
+    let templateId = existing?.id as string | undefined;
+    if (!templateId) {
+        const created = await (prisma as any).routeTemplate.create({ data: { name } });
+        templateId = created.id;
+    } else {
+        await (prisma as any).routeTemplate.update({
+            where: { id: templateId },
+            data: { name }
+        });
+    }
+
+    await (prisma as any).routeStopTemplate.deleteMany({ where: { routeTemplateId: templateId } });
+    for (let i = 0; i < stops.length; i++) {
+        await (prisma as any).routeStopTemplate.create({
+            data: { routeTemplateId: templateId, name: stops[i], sequence: i + 1 }
+        });
+    }
+    return (prisma as any).routeTemplate.findUnique({
+        where: { id: templateId },
+        include: { stops: { orderBy: { sequence: 'asc' } } }
+    });
+}
+
 app.post('/api/v1/route-templates', async (req, res) => {
     try {
-        const name = String(req.body?.name || '').trim();
-        const stopsRaw = Array.isArray(req.body?.stops) ? req.body.stops : [];
-        if (!name) return res.status(400).json({ error: 'name es obligatorio' });
-        if (stopsRaw.length === 0) return res.status(400).json({ error: 'stops es obligatorio' });
+        const saved = await upsertRouteTemplateByName(req.body?.name, req.body?.stops);
+        res.json(saved);
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error guardando plantilla' });
+    }
+});
 
-        const stops = stopsRaw
-            .map((s: any) => (typeof s === 'string' ? s : s?.name))
-            .map((s: any) => String(s || '').trim())
-            .filter(Boolean);
-        if (stops.length === 0) return res.status(400).json({ error: 'stops vacío' });
-
-        const existing = await (prisma as any).routeTemplate.findFirst({
-            where: { name: { equals: name, mode: 'insensitive' } },
-            select: { id: true }
-        });
-
-        let templateId = existing?.id as string | undefined;
-        if (!templateId) {
-            const created = await (prisma as any).routeTemplate.create({ data: { name } });
-            templateId = created.id;
-        } else {
-            await (prisma as any).routeTemplate.update({
-                where: { id: templateId },
-                data: { name }
-            });
-        }
-
-        await (prisma as any).routeStopTemplate.deleteMany({ where: { routeTemplateId: templateId } });
-        for (let i = 0; i < stops.length; i++) {
-            await (prisma as any).routeStopTemplate.create({
-                data: { routeTemplateId: templateId, name: stops[i], sequence: i + 1 }
-            });
-        }
-
-        const saved = await (prisma as any).routeTemplate.findUnique({
-            where: { id: templateId },
-            include: { stops: { orderBy: { sequence: 'asc' } } }
-        });
+// Alias admin para sincronización remota robusta (evita colisiones en proxies).
+app.post('/api/v1/admin/route-templates', async (req, res) => {
+    try {
+        const saved = await upsertRouteTemplateByName(req.body?.name, req.body?.stops);
         res.json(saved);
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error guardando plantilla' });
