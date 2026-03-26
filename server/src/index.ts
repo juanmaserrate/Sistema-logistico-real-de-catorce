@@ -2694,6 +2694,52 @@ app.get('/api/v1/route-templates', async (req, res) => {
     }
 });
 
+app.post('/api/v1/route-templates', async (req, res) => {
+    try {
+        const name = String(req.body?.name || '').trim();
+        const stopsRaw = Array.isArray(req.body?.stops) ? req.body.stops : [];
+        if (!name) return res.status(400).json({ error: 'name es obligatorio' });
+        if (stopsRaw.length === 0) return res.status(400).json({ error: 'stops es obligatorio' });
+
+        const stops = stopsRaw
+            .map((s: any) => (typeof s === 'string' ? s : s?.name))
+            .map((s: any) => String(s || '').trim())
+            .filter(Boolean);
+        if (stops.length === 0) return res.status(400).json({ error: 'stops vacío' });
+
+        const existing = await (prisma as any).routeTemplate.findFirst({
+            where: { name: { equals: name, mode: 'insensitive' } },
+            select: { id: true }
+        });
+
+        let templateId = existing?.id as string | undefined;
+        if (!templateId) {
+            const created = await (prisma as any).routeTemplate.create({ data: { name } });
+            templateId = created.id;
+        } else {
+            await (prisma as any).routeTemplate.update({
+                where: { id: templateId },
+                data: { name }
+            });
+        }
+
+        await (prisma as any).routeStopTemplate.deleteMany({ where: { routeTemplateId: templateId } });
+        for (let i = 0; i < stops.length; i++) {
+            await (prisma as any).routeStopTemplate.create({
+                data: { routeTemplateId: templateId, name: stops[i], sequence: i + 1 }
+            });
+        }
+
+        const saved = await (prisma as any).routeTemplate.findUnique({
+            where: { id: templateId },
+            include: { stops: { orderBy: { sequence: 'asc' } } }
+        });
+        res.json(saved);
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error guardando plantilla' });
+    }
+});
+
 /**
  * Convierte una plantilla de reparto (ej. R8) en clientIds ordenados para el viaje.
  * Los nombres de RouteStopTemplate deben coincidir (normalizados) con Client.name.

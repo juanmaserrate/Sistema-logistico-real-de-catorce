@@ -57,13 +57,17 @@ async function main() {
     if (!health?.ok) throw new Error('El destino no responde /api/health correctamente.');
     console.log(`[push] Health OK (ready=${health?.ready})`);
 
-    const [vehicles, clients, settings, salaries, maintenance, trips] = await Promise.all([
+    const [vehicles, clients, settings, salaries, maintenance, trips, routeTemplates] = await Promise.all([
         prisma.vehicle.findMany({ orderBy: { plate: 'asc' } }),
         prisma.client.findMany({ orderBy: { name: 'asc' } }),
         prisma.appSettings.findMany({ orderBy: { key: 'asc' } }),
         prisma.employeeSalary.findMany({ orderBy: [{ month: 'asc' }, { lastName: 'asc' }] }),
         prisma.maintenanceRecord.findMany({ orderBy: { createdAt: 'asc' } }),
-        prisma.trip.findMany({ orderBy: { date: 'asc' } })
+        prisma.trip.findMany({ orderBy: { date: 'asc' } }),
+        (prisma as any).routeTemplate.findMany({
+            include: { stops: { orderBy: { sequence: 'asc' } } },
+            orderBy: { name: 'asc' }
+        })
     ]);
 
     await syncCollection('vehicles', vehicles, async (v: any) => {
@@ -124,6 +128,13 @@ async function main() {
         delete row.createdAt;
         delete row.updatedAt;
         await postJson(baseUrl, '/api/v1/trips', row);
+    });
+
+    await syncCollection('route-templates', routeTemplates as any[], async (rt: any) => {
+        await postJson(baseUrl, '/api/v1/route-templates', {
+            name: rt.name,
+            stops: (rt.stops || []).map((s: any) => s.name)
+        });
     });
 
     console.log('\n[push] Finalizado. Refrescá /planificacion.html en Railway.');
