@@ -1518,6 +1518,22 @@
         };
         const BUSINESS_UNIT_STORAGE_KEY = 'r14.business_units';
         const GOOGLE_MAPS_KEY_STORAGE = 'r14.google_maps_api_key';
+        window.__r14GoogleMapsAuthFailed = false;
+        window.gm_authFailure = function () {
+            window.__r14GoogleMapsAuthFailed = true;
+            try { localStorage.removeItem(GOOGLE_MAPS_KEY_STORAGE); } catch (_) {}
+            try {
+                if (typeof addNotification === 'function') {
+                    addNotification('warning', 'Google Maps', 'La clave falló o tiene restricciones. Se habilita Leaflet automáticamente.');
+                }
+            } catch (_) {}
+            try {
+                controlMap = null;
+                controlMapProvider = 'leaflet';
+                clearControlMarkers();
+                initControlMap();
+            } catch (_) {}
+        };
         const DEFAULT_BUSINESS_UNITS = [
             'SAM', 'SAE', 'VIANDA', 'COMEDOR', 'DMC', 'MAE', 'EVENTOS', 'UDI',
             'RETIRO', 'LIBRE', 'COLOINA', 'DESARROLLO', 'CIC', 'ESC VERANO',
@@ -2177,7 +2193,7 @@
             if (trafficCb) controlShowTraffic = !!trafficCb.checked;
 
             const apiKey = getGoogleMapsKey();
-            if (apiKey) {
+            if (apiKey && !window.__r14GoogleMapsAuthFailed) {
                 try {
                     await loadGoogleMapsScript(apiKey);
                     if (controlMapProvider !== 'google' || !controlMap) {
