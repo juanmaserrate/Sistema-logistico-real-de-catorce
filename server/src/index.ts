@@ -168,6 +168,128 @@ app.get('/api/health', (req, res) => {
     });
 });
 
+// Preflight operativo diario: API, Maps, choferes, credenciales y rutas de hoy.
+app.get('/api/v1/preflight', async (_req, res) => {
+    try {
+        const now = new Date();
+        const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        const dayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+        const [drivers, todayRoutes, mapsSetting] = await Promise.all([
+            prisma.user.findMany({
+                where: { role: { in: ['DRIVER', 'BLOCKED'] } },
+                select: { id: true, username: true, role: true, password: true }
+            }),
+            prisma.route.findMany({
+                where: { date: { gte: dayStart, lte: dayEnd } },
+                select: { id: true, driverId: true }
+            }),
+            prisma.appSettings.findUnique({ where: { key: 'google_maps_api_key_server' }, select: { value: true } })
+        ]);
+
+        const activeDrivers = drivers.filter((d) => String(d.role).toUpperCase() === 'DRIVER');
+        const blockedDrivers = drivers.filter((d) => String(d.role).toUpperCase() === 'BLOCKED');
+        const routeCountByDriver = new Map<string, number>();
+        for (const r of todayRoutes) {
+            if (!r.driverId) continue;
+            routeCountByDriver.set(r.driverId, (routeCountByDriver.get(r.driverId) || 0) + 1);
+        }
+
+        const driversWithoutRoute = activeDrivers
+            .filter((d) => (routeCountByDriver.get(d.id) || 0) === 0)
+            .map((d) => d.username)
+            .sort((a, b) => a.localeCompare(b, 'es'));
+
+        const driversWithoutPassword = activeDrivers
+            .filter((d) => !String(d.password || '').trim())
+            .map((d) => d.username)
+            .sort((a, b) => a.localeCompare(b, 'es'));
+
+        let mapsKey = '';
+        try {
+            const parsed = mapsSetting?.value ? JSON.parse(mapsSetting.value) : '';
+            if (typeof parsed === 'string') mapsKey = parsed.trim();
+        } catch {
+            mapsKey = '';
+        }
+        if (!mapsKey) {
+            mapsKey =
+                process.env.GOOGLE_DIRECTIONS_API_KEY ||
+                process.env.GOOGLE_MAPS_API_KEY ||
+                process.env.GOOGLE_MAPS_SERVER_KEY ||
+                '';
+            mapsKey = String(mapsKey).trim();
+        }
+
+        let googleMapsReachable = false;
+        let googleMapsMessage = '';
+        if (!mapsKey) {
+            googleMapsMessage = 'Sin clave configurada en settings/env.';
+        } else {
+            try {
+                const testUrl =
+                    'https://maps.googleapis.com/maps/api/geocode/json' +
+                    `?address=${encodeURIComponent('Burzaco Buenos Aires')}` +
+                    `&key=${encodeURIComponent(mapsKey)}`;
+                const gRes = await fetch(testUrl);
+                const gData = (await gRes.json().catch(() => ({}))) as { status?: string; error_message?: string };
+                googleMapsReachable = gRes.ok && gData?.status === 'OK';
+                googleMapsMessage = googleMapsReachable
+                    ? 'Clave válida y API de Google operativa.'
+                    : `Google respondió: ${gData?.status || `HTTP ${gRes.status}`}${gData?.error_message ? ` - ${gData.error_message}` : ''}`;
+            } catch (e: any) {
+                googleMapsReachable = false;
+                googleMapsMessage = e?.message || 'No se pudo validar Google Maps.';
+            }
+        }
+
+        const checks = {
+            api: {
+                status: startupReady ? 'pass' : 'fail',
+                message: startupReady ? 'API en línea.' : `Startup no listo: ${startupError || 'sin detalle'}`
+            },
+            googleMaps: {
+                status: googleMapsReachable ? 'pass' : 'fail',
+                message: googleMapsMessage
+            },
+            drivers: {
+                status: activeDrivers.length > 0 ? 'pass' : 'fail',
+                totalActive: activeDrivers.length,
+                totalBlocked: blockedDrivers.length,
+                message: activeDrivers.length > 0 ? 'Choferes activos detectados.' : 'No hay choferes activos.'
+            },
+            credentials: {
+                status: driversWithoutPassword.length === 0 ? 'pass' : 'fail',
+                withoutPassword: driversWithoutPassword,
+                message:
+                    driversWithoutPassword.length === 0
+                        ? 'Todos los choferes activos tienen contraseña.'
+                        : `Choferes sin contraseña: ${driversWithoutPassword.length}`
+            },
+            routesToday: {
+                status: driversWithoutRoute.length === 0 ? 'pass' : (todayRoutes.length > 0 ? 'warn' : 'fail'),
+                totalRoutes: todayRoutes.length,
+                withoutRoute: driversWithoutRoute,
+                message:
+                    todayRoutes.length === 0
+                        ? 'No hay rutas cargadas para hoy.'
+                        : driversWithoutRoute.length === 0
+                            ? 'Todos los choferes activos tienen ruta hoy.'
+                            : `Choferes sin ruta hoy: ${driversWithoutRoute.length}`
+            }
+        };
+
+        res.json({
+            ok: checks.api.status === 'pass' && checks.googleMaps.status === 'pass' && checks.drivers.status === 'pass',
+            generatedAt: new Date().toISOString(),
+            date: dayStart.toISOString().slice(0, 10),
+            checks
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error ejecutando preflight operativo' });
+    }
+});
+
 // Auth
 app.post('/api/auth/login', async (req, res) => {
     try {

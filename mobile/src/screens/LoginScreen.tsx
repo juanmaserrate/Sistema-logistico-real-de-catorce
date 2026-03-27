@@ -33,7 +33,8 @@ export default function LoginScreen({ onLoggedIn }: Props) {
     }
     setLoading(true);
     try {
-      const user = await login(username.trim(), password);
+      const normalizedUsername = username.trim().toUpperCase();
+      const user = await login(normalizedUsername, password);
       if (user.role === 'ADMIN') {
         setError('Esta app es solo para choferes.');
         return;

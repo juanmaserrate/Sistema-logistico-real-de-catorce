@@ -35,5 +35,14 @@
     "@types/react": "~19.1.10",
     "typescript": "~5.9.2"
   },
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "@googlemaps/react-native-navigation-sdk"
+        ]
+      }
+    }
+  },
   "private": true
 }

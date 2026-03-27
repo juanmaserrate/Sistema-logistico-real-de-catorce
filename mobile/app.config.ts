@@ -7,7 +7,7 @@ const config: ExpoConfig = {
   name: 'R14 Seguimiento',
   slug: 'r14-seguimiento',
   version: '1.0.0',
-  newArchEnabled: true,
+  newArchEnabled: false,
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'light',
@@ -79,6 +79,11 @@ const config: ExpoConfig = {
       },
     ],
   ],
+  extra: {
+    eas: {
+      projectId: '383c6e56-502c-42f8-a683-067c79908cec',
+    },
+  },
 };
 
 export default config;
