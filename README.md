@@ -4,3 +4,9 @@
 
 - **Backend y planificación web:** carpeta `server/` — referencia técnica: [server/RAILWAY.md](server/RAILWAY.md).
 - **App móvil (Expo):** carpeta `mobile/` — [mobile/README.md](mobile/README.md).
+
+## Entregable de rutas (Burzaco)
+
+- Archivo base: `Rutas.xlsx`
+- Archivo ruteado: `Rutas_ruteadas.xlsx`
+- Vista estilo liquid glass: `index-rutas-liquid-glass.html`
