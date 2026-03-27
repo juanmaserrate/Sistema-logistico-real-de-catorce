@@ -86,6 +86,7 @@ const config: ExpoConfig = {
         isAndroidForegroundServiceEnabled: true,
       },
     ],
+    './plugins/withGoogleMapsDedup',
   ],
   extra: {
     eas: {
