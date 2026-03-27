@@ -11,7 +11,9 @@
     "web": "expo start --web",
     "build:dev": "eas build --profile development",
     "build:apk": "eas build --profile preview",
-    "build:play": "eas build --profile production"
+    "build:play": "eas build --profile production",
+    "update:preview": "eas update --channel preview",
+    "update:production": "eas update --channel production"
   },
   "dependencies": {
     "@googlemaps/react-native-navigation-sdk": "^0.14.2",

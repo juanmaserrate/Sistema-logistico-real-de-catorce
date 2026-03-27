@@ -7,10 +7,12 @@
     "development": {
       "developmentClient": true,
       "distribution": "internal",
+      "channel": "development",
       "android": { "buildType": "apk" }
     },
     "preview": {
       "distribution": "internal",
+      "channel": "preview",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://sistema-logistico-real-de-catorce-production.up.railway.app",
         "GOOGLE_MAPS_ANDROID_KEY": "AIzaSyAHCyFW-dbVeqbuYjzNPB0F7Botsr4nIEs",
@@ -19,6 +21,7 @@
       "android": { "buildType": "apk" }
     },
     "production": {
+      "channel": "production",
       "env": {
         "EXPO_PUBLIC_API_URL": "https://sistema-logistico-real-de-catorce-production.up.railway.app",
         "GOOGLE_MAPS_ANDROID_KEY": "AIzaSyAHCyFW-dbVeqbuYjzNPB0F7Botsr4nIEs",
