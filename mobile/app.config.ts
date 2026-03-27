@@ -87,6 +87,7 @@ const config: ExpoConfig = {
       },
     ],
     './plugins/withGoogleMapsDedup',
+    './plugins/withNavigationDesugaring',
   ],
   extra: {
     eas: {
