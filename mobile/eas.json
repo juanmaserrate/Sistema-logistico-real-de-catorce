@@ -8,6 +8,11 @@
       "developmentClient": true,
       "distribution": "internal",
       "channel": "development",
+      "env": {
+        "EXPO_PUBLIC_API_URL": "https://sistema-logistico-real-de-catorce-production.up.railway.app",
+        "GOOGLE_MAPS_ANDROID_KEY": "AIzaSyAHCyFW-dbVeqbuYjzNPB0F7Botsr4nIEs",
+        "GOOGLE_MAPS_IOS_KEY": "AIzaSyAHCyFW-dbVeqbuYjzNPB0F7Botsr4nIEs"
+      },
       "android": {
         "buildType": "apk"
       }

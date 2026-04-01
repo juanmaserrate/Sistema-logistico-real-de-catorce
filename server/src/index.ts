@@ -665,7 +665,15 @@ app.delete('/api/v1/maintenance/:id', async (req, res) => {
 app.get('/api/v1/settings/:key', async (req, res) => {
     try {
         const setting = await prisma.appSettings.findUnique({ where: { key: req.params.key } });
-        res.json(setting ? JSON.parse(setting.value) : null);
+        let value = setting ? JSON.parse(setting.value) : null;
+        
+        if (req.params.key === 'google_maps_api_key_server' && !value) {
+            value = process.env.GOOGLE_DIRECTIONS_API_KEY ||
+                    process.env.GOOGLE_MAPS_API_KEY ||
+                    process.env.GOOGLE_MAPS_SERVER_KEY ||
+                    null;
+        }
+        res.json(value);
     } catch (e) {
         res.status(500).json({ error: "Failed to fetch setting" });
     }
