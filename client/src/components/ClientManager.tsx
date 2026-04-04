@@ -1,13 +1,16 @@
 
 import { useState, useEffect } from 'react';
-import { 
-    Plus, 
-    Search, 
-    School, 
-    MapPin, 
-    Clock, 
+import * as XLSX from 'xlsx';
+import {
+    Plus,
+    Search,
+    School,
+    MapPin,
+    Clock,
     MoreVertical,
-    CheckCircle2
+    CheckCircle2,
+    Download,
+    Upload
 } from 'lucide-react';
 
 const defaultNewClient = {
@@ -44,6 +47,57 @@ const ClientManager = () => {
             console.error("Error loading clients", e);
             setClients([]);
         }
+    };
+
+    const exportClients = () => {
+        const ws = XLSX.utils.json_to_sheet(clients.map(c => ({
+            'Nombre': c.name,
+            'Dirección': c.address || '',
+            'Zona': c.zone || '',
+            'Barrio': c.barrio || '',
+            'Latitud': c.latitude ?? '',
+            'Longitud': c.longitude ?? '',
+            'Ventana inicio': c.timeWindowStart || '',
+            'Ventana fin': c.timeWindowEnd || '',
+            'Servicio (min)': c.serviceTime || 15,
+        })));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Clientes');
+        XLSX.writeFile(wb, 'clientes_r14.xlsx');
+    };
+
+    const importClients = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const data = await file.arrayBuffer();
+        const wb = XLSX.read(data);
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows: any[] = XLSX.utils.sheet_to_json(ws);
+        let imported = 0;
+        for (const row of rows) {
+            const name = (row['Nombre'] || row['nombre'] || '').trim();
+            if (!name) continue;
+            try {
+                const res = await fetch('/api/v1/clients', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        name,
+                        address: row['Dirección'] || row['direccion'] || null,
+                        zone: row['Zona'] || row['zona'] || null,
+                        latitude: parseFloat(row['Latitud'] || row['latitud']) || null,
+                        longitude: parseFloat(row['Longitud'] || row['longitud']) || null,
+                        timeWindowStart: row['Ventana inicio'] || null,
+                        timeWindowEnd: row['Ventana fin'] || null,
+                        serviceTime: parseInt(row['Servicio (min)']) || 15,
+                    }),
+                });
+                if (res.ok) imported++;
+            } catch { /* skip failed rows */ }
+        }
+        alert(`Se importaron ${imported} de ${rows.length} clientes.`);
+        e.target.value = '';
+        fetchClients();
     };
 
     const handleSave = async (e: React.FormEvent) => {
@@ -152,13 +206,14 @@ const ClientManager = () => {
             <div className="flex justify-between items-center">
                 <div className="relative group flex-1 max-w-md">
                      <Search className="absolute left-4 top-3.5 text-[#AEAEB2] group-focus-within:text-[#007AFF] transition-colors" size={18} />
-                     <input 
-                        type="text" 
+                     <input
+                        type="text"
                         placeholder="Buscar escuela, zona, barrio o código..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="bg-white border-none rounded-2xl py-3.5 pl-12 pr-6 text-[15px] w-full shadow-sm focus:ring-2 focus:ring-[#007AFF] transition-all"
                      />
+                     <span className="text-[13px] text-[#8E8E93] font-medium mt-1 block pl-1">{filteredClients.length} de {clients.length} clientes</span>
                 </div>
                 <div className="flex gap-3 items-center flex-wrap">
                     <select
@@ -184,7 +239,19 @@ const ClientManager = () => {
                             <option key={loc} value={loc}>{loc}</option>
                         ))}
                     </select>
-                    <button 
+                    <button
+                        onClick={exportClients}
+                        className="bg-white border border-[#E5E7EB] text-[#1C1C1E] px-5 py-3.5 rounded-2xl font-bold flex items-center gap-2 hover:bg-[#F2F2F7] transition-all"
+                    >
+                        <Download size={18} />
+                        Exportar
+                    </button>
+                    <label className="bg-white border border-[#E5E7EB] text-[#1C1C1E] px-5 py-3.5 rounded-2xl font-bold flex items-center gap-2 hover:bg-[#F2F2F7] transition-all cursor-pointer">
+                        <Upload size={18} />
+                        Importar
+                        <input type="file" accept=".xlsx,.xls,.csv" onChange={importClients} className="hidden" />
+                    </label>
+                    <button
                         onClick={() => setShowAdd(true)}
                         className="bg-black text-white px-6 py-3.5 rounded-2xl font-bold flex items-center gap-2 shadow-lg shadow-black/5 hover:scale-[1.02] active:scale-[0.98] transition-all"
                     >

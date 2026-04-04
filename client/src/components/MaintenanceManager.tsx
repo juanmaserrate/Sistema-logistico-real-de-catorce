@@ -1,18 +1,20 @@
 
 import { useState, useEffect } from 'react';
-import { 
-    Wrench, 
-    Plus, 
-    Calendar, 
-    Hash, 
-    Tag, 
-    DollarSign, 
-    FileText, 
-    Search, 
+import * as XLSX from 'xlsx';
+import {
+    Wrench,
+    Plus,
+    Calendar,
+    Hash,
+    Tag,
+    DollarSign,
+    FileText,
+    Search,
     Trash2,
     X,
     Edit,
-    ChevronDown
+    ChevronDown,
+    Download
 } from 'lucide-react';
 
 const MaintenanceManager = () => {
@@ -216,6 +218,22 @@ const MaintenanceManager = () => {
 
     const categoryBreakdown = Object.entries(totalsByCategory).sort((a, b) => b[1] - a[1]);
 
+    const exportMaintenance = () => {
+        const ws = XLSX.utils.json_to_sheet(filteredRecords.map(r => ({
+            'Unidad': r.plate,
+            'Categoría': r.category || 'Sin categoría',
+            'Fecha': r.date ? new Date(r.date + 'T00:00:00').toLocaleDateString('es-AR') : '',
+            'Kilometraje': r.mileage || 0,
+            'Taller': r.workshop || '',
+            'Trabajo': r.workDone || '',
+            'Costo ($)': r.cost || 0,
+            'Notas': r.notes || '',
+        })));
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Mantenimiento');
+        XLSX.writeFile(wb, 'mantenimiento_r14.xlsx');
+    };
+
     return (
         <div className="space-y-8 animate-fade-in pb-20">
             {apiError && (
@@ -233,17 +251,26 @@ const MaintenanceManager = () => {
                     <p className="text-[14px] text-[#8E8E93] font-medium">Gestión financiera y operativa de flotas</p>
                 </div>
                 
-                <button 
-                    onClick={() => {
-                        resetForm();
-                        setEditingId(null);
-                        setIsAdding(true);
-                    }}
-                    className="bg-[#007AFF] text-white px-8 py-3 rounded-full font-bold text-[14px] flex items-center gap-2 shadow-lg shadow-blue-100 hover:scale-[1.02] active:scale-[0.98] transition-all"
-                >
-                    <Plus size={18} />
-                    Nueva Reparación
-                </button>
+                <div className="flex gap-3 items-center">
+                    <button
+                        onClick={exportMaintenance}
+                        className="bg-white border border-[#E5E7EB] text-[#1C1C1E] px-5 py-3.5 rounded-2xl font-bold flex items-center gap-2 hover:bg-[#F2F2F7] transition-all"
+                    >
+                        <Download size={18} />
+                        Exportar
+                    </button>
+                    <button
+                        onClick={() => {
+                            resetForm();
+                            setEditingId(null);
+                            setIsAdding(true);
+                        }}
+                        className="bg-[#007AFF] text-white px-8 py-3 rounded-full font-bold text-[14px] flex items-center gap-2 shadow-lg shadow-blue-100 hover:scale-[1.02] active:scale-[0.98] transition-all"
+                    >
+                        <Plus size={18} />
+                        Nueva Reparación
+                    </button>
+                </div>
             </div>
 
             {/* Filters Bar */}

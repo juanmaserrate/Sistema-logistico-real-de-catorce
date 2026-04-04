@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Calendar, User, Truck, MapPin, Plus, Trash2, Loader2, ChevronDown } from 'lucide-react';
+import { Calendar, User, Truck, MapPin, Plus, Trash2, Loader2, ChevronDown, Copy, Download } from 'lucide-react';
+import * as XLSX from 'xlsx';
 
 interface Client {
     id: string;
@@ -57,6 +58,7 @@ const PlanningManager = () => {
     const [stops, setStops] = useState<{ clientId: string; clientName: string }[]>([]);
     const [clientSearch, setClientSearch] = useState('');
     const [searchResults, setSearchResults] = useState<Client[]>([]);
+    const [auxiliar, setAuxiliar] = useState('');
     const [expandedRouteId, setExpandedRouteId] = useState<number | null>(null);
 
     const fetchRoutes = async () => {
@@ -137,6 +139,48 @@ const PlanningManager = () => {
         }
     };
 
+    const handleDuplicateRoute = async (r: Route) => {
+        const newDate = prompt('Fecha para la copia (YYYY-MM-DD):', date);
+        if (!newDate) return;
+        try {
+            const res = await fetch('/api/v1/routes-direct', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    date: newDate,
+                    driverName: r.driver?.fullName || r.driver?.username || '',
+                    vehicleId: r.vehicle?.plate || undefined,
+                    stops: r.stops.map((s, i) => ({ clientId: s.client.id, sequence: i + 1 })),
+                }),
+            });
+            if (!res.ok) {
+                const data = await res.json();
+                throw new Error(data?.error || 'Error al duplicar la ruta');
+            }
+            fetchRoutes();
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Error al duplicar');
+        }
+    };
+
+    const handleExportExcel = () => {
+        if (routes.length === 0) {
+            setError('No hay rutas para exportar.');
+            return;
+        }
+        const rows = routes.map((r) => ({
+            Chofer: r.driver?.fullName || r.driver?.username || 'Sin chofer',
+            Vehículo: r.vehicle?.plate || '-',
+            Paradas: r.stops.map((s) => s.client.name).join(', '),
+            Estado: STATUS_LABEL[r.status] ?? r.status,
+            Fecha: r.date,
+        }));
+        const ws = XLSX.utils.json_to_sheet(rows);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Rutas');
+        XLSX.writeFile(wb, `rutas_${date}.xlsx`);
+    };
+
     const handleCreateRoute = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!driverName.trim()) {
@@ -157,6 +201,7 @@ const PlanningManager = () => {
                     date: new Date(date).toISOString().slice(0, 10),
                     driverName: driverName.trim(),
                     vehicleId: vehicleId.trim() || undefined,
+                    notes: auxiliar.trim() ? `Auxiliar: ${auxiliar.trim()}` : undefined,
                     stops: stops.map((s, i) => ({ clientId: s.clientId, sequence: i + 1 })),
                 }),
             });
@@ -165,6 +210,7 @@ const PlanningManager = () => {
             setShowForm(false);
             setDriverName('');
             setVehicleId('');
+            setAuxiliar('');
             setStops([]);
             fetchRoutes();
         } catch (e) {
@@ -195,14 +241,24 @@ const PlanningManager = () => {
                         className="rounded-xl border border-[#E5E7EB] px-3 py-2 text-[#1C1C1E] bg-white"
                     />
                 </div>
-                <button
-                    type="button"
-                    onClick={() => { setShowForm(true); setError(''); }}
-                    className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#007AFF] text-white font-semibold text-sm"
-                >
-                    <Plus className="w-4 h-4" />
-                    Nueva ruta
-                </button>
+                <div className="flex items-center gap-2">
+                    <button
+                        type="button"
+                        onClick={handleExportExcel}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl border border-[#E5E7EB] text-[#1C1C1E] font-semibold text-sm hover:bg-[#F2F2F7]"
+                    >
+                        <Download className="w-4 h-4" />
+                        Exportar
+                    </button>
+                    <button
+                        type="button"
+                        onClick={() => { setShowForm(true); setError(''); }}
+                        className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-[#007AFF] text-white font-semibold text-sm"
+                    >
+                        <Plus className="w-4 h-4" />
+                        Nueva ruta
+                    </button>
+                </div>
             </div>
 
             {showForm && (
@@ -235,6 +291,17 @@ const PlanningManager = () => {
                                     className="w-full rounded-xl border border-[#E5E7EB] px-3 py-2 text-[#1C1C1E]"
                                 />
                             </div>
+                        </div>
+
+                        <div>
+                            <label className="block text-sm font-medium text-[#636366] mb-1">Auxiliar (opcional)</label>
+                            <input
+                                type="text"
+                                placeholder="Nombre del auxiliar"
+                                value={auxiliar}
+                                onChange={(e) => setAuxiliar(e.target.value)}
+                                className="w-full rounded-xl border border-[#E5E7EB] px-3 py-2 text-[#1C1C1E]"
+                            />
                         </div>
 
                         <div className="relative">
@@ -322,8 +389,26 @@ const PlanningManager = () => {
                 ) : routes.length === 0 ? (
                     <div className="px-6 py-12 text-center text-[#8E8E93]">
                         <Calendar className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                        <p className="font-medium">No hay rutas para esta fecha</p>
-                        <p className="text-sm mt-1">Creá una con &quot;Nueva ruta&quot; y asigná chofer y paradas.</p>
+                        <p className="font-medium text-[#1C1C1E]">No hay rutas para el {date}</p>
+                        <p className="text-sm mt-1">Podés crear una nueva ruta con el botón de arriba, o probar con otra fecha.</p>
+                        <div className="flex justify-center gap-3 mt-4">
+                            <button
+                                type="button"
+                                onClick={() => { setShowForm(true); setError(''); }}
+                                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-[#007AFF] text-white font-medium text-sm"
+                            >
+                                <Plus className="w-4 h-4" />
+                                Crear ruta
+                            </button>
+                            <button
+                                type="button"
+                                onClick={() => setDate(new Date().toISOString().slice(0, 10))}
+                                className="inline-flex items-center gap-2 px-4 py-2 rounded-xl border border-[#E5E7EB] text-[#1C1C1E] font-medium text-sm hover:bg-[#F2F2F7]"
+                            >
+                                <Calendar className="w-4 h-4" />
+                                Ir a hoy
+                            </button>
+                        </div>
                     </div>
                 ) : (
                     <ul className="divide-y divide-[#E5E7EB]">
@@ -361,6 +446,15 @@ const PlanningManager = () => {
                                             <span className={`ml-auto text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${statusClass}`}>
                                                 {statusLabel}
                                             </span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDuplicateRoute(r)}
+                                            className="p-1.5 rounded-lg hover:bg-blue-50 text-[#8E8E93] hover:text-blue-600 transition-colors flex-shrink-0"
+                                            aria-label="Duplicar ruta"
+                                            title="Duplicar ruta"
+                                        >
+                                            <Copy className="w-4 h-4" />
                                         </button>
                                         <button
                                             type="button"

@@ -14,7 +14,11 @@ import {
     Navigation,
     CalendarCheck,
     Users,
-    BarChart3
+    BarChart3,
+    TrendingUp,
+    DollarSign,
+    Route,
+    Briefcase
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -27,6 +31,10 @@ import TrackingManager from '../components/TrackingManager';
 import PlanningManager from '../components/PlanningManager';
 import DriversManager from '../components/DriversManager';
 import StatsManager from '../components/StatsManager';
+import LogisticsDashboard from '../components/LogisticsDashboard';
+import CostEngineManager from '../components/CostEngineManager';
+import RouteTemplatesManager from '../components/RouteTemplatesManager';
+import SalaryManager from '../components/SalaryManager';
 
 class TabErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode }> {
     state = { hasError: false };
@@ -46,11 +54,15 @@ const AdminDashboard = () => {
 
     const menuItems = [
         { id: 'stats', label: 'Estadísticas', icon: BarChart3 },
+        { id: 'dashboard', label: 'Dashboard Logístico', icon: TrendingUp },
         { id: 'planificacion', label: 'Planificación', icon: CalendarCheck },
         { id: 'repartos', label: 'Repartos', icon: Package },
         { id: 'schools', label: 'Escuelas / Clientes', icon: School },
         { id: 'tracking', label: 'Rastreo satelital', icon: Navigation },
+        { id: 'routes', label: 'Rutas Predefinidas', icon: Route },
         { id: 'choferes', label: 'Choferes', icon: Users },
+        { id: 'costos', label: 'Motor de Costos', icon: DollarSign },
+        { id: 'salarios', label: 'Salarios', icon: Briefcase },
         { id: 'maintenance', label: 'Mantenimiento', icon: Wrench },
         { id: 'settings', label: 'Configuración', icon: Settings },
     ];
@@ -145,11 +157,15 @@ const AdminDashboard = () => {
                 {/* Tab Content */}
                 <div className="flex-1 overflow-y-auto p-10 bg-[#F8F9FB]">
                     {activeTab === 'stats' && <StatsManager />}
+                    {activeTab === 'dashboard' && <LogisticsDashboard />}
                     {activeTab === 'planificacion' && <PlanningManager />}
                     {activeTab === 'repartos' && <RepartosManager />}
                     {activeTab === 'schools' && <ClientManager />}
                     {activeTab === 'tracking' && <TrackingManager />}
                     {activeTab === 'choferes' && <DriversManager />}
+                    {activeTab === 'routes' && <RouteTemplatesManager />}
+                    {activeTab === 'costos' && <CostEngineManager />}
+                    {activeTab === 'salarios' && <SalaryManager />}
                     {activeTab === 'maintenance' && (
                     <TabErrorBoundary fallback={
                         <div className="bg-white rounded-2xl border border-[#E5E7EB] p-12 text-center">
