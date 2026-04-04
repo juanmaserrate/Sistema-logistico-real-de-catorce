@@ -3147,6 +3147,106 @@ app.put('/api/v1/route-templates/:id', async (req, res) => {
     }
 });
 
+// ── TEMPORAL: migrar datos de SQLite a PostgreSQL ────────────────────────────
+// Llamar UNA VEZ con POST /api/admin/migrate-sqlite  { "key": "r14-migrate-2026" }
+// Remover este bloque después de la migración exitosa.
+app.post('/api/admin/migrate-sqlite', async (req: any, res: any) => {
+    const { key } = req.body || {};
+    if (key !== 'r14-migrate-2026') return res.status(403).json({ error: 'Forbidden' });
+
+    const sqlitePath = '/data/r14.db';
+    if (!fs.existsSync(sqlitePath)) return res.status(404).json({ error: `No se encontró ${sqlitePath}` });
+
+    const BetterSqlite3 = require('better-sqlite3');
+    const db = new BetterSqlite3(sqlitePath, { readonly: true });
+    const results: Record<string, any> = {};
+
+    const b = (v: any) => v == null ? null : (v === 1 || v === true || v === '1' || v === 'true');
+    const d = (v: any) => v ? new Date(v) : null;
+    const n = (v: any) => v === undefined ? null : v;
+
+    const migrate = async (name: string, rows: any[], fn: (row: any) => Promise<any>) => {
+        let ok = 0, err = 0;
+        for (const row of rows) {
+            try { await fn(row); ok++; }
+            catch (e: any) { err++; if (err <= 5) console.error(`[migrate] ${name}:`, e?.message?.slice(0, 150)); }
+        }
+        results[name] = { ok, err };
+        console.log(`[migrate] ${name}: ${ok} ok, ${err} errores`);
+    };
+
+    try {
+        await prisma.$executeRawUnsafe('SET session_replication_role = replica');
+
+        const tenants = db.prepare('SELECT * FROM "Tenant"').all() as any[];
+        await migrate('Tenant', tenants, r => prisma.tenant.upsert({ where: { id: r.id }, create: { id: r.id, name: r.name, settings: n(r.settings) }, update: { name: r.name, settings: n(r.settings) } }));
+
+        const vehicles = db.prepare('SELECT * FROM "Vehicle"').all() as any[];
+        await migrate('Vehicle', vehicles, r => prisma.vehicle.upsert({ where: { id: r.id }, create: { id: r.id, plate: r.plate, tenantId: r.tenantId, model: n(r.model), capacityWeight: n(r.capacityWeight ?? r.capacity), capacityVolume: n(r.capacityVolume), isRefrigerated: b(r.isRefrigerated) ?? false, status: r.status ?? 'ACTIVE', contractType: n(r.contractType), driverName: n(r.driverName), fuelType: n(r.fuelType), insurance: n(r.insurance), usefulLife: n(r.usefulLife), vehicleType: n(r.vehicleType) }, update: { plate: r.plate, model: n(r.model) } }));
+
+        const users = db.prepare('SELECT * FROM "User"').all() as any[];
+        await migrate('User', users, r => prisma.user.upsert({ where: { id: r.id }, create: { id: r.id, tenantId: r.tenantId, username: r.username, password: r.password, fullName: r.fullName, role: r.role ?? 'DRIVER', createdAt: d(r.createdAt) ?? new Date() }, update: { username: r.username, password: r.password, fullName: r.fullName } }));
+
+        const clients = db.prepare('SELECT * FROM "Client"').all() as any[];
+        await migrate('Client', clients, r => prisma.client.upsert({ where: { id: r.id }, create: { id: r.id, tenantId: r.tenantId, name: r.name, address: n(r.address), latitude: n(r.latitude), longitude: n(r.longitude), timeWindowStart: n(r.timeWindowStart), timeWindowEnd: n(r.timeWindowEnd), serviceTime: r.serviceTime ?? 15, zone: n(r.zone), priority: r.priority ?? 0, barrio: n(r.barrio) }, update: { name: r.name, address: n(r.address) } }));
+
+        const rtemplates = db.prepare('SELECT * FROM "RouteTemplate"').all() as any[];
+        await migrate('RouteTemplate', rtemplates, r => prisma.routeTemplate.upsert({ where: { id: r.id }, create: { id: r.id, name: r.name, createdAt: d(r.createdAt) ?? new Date(), updatedAt: d(r.updatedAt) ?? new Date() }, update: { name: r.name } }));
+
+        const rstops = db.prepare('SELECT * FROM "RouteStopTemplate"').all() as any[];
+        await migrate('RouteStopTemplate', rstops, r => prisma.routeStopTemplate.upsert({ where: { id: r.id }, create: { id: r.id, routeTemplateId: r.routeTemplateId, name: r.name, sequence: r.sequence }, update: { name: r.name, sequence: r.sequence } }));
+
+        const trips = db.prepare('SELECT * FROM "Trip"').all() as any[];
+        await migrate('Trip', trips, r => prisma.trip.upsert({ where: { id: r.id }, create: { id: r.id, date: d(r.date) ?? new Date(), priority: n(r.priority), zone: n(r.zone), vehicle: n(r.vehicle), driver: n(r.driver), provider: n(r.provider), auxiliar: n(r.auxiliar), auxiliar2: n(r.auxiliar2), auxiliar3: n(r.auxiliar3), businessUnit: n(r.businessUnit), distributionType: n(r.distributionType), contractType: n(r.contractType), vehicleType: n(r.vehicleType), tripType: n(r.tripType), entryTime: n(r.entryTime), exitTime: d(r.exitTime), returnTime: d(r.returnTime), value: n(r.value), paymentStatus: n(r.paymentStatus), paymentDate: d(r.paymentDate), observations: n(r.observations), notes: n(r.notes), status: r.status ?? 'PENDING', startedAt: d(r.startedAt), completedAt: d(r.completedAt), driverComments: n(r.driverComments), proofPhotoUrl: n(r.proofPhotoUrl), createdAt: d(r.createdAt) ?? new Date(), updatedAt: d(r.updatedAt) ?? new Date(), arrivalTime: n(r.arrivalTime), departureTime: n(r.departureTime), isRefrigerated: n(b(r.isRefrigerated)), kmArrival: n(r.kmArrival), kmDeparture: n(r.kmDeparture), reason: n(r.reason), temperature: n(r.temperature), reparto: n(r.reparto), locality: n(r.locality), vuelta: n(r.vuelta) }, update: { status: r.status ?? 'PENDING' } }));
+
+        const routes = db.prepare('SELECT * FROM "Route"').all() as any[];
+        await migrate('Route', routes, r => prisma.route.upsert({ where: { id: r.id }, create: { id: r.id, tenantId: r.tenantId, date: d(r.date) ?? new Date(), status: r.status ?? 'PLANNED', vehicleId: n(r.vehicleId), driverId: n(r.driverId), tripId: n(r.tripId), totalKm: n(r.totalKm), estimatedTime: n(r.estimatedTime), actualStartTime: d(r.actualStartTime), actualEndTime: d(r.actualEndTime), createdAt: d(r.createdAt) ?? new Date(), updatedAt: d(r.updatedAt) ?? new Date() }, update: { status: r.status ?? 'PLANNED' } }));
+
+        const stops = db.prepare('SELECT * FROM "Stop"').all() as any[];
+        await migrate('Stop', stops, r => prisma.stop.upsert({ where: { id: r.id }, create: { id: r.id, routeId: r.routeId, clientId: r.clientId, sequence: r.sequence, plannedEta: d(r.plannedEta), actualArrival: d(r.actualArrival), actualDeparture: d(r.actualDeparture), status: r.status ?? 'PENDING', reasonCode: n(r.reasonCode), observations: n(r.observations), proofPhotoUrl: n(r.proofPhotoUrl), deliveryWithoutIssues: n(b(r.deliveryWithoutIssues)), signatureUrl: n(r.signatureUrl) }, update: { status: r.status ?? 'PENDING' } }));
+
+        const tripStops = db.prepare('SELECT * FROM "TripStop"').all() as any[];
+        await migrate('TripStop', tripStops, r => prisma.tripStop.upsert({ where: { id: r.id }, create: { id: r.id, tripId: r.tripId, name: r.name, clientId: n(r.clientId), sequence: r.sequence, actualArrival: d(r.actualArrival), actualDeparture: d(r.actualDeparture), status: r.status ?? 'PENDING', observations: n(r.observations), failedReason: n(r.failedReason), latitude: n(r.latitude), longitude: n(r.longitude) }, update: { status: r.status ?? 'PENDING' } }));
+
+        const salaries = db.prepare('SELECT * FROM "EmployeeSalary"').all() as any[];
+        await migrate('EmployeeSalary', salaries, r => prisma.employeeSalary.upsert({ where: { id: r.id }, create: { id: r.id, month: r.month, firstName: n(r.firstName), lastName: r.lastName, role: n(r.role), grossSalary: n(r.grossSalary), dailyWage: n(r.dailyWage), seniority: n(r.seniority), baseScale: n(r.baseScale), createdAt: d(r.createdAt) ?? new Date(), updatedAt: d(r.updatedAt) ?? new Date() }, update: { grossSalary: n(r.grossSalary) } }));
+
+        const maintenance = db.prepare('SELECT * FROM "MaintenanceRecord"').all() as any[];
+        await migrate('MaintenanceRecord', maintenance, r => prisma.maintenanceRecord.upsert({ where: { id: r.id }, create: { id: r.id, plate: r.plate, category: n(r.category), month: n(r.month), date: n(r.date), mileage: n(r.mileage), workshop: n(r.workshop), workDone: n(r.workDone), cost: n(r.cost), notes: n(r.notes), createdAt: d(r.createdAt) ?? new Date(), updatedAt: d(r.updatedAt) ?? new Date() }, update: { cost: n(r.cost) } }));
+
+        const settings = db.prepare('SELECT * FROM "AppSettings"').all() as any[];
+        await migrate('AppSettings', settings, r => prisma.appSettings.upsert({ where: { id: r.id }, create: { id: r.id, key: r.key, value: r.value, updatedAt: d(r.updatedAt) ?? new Date() }, update: { value: r.value } }));
+
+        const alerts = db.prepare('SELECT * FROM "Alert"').all() as any[];
+        await migrate('Alert', alerts, r => prisma.alert.upsert({ where: { id: r.id }, create: { id: r.id, tenantId: n(r.tenantId), type: r.type, title: r.title, text: r.text, timeLabel: n(r.timeLabel), createdAt: d(r.createdAt) ?? new Date() }, update: { title: r.title } }));
+
+        const repartos = db.prepare('SELECT * FROM "Reparto"').all() as any[];
+        await migrate('Reparto', repartos, r => prisma.reparto.upsert({ where: { id: r.id }, create: { id: r.id, name: r.name, tenantId: r.tenantId ?? 'default-tenant', createdAt: d(r.createdAt) ?? new Date() }, update: { name: r.name } }));
+
+        const repartoEstabs = db.prepare('SELECT * FROM "RepartoEstablishment"').all() as any[];
+        await migrate('RepartoEstablishment', repartoEstabs, r => prisma.repartoEstablishment.upsert({ where: { id: r.id }, create: { id: r.id, repartoId: r.repartoId, excelName: r.excelName, sequence: r.sequence ?? 0 }, update: { excelName: r.excelName } }));
+
+        const mappings = db.prepare('SELECT * FROM "EstablishmentMapping"').all() as any[];
+        await migrate('EstablishmentMapping', mappings, r => prisma.establishmentMapping.upsert({ where: { id: r.id }, create: { id: r.id, excelName: r.excelName, clientId: r.clientId }, update: { clientId: r.clientId } }));
+
+        // Resetear secuencias de autoincrement en PostgreSQL para evitar conflictos en nuevos registros
+        for (const table of ['Route', 'Stop', 'Trip', 'TripStop', 'TripLocation', 'RepartoEstablishment']) {
+            try {
+                await prisma.$executeRawUnsafe(`SELECT setval(pg_get_serial_sequence('"${table}"', 'id'), COALESCE(MAX(id), 1)) FROM "${table}"`);
+            } catch { /* tabla vacía, sin problema */ }
+        }
+
+        results['DeviceLocation'] = { ok: 0, note: 'GPS histórico omitido (no crítico)' };
+
+    } finally {
+        await prisma.$executeRawUnsafe('SET session_replication_role = DEFAULT');
+        db.close();
+    }
+
+    res.json({ success: true, results });
+});
+// ── FIN TEMPORAL ─────────────────────────────────────────────────────────────
+
 const host = process.env.HOST || '0.0.0.0';
 
 async function bootstrapData() {
