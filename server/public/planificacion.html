@@ -414,11 +414,11 @@
                         </button>
                             <div id="notif-panel" class="notification-panel z-[60] bg-white min-w-[280px] max-w-[min(100vw-2rem,380px)]" style="display: none;">
                             <div class="p-5 border-b border-[#F4F7FE] flex justify-between items-center">
-                                <h4 class="text-sm font-bold text-[#1B2559]">Notificaciones <span id="notif-total" class="text-[10px] text-slate-400 font-normal ml-2"></span></h4>
+                                <h4 class="text-sm font-bold text-[#1B2559]">Notificaciones <span id="notif-total" class="text-[10px] text-[#A3AED0] font-normal ml-2"></span></h4>
                                     <button onclick="clearNotifications()" class="text-[11px] font-bold text-indigo-600 hover:text-indigo-800" type="button">Limpiar</button>
                             </div>
                             <div id="notif-list" class="max-h-[350px] overflow-y-auto custom-scrollbar">
-                                <div class="p-8 text-center text-slate-400 text-xs italic">No hay notificaciones nuevas</div>
+                                <div class="p-8 text-center text-[#A3AED0] text-xs italic">No hay notificaciones nuevas</div>
                             </div>
                         </div>
                     </div>
@@ -828,8 +828,8 @@
                                 </div>
                                 <datalist id="vrp-client-datalist"></datalist>
                                 <label class="mt-3 flex items-center gap-2 cursor-pointer select-none">
-                                    <input type="checkbox" id="vrp-zoom-on-select" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
-                                    <span class="text-[11px] font-bold text-slate-600">Acercar al elegir cliente en la lista</span>
+                                    <input type="checkbox" id="vrp-zoom-on-select" class="rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500">
+                                    <span class="text-[11px] font-bold text-[#2B3674]">Acercar al elegir cliente en la lista</span>
                                 </label>
                             </div>
                             <div>
@@ -848,8 +848,8 @@
                                     <button type="button" onclick="loadVrpFromTemplate(document.getElementById('vrp-template-select').value)" class="shrink-0 px-4 py-3 rounded-2xl bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase hover:bg-indigo-100 border border-indigo-100">Cargar</button>
                                     </div>
                                 <label class="mt-3 flex items-start gap-2 cursor-pointer select-none">
-                                    <input type="checkbox" id="vrp-solo-reparto-mapa" class="mt-0.5 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500" onchange="updateVrpMarkersStatus()">
-                                    <span class="text-[11px] font-bold text-slate-600 leading-snug">Solo mostrar en el mapa las escuelas del reparto (se activa al cargar una plantilla; podés desmarcar para ver el resto según filtros).</span>
+                                    <input type="checkbox" id="vrp-solo-reparto-mapa" class="mt-0.5 rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500" onchange="updateVrpMarkersStatus()">
+                                    <span class="text-[11px] font-bold text-[#2B3674] leading-snug">Solo mostrar en el mapa las escuelas del reparto (se activa al cargar una plantilla; podés desmarcar para ver el resto según filtros).</span>
                                 </label>
                                 </div>
                             <div>
@@ -884,12 +884,12 @@
                                     <button type="button" id="vrp-tour-prev" onclick="vrpRouteTourAdvance(-1)" disabled class="flex items-center justify-center w-10 h-10 rounded-xl bg-white border border-[#E0E5F2] text-[#1B2559] hover:bg-indigo-50 hover:border-indigo-200 disabled:opacity-40 disabled:pointer-events-none shrink-0" title="Parada anterior (←)">
                                         <i data-lucide="chevron-left" class="w-5 h-5"></i>
                             </button>
-                                    <p id="vrp-route-tour-label" class="flex-1 min-w-[140px] text-center text-[11px] font-bold text-slate-600 leading-tight px-1">Sin paradas en la ruta</p>
+                                    <p id="vrp-route-tour-label" class="flex-1 min-w-[140px] text-center text-[11px] font-bold text-[#2B3674] leading-tight px-1">Sin paradas en la ruta</p>
                                     <button type="button" id="vrp-tour-next" onclick="vrpRouteTourAdvance(1)" disabled class="flex items-center justify-center w-10 h-10 rounded-xl bg-white border border-[#E0E5F2] text-[#1B2559] hover:bg-indigo-50 hover:border-indigo-200 disabled:opacity-40 disabled:pointer-events-none shrink-0" title="Siguiente parada (→)">
                                         <i data-lucide="chevron-right" class="w-5 h-5"></i>
                             </button>
                         </div>
-                                <p class="text-[9px] text-[#A3AED0] font-medium mb-2">Teclado: <kbd class="px-1 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[8px]">←</kbd> <kbd class="px-1 py-0.5 rounded bg-slate-100 text-slate-600 font-mono text-[8px]">→</kbd> para ir parada a parada en orden.</p>
+                                <p class="text-[9px] text-[#A3AED0] font-medium mb-2">Teclado: <kbd class="px-1 py-0.5 rounded bg-[#F4F7FE] text-[#2B3674] font-mono text-[8px]">←</kbd> <kbd class="px-1 py-0.5 rounded bg-[#F4F7FE] text-[#2B3674] font-mono text-[8px]">→</kbd> para ir parada a parada en orden.</p>
                                 <div id="vrp-selected-sequence" class="min-h-[100px] max-h-[180px] overflow-y-auto custom-scrollbar bg-[#F4F7FE]/60 rounded-2xl p-3 space-y-2 border border-dashed border-[#E0E5F2]">
                                     <div class="text-center py-6 text-[#A3AED0] text-xs font-medium italic">Marcá escuelas arriba o cargá un reparto</div>
                     </div>
@@ -916,17 +916,17 @@
                         </div>
                                 </div>
                     <div class="xl:col-span-8 relative card-dark vrp-map-host map-no-hover-lift overflow-hidden min-h-[420px] xl:min-h-0 min-w-0 rounded-3xl border border-[#E8ECF8]">
-                        <div id="map" class="h-full w-full min-h-[420px] xl:min-h-full bg-slate-100"></div>
+                        <div id="map" class="h-full w-full min-h-[420px] xl:min-h-full bg-[#F4F7FE]"></div>
                         <div class="absolute top-4 right-4 z-[5] flex flex-col gap-2 items-end">
                             <button type="button" onclick="toggleTraffic()" id="traffic-btn" class="bg-white/95 px-4 py-3 rounded-2xl shadow-xl text-[#1B2559] text-[10px] font-black uppercase tracking-wider border border-[#F4F7FE] hover:bg-indigo-50 flex items-center gap-2">
                                 <i data-lucide="layers" class="w-4 h-4"></i> Tráfico
                             </button>
-                            <div class="bg-white/95 px-4 py-3 rounded-2xl shadow-lg border border-[#F4F7FE] text-[10px] font-bold text-slate-600 max-w-[200px]">
+                            <div class="bg-white/95 px-4 py-3 rounded-2xl shadow-lg border border-[#F4F7FE] text-[10px] font-bold text-[#2B3674] max-w-[200px]">
                                 <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block mr-1"></span> Escuela
                                 <span class="w-2 h-2 rounded-full bg-slate-800 inline-block ml-2 mr-1"></span> Orden ruta
-                                <div class="mt-2 pt-2 border-t border-slate-100 flex items-center gap-2">
+                                <div class="mt-2 pt-2 border-t border-[#F4F7FE] flex items-center gap-2">
                                     <span id="traffic-indicator" class="w-2 h-2 rounded-full bg-slate-300 shrink-0"></span>
-                                    <span class="text-slate-500">Tráfico: <span id="traffic-status" class="text-slate-800">OFF</span></span>
+                                    <span class="text-[#A3AED0]">Tráfico: <span id="traffic-status" class="text-[#1B2559]">OFF</span></span>
                     </div>
                             </div>
                         </div>
@@ -1012,32 +1012,32 @@
             </div>
 
             <!-- VIEW: EMPLEADOS (Contenedor) -->
-            <div id="view-employees" class="hidden view-animate space-y-6">
-                <div class="card-dark p-6">
-                    <h3 class="text-xl font-bold text-slate-900">Centro de Empleados</h3>
-                    <p class="text-sm text-slate-500 mt-1">Accesos unificados para auxiliares y salarios.</p>
+            <div id="view-employees" class="hidden view-animate space-y-8">
+                <div class="card-dark p-8">
+                    <h3 class="text-2xl font-bold text-[#1B2559]">Centro de Empleados</h3>
+                    <p class="text-sm text-[#A3AED0] font-medium">Accesos unificados para auxiliares y salarios</p>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
 
-                    <button onclick="showSection('cost-aux')" class="card-dark p-6 text-left hover:border-indigo-300 transition-all">
-                        <div class="flex items-center gap-3 mb-3">
-                            <div class="w-10 h-10 rounded-xl bg-indigo-50 flex items-center justify-center">
-                                <i data-lucide="users-2" class="w-5 h-5 text-indigo-600"></i>
+                    <button onclick="showSection('cost-aux')" class="card-dark p-8 text-left hover:border-indigo-200 transition-all group">
+                        <div class="flex items-center gap-4 mb-4">
+                            <div class="w-14 h-14 rounded-2xl bg-indigo-50 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
+                                <i data-lucide="users-2" class="w-6 h-6 text-indigo-600"></i>
                             </div>
-                            <h4 class="font-black text-slate-900">Parámetros x Auxiliar</h4>
+                            <h4 class="font-black text-[#1B2559]">Parámetros x Auxiliar</h4>
                         </div>
-                        <p class="text-xs text-slate-500">Jornales, plus y productividad del personal auxiliar.</p>
+                        <p class="text-sm text-[#A3AED0] font-medium">Jornales, plus y productividad del personal auxiliar.</p>
                     </button>
 
-                    <button onclick="showSection('salaries')" class="card-dark p-6 text-left hover:border-emerald-300 transition-all">
-                        <div class="flex items-center gap-3 mb-3">
-                            <div class="w-10 h-10 rounded-xl bg-emerald-50 flex items-center justify-center">
-                                <i data-lucide="wallet" class="w-5 h-5 text-emerald-600"></i>
+                    <button onclick="showSection('salaries')" class="card-dark p-8 text-left hover:border-emerald-200 transition-all group">
+                        <div class="flex items-center gap-4 mb-4">
+                            <div class="w-14 h-14 rounded-2xl bg-emerald-50 flex items-center justify-center group-hover:bg-emerald-100 transition-colors">
+                                <i data-lucide="wallet" class="w-6 h-6 text-emerald-600"></i>
                             </div>
-                            <h4 class="font-black text-slate-900">Salarios Empleados</h4>
+                            <h4 class="font-black text-[#1B2559]">Salarios Empleados</h4>
                         </div>
-                        <p class="text-xs text-slate-500">Nómina completa de choferes y auxiliares.</p>
+                        <p class="text-sm text-[#A3AED0] font-medium">Nómina completa de choferes y auxiliares.</p>
                     </button>
                 </div>
             </div>
@@ -1101,22 +1101,21 @@
             </div>
 
             <!-- Modal: Nueva/Editar Reparación -->
-            <div id="modal-repair" class="fixed inset-0 z-50 hidden">
-                <div class="modal-overlay absolute inset-0" onclick="closeRepairModal()"></div>
-                <div class="modal-content absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg p-8">
-                    <h3 class="text-xl font-bold text-slate-900 mb-6" id="modal-repair-title">Nueva Reparación</h3>
+            <div id="modal-repair" class="fixed inset-0 z-50 hidden flex items-center justify-center p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);" onclick="if(event.target===this)closeRepairModal()">
+                <div class="modal-content w-full max-w-lg p-8 bg-white rounded-3xl shadow-2xl" onclick="event.stopPropagation()">
+                    <h3 class="text-xl font-bold text-[#1B2559] mb-6" id="modal-repair-title">Nueva Reparación</h3>
                     <form id="repair-form" class="space-y-4">
                         <input type="hidden" id="repair-id">
                         <div class="grid grid-cols-2 gap-4">
                             <div class="col-span-2">
-                                <label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">Patente *</label>
-                                <select id="repair-plate" required class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold text-blue-600">
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Patente *</label>
+                                <select id="repair-plate" required class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-indigo-600">
                                     <option value="">-- Seleccionar Unidad --</option>
                                 </select>
                             </div>
                             <div class="col-span-2">
-                                <label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">Categoría</label>
-                                <select id="repair-category" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm">
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Categoría</label>
+                                <select id="repair-category" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm">
                                     <option value="">-- Sin Categoría --</option>
                                     <option value="Reparación y mant. Preventivo">Reparación y mant. Preventivo</option>
                                     <option value="Reparación y mant. Refrigeración">Reparación y mant. Refrigeración</option>
@@ -1124,27 +1123,26 @@
                                     <option value="Lubricantes y consumibles">Lubricantes y consumibles</option>
                                 </select>
                             </div>
-                            <div><label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">Fecha *</label><input type="date" id="repair-date" required class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm"></div>
-                            <div><label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">Kilometraje</label><input type="number" id="repair-mileage" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm"></div>
-                            <div><label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">Taller</label><input type="text" id="repair-workshop" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm"></div>
-                            <div class="col-span-2"><label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">Trabajo Realizado *</label><textarea id="repair-work" rows="3" required class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm"></textarea></div>
-                            <div><label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">Costo ($)</label><input type="number" id="repair-cost" step="0.01" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm"></div>
-                            <div><label class="text-[10px] font-black text-slate-400 uppercase mb-1 block">Notas</label><input type="text" id="repair-notes" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm"></div>
+                            <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Fecha *</label><input type="date" id="repair-date" required class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
+                            <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Kilometraje</label><input type="number" id="repair-mileage" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
+                            <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Taller</label><input type="text" id="repair-workshop" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
+                            <div class="col-span-2"><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Trabajo Realizado *</label><textarea id="repair-work" rows="3" required class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></textarea></div>
+                            <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Costo ($)</label><input type="number" id="repair-cost" step="0.01" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
+                            <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Notas</label><input type="text" id="repair-notes" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
                         </div>
                         <div class="flex gap-3 pt-4">
-                            <button type="button" onclick="saveRepair()" class="flex-1 bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 flex items-center justify-center gap-2"><i data-lucide="save" class="w-4 h-4"></i> Guardar</button>
-                            <button type="button" onclick="closeRepairModal()" class="px-6 py-3 border border-slate-200 rounded-xl font-bold text-slate-600 hover:bg-slate-50">Cancelar</button>
+                            <button type="button" onclick="saveRepair()" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 flex items-center justify-center gap-2 shadow-lg shadow-indigo-200"><i data-lucide="save" class="w-4 h-4"></i> Guardar</button>
+                            <button type="button" onclick="closeRepairModal()" class="px-6 py-3 border border-[#E0E5F2] rounded-xl font-bold text-[#1B2559] hover:bg-[#F4F7FE]">Cancelar</button>
                         </div>
                     </form>
                 </div>
             </div>
 
             <!-- Modal: Elegir rol al desbloquear usuario -->
-            <div id="modal-unblock-role" class="fixed inset-0 z-[120] hidden">
-                <div class="modal-overlay absolute inset-0" onclick="resolveUnblockRole(null)"></div>
-                <div class="modal-content absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-md p-8">
-                    <h3 id="modal-unblock-role-title" class="text-xl font-bold text-slate-900 mb-2">Desbloquear usuario</h3>
-                    <p class="text-sm text-slate-500 mb-6">Elegí el rol con el que querés habilitar este usuario.</p>
+            <div id="modal-unblock-role" class="fixed inset-0 z-[120] hidden flex items-center justify-center p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);" onclick="if(event.target===this)resolveUnblockRole(null)">
+                <div class="modal-content w-full max-w-md p-8 bg-white rounded-3xl shadow-2xl" onclick="event.stopPropagation()">
+                    <h3 id="modal-unblock-role-title" class="text-xl font-bold text-[#1B2559] mb-2">Desbloquear usuario</h3>
+                    <p class="text-sm text-[#A3AED0] mb-6">Elegí el rol con el que querés habilitar este usuario.</p>
                     <p id="modal-unblock-role-hint" class="text-xs text-indigo-600 font-bold mb-4">Recomendado (último usado): DRIVER</p>
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
                         <button id="modal-unblock-role-driver" type="button" onclick="resolveUnblockRole('DRIVER')" class="px-5 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all">
@@ -1155,7 +1153,7 @@
                         </button>
                     </div>
                     <div class="mt-4 text-right">
-                        <button type="button" onclick="resolveUnblockRole(null)" class="px-5 py-2 rounded-xl border border-slate-200 text-slate-600 text-sm font-bold hover:bg-slate-50 transition-all">
+                        <button type="button" onclick="resolveUnblockRole(null)" class="px-5 py-2 rounded-xl border border-[#E0E5F2] text-[#2B3674] text-sm font-bold hover:bg-[#F4F7FE] transition-all">
                             Cancelar
                         </button>
                     </div>
@@ -1298,8 +1296,8 @@
                             </span>
                             <span class="text-xs font-black text-emerald-700 uppercase">Live Feed</span>
                         </div>
-                        <div class="px-4 py-3 bg-slate-50 rounded-2xl flex items-center gap-2">
-                            <span class="text-[10px] font-black text-slate-500 uppercase">Mapa:</span>
+                        <div class="px-4 py-3 bg-[#F8FAFF] rounded-2xl flex items-center gap-2">
+                            <span class="text-[10px] font-black text-[#A3AED0] uppercase">Mapa:</span>
                             <span id="control-map-provider" class="text-[10px] font-black text-emerald-700 uppercase">Google Maps</span>
                         </div>
                     </div>
@@ -1340,11 +1338,11 @@
                     <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
                         <div>
                             <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Mapa de Flota en Vivo</h4>
-                            <p class="text-[10px] text-slate-500 font-medium mt-1">Vista acotada a <strong>Provincia de Buenos Aires</strong> (menos tiles y más fluidez). Los números 1,2,3… marcan el <strong>orden de paradas</strong> del recorrido. Capa de tráfico opcional (consume más recursos).</p>
+                            <p class="text-[10px] text-[#A3AED0] font-medium mt-1">Vista acotada a <strong>Provincia de Buenos Aires</strong> (menos tiles y más fluidez). Los números 1,2,3… marcan el <strong>orden de paradas</strong> del recorrido. Capa de tráfico opcional (consume más recursos).</p>
                         </div>
                         <div class="flex flex-col items-end gap-2 shrink-0">
-                            <label class="flex items-center gap-2 text-[10px] font-black text-slate-600 cursor-pointer select-none">
-                                <input type="checkbox" id="control-show-traffic" class="rounded border-slate-300" onchange="toggleControlTraffic(this.checked)">
+                            <label class="flex items-center gap-2 text-[10px] font-black text-[#2B3674] cursor-pointer select-none">
+                                <input type="checkbox" id="control-show-traffic" class="rounded border-[#E0E5F2]" onchange="toggleControlTraffic(this.checked)">
                                 Tráfico Google
                             </label>
                             <span class="text-[10px] text-[#A3AED0] font-black uppercase">Live cada 20s</span>
@@ -1357,7 +1355,7 @@
                     <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col sm:flex-row sm:items-end gap-4">
                         <div class="flex-1">
                             <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Recorrido real (app móvil)</h4>
-                            <p class="text-[10px] text-slate-500 mt-1">Trazado GPS de las últimas horas sobre el mapa de arriba. Tiempos entre paradas y desvío respecto del recorrido planificado (Google Directions).</p>
+                            <p class="text-[10px] text-[#A3AED0] mt-1">Trazado GPS de las últimas horas sobre el mapa de arriba. Tiempos entre paradas y desvío respecto del recorrido planificado (Google Directions).</p>
                         </div>
                         <div class="flex flex-wrap items-center gap-2">
                             <select id="control-trail-route" class="bg-[#F4F7FE] border-0 rounded-xl px-4 py-2.5 text-xs font-bold text-[#1B2559] min-w-[200px] outline-none">
@@ -1369,7 +1367,7 @@
                     <div id="control-preflight-summary" class="p-6 bg-indigo-50/40 text-sm border-t border-[#F4F7FE] min-h-[80px]">
                         <p class="text-[#6B7280] text-xs italic">Preflight: validá API, Google Maps, choferes y rutas con un clic.</p>
                     </div>
-                    <div id="control-live-summary" class="p-6 bg-slate-50/80 text-sm border-t border-[#F4F7FE] min-h-[80px]">
+                    <div id="control-live-summary" class="p-6 bg-[#F8FAFF]/80 text-sm border-t border-[#F4F7FE] min-h-[80px]">
                         <p class="text-[#A3AED0] text-xs italic">Elegí una ruta y pulsá «Cargar» para ver tramos entre paradas y último desvío.</p>
                     </div>
                 </div>
@@ -1408,9 +1406,9 @@
             </div>
 
             <!-- ═══ REPORTES ═══ -->
-            <div id="view-reports" class="hidden">
-                <div class="card-dark p-8 mb-8">
-                    <div class="flex flex-wrap items-end gap-6 mb-8">
+            <div id="view-reports" class="hidden view-animate space-y-8">
+                <div class="card-dark p-8">
+                    <div class="flex flex-wrap items-end gap-6">
                         <div>
                             <label class="text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest block mb-2">Tipo de reporte</label>
                             <select id="report-type" onchange="updateReportFilters()" class="bg-[#F4F7FE] border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-[#1B2559] focus:border-indigo-500 outline-none min-w-[220px]">
@@ -1496,9 +1494,9 @@
                 <!-- Data will be injected here -->
             </div>
             
-            <div class="p-8 bg-slate-50 border-t border-slate-100 flex justify-end gap-3">
-                <button onclick="closeSchoolModal()" class="px-6 py-3 rounded-xl border border-slate-200 text-slate-500 font-bold text-sm hover:bg-slate-100 transition-all">Cerrar</button>
-                <button id="btn-edit-school" onclick="enableSchoolEdit()" class="px-6 py-3 rounded-xl bg-blue-600 text-white font-bold text-sm hover:bg-blue-700 transition-all">Editar Cliente</button>
+            <div class="p-8 bg-[#F8FAFF] border-t border-[#F4F7FE] flex justify-end gap-3">
+                <button onclick="closeSchoolModal()" class="px-6 py-3 rounded-xl border border-[#E0E5F2] text-[#A3AED0] font-bold text-sm hover:bg-[#E8ECF8] transition-all">Cerrar</button>
+                <button id="btn-edit-school" onclick="enableSchoolEdit()" class="px-6 py-3 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 transition-all">Editar Cliente</button>
                 <button id="btn-save-school" onclick="saveSchoolChanges()" class="hidden px-6 py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 transition-all">Guardar Cambios</button>
             </div>
         </div>
@@ -1744,7 +1742,7 @@
                 const val = String(i + 1);
                 const checked = prevSelected.has(val) ? 'checked' : '';
                 return `
-                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-slate-50 rounded-lg cursor-pointer">
+                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-[#F4F7FE] rounded-lg cursor-pointer">
                         <input type="checkbox" value="${val}" ${checked} onchange="updateNewTripMultiDaysSummary()">
                         <span>${formatDateWithWeekdayEs(d)}</span>
                     </label>
@@ -1768,7 +1766,7 @@
             const endVal = document.getElementById('new-trip-date-end')?.value || '';
             if (!wrap) return;
             if (!startVal || !endVal) {
-                wrap.innerHTML = '<span class="text-slate-400">Seleccioná fecha inicio y fin.</span>';
+                wrap.innerHTML = '<span class="text-[#A3AED0]">Seleccioná fecha inicio y fin.</span>';
                 return;
             }
             const start = new Date(`${startVal}T00:00:00`);
@@ -1781,7 +1779,7 @@
             const lines = [];
             let idx = 0;
             for (let d = new Date(start); d <= end && idx < maxDays; d.setDate(d.getDate() + 1), idx++) {
-                lines.push(`<span class="px-2 py-1 bg-slate-100 rounded-lg">${formatDateWithWeekdayEs(new Date(d))}</span>`);
+                lines.push(`<span class="px-2 py-1 bg-[#F4F7FE] rounded-lg">${formatDateWithWeekdayEs(new Date(d))}</span>`);
             }
             if (idx >= maxDays) lines.push('<span class="px-2 py-1 bg-amber-100 text-amber-700 rounded-lg">...más días</span>');
             wrap.innerHTML = lines.join('');
@@ -2138,7 +2136,7 @@
 
             kpis.innerHTML = `
                 <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600"><i data-lucide="users" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Choferes</p><p class="text-2xl font-extrabold text-[#1B2559]">${rows.length}</p></div></div>
-                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center text-blue-600"><i data-lucide="truck" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Viajes</p><p class="text-2xl font-extrabold text-[#1B2559]">${totalTrips}</p></div></div>
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600"><i data-lucide="truck" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Viajes</p><p class="text-2xl font-extrabold text-[#1B2559]">${totalTrips}</p></div></div>
                 <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-amber-50 flex items-center justify-center text-amber-600"><i data-lucide="map-pin" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Paradas</p><p class="text-2xl font-extrabold text-[#1B2559]">${totalStops}</p></div></div>
                 <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600"><i data-lucide="check-circle" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Completadas</p><p class="text-2xl font-extrabold text-[#1B2559]">${totalCompleted}</p></div></div>
             `;
@@ -2170,7 +2168,7 @@
 
             kpis.innerHTML = `
                 <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600"><i data-lucide="package" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Repartos</p><p class="text-2xl font-extrabold text-[#1B2559]">${rows.length}</p></div></div>
-                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center text-blue-600"><i data-lucide="truck" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Viajes</p><p class="text-2xl font-extrabold text-[#1B2559]">${totalTrips}</p></div></div>
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600"><i data-lucide="truck" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Viajes</p><p class="text-2xl font-extrabold text-[#1B2559]">${totalTrips}</p></div></div>
                 <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-amber-50 flex items-center justify-center text-amber-600"><i data-lucide="map-pin" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Paradas total</p><p class="text-2xl font-extrabold text-[#1B2559]">${totalStops}</p></div></div>
                 <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600"><i data-lucide="users" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Choferes distintos</p><p class="text-2xl font-extrabold text-[#1B2559]">${new Set(trips.map(t=>t.driver).filter(Boolean)).size}</p></div></div>
             `;
@@ -2199,7 +2197,7 @@
 
             kpis.innerHTML = `
                 <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600"><i data-lucide="users" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Choferes</p><p class="text-2xl font-extrabold text-[#1B2559]">${rows.length}</p></div></div>
-                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center text-blue-600"><i data-lucide="truck" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Viajes totales</p><p class="text-2xl font-extrabold text-[#1B2559]">${trips.length}</p></div></div>
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600"><i data-lucide="truck" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Viajes totales</p><p class="text-2xl font-extrabold text-[#1B2559]">${trips.length}</p></div></div>
                 <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600"><i data-lucide="dollar-sign" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Costo total</p><p class="text-2xl font-extrabold text-[#1B2559]">$${Math.round(totalCost).toLocaleString()}</p></div></div>
                 <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-amber-50 flex items-center justify-center text-amber-600"><i data-lucide="route" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Repartos distintos</p><p class="text-2xl font-extrabold text-[#1B2559]">${new Set(trips.map(t=>t.reparto).filter(Boolean)).size}</p></div></div>
             `;
@@ -2218,7 +2216,7 @@
 
             kpis.innerHTML = `
                 <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600"><i data-lucide="truck" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Viajes</p><p class="text-2xl font-extrabold text-[#1B2559]">${trips.length}</p></div></div>
-                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center text-blue-600"><i data-lucide="building" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Propios</p><p class="text-2xl font-extrabold text-[#1B2559]">${propioTrips.length}</p></div></div>
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600"><i data-lucide="building" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Propios</p><p class="text-2xl font-extrabold text-[#1B2559]">${propioTrips.length}</p></div></div>
                 <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-amber-50 flex items-center justify-center text-amber-600"><i data-lucide="handshake" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Tercerizados</p><p class="text-2xl font-extrabold text-[#1B2559]">${tercTrips.length}</p></div></div>
                 <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600"><i data-lucide="dollar-sign" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Costo total</p><p class="text-2xl font-extrabold text-[#1B2559]">$${Math.round(totalCost).toLocaleString()}</p></div></div>
             `;
@@ -2228,7 +2226,7 @@
             const sorted = [...trips].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
             tbody.innerHTML = sorted.map(t => {
                 const cost = getTripCalculatedCost ? getTripCalculatedCost(t) : (t.cost || 0);
-                const statusClass = t.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700' : t.status === 'IN_PROGRESS' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600';
+                const statusClass = t.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700' : t.status === 'IN_PROGRESS' ? 'bg-indigo-50 text-blue-700' : 'bg-[#F4F7FE] text-[#2B3674]';
                 const contractClass = (t.contractType || '').toLowerCase() === 'tercerizado' ? 'bg-amber-50 text-amber-700' : 'bg-indigo-50 text-indigo-700';
                 return `<tr class="hover:bg-[#F8FAFF] transition-colors"><td class="px-6 py-4 text-sm font-medium">${t.date || '-'}</td><td class="px-6 py-4 font-bold text-[#1B2559]">${t.driver || '-'}</td><td class="px-6 py-4 text-sm">${t.reparto || '-'}</td><td class="px-6 py-4 text-sm">${t.zone || '-'}</td><td class="px-6 py-4 text-center"><span class="px-2 py-1 rounded-lg text-[10px] font-bold ${contractClass}">${(t.contractType || 'PROPIO').toUpperCase()}</span></td><td class="px-6 py-4 text-center"><span class="px-2 py-1 rounded-lg text-[10px] font-bold ${statusClass}">${t.status || 'PENDING'}</span></td><td class="px-6 py-4 text-right font-bold text-emerald-700">$${Math.round(cost).toLocaleString()}</td></tr>`;
             }).join('');
@@ -2262,7 +2260,7 @@
         function roleBadgeClass(role) {
             const normalized = String(role || '').toUpperCase();
             if (normalized === 'ADMIN') return 'bg-rose-100 text-rose-700';
-            if (normalized === 'BLOCKED') return 'bg-slate-200 text-slate-700';
+            if (normalized === 'BLOCKED') return 'bg-slate-200 text-[#2B3674]';
             return 'bg-indigo-100 text-indigo-700';
         }
 
@@ -2607,7 +2605,7 @@
                     <div class="h-full w-full flex items-center justify-center p-6 text-center">
                         <div class="max-w-md">
                             <p class="text-sm font-bold text-rose-600">Falta la clave de Google Maps.</p>
-                            <p class="text-xs text-slate-500 mt-2">Revisá la configuración del servidor en las variables de entorno.</p>
+                            <p class="text-xs text-[#A3AED0] mt-2">Revisá la configuración del servidor en las variables de entorno.</p>
                         </div>
                     </div>
                 `;
@@ -2641,7 +2639,7 @@
                     <div class="h-full w-full flex items-center justify-center p-6 text-center">
                         <div class="max-w-md">
                             <p class="text-sm font-bold text-rose-600">No se pudo inicializar Google Maps.</p>
-                            <p class="text-xs text-slate-500 mt-2">Verificá restricciones de la clave (Maps JavaScript API).</p>
+                            <p class="text-xs text-[#A3AED0] mt-2">Verificá restricciones de la clave (Maps JavaScript API).</p>
                         </div>
                     </div>
                 `;
@@ -2886,11 +2884,11 @@
                         : null;
                 return `
                             <div class="text-xs">
-                                <div class="font-black text-slate-900">${it.driver || 'SIN CHOFER'}</div>
-                                <div class="font-bold text-slate-600">${it.vehicle || 'S/D'} · ${it.reparto || '--'}</div>
-                                <div class="text-slate-400">Estado: ${it.status || '--'}</div>
+                                <div class="font-black text-[#1B2559]">${it.driver || 'SIN CHOFER'}</div>
+                                <div class="font-bold text-[#2B3674]">${it.vehicle || 'S/D'} · ${it.reparto || '--'}</div>
+                                <div class="text-[#A3AED0]">Estado: ${it.status || '--'}</div>
                                 ${dev ? `<div class="text-amber-700 font-bold">Desvío: ${dev}</div>` : ''}
-                                <div class="text-slate-400">${new Date(loc.timestamp).toLocaleString('es-AR')}</div>
+                                <div class="text-[#A3AED0]">${new Date(loc.timestamp).toLocaleString('es-AR')}</div>
                             </div>`;
             };
             (items || []).forEach((it) => {
@@ -3008,13 +3006,13 @@
                 const devTxt = devM != null ? `${devM}` : '—';
                 const alertTxt = !loc ? 'Sin ubicación' : ((Date.now() - ts.getTime()) > (45 * 60 * 1000) ? 'Demorado' : 'OK');
                 return `
-                    <tr class="hover:bg-slate-50 transition-colors">
-                        <td class="text-xs font-bold text-slate-500">${ts ? ts.toLocaleString('es-AR') : '--'}</td>
-                        <td><div class="font-black text-slate-900">${it.vehicle || 'S/D'}</div><div class="text-[10px] text-slate-400 uppercase">${it.tripId ? `Viaje #${it.tripId}` : ''}</div></td>
-                        <td><div class="font-bold text-slate-800">${it.driver || 'SIN CHOFER'}</div><div class="text-[10px] text-indigo-600 font-black uppercase">${it.reparto || '--'}</div></td>
+                    <tr class="hover:bg-[#F4F7FE] transition-colors">
+                        <td class="text-xs font-bold text-[#A3AED0]">${ts ? ts.toLocaleString('es-AR') : '--'}</td>
+                        <td><div class="font-black text-[#1B2559]">${it.vehicle || 'S/D'}</div><div class="text-[10px] text-[#A3AED0] uppercase">${it.tripId ? `Viaje #${it.tripId}` : ''}</div></td>
+                        <td><div class="font-bold text-[#1B2559]">${it.driver || 'SIN CHOFER'}</div><div class="text-[10px] text-indigo-600 font-black uppercase">${it.reparto || '--'}</div></td>
                         <td><span class="status-badge ${it.status === 'OUT_OF_PLANT' ? 'bg-emerald-100 text-emerald-700' : (it.status === 'COMPLETED' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700')}">${it.status || '--'}</span></td>
-                        <td class="text-xs font-bold text-slate-600">${locTxt}</td>
-                        <td class="text-xs font-black ${devM != null && devM > 200 ? 'text-rose-600' : 'text-slate-600'}">${devTxt}</td>
+                        <td class="text-xs font-bold text-[#2B3674]">${locTxt}</td>
+                        <td class="text-xs font-black ${devM != null && devM > 200 ? 'text-rose-600' : 'text-[#2B3674]'}">${devTxt}</td>
                         <td class="text-right text-xs font-black ${alertTxt === 'OK' ? 'text-emerald-600' : 'text-rose-600'}">${alertTxt}</td>
                     </tr>
                 `;
@@ -3079,12 +3077,12 @@
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                         ${rows.map(([label, item]) => `
-                            <div class="bg-white rounded-xl border border-slate-200 p-3">
+                            <div class="bg-white rounded-xl border border-[#E0E5F2] p-3">
                                 <div class="flex items-center justify-between gap-2">
                                     <span class="text-xs font-black text-[#1F2937] uppercase">${label}</span>
                                     <span class="px-2 py-1 rounded-full text-[10px] font-black ${preflightBadgeClass(item?.status)}">${preflightStatusLabel(item?.status)}</span>
                                 </div>
-                                <p class="text-[11px] text-slate-600 mt-2">${item?.message || '-'}</p>
+                                <p class="text-[11px] text-[#2B3674] mt-2">${item?.message || '-'}</p>
                             </div>
                         `).join('')}
                     </div>
@@ -3192,7 +3190,7 @@
                                 const obsEsc = escCell(obsRaw);
                                 const obsShort = obsRaw.length > 56 ? escCell(obsRaw.slice(0, 56)) + '…' : obsEsc;
                                 const obsCell = obsRaw
-                                    ? `<span class="inline-block max-w-[160px] truncate align-top text-slate-600" title="${obsEsc}">${obsShort}</span>`
+                                    ? `<span class="inline-block max-w-[160px] truncate align-top text-[#2B3674]" title="${obsEsc}">${obsShort}</span>`
                                     : '—';
                                 const okCell = s.deliveryWithoutIssues === true
                                     ? '<span class="text-emerald-600 font-black">Sí</span>'
@@ -3206,10 +3204,10 @@
                                     ? `<a href="${escCell(photoHref)}" target="_blank" rel="noopener noreferrer" class="font-bold text-indigo-600 underline">Ver</a>`
                                     : '—';
                                 return `
-                        <tr class="border-b border-slate-100">
-                            <td class="py-2 pr-2 font-black text-slate-800">${s.sequence}</td>
-                            <td class="py-2 pr-2 font-bold text-slate-700">${(s.name || '').replace(/</g, '')}</td>
-                            <td class="py-2 pr-2 text-xs text-slate-500">${s.status || ''}</td>
+                        <tr class="border-b border-[#F4F7FE]">
+                            <td class="py-2 pr-2 font-black text-[#1B2559]">${s.sequence}</td>
+                            <td class="py-2 pr-2 font-bold text-[#2B3674]">${(s.name || '').replace(/</g, '')}</td>
+                            <td class="py-2 pr-2 text-xs text-[#A3AED0]">${s.status || ''}</td>
                             <td class="py-2 pr-2 text-xs">${s.actualArrival ? new Date(s.actualArrival).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                             <td class="py-2 pr-2 text-xs">${s.actualDeparture ? new Date(s.actualDeparture).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '—'}</td>
                             <td class="py-2 pr-2 text-xs text-center">${okCell}</td>
@@ -3222,32 +3220,32 @@
                         .join('');
                     out.innerHTML = `
                         <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
-                            <div class="bg-white rounded-xl p-4 border border-slate-100">
-                                <p class="text-[10px] font-black text-slate-400 uppercase">Último ping GPS</p>
-                                <p class="text-sm font-black text-slate-800">${trk.lastTimestamp ? new Date(trk.lastTimestamp).toLocaleString('es-AR') : 'Sin datos'}</p>
+                            <div class="bg-white rounded-xl p-4 border border-[#F4F7FE]">
+                                <p class="text-[10px] font-black text-[#A3AED0] uppercase">Último ping GPS</p>
+                                <p class="text-sm font-black text-[#1B2559]">${trk.lastTimestamp ? new Date(trk.lastTimestamp).toLocaleString('es-AR') : 'Sin datos'}</p>
                             </div>
-                            <div class="bg-white rounded-xl p-4 border border-slate-100">
-                                <p class="text-[10px] font-black text-slate-400 uppercase">Desvío (último punto)</p>
+                            <div class="bg-white rounded-xl p-4 border border-[#F4F7FE]">
+                                <p class="text-[10px] font-black text-[#A3AED0] uppercase">Desvío (último punto)</p>
                                 <p class="text-sm font-black ${devNum != null && devNum > 200 ? 'text-rose-600' : 'text-emerald-700'}">${dev}</p>
                             </div>
-                            <div class="bg-white rounded-xl p-4 border border-slate-100">
-                                <p class="text-[10px] font-black text-slate-400 uppercase">Pings 24 h</p>
-                                <p class="text-sm font-black text-slate-800">${trk.pings24h ?? 0}</p>
+                            <div class="bg-white rounded-xl p-4 border border-[#F4F7FE]">
+                                <p class="text-[10px] font-black text-[#A3AED0] uppercase">Pings 24 h</p>
+                                <p class="text-sm font-black text-[#1B2559]">${trk.pings24h ?? 0}</p>
                             </div>
                         </div>
-                        <p class="text-[10px] font-bold text-slate-500 mb-2 uppercase">Tramos entre paradas (desde salida anterior o llegada)</p>
-                        <div class="overflow-x-auto bg-white rounded-xl border border-slate-100">
+                        <p class="text-[10px] font-bold text-[#A3AED0] mb-2 uppercase">Tramos entre paradas (desde salida anterior o llegada)</p>
+                        <div class="overflow-x-auto bg-white rounded-xl border border-[#F4F7FE]">
                             <table class="w-full text-left text-xs">
-                                <thead><tr class="text-[10px] uppercase text-slate-400 border-b">
+                                <thead><tr class="text-[10px] uppercase text-[#A3AED0] border-b">
                                     <th class="py-2 px-2">#</th><th class="py-2 px-2">Parada</th><th class="py-2 px-2">Estado</th>
                                     <th class="py-2 px-2">Llegada</th><th class="py-2 px-2">Salida</th>
                                     <th class="py-2 px-2 text-center">Sin incid.</th><th class="py-2 px-2">Obs.</th><th class="py-2 px-2">Foto</th>
                                     <th class="py-2 px-2">Tramo</th>
                                 </tr></thead>
-                                <tbody>${stopsRows || '<tr><td colspan="9" class="py-4 text-center text-slate-400">Sin paradas</td></tr>'}</tbody>
+                                <tbody>${stopsRows || '<tr><td colspan="9" class="py-4 text-center text-[#A3AED0]">Sin paradas</td></tr>'}</tbody>
                             </table>
                         </div>
-                        <p class="text-[10px] text-slate-400 mt-2">${pts.length} puntos GPS cargados en el mapa (naranja punteado).</p>`;
+                        <p class="text-[10px] text-[#A3AED0] mt-2">${pts.length} puntos GPS cargados en el mapa (naranja punteado).</p>`;
                 }
             } catch (e) {
                 console.error(e);
@@ -3302,10 +3300,10 @@
         function renderRouteTemplatesList() {
             const list = document.getElementById('routes-templates-list');
             list.innerHTML = routeTemplates.map(rt => `
-                <button onclick="selectRouteTemplate('${rt.id}')" class="w-full text-left p-4 rounded-xl border border-transparent hover:border-slate-100 hover:bg-slate-50 transition-all flex items-center justify-between group">
+                <button onclick="selectRouteTemplate('${rt.id}')" class="w-full text-left p-4 rounded-xl border border-transparent hover:border-[#F4F7FE] hover:bg-[#F4F7FE] transition-all flex items-center justify-between group">
                     <div>
-                        <div class="text-sm font-black text-slate-800 group-hover:text-blue-600">${rt.name}</div>
-                        <div class="text-[10px] text-slate-400 font-bold uppercase">${rt.stops.length} Destinos</div>
+                        <div class="text-sm font-black text-[#1B2559] group-hover:text-indigo-600">${rt.name}</div>
+                        <div class="text-[10px] text-[#A3AED0] font-bold uppercase">${rt.stops.length} Destinos</div>
                     </div>
                     <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-all"></i>
                 </button>
@@ -3336,7 +3334,7 @@
                         let displayContent = '';
                         
                         if (isControl) {
-                            if (idx === 0) labelText = '<span class="text-blue-600">Punto de Partida</span>';
+                            if (idx === 0) labelText = '<span class="text-indigo-600">Punto de Partida</span>';
                             else if (idx === totalStops - 1) labelText = '<span class="text-rose-600">Punto de Llegada</span>';
                             else labelText = '<span class="text-emerald-600">Punto de Control</span>';
                             displayContent = '<i data-lucide="map-pin" class="w-3 h-3"></i>';
@@ -3346,14 +3344,14 @@
                         }
 
                         return `
-                        <div class="stop-item bg-white border border-slate-200 p-4 rounded-xl flex items-center gap-4 cursor-move hover:border-blue-500 hover:shadow-sm transition-all group" data-name="${s.name}">
-                            <div class="w-8 h-8 rounded-lg bg-slate-50 flex items-center justify-center text-[10px] font-black text-slate-400 group-hover:text-blue-600 group-hover:bg-blue-50 transition-all">
+                        <div class="stop-item bg-white border border-[#E0E5F2] p-4 rounded-xl flex items-center gap-4 cursor-move hover:border-blue-500 hover:shadow-sm transition-all group" data-name="${s.name}">
+                            <div class="w-8 h-8 rounded-lg bg-[#F8FAFF] flex items-center justify-center text-[10px] font-black text-[#A3AED0] group-hover:text-indigo-600 group-hover:bg-indigo-50 transition-all">
                                 <span class="group-hover:hidden flex items-center justify-center">${displayContent}</span>
                                 <i data-lucide="more-vertical" class="w-3 h-3 hidden group-hover:block"></i>
                             </div>
                             <div class="flex-1">
-                                <div class="text-sm font-bold text-slate-800">${s.name}</div>
-                                <div class="text-[9px] text-slate-400 uppercase font-black tracking-widest">
+                                <div class="text-sm font-bold text-[#1B2559]">${s.name}</div>
+                                <div class="text-[9px] text-[#A3AED0] uppercase font-black tracking-widest">
                                     ${labelText}
                                 </div>
                             </div>
@@ -3365,7 +3363,7 @@
             
             new Sortable(document.getElementById('sortable-stops'), {
                 animation: 150,
-                ghostClass: 'bg-blue-600/10',
+                ghostClass: 'bg-indigo-600/10',
                 onEnd: () => {
                     const stopElements = document.querySelectorAll('#sortable-stops .stop-item');
                     currentlyEditingRoute.stops = Array.from(stopElements).map((el, idx) => ({
@@ -3437,26 +3435,26 @@
                 <div onclick="openSchoolModal('${c.id}')" class="card-dark p-6 hover:border-blue-500/50 transition-all group cursor-pointer ${selectedSchoolsForDelete.has(c.id) ? 'ring-2 ring-red-300 border-red-300' : ''}">
                     <div class="flex justify-between items-start mb-4">
                         <div class="flex items-center gap-2">
-                            <button type="button" onclick="toggleSchoolSelection('${c.id}', event)" class="w-5 h-5 rounded-md border ${selectedSchoolsForDelete.has(c.id) ? 'bg-red-500 border-red-500 text-white' : 'bg-white border-slate-300 text-transparent'} flex items-center justify-center">
+                            <button type="button" onclick="toggleSchoolSelection('${c.id}', event)" class="w-5 h-5 rounded-md border ${selectedSchoolsForDelete.has(c.id) ? 'bg-red-500 border-red-500 text-white' : 'bg-white border-[#E0E5F2] text-transparent'} flex items-center justify-center">
                                 <i data-lucide="check" class="w-3 h-3"></i>
                             </button>
-                        <div class="w-10 h-10 bg-blue-50 rounded-xl flex items-center justify-center group-hover:bg-blue-100 transition-colors">
-                            <i data-lucide="school" class="text-blue-600 w-5 h-5"></i>
+                        <div class="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
+                            <i data-lucide="school" class="text-indigo-600 w-5 h-5"></i>
                             </div>
                         </div>
-                        <span class="text-[9px] font-black bg-blue-50 text-blue-600 px-2 py-1 rounded uppercase tracking-widest">${c.barrio || c.zone || 'SIN BARRIO'}</span>
+                        <span class="text-[9px] font-black bg-indigo-50 text-indigo-600 px-2 py-1 rounded uppercase tracking-widest">${c.barrio || c.zone || 'SIN BARRIO'}</span>
                     </div>
-                    <h4 class="font-bold text-slate-900 text-sm line-clamp-2 min-h-[40px]">${c.name}</h4>
-                    <p class="text-[11px] text-slate-500 mt-2 truncate"><i data-lucide="map-pin" class="w-3 h-3 inline mr-1"></i>${c.address || 'Sin Dirección'}</p>
+                    <h4 class="font-bold text-[#1B2559] text-sm line-clamp-2 min-h-[40px]">${c.name}</h4>
+                    <p class="text-[11px] text-[#A3AED0] mt-2 truncate"><i data-lucide="map-pin" class="w-3 h-3 inline mr-1"></i>${c.address || 'Sin Dirección'}</p>
                     
-                    <div class="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center text-[11px]">
+                    <div class="mt-6 pt-4 border-t border-[#F4F7FE] flex justify-between items-center text-[11px]">
                          <div class="flex flex-col">
-                            <span class="text-slate-400 font-bold uppercase text-[9px]">Ventana</span>
-                            <span class="text-blue-600 font-black">${c.timeWindowStart} - ${c.timeWindowEnd}</span>
+                            <span class="text-[#A3AED0] font-bold uppercase text-[9px]">Ventana</span>
+                            <span class="text-indigo-600 font-black">${c.timeWindowStart} - ${c.timeWindowEnd}</span>
                          </div>
                          <div class="flex flex-col text-right">
-                            <span class="text-slate-400 font-bold uppercase text-[9px]">Servicio</span>
-                            <span class="text-slate-700 font-black">${c.serviceTime} min</span>
+                            <span class="text-[#A3AED0] font-bold uppercase text-[9px]">Servicio</span>
+                            <span class="text-[#2B3674] font-black">${c.serviceTime} min</span>
                          </div>
                     </div>
                 </div>
@@ -3516,44 +3514,44 @@
             return `
                 <div id="school-edit-content" class="space-y-6">
                     <div>
-                        <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Nombre de la Escuela / Cliente *</label>
+                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Nombre de la Escuela / Cliente *</label>
                         <input type="text" id="edit-school-name" value="${esc(s.name)}" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500" required>
                     </div>
                     <div>
-                        <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Dirección</label>
+                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Dirección</label>
                         <input type="text" id="edit-school-address" value="${esc(s.address)}" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Zona</label>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Zona</label>
                             <input type="text" id="edit-school-zone" value="${esc(s.zone)}" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
                         </div>
                         <div>
-                            <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Barrio / Localidad</label>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Barrio / Localidad</label>
                             <input type="text" id="edit-school-barrio" value="${esc(s.barrio)}" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
                         </div>
                     </div>
                     <div class="grid grid-cols-3 gap-4">
                         <div>
-                            <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Ventana Inicio</label>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Ventana Inicio</label>
                             <input type="time" id="edit-school-start" value="${esc(s.timeWindowStart)}" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
                         </div>
                         <div>
-                            <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Ventana Fin</label>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Ventana Fin</label>
                             <input type="time" id="edit-school-end" value="${esc(s.timeWindowEnd)}" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
                         </div>
                         <div>
-                            <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Servicio (min)</label>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Servicio (min)</label>
                             <input type="number" id="edit-school-service" value="${s.serviceTime != null ? esc(s.serviceTime) : 15}" min="1" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
                         </div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Latitud (GPS)</label>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Latitud (GPS)</label>
                             <input type="text" id="edit-school-lat" value="${s.latitude != null && s.latitude !== '' ? esc(s.latitude) : ''}" placeholder="-34.6037" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
                         </div>
                         <div>
-                            <label class="text-[10px] font-black text-slate-500 uppercase tracking-widest block mb-1">Longitud (GPS)</label>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Longitud (GPS)</label>
                             <input type="text" id="edit-school-lng" value="${s.longitude != null && s.longitude !== '' ? esc(s.longitude) : ''}" placeholder="-58.3816" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
                         </div>
                     </div>
@@ -3676,9 +3674,9 @@
 
             if (filter === 'ALL') {
                 btnAll.className = 'px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg transition-all flex items-center gap-1';
-                btnUndefined.className = 'px-4 py-2 bg-slate-100 text-slate-500 hover:bg-slate-200 text-xs font-bold rounded-lg transition-all flex items-center gap-1';
+                btnUndefined.className = 'px-4 py-2 bg-[#F4F7FE] text-[#A3AED0] hover:bg-[#E8ECF8] text-xs font-bold rounded-lg transition-all flex items-center gap-1';
             } else {
-                btnAll.className = 'px-4 py-2 bg-slate-100 text-slate-500 hover:bg-slate-200 text-xs font-bold rounded-lg transition-all flex items-center gap-1';
+                btnAll.className = 'px-4 py-2 bg-[#F4F7FE] text-[#A3AED0] hover:bg-[#E8ECF8] text-xs font-bold rounded-lg transition-all flex items-center gap-1';
                 btnUndefined.className = 'px-4 py-2 bg-amber-500 text-white text-xs font-bold rounded-lg shadow-sm shadow-amber-500/30 transition-all flex items-center gap-1';
             }
             filterSchools();
@@ -3738,27 +3736,27 @@
                 const data = await res.json();
                 const body = document.getElementById('cost-history-table-body');
                 body.innerHTML = data.map(t => `
-                    <tr class="hover:bg-slate-50 transition-colors">
-                        <td class="font-bold text-slate-800">#${t.id}</td>
-                        <td class="text-xs text-slate-500">${new Date(t.date).toLocaleDateString()}</td>
+                    <tr class="hover:bg-[#F4F7FE] transition-colors">
+                        <td class="font-bold text-[#1B2559]">#${t.id}</td>
+                        <td class="text-xs text-[#A3AED0]">${new Date(t.date).toLocaleDateString()}</td>
                         <td>
-                            <div class="font-bold text-slate-900">${t.driver || 'N/A'}</div>
-                            <div class="text-[10px] text-slate-400 uppercase font-black">${t.provider || 'R14 LOG'}</div>
+                            <div class="font-bold text-[#1B2559]">${t.driver || 'N/A'}</div>
+                            <div class="text-[10px] text-[#A3AED0] uppercase font-black">${t.provider || 'R14 LOG'}</div>
                         </td>
                         <td>
-                            <div class="text-xs font-bold text-slate-500">${t.zone || '--'}</div>
-                            <div class="text-[10px] text-blue-600 font-bold uppercase">${t.businessUnit || 'REPARTO'}</div>
+                            <div class="text-xs font-bold text-[#A3AED0]">${t.zone || '--'}</div>
+                            <div class="text-[10px] text-indigo-600 font-bold uppercase">${t.businessUnit || 'REPARTO'}</div>
                         </td>
-                        <td class="font-black text-blue-600">$${(Number(t.value || 0)).toLocaleString()}</td>
+                        <td class="font-black text-indigo-600">$${(Number(t.value || 0)).toLocaleString()}</td>
                         <td>
-                            <span class="status-badge ${t.paymentStatus === 'PAID' ? 'bg-blue-100 text-blue-700' : 'bg-red-100 text-red-700'}">
+                            <span class="status-badge ${t.paymentStatus === 'PAID' ? 'bg-indigo-100 text-blue-700' : 'bg-red-100 text-red-700'}">
                                 ${t.paymentStatus || 'PENDIENTE'}
                             </span>
                         </td>
                         <td class="text-xs font-medium">${t.paymentDate ? new Date(t.paymentDate).toLocaleDateString() : '--'}</td>
-                        <td class="max-w-xs truncate text-xs italic text-slate-500">${t.observations || ''}</td>
+                        <td class="max-w-xs truncate text-xs italic text-[#A3AED0]">${t.observations || ''}</td>
                         <td class="px-8 text-right">
-                             <button class="text-slate-600 hover:text-white transition-all"><i data-lucide="printer" class="w-4 h-4"></i></button>
+                             <button class="text-[#2B3674] hover:text-white transition-all"><i data-lucide="printer" class="w-4 h-4"></i></button>
                         </td>
                     </tr>
                 `).join('');
@@ -3807,9 +3805,9 @@
             const dur = formatRouteRealDuration(t);
             const st = t.routeExecutionStatus === 'IN_PROGRESS' ? 'En curso' : t.routeActualEnd ? 'Fin' : t.routeActualStart ? 'Sin cerrar' : 'Sin iniciar';
             return `
-                <div class="text-[11px] font-bold text-slate-700">${rs} → ${re}</div>
+                <div class="text-[11px] font-bold text-[#2B3674]">${rs} → ${re}</div>
                 <div class="text-[10px] text-emerald-700 font-black">REAL ${dur}</div>
-                <div class="text-[9px] text-slate-400 font-bold uppercase">${st}</div>
+                <div class="text-[9px] text-[#A3AED0] font-bold uppercase">${st}</div>
             `;
         }
 
@@ -4046,7 +4044,7 @@
 
         async function loadWeeklyTripStopsBuffer(tripId) {
             const wrap = document.getElementById('weekly-stops-wrap-' + tripId);
-            if (wrap) wrap.innerHTML = '<p class="text-xs text-slate-500 py-2">Cargando puntos de ruta…</p>';
+            if (wrap) wrap.innerHTML = '<p class="text-xs text-[#A3AED0] py-2">Cargando puntos de ruta…</p>';
             const trip = getWeeklyTripById(tripId);
             const reparto = trip ? String(trip.tripType || trip.reparto || '').trim() : '';
             try {
@@ -4219,7 +4217,7 @@
             const rows = weeklyTripStopsBuffers[tripId] || [];
             wrap.innerHTML = `
                 <div class="flex flex-wrap items-center gap-2 mb-3">
-                    <span class="text-[10px] font-black uppercase tracking-wider text-slate-500">Puntos (${rows.length}) · orden de visita</span>
+                    <span class="text-[10px] font-black uppercase tracking-wider text-[#A3AED0]">Puntos (${rows.length}) · orden de visita</span>
                     <button type="button" onclick="weeklyStopsSave(${tripId})" class="text-[10px] font-black uppercase bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700">Guardar</button>
                     <button type="button" onclick="weeklyStopsFromTemplate(${tripId})" class="text-[10px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-1.5 rounded-lg hover:bg-indigo-100">Desde plantilla</button>
                 </div>
@@ -4227,9 +4225,9 @@
                     ${rows
                         .map(
                             (row, i) => `
-                        <li draggable="true" data-idx="${i}" class="weekly-stop-item flex items-center gap-2 bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 cursor-grab shadow-sm">
+                        <li draggable="true" data-idx="${i}" class="weekly-stop-item flex items-center gap-2 bg-white border border-[#E0E5F2] rounded-xl px-3 py-2 text-sm font-bold text-[#2B3674] cursor-grab shadow-sm">
                             <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-300 shrink-0"></i>
-                            <span class="text-slate-400 text-xs w-5">${i + 1}</span>
+                            <span class="text-[#A3AED0] text-xs w-5">${i + 1}</span>
                             <span class="flex-1 min-w-0 truncate" title="${escapeHtmlWeekly(row.address || '')}">${escapeHtmlWeekly(row.name)}</span>
                             <button type="button" onclick="weeklyStopsRemove(${tripId},${i})" class="text-rose-500 font-bold px-2 py-0.5 rounded-lg hover:bg-rose-50 shrink-0" title="Quitar">✕</button>
                         </li>
@@ -4239,10 +4237,10 @@
                 </ul>
                 ${
                     rows.length === 0
-                        ? '<p class="text-[11px] text-slate-400 py-2">Sin paradas. Agregá desde el desplegable o «Desde plantilla».</p>'
+                        ? '<p class="text-[11px] text-[#A3AED0] py-2">Sin paradas. Agregá desde el desplegable o «Desde plantilla».</p>'
                         : ''
                 }
-                <select id="weekly-stops-add-${tripId}" onchange="weeklyStopsOnAdd(${tripId})" class="mt-3 w-full max-w-md bg-white border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-700"></select>
+                <select id="weekly-stops-add-${tripId}" onchange="weeklyStopsOnAdd(${tripId})" class="mt-3 w-full max-w-md bg-white border border-[#E0E5F2] rounded-xl px-3 py-2 text-sm font-bold text-[#2B3674]"></select>
             `;
             weeklyStopsBindDrag(tripId);
             weeklyStopsPopulateAddSelect(tripId);
@@ -4259,28 +4257,28 @@
                 const cost = isPropio ? getTripCalculatedCost(t) : (Number(t.value) || 0);
                 
                 return `
-                    <tr class="hover:bg-slate-50 transition-colors group">
-                        <td class="sticky-col font-bold text-slate-800">
+                    <tr class="hover:bg-[#F4F7FE] transition-colors group">
+                        <td class="sticky-col font-bold text-[#1B2559]">
                            <div class="flex items-start gap-1">
-                                <button type="button" class="p-1 rounded-lg text-slate-400 hover:text-indigo-600 hover:bg-slate-100 shrink-0 mt-0.5" onclick="event.stopPropagation(); toggleWeeklyTripStopsRow(${t.id})" title="Ver u ocultar puntos de ruta">
+                                <button type="button" class="p-1 rounded-lg text-[#A3AED0] hover:text-indigo-600 hover:bg-[#E8ECF8] shrink-0 mt-0.5" onclick="event.stopPropagation(); toggleWeeklyTripStopsRow(${t.id})" title="Ver u ocultar puntos de ruta">
                                     <i data-lucide="chevron-down" id="weekly-chev-${t.id}" class="w-4 h-4 transition-transform duration-200"></i>
                                 </button>
                                 <div>
                            <div class="text-[13px]">#${t.id}</div>
-                           <div class="text-[10px] text-slate-400 uppercase font-black">${new Date(t.date).toLocaleDateString()}</div>
+                           <div class="text-[10px] text-[#A3AED0] uppercase font-black">${new Date(t.date).toLocaleDateString()}</div>
                                 </div>
                            </div>
                         </td>
                         <td>
-                            <div class="font-bold text-slate-700">${t.zone || 'BS AS'}</div>
-                            <div class="text-[10px] text-slate-400 font-bold uppercase">${getLocalidadFromZone(t.zone)}</div>
+                            <div class="font-bold text-[#2B3674]">${t.zone || 'BS AS'}</div>
+                            <div class="text-[10px] text-[#A3AED0] font-bold uppercase">${getLocalidadFromZone(t.zone)}</div>
                         </td>
-                        <td class="font-bold text-slate-900">${t.driver || 'N/A'}</td>
-                        <td class="text-slate-500">
-                            <div class="text-[11px] font-bold text-slate-700">${t.auxiliar || '--'}</div>
-                            ${(t.auxiliar2 || t.auxiliar3) ? `<div class="text-[9px] text-slate-400 font-bold">${[t.auxiliar2, t.auxiliar3].filter(Boolean).join(', ')}</div>` : ''}
+                        <td class="font-bold text-[#1B2559]">${t.driver || 'N/A'}</td>
+                        <td class="text-[#A3AED0]">
+                            <div class="text-[11px] font-bold text-[#2B3674]">${t.auxiliar || '--'}</div>
+                            ${(t.auxiliar2 || t.auxiliar3) ? `<div class="text-[9px] text-[#A3AED0] font-bold">${[t.auxiliar2, t.auxiliar3].filter(Boolean).join(', ')}</div>` : ''}
                         </td>
-                        <td class="font-bold text-slate-700">${t.tripType || t.reparto || '--'}</td>
+                        <td class="font-bold text-[#2B3674]">${t.tripType || t.reparto || '--'}</td>
                         <td><div class="text-[10px] text-orange-600 font-bold uppercase">${formatBusinessUnit(t.businessUnit)}</div></td>
                         <td>
                             <span class="status-badge ${isPropio ? 'bg-indigo-100 text-indigo-600' : 'bg-purple-100 text-purple-600'}">
@@ -4288,24 +4286,24 @@
                             </span>
                         </td>
                         <td class="text-center">
-                            <span class="status-badge ${isPropio ? 'bg-slate-100 text-slate-600' : 'bg-slate-50 text-slate-400'} text-[10px]" title="Vuelta del día para costo propio (auxiliar jornal)">
+                            <span class="status-badge ${isPropio ? 'bg-[#F4F7FE] text-[#2B3674]' : 'bg-[#F8FAFF] text-[#A3AED0]'} text-[10px]" title="Vuelta del día para costo propio (auxiliar jornal)">
                                 ${formatVueltaLabel(t)}
                             </span>
                         </td>
                         <td>
-                            <div class="text-[10px] text-slate-400 font-bold uppercase">${t.vehicleType || 'VANS'}</div>
+                            <div class="text-[10px] text-[#A3AED0] font-bold uppercase">${t.vehicleType || 'VANS'}</div>
                         </td>
                         <td class="text-xs font-black ${isPropio ? 'text-indigo-600' : 'text-purple-600'}">
                             $ ${cost.toLocaleString('es-AR')}
                         </td>
-                        <td class="font-bold text-blue-600">${resolveTripPlate(t)}</td>
-                        <td class="text-xs font-medium text-slate-500">${t.provider || 'R14 LOG'}</td>
+                        <td class="font-bold text-indigo-600">${resolveTripPlate(t)}</td>
+                        <td class="text-xs font-medium text-[#A3AED0]">${t.provider || 'R14 LOG'}</td>
                         <td>
-                            <div class="text-xs font-bold text-slate-600">
+                            <div class="text-xs font-bold text-[#2B3674]">
                                 ${t.exitTime ? new Date(t.exitTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--'} a 
                                 ${t.returnTime ? new Date(t.returnTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--'}
                             </div>
-                            <div class="text-[10px] text-slate-400 font-black">Plan: ${formatTripDuration(t)}</div>
+                            <div class="text-[10px] text-[#A3AED0] font-black">Plan: ${formatTripDuration(t)}</div>
                         </td>
                         <td class="align-top">${formatRouteRealCell(t)}</td>
                         <td>
@@ -4318,15 +4316,15 @@
                                 <button type="button" onclick="openEditTripModal(${t.id})" class="p-2 text-slate-300 hover:text-indigo-600 transition-all" title="Editar viaje"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
                                 <div class="flex gap-1 justify-center">
                                     <button type="button" onclick="operatorTripRecorrido(${t.id},'start')" class="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100" title="Iniciar viaje (operador)"><i data-lucide="play" class="w-3.5 h-3.5"></i></button>
-                                    <button type="button" onclick="operatorTripRecorrido(${t.id},'end')" class="p-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200" title="Finalizar viaje (operador)"><i data-lucide="square" class="w-3.5 h-3.5"></i></button>
+                                    <button type="button" onclick="operatorTripRecorrido(${t.id},'end')" class="p-1.5 rounded-lg bg-[#F4F7FE] text-[#2B3674] hover:bg-[#E8ECF8]" title="Finalizar viaje (operador)"><i data-lucide="square" class="w-3.5 h-3.5"></i></button>
                                 </div>
                             </div>
                         </td>
                     </tr>
-                    <tr id="weekly-detail-${t.id}" class="hidden bg-slate-50/90">
-                        <td colspan="16" class="p-0 border-b border-slate-200 align-top">
+                    <tr id="weekly-detail-${t.id}" class="hidden bg-[#F8FAFF]/90">
+                        <td colspan="16" class="p-0 border-b border-[#E0E5F2] align-top">
                             <div id="weekly-stops-wrap-${t.id}" class="px-4 py-3 sm:px-6 sm:py-4">
-                                <p class="text-[11px] text-slate-500">Usá la flecha para cargar los puntos.</p>
+                                <p class="text-[11px] text-[#A3AED0]">Usá la flecha para cargar los puntos.</p>
                             </div>
                         </td>
                     </tr>
@@ -4365,7 +4363,7 @@
             
             if (matches.length > 0) {
                 results.innerHTML = matches.map(m => `
-                    <div onclick="selectAutocomplete('manual-driver', '${m}', 'driver-results')" class="p-3 hover:bg-slate-50 cursor-pointer text-sm border-b border-slate-50">${m}</div>
+                    <div onclick="selectAutocomplete('manual-driver', '${m}', 'driver-results')" class="p-3 hover:bg-[#F4F7FE] cursor-pointer text-sm border-b border-[#F4F7FE]">${m}</div>
                 `).join('');
                 results.classList.remove('hidden');
             } else { results.classList.add('hidden'); }
@@ -4379,8 +4377,8 @@
             const matches = allVehicles.filter(v => v.plate.toLowerCase().includes(query));
             if (matches.length > 0) {
                 results.innerHTML = matches.map(m => `
-                    <div onclick="selectAutocomplete('manual-vehicle', '${m.plate}', 'vehicle-results')" class="p-3 hover:bg-slate-50 cursor-pointer text-sm border-b border-slate-50">
-                        <span class="font-bold">${m.plate}</span> <span class="text-slate-400 text-[10px] ml-2">${m.vType}</span>
+                    <div onclick="selectAutocomplete('manual-vehicle', '${m.plate}', 'vehicle-results')" class="p-3 hover:bg-[#F4F7FE] cursor-pointer text-sm border-b border-[#F4F7FE]">
+                        <span class="font-bold">${m.plate}</span> <span class="text-[#A3AED0] text-[10px] ml-2">${m.vType}</span>
                     </div>
                 `).join('');
                 results.classList.remove('hidden');
@@ -4461,11 +4459,11 @@
             // Estética de botones
             document.querySelectorAll('#view-weekly button').forEach(btn => {
                 if (btn.innerText.includes(filter) || (filter === 'ALL' && btn.innerText === 'Todos')) {
-                    btn.classList.add('bg-blue-600', 'text-white');
-                    btn.classList.remove('bg-white', 'text-slate-600', 'border-slate-200');
+                    btn.classList.add('bg-indigo-600', 'text-white');
+                    btn.classList.remove('bg-white', 'text-[#2B3674]', 'border-[#E0E5F2]');
                 } else if (btn.onclick && btn.onclick.toString().includes('setGridFilter')) {
-                    btn.classList.remove('bg-blue-600', 'text-white');
-                    btn.classList.add('bg-white', 'text-slate-600', 'border-slate-200');
+                    btn.classList.remove('bg-indigo-600', 'text-white');
+                    btn.classList.add('bg-white', 'text-[#2B3674]', 'border-[#E0E5F2]');
                 }
             });
             filterWeeklyData();
@@ -4582,13 +4580,13 @@
             });
             
             list.innerHTML = filtered.map(s => `
-                <div onclick="toggleVrpSchool('${s.id}')" class="flex items-center gap-3 p-2 hover:bg-slate-50 rounded-lg cursor-pointer transition-all ${selectedSchoolsForVrp.has(s.id) ? 'bg-blue-50 border-blue-200' : ''}">
-                    <div class="w-4 h-4 rounded border border-slate-300 flex items-center justify-center ${selectedSchoolsForVrp.has(s.id) ? 'bg-blue-600 border-blue-600' : 'bg-white'}">
+                <div onclick="toggleVrpSchool('${s.id}')" class="flex items-center gap-3 p-2 hover:bg-[#F4F7FE] rounded-lg cursor-pointer transition-all ${selectedSchoolsForVrp.has(s.id) ? 'bg-indigo-50 border-blue-200' : ''}">
+                    <div class="w-4 h-4 rounded border border-[#E0E5F2] flex items-center justify-center ${selectedSchoolsForVrp.has(s.id) ? 'bg-indigo-600 border-blue-600' : 'bg-white'}">
                         ${selectedSchoolsForVrp.has(s.id) ? '<i data-lucide="check" class="text-white w-3 h-3"></i>' : ''}
                     </div>
                     <div class="flex-1">
-                        <p class="text-[11px] font-bold text-slate-800">${s.name}</p>
-                        <p class="text-[9px] text-slate-500">${s.barrio || s.zone || 'GBA'}</p>
+                        <p class="text-[11px] font-bold text-[#1B2559]">${s.name}</p>
+                        <p class="text-[9px] text-[#A3AED0]">${s.barrio || s.zone || 'GBA'}</p>
                     </div>
                 </div>
             `).join('');
@@ -4672,7 +4670,7 @@
             const m = vrpMarkersByClientId.get(id);
             if (m) {
                 vrpOpenInfoWindow(
-                    `<div class="p-2"><p class="font-bold text-slate-800 text-sm">${vrpEscapeHtml(client.name)}</p><p class="text-xs text-slate-500">${vrpEscapeHtml(client.address || '')}</p><p class="text-[10px] text-indigo-600 font-bold mt-1">Parada ${idx + 1} de ${n}</p></div>`,
+                    `<div class="p-2"><p class="font-bold text-[#1B2559] text-sm">${vrpEscapeHtml(client.name)}</p><p class="text-xs text-[#A3AED0]">${vrpEscapeHtml(client.address || '')}</p><p class="text-[10px] text-indigo-600 font-bold mt-1">Parada ${idx + 1} de ${n}</p></div>`,
                     m
                 );
             }
@@ -4700,7 +4698,7 @@
 
             if (currentVrpSequence.length === 0) {
                 vrpRouteTourIndex = -1;
-                container.innerHTML = '<div class="text-center py-8 text-slate-400 text-xs italic">No hay paradas seleccionadas</div>';
+                container.innerHTML = '<div class="text-center py-8 text-[#A3AED0] text-xs italic">No hay paradas seleccionadas</div>';
                 vrpUpdateRouteTourUi();
                 if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
                 return;
@@ -4713,17 +4711,17 @@
                 const s = allSchools.find(school => school.id === id);
                 if (!s) return '';
                 return `
-                    <div class="bg-white border border-slate-100 p-2 rounded-xl flex items-center gap-2 group hover:border-blue-200 transition-all">
+                    <div class="bg-white border border-[#F4F7FE] p-2 rounded-xl flex items-center gap-2 group hover:border-blue-200 transition-all">
                         <div class="w-5 h-5 rounded-full bg-slate-900 flex items-center justify-center text-[10px] font-black text-white shrink-0">${idx + 1}</div>
                         <div class="flex-1 min-w-0">
-                            <p class="text-[11px] font-bold text-slate-800 truncate">${s.name}</p>
-                            <p class="text-[9px] text-slate-400 truncate">${s.barrio || s.zone || 'GBA'}</p>
+                            <p class="text-[11px] font-bold text-[#1B2559] truncate">${s.name}</p>
+                            <p class="text-[9px] text-[#A3AED0] truncate">${s.barrio || s.zone || 'GBA'}</p>
                         </div>
                         <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onclick="moveVrpStop(${idx}, -1)" class="p-1 text-slate-400 hover:text-blue-500" ${idx === 0 ? 'disabled' : ''}>
+                            <button onclick="moveVrpStop(${idx}, -1)" class="p-1 text-[#A3AED0] hover:text-blue-500" ${idx === 0 ? 'disabled' : ''}>
                                 <i data-lucide="chevron-up" class="w-3.5 h-3.5"></i>
                             </button>
-                            <button onclick="moveVrpStop(${idx}, 1)" class="p-1 text-slate-400 hover:text-blue-500" ${idx === currentVrpSequence.length - 1 ? 'disabled' : ''}>
+                            <button onclick="moveVrpStop(${idx}, 1)" class="p-1 text-[#A3AED0] hover:text-blue-500" ${idx === currentVrpSequence.length - 1 ? 'disabled' : ''}>
                                 <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
                             </button>
                             <button onclick="toggleVrpSchool('${s.id}')" class="p-1.5 text-slate-300 hover:text-red-500 transition-colors">
@@ -5140,13 +5138,13 @@
                 const stepsList = document.getElementById('vrp-steps-list');
 
                 const trafficInfoHTML = `
-                    <div class="mb-4 p-3 bg-blue-50 border border-blue-100 rounded-xl flex items-center gap-3">
-                        <div class="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center text-blue-600">
+                    <div class="mb-4 p-3 bg-indigo-50 border border-blue-100 rounded-xl flex items-center gap-3">
+                        <div class="w-8 h-8 bg-indigo-100 rounded-full flex items-center justify-center text-indigo-600">
                             <i data-lucide="info" class="w-4 h-4"></i>
                         </div>
                         <div class="flex-1">
                             <p class="text-[10px] font-black text-blue-800 uppercase tracking-widest">Inteligencia de Tráfico</p>
-                            <p class="text-xs font-bold text-blue-600">${trafficStatus} (Factor x${trafficFactor.toFixed(2)})</p>
+                            <p class="text-xs font-bold text-indigo-600">${trafficStatus} (Factor x${trafficFactor.toFixed(2)})</p>
                         </div>
                     </div>
                 `;
@@ -5156,22 +5154,22 @@
                     const leg = legs[i] || { duration: 0, distance: 0 };
                     return `
                         <div class="space-y-2">
-                            <div class="flex items-center justify-between ml-4 border-l-2 border-dashed border-slate-200 pl-4 py-1">
+                            <div class="flex items-center justify-between ml-4 border-l-2 border-dashed border-[#E0E5F2] pl-4 py-1">
                                 <div class="flex items-center gap-2">
-                                    <i data-lucide="clock" class="w-3 h-3 text-slate-400"></i>
+                                    <i data-lucide="clock" class="w-3 h-3 text-[#A3AED0]"></i>
                                     <span class="text-[10px] font-black text-blue-500 uppercase">${formatDuration(leg.duration)}</span>
                                 </div>
                                 <div class="flex items-center gap-2 pr-4">
-                                    <i data-lucide="map" class="w-3 h-3 text-slate-400"></i>
-                                    <span class="text-[10px] font-black text-slate-500 uppercase">${(leg.distance/1000).toFixed(1)} km</span>
+                                    <i data-lucide="map" class="w-3 h-3 text-[#A3AED0]"></i>
+                                    <span class="text-[10px] font-black text-[#A3AED0] uppercase">${(leg.distance/1000).toFixed(1)} km</span>
                                 </div>
                             </div>
-                            <div class="bg-white p-3 rounded-xl border border-slate-100 flex items-center gap-3 shadow-sm hover:border-blue-200 transition-all">
-                                <div onclick="highlightVrpStop('${s.id}')" class="w-6 h-6 rounded-full bg-slate-900 flex items-center justify-center text-[10px] font-black text-white cursor-pointer hover:bg-blue-600 hover:scale-110 transition-all shadow-lg active:scale-95">
+                            <div class="bg-white p-3 rounded-xl border border-[#F4F7FE] flex items-center gap-3 shadow-sm hover:border-blue-200 transition-all">
+                                <div onclick="highlightVrpStop('${s.id}')" class="w-6 h-6 rounded-full bg-slate-900 flex items-center justify-center text-[10px] font-black text-white cursor-pointer hover:bg-indigo-600 hover:scale-110 transition-all shadow-lg active:scale-95">
                                     ${i+1}
                                 </div>
                                 <div class="flex-1">
-                                    <p class="text-xs font-bold text-slate-800">${s.name}</p>
+                                    <p class="text-xs font-bold text-[#1B2559]">${s.name}</p>
                                     <p class="text-[9px] text-emerald-600 uppercase font-bold">Llegada aprox: ${new Date(Date.now() + (legs.slice(0,i+1).reduce((a,b)=>a+b.duration,0) * trafficFactor * 1000)).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}</p>
                                 </div>
                             </div>
@@ -5182,27 +5180,27 @@
                 const lastLeg = legs[legs.length - 1] || { duration: 0, distance: 0 };
 
                 stepsList.innerHTML = trafficInfoHTML + `
-                    <div class="bg-blue-600 p-3 rounded-xl flex items-center gap-3 text-white shadow-lg mb-4">
+                    <div class="bg-indigo-600 p-3 rounded-xl flex items-center gap-3 text-white shadow-lg mb-4">
                         <i data-lucide="map-pin" class="w-4 h-4"></i>
                         <div class="flex-1"><p class="text-[10px] uppercase font-black opacity-70">Salida</p><p class="text-xs font-bold">${origin.name}</p></div>
                     </div>
                     ${stepsHTML}
-                    <div class="flex items-center justify-between ml-4 border-l-2 border-dashed border-slate-200 pl-4 py-1">
+                    <div class="flex items-center justify-between ml-4 border-l-2 border-dashed border-[#E0E5F2] pl-4 py-1">
                          <div class="flex items-center gap-2">
-                             <i data-lucide="clock" class="w-3 h-3 text-slate-400"></i>
+                             <i data-lucide="clock" class="w-3 h-3 text-[#A3AED0]"></i>
                              <span class="text-[10px] font-black text-blue-500 uppercase">Retorno: ${formatDuration(lastLeg.duration)}</span>
                          </div>
                          <div class="flex items-center gap-2 pr-4">
-                             <i data-lucide="map" class="w-3 h-3 text-slate-400"></i>
-                             <span class="text-[10px] font-black text-slate-500 uppercase">${(lastLeg.distance/1000).toFixed(1)} km</span>
+                             <i data-lucide="map" class="w-3 h-3 text-[#A3AED0]"></i>
+                             <span class="text-[10px] font-black text-[#A3AED0] uppercase">${(lastLeg.distance/1000).toFixed(1)} km</span>
                          </div>
                     </div>
-                    <div class="bg-slate-100 p-3 rounded-xl border border-slate-200 flex items-center gap-3 opacity-60 mb-4">
-                        <i data-lucide="home" class="w-4 h-4 text-slate-500"></i>
-                        <div class="flex-1 text-xs font-bold text-slate-600">Fin en Origen</div>
+                    <div class="bg-[#F4F7FE] p-3 rounded-xl border border-[#E0E5F2] flex items-center gap-3 opacity-60 mb-4">
+                        <i data-lucide="home" class="w-4 h-4 text-[#A3AED0]"></i>
+                        <div class="flex-1 text-xs font-bold text-[#2B3674]">Fin en Origen</div>
                     </div>
                     
-                    <button onclick="openInGoogleMaps()" class="w-full bg-white border-2 border-slate-200 py-3 rounded-xl font-black text-[10px] text-slate-600 flex items-center justify-center gap-2 hover:bg-slate-50 transition-all shadow-sm mb-6 uppercase tracking-widest">
+                    <button onclick="openInGoogleMaps()" class="w-full bg-white border-2 border-[#E0E5F2] py-3 rounded-xl font-black text-[10px] text-[#2B3674] flex items-center justify-center gap-2 hover:bg-[#F4F7FE] transition-all shadow-sm mb-6 uppercase tracking-widest">
                         <img src="https://upload.wikimedia.org/wikipedia/commons/3/39/Google_Maps_icon_%282020%29.svg" class="w-4 h-4" />
                         Abrir Ruta en Google Maps
                     </button>
@@ -5430,7 +5428,7 @@
                 });
                 marker.addListener('click', () => {
                     vrpOpenInfoWindow(
-                        `<div class="p-2"><p class="font-bold text-slate-800 text-sm">${vrpEscapeHtml(c.name)}</p><p class="text-xs text-slate-500">${vrpEscapeHtml(c.address || '')}</p></div>`,
+                        `<div class="p-2"><p class="font-bold text-[#1B2559] text-sm">${vrpEscapeHtml(c.name)}</p><p class="text-xs text-[#A3AED0]">${vrpEscapeHtml(c.address || '')}</p></div>`,
                         marker
                     );
                     if (document.getElementById('vrp-zoom-on-select')?.checked) {
@@ -5464,7 +5462,7 @@
             if (!el) return;
             const apiKey = getGoogleMapsKey();
             if (!apiKey) {
-                el.innerHTML = '<div class="flex items-center justify-center h-full text-slate-500 text-sm p-8 text-center leading-relaxed">Configurá la API key de Google Maps (misma que en Torre de control: menú de ajustes o variable en el servidor).</div>';
+                el.innerHTML = '<div class="flex items-center justify-center h-full text-[#A3AED0] text-sm p-8 text-center leading-relaxed">Configurá la API key de Google Maps (misma que en Torre de control: menú de ajustes o variable en el servidor).</div>';
                 return;
             }
             try {
@@ -5514,20 +5512,20 @@
 
             if (trafficEnabled) {
                 vrpGoogleTrafficLayer.setMap(vrpMap);
-                btn.classList.add('bg-blue-600', 'text-white');
-                btn.classList.remove('bg-white/95', 'text-slate-600');
+                btn.classList.add('bg-indigo-600', 'text-white');
+                btn.classList.remove('bg-white/95', 'text-[#2B3674]');
                 status.innerText = 'Activo';
-                status.classList.add('text-blue-600');
+                status.classList.add('text-indigo-600');
                 indicator.classList.remove('bg-slate-200');
-                indicator.classList.add('bg-blue-600', 'animate-pulse');
+                indicator.classList.add('bg-indigo-600', 'animate-pulse');
                 addNotification('info', 'Tráfico', 'Capa de tráfico de Google Maps activa.');
             } else {
                 vrpGoogleTrafficLayer.setMap(null);
-                btn.classList.remove('bg-blue-600', 'text-white');
-                btn.classList.add('bg-white/95', 'text-slate-600');
+                btn.classList.remove('bg-indigo-600', 'text-white');
+                btn.classList.add('bg-white/95', 'text-[#2B3674]');
                 status.innerText = 'Inactivo';
-                status.classList.remove('text-blue-600');
-                indicator.classList.remove('bg-blue-600', 'animate-pulse');
+                status.classList.remove('text-indigo-600');
+                indicator.classList.remove('bg-indigo-600', 'animate-pulse');
                 indicator.classList.add('bg-slate-200');
             }
         }
@@ -5553,7 +5551,7 @@
                     zIndex: 300
                 });
                 m.addListener('click', () => {
-                    vrpOpenInfoWindow(`<div class="p-2 font-bold text-slate-800 text-xs">${vrpEscapeHtml(d.name)}</div>`, m);
+                    vrpOpenInfoWindow(`<div class="p-2 font-bold text-[#1B2559] text-xs">${vrpEscapeHtml(d.name)}</div>`, m);
                 });
                 vrpDepositMarkers.push(m);
             });
@@ -5941,20 +5939,20 @@
             );
             const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
             body.innerHTML = filtered.map(v => `
-                <tr class="${selectedMaintenancePlate === v.plate ? 'bg-blue-50' : 'hover:bg-slate-50'}">
-                    <td class="px-4 py-2 font-black text-slate-800">${esc(v.plate)}</td>
-                    <td class="px-4 py-2"><input type="text" value="${esc(v.driverName)}" oninput="updateMaintenanceVehicleField('${v.plate}','driverName',this.value)" class="w-40 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1"></td>
-                    <td class="px-4 py-2"><input type="text" value="${esc(v.brand)}" oninput="updateMaintenanceVehicleField('${v.plate}','brand',this.value)" class="w-28 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1"></td>
-                    <td class="px-4 py-2"><input type="text" value="${esc(v.model)}" oninput="updateMaintenanceVehicleField('${v.plate}','model',this.value)" class="w-32 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1"></td>
-                    <td class="px-4 py-2"><input type="number" value="${esc(v.year)}" oninput="updateMaintenanceVehicleField('${v.plate}','year',this.value)" class="w-20 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1"></td>
-                    <td class="px-4 py-2"><input type="date" value="${esc((v.vtv || '').split('T')[0])}" oninput="updateMaintenanceVehicleField('${v.plate}','vtv',this.value)" class="w-36 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1"></td>
-                    <td class="px-4 py-2"><input type="text" value="${esc(v.bromatologia)}" oninput="updateMaintenanceVehicleField('${v.plate}','bromatologia',this.value)" class="w-36 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1"></td>
-                    <td class="px-4 py-2"><input type="date" value="${esc((v.senasa || '').split('T')[0])}" oninput="updateMaintenanceVehicleField('${v.plate}','senasa',this.value)" class="w-36 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1"></td>
-                    <td class="px-4 py-2"><input type="date" value="${esc((v.driverLicenseExpiry || '').split('T')[0])}" oninput="updateMaintenanceVehicleField('${v.plate}','driverLicenseExpiry',this.value)" class="w-36 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1"></td>
-                    <td class="px-4 py-2"><input type="text" value="${esc(v.motor)}" oninput="updateMaintenanceVehicleField('${v.plate}','motor',this.value)" class="w-28 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1"></td>
-                    <td class="px-4 py-2"><input type="text" value="${esc(v.chasis)}" oninput="updateMaintenanceVehicleField('${v.plate}','chasis',this.value)" class="w-28 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1"></td>
+                <tr class="${selectedMaintenancePlate === v.plate ? 'bg-indigo-50' : 'hover:bg-[#F4F7FE]'}">
+                    <td class="px-4 py-2 font-black text-[#1B2559]">${esc(v.plate)}</td>
+                    <td class="px-4 py-2"><input type="text" value="${esc(v.driverName)}" oninput="updateMaintenanceVehicleField('${v.plate}','driverName',this.value)" class="w-40 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
+                    <td class="px-4 py-2"><input type="text" value="${esc(v.brand)}" oninput="updateMaintenanceVehicleField('${v.plate}','brand',this.value)" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
+                    <td class="px-4 py-2"><input type="text" value="${esc(v.model)}" oninput="updateMaintenanceVehicleField('${v.plate}','model',this.value)" class="w-32 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
+                    <td class="px-4 py-2"><input type="number" value="${esc(v.year)}" oninput="updateMaintenanceVehicleField('${v.plate}','year',this.value)" class="w-20 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
+                    <td class="px-4 py-2"><input type="date" value="${esc((v.vtv || '').split('T')[0])}" oninput="updateMaintenanceVehicleField('${v.plate}','vtv',this.value)" class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
+                    <td class="px-4 py-2"><input type="text" value="${esc(v.bromatologia)}" oninput="updateMaintenanceVehicleField('${v.plate}','bromatologia',this.value)" class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
+                    <td class="px-4 py-2"><input type="date" value="${esc((v.senasa || '').split('T')[0])}" oninput="updateMaintenanceVehicleField('${v.plate}','senasa',this.value)" class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
+                    <td class="px-4 py-2"><input type="date" value="${esc((v.driverLicenseExpiry || '').split('T')[0])}" oninput="updateMaintenanceVehicleField('${v.plate}','driverLicenseExpiry',this.value)" class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
+                    <td class="px-4 py-2"><input type="text" value="${esc(v.motor)}" oninput="updateMaintenanceVehicleField('${v.plate}','motor',this.value)" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
+                    <td class="px-4 py-2"><input type="text" value="${esc(v.chasis)}" oninput="updateMaintenanceVehicleField('${v.plate}','chasis',this.value)" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
                     <td class="px-4 py-2 text-right">
-                        <button onclick="selectMaintenanceVehicle('${v.plate}')" class="p-2 rounded-lg ${selectedMaintenancePlate === v.plate ? 'bg-blue-600 text-white' : 'bg-slate-100 text-blue-600 hover:bg-blue-50'} mr-1"><i data-lucide="list" class="w-4 h-4"></i></button>
+                        <button onclick="selectMaintenanceVehicle('${v.plate}')" class="p-2 rounded-lg ${selectedMaintenancePlate === v.plate ? 'bg-indigo-600 text-white' : 'bg-[#F4F7FE] text-indigo-600 hover:bg-indigo-50'} mr-1"><i data-lucide="list" class="w-4 h-4"></i></button>
                         <button onclick="saveMaintenanceVehicleRow('${v.plate}')" class="p-2 rounded-lg bg-emerald-50 text-emerald-600 hover:bg-emerald-100"><i data-lucide="save" class="w-4 h-4"></i></button>
                     </td>
                 </tr>
@@ -6029,7 +6027,7 @@
             const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 
             if (allRows.length === 0) {
-                list.innerHTML = '<p class="text-slate-500 text-sm">No hay reparaciones registradas. Agregá una fila para comenzar.</p>';
+                list.innerHTML = '<p class="text-[#A3AED0] text-sm">No hay reparaciones registradas. Agregá una fila para comenzar.</p>';
                 totalDiv.classList.add('hidden');
                 if (metaEl) metaEl.textContent = '';
                 if (catWrap) catWrap.classList.add('hidden');
@@ -6062,7 +6060,7 @@
             });
 
             if (rows.length === 0) {
-                list.innerHTML = '<p class="text-slate-500 text-sm">No hay resultados para los filtros aplicados (revisá patente o mes; las filas sin fecha no entran al filtro por mes).</p>';
+                list.innerHTML = '<p class="text-[#A3AED0] text-sm">No hay resultados para los filtros aplicados (revisá patente o mes; las filas sin fecha no entran al filtro por mes).</p>';
                 totalDiv.classList.add('hidden');
                 if (metaEl) metaEl.textContent = '';
                 if (catWrap) catWrap.classList.add('hidden');
@@ -6071,9 +6069,9 @@
             }
 
             list.innerHTML = `
-                <div class="w-full max-w-full overflow-x-auto border border-slate-100 rounded-xl" style="display:block">
+                <div class="w-full max-w-full overflow-x-auto border border-[#F4F7FE] rounded-xl" style="display:block">
                     <table class="w-full min-w-[1100px] text-left border-collapse">
-                        <thead class="bg-slate-50 text-[10px] font-black text-slate-500 uppercase tracking-widest">
+                        <thead class="bg-[#F8FAFF] text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">
                             <tr>
                                 <th class="px-3 py-3">Patente</th>
                                 <th class="px-3 py-3">Categoría</th>
@@ -6090,13 +6088,13 @@
                             ${rows.map(r => `
                                 <tr>
                                     <td class="px-3 py-2">
-                                        <select onchange="updateRepairField('${r.plate}','${r.id}','plate', this.value)" class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs font-bold">
+                                        <select onchange="updateRepairField('${r.plate}','${r.id}','plate', this.value)" class="bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs font-bold">
                                             <option value="${r.plate}">${r.plate}</option>
                                             ${maintenanceVehicles.map(v => `<option value="${v.plate}" ${v.plate === r.plate ? 'selected' : ''}>${v.plate}</option>`).join('')}
                                         </select>
                                     </td>
                                     <td class="px-3 py-2">
-                                        <select onchange="updateRepairField('${r.plate}','${r.id}','category', this.value)" class="bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs">
+                                        <select onchange="updateRepairField('${r.plate}','${r.id}','category', this.value)" class="bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs">
                                             <option value="">-- Sin Categoría --</option>
                                             <option value="Reparación y mant. Preventivo" ${r.category === 'Reparación y mant. Preventivo' ? 'selected' : ''}>Reparación y mant. Preventivo</option>
                                             <option value="Reparación y mant. Refrigeración" ${r.category === 'Reparación y mant. Refrigeración' ? 'selected' : ''}>Reparación y mant. Refrigeración</option>
@@ -6104,14 +6102,14 @@
                                             <option value="Lubricantes y consumibles" ${r.category === 'Lubricantes y consumibles' ? 'selected' : ''}>Lubricantes y consumibles</option>
                                         </select>
                                     </td>
-                                    <td class="px-3 py-2"><input type="date" value="${esc((r.date || '').split('T')[0])}" oninput="updateRepairField('${r.plate}','${r.id}','date', this.value)" class="w-36 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs"></td>
-                                    <td class="px-3 py-2"><input type="number" value="${esc(r.mileage)}" oninput="updateRepairField('${r.plate}','${r.id}','mileage', this.value)" class="w-28 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs"></td>
-                                    <td class="px-3 py-2"><input type="text" value="${esc(r.workDone)}" oninput="updateRepairField('${r.plate}','${r.id}','workDone', this.value)" class="w-64 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs"></td>
-                                    <td class="px-3 py-2"><input type="text" value="${esc(r.workshop)}" oninput="updateRepairField('${r.plate}','${r.id}','workshop', this.value)" class="w-44 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs"></td>
-                                    <td class="px-3 py-2"><input type="number" step="0.01" value="${esc(r.cost)}" oninput="updateRepairField('${r.plate}','${r.id}','cost', this.value)" class="w-28 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs"></td>
-                                    <td class="px-3 py-2"><input type="text" value="${esc(r.notes)}" oninput="updateRepairField('${r.plate}','${r.id}','notes', this.value)" class="w-52 bg-slate-50 border border-slate-200 rounded-lg px-2 py-1 text-xs"></td>
+                                    <td class="px-3 py-2"><input type="date" value="${esc((r.date || '').split('T')[0])}" oninput="updateRepairField('${r.plate}','${r.id}','date', this.value)" class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
+                                    <td class="px-3 py-2"><input type="number" value="${esc(r.mileage)}" oninput="updateRepairField('${r.plate}','${r.id}','mileage', this.value)" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
+                                    <td class="px-3 py-2"><input type="text" value="${esc(r.workDone)}" oninput="updateRepairField('${r.plate}','${r.id}','workDone', this.value)" class="w-64 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
+                                    <td class="px-3 py-2"><input type="text" value="${esc(r.workshop)}" oninput="updateRepairField('${r.plate}','${r.id}','workshop', this.value)" class="w-44 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
+                                    <td class="px-3 py-2"><input type="number" step="0.01" value="${esc(r.cost)}" oninput="updateRepairField('${r.plate}','${r.id}','cost', this.value)" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
+                                    <td class="px-3 py-2"><input type="text" value="${esc(r.notes)}" oninput="updateRepairField('${r.plate}','${r.id}','notes', this.value)" class="w-52 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
                                     <td class="px-3 py-2 text-right">
-                                        <button onclick="saveRepairRow('${r.plate}','${r.id}')" class="p-2 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 mr-1 shadow-sm"><i data-lucide="save" class="w-4 h-4"></i></button>
+                                        <button onclick="saveRepairRow('${r.plate}','${r.id}')" class="p-2 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 mr-1 shadow-sm"><i data-lucide="save" class="w-4 h-4"></i></button>
                                         <button onclick="deleteRepair('${r.plate}','${r.id}')" class="p-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 shadow-sm"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                                     </td>
                                 </tr>
@@ -6418,15 +6416,15 @@
             list.innerHTML = notifications.map(n => `
                 <div class="notification-item p-4 notif-${n.type} group relative">
                     <div class="flex justify-between items-start">
-                        <h5 class="text-xs font-black text-slate-800 uppercase tracking-tight">${n.title}</h5>
+                        <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-tight">${n.title}</h5>
                         <div class="flex items-center gap-2">
-                            <span class="text-[9px] font-bold text-slate-400">${n.time}</span>
+                            <span class="text-[9px] font-bold text-[#A3AED0]">${n.time}</span>
                             <button onclick="removeNotification(${n.id})" class="p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
                                 <i data-lucide="x" class="w-3 h-3"></i>
                             </button>
                         </div>
                     </div>
-                    <p class="text-[11px] text-slate-500 mt-1 leading-relaxed pr-6">${n.text}</p>
+                    <p class="text-[11px] text-[#A3AED0] mt-1 leading-relaxed pr-6">${n.text}</p>
                 </div>
             `).join('');
             
@@ -6748,24 +6746,24 @@
 
             const body = document.getElementById('salaries-table-body');
             body.innerHTML = staff.map(e => `
-                <tr class="hover:bg-slate-50 transition-colors">
+                <tr class="hover:bg-[#F4F7FE] transition-colors">
                     <td class="px-6 py-4">
-                        <div class="font-bold text-slate-900">${e.Apellido}, ${e.Nombre}</div>
-                        <div class="text-[11px] text-slate-400 font-bold uppercase tracking-widest">${e.Sector || 'Operaciones'}</div>
+                        <div class="font-bold text-[#1B2559]">${e.Apellido}, ${e.Nombre}</div>
+                        <div class="text-[11px] text-[#A3AED0] font-bold uppercase tracking-widest">${e.Sector || 'Operaciones'}</div>
                     </td>
                     <td class="px-6 py-4">
                         <span class="px-2.5 py-1 rounded-full text-[10px] font-black ${e['Tipo Puesto'] === 'Chofer' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'}">
                             ${e['Tipo Puesto']?.toUpperCase() || ''}
                         </span>
                     </td>
-                    <td class="px-6 py-4 text-center font-bold text-slate-500">${e.Antigüedad || 0} años</td>
+                    <td class="px-6 py-4 text-center font-bold text-[#A3AED0]">${e.Antigüedad || 0} años</td>
                     <td class="px-6 py-4 text-right">
-                        <div class="font-black text-slate-900 text-base">$${(e.Bruto || 0).toLocaleString('es-AR')}</div>
+                        <div class="font-black text-[#1B2559] text-base">$${(e.Bruto || 0).toLocaleString('es-AR')}</div>
                         ${e.Jornal ? `<div class="text-[9px] text-orange-500 font-black tracking-wider uppercase">Jornal: $${e.Jornal.toLocaleString('es-AR')}</div>` : ''}
                     </td>
                     <td class="px-6 py-4 text-right">
-                        <div class="text-[11px] font-bold text-slate-500">Base: $${(e['Escala Base'] || 0).toLocaleString('es-AR')}</div>
-                        <div class="text-[10px] text-slate-400">Tope: $${(e['Tope Escala'] || 0).toLocaleString('es-AR')}</div>
+                        <div class="text-[11px] font-bold text-[#A3AED0]">Base: $${(e['Escala Base'] || 0).toLocaleString('es-AR')}</div>
+                        <div class="text-[10px] text-[#A3AED0]">Tope: $${(e['Tope Escala'] || 0).toLocaleString('es-AR')}</div>
                     </td>
                     <td class="px-6 py-4 text-center">
                         <div class="flex justify-center gap-1">
@@ -7157,9 +7155,9 @@
             ul.innerHTML = tripDeliveryRows
                 .map(
                     (row, i) => `
-                <li draggable="true" data-idx="${i}" class="trip-delivery-item flex items-center gap-2 bg-slate-50 border border-slate-100 rounded-xl px-3 py-2 text-sm font-bold text-slate-700 cursor-grab active:cursor-grabbing">
+                <li draggable="true" data-idx="${i}" class="trip-delivery-item flex items-center gap-2 bg-[#F8FAFF] border border-[#F4F7FE] rounded-xl px-3 py-2 text-sm font-bold text-[#2B3674] cursor-grab active:cursor-grabbing">
                     <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-300 shrink-0"></i>
-                    <span class="text-slate-500 text-xs w-5">${i + 1}</span>
+                    <span class="text-[#A3AED0] text-xs w-5">${i + 1}</span>
                     <span class="flex-1 min-w-0 truncate" title="${escapeHtmlTrip(row.address || '')}">${escapeHtmlTrip(row.name)}</span>
                     <button type="button" onclick="tripDeliveryRemoveStop(${i})" class="text-rose-500 p-1 rounded-lg hover:bg-rose-50 font-bold" aria-label="Quitar">✕</button>
                 </li>
@@ -7729,221 +7727,221 @@
     </script>
 
     <!-- MODAL: EDICIÓN SALARIO -->
-    <div id="modal-salary-edit" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-[100] hidden flex items-center justify-center p-4">
-        <div class="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200">
-            <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                <h3 id="edit-salary-title" class="font-black text-slate-800 uppercase tracking-widest text-sm">Modificar Mensualidad</h3>
-                <button onclick="closeSalaryModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+    <div id="modal-salary-edit" class="fixed inset-0 z-[100] hidden flex items-center justify-center p-4" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
+        <div class="bg-white rounded-3xl w-full max-w-md shadow-2xl overflow-hidden">
+            <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center bg-[#F8FAFF]">
+                <h3 id="edit-salary-title" class="font-black text-[#1B2559] uppercase tracking-widest text-sm">Modificar Mensualidad</h3>
+                <button onclick="closeSalaryModal()" class="text-[#A3AED0] hover:text-[#1B2559] transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
             <div class="p-8 space-y-6">
                 <input type="hidden" id="edit-salary-id">
                 
                 <div class="grid grid-cols-2 gap-4">
                     <div>
-                        <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Nombre</label>
-                        <input type="text" id="edit-salary-name-input" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Nombre</label>
+                        <input type="text" id="edit-salary-name-input" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                     </div>
                     <div>
-                        <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Apellido</label>
-                        <input type="text" id="edit-salary-surname-input" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Apellido</label>
+                        <input type="text" id="edit-salary-surname-input" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                     </div>
                 </div>
 
                 <div>
-                    <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Tipo / Puesto</label>
-                    <select id="edit-salary-type" onchange="document.getElementById('jornal-edit-container').style.display = this.value === 'Auxiliar' ? 'block' : 'none'" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                    <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Tipo / Puesto</label>
+                    <select id="edit-salary-type" onchange="document.getElementById('jornal-edit-container').style.display = this.value === 'Auxiliar' ? 'block' : 'none'" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                         <option value="Chofer">Chofer</option>
                         <option value="Auxiliar">Auxiliar</option>
                     </select>
                 </div>
 
-                <div class="space-y-4 pt-4 border-t border-slate-50">
+                <div class="space-y-4 pt-4 border-t border-[#F4F7FE]">
                     <div>
-                        <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Bruto Mensual ($)</label>
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Bruto Mensual ($)</label>
                         <div class="relative">
-                            <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
-                            <input type="number" id="edit-salary-bruto" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 pl-8 text-sm font-black text-slate-700 shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                            <span class="absolute left-4 top-1/2 -translate-y-1/2 text-[#A3AED0] font-bold">$</span>
+                            <input type="number" id="edit-salary-bruto" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 pl-8 text-sm font-black text-[#2B3674] shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                         </div>
                     </div>
                     
                     <div id="jornal-edit-container">
-                        <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Valor Jornal ($)</label>
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Valor Jornal ($)</label>
                         <div class="relative">
-                            <span class="absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 font-bold">$</span>
+                            <span class="absolute left-4 top-1/2 -translate-y-1/2 text-[#A3AED0] font-bold">$</span>
                             <input type="number" id="edit-salary-jornal" class="w-full bg-orange-50 border border-orange-100 rounded-xl p-3 pl-8 text-sm font-black text-orange-700 shadow-sm outline-none focus:ring-2 focus:ring-orange-500">
                         </div>
                     </div>
                 </div>
             </div>
-            <div class="p-6 bg-slate-50 border-t border-slate-100 flex gap-4">
-                <button onclick="saveEmployeeSalary()" class="flex-1 bg-blue-600 text-white py-3.5 rounded-xl font-bold text-xs tracking-widest hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20">
+            <div class="p-6 bg-[#F8FAFF] border-t border-[#F4F7FE] flex gap-4">
+                <button onclick="saveEmployeeSalary()" class="flex-1 bg-indigo-600 text-white py-3.5 rounded-xl font-bold text-xs tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-blue-600/20">
                     GUARDAR CAMBIOS
                 </button>
-                <button onclick="closeSalaryModal()" class="px-6 border border-slate-200 rounded-xl font-bold text-slate-500 text-xs hover:bg-white transition-all">Cancelar</button>
+                <button onclick="closeSalaryModal()" class="px-6 border border-[#E0E5F2] rounded-xl font-bold text-[#A3AED0] text-xs hover:bg-white transition-all">Cancelar</button>
             </div>
         </div>
     </div>
 <!-- New Trip Modal -->
-    <div id="new-trip-modal" class="modal-overlay hidden fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-3">
-        <div class="bg-white rounded-3xl w-[96vw] max-w-6xl max-h-[92vh] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 flex flex-col">
-            <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
-                <h3 id="new-trip-modal-title" class="font-black text-slate-800 uppercase tracking-widest text-sm">Nuevo Viaje</h3>
-                <button onclick="closeNewTripModal()" class="text-slate-400 hover:text-slate-600"><i data-lucide="x" class="w-5 h-5"></i></button>
+    <div id="new-trip-modal" class="modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center p-3" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
+        <div class="bg-white rounded-3xl w-[96vw] max-w-6xl max-h-[92vh] shadow-2xl overflow-hidden flex flex-col">
+            <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center bg-[#F8FAFF]">
+                <h3 id="new-trip-modal-title" class="font-black text-[#1B2559] uppercase tracking-widest text-sm">Nuevo Viaje</h3>
+                <button onclick="closeNewTripModal()" class="text-[#A3AED0] hover:text-[#1B2559] transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
             <div class="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
                 <input type="hidden" id="new-trip-id">
                 
                 <div class="grid grid-cols-3 gap-4">
                     <div>
-                        <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Modo de Fecha</label>
-                        <select id="new-trip-date-mode" onchange="updateNewTripDateModeUI()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Modo de Fecha</label>
+                        <select id="new-trip-date-mode" onchange="updateNewTripDateModeUI()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                             <option value="SINGLE">Un día</option>
                             <option value="RANGE">Rango de días</option>
                             <option value="MULTI">Múltiples días</option>
                         </select>
                     </div>
                     <div>
-                        <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Contrato</label>
-                        <select id="new-trip-contract" onchange="toggleVehicleTypeField()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Contrato</label>
+                        <select id="new-trip-contract" onchange="toggleVehicleTypeField()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                             <option value="Propio">Propio</option>
                             <option value="Tercerizado">Tercerizado</option>
                         </select>
                     </div>
                     <div>
-                        <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Unidad de Negocio</label>
-                        <select id="new-trip-bu" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500"></select>
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Unidad de Negocio</label>
+                        <select id="new-trip-bu" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
                         <div class="mt-2 flex gap-2">
-                            <input type="text" id="new-trip-bu-new" placeholder="Agregar nueva unidad..." class="flex-1 bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold uppercase shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                            <input type="text" id="new-trip-bu-new" placeholder="Agregar nueva unidad..." class="flex-1 bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl px-3 py-2 text-xs font-bold uppercase shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                             <button type="button" onclick="addBusinessUnitOption()" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-[10px] font-bold hover:bg-indigo-700 transition-all uppercase">Agregar</button>
                         </div>
                     </div>
                 </div>
 
-                <div class="border-t border-slate-100 pt-4 mt-2">
-                    <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Vuelta del día (costo logístico propio)</label>
-                    <select id="new-trip-vuelta" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                <div class="border-t border-[#F4F7FE] pt-4 mt-2">
+                    <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Vuelta del día (costo logístico propio)</label>
+                    <select id="new-trip-vuelta" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                         <option value="1">1ª vuelta</option>
                         <option value="2">2ª vuelta</option>
                         <option value="3">3ª vuelta o más</option>
                         <option value="auto">Automático (hora de salida y patente)</option>
                         </select>
-                    <p class="text-[10px] text-slate-400 mt-1.5 leading-snug">2ª y 3ª+ comparten la misma regla: no se vuelve a prorratear el auxiliar con jornal. Solo contrato Propio.</p>
+                    <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">2ª y 3ª+ comparten la misma regla: no se vuelve a prorratear el auxiliar con jornal. Solo contrato Propio.</p>
                     </div>
 
                 <div id="new-trip-date-single-wrap">
-                    <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Fecha</label>
-                    <input type="date" id="new-trip-date" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                    <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Fecha</label>
+                    <input type="date" id="new-trip-date" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                 </div>
 
                 <div id="new-trip-date-range-wrap" class="hidden grid grid-cols-2 gap-4">
                     <div>
-                        <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Fecha Inicio</label>
-                        <input type="date" id="new-trip-date-start" onchange="renderNewTripRangePreview()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Fecha Inicio</label>
+                        <input type="date" id="new-trip-date-start" onchange="renderNewTripRangePreview()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                     </div>
                     <div>
-                        <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Fecha Fin</label>
-                        <input type="date" id="new-trip-date-end" onchange="renderNewTripRangePreview()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Fecha Fin</label>
+                        <input type="date" id="new-trip-date-end" onchange="renderNewTripRangePreview()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                     </div>
                     <div class="col-span-2">
-                        <div id="new-trip-range-preview" class="flex flex-wrap gap-2 text-[11px] font-bold text-slate-600 bg-slate-50 border border-slate-200 rounded-xl p-3"></div>
+                        <div id="new-trip-range-preview" class="flex flex-wrap gap-2 text-[11px] font-bold text-[#2B3674] bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3"></div>
                     </div>
                 </div>
 
                 <div id="new-trip-date-multi-wrap" class="hidden space-y-2">
                     <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Mes</label>
-                            <input type="month" id="new-trip-multi-month" onchange="populateNewTripMultiDayOptions()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Mes</label>
+                            <input type="month" id="new-trip-multi-month" onchange="populateNewTripMultiDayOptions()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                         </div>
                         <div class="relative">
-                            <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Días</label>
-                            <button type="button" id="new-trip-days-toggle" onclick="toggleNewTripMultiDaysDropdown()" class="w-full text-left bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none hover:bg-slate-100 transition-all">
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Días</label>
+                            <button type="button" id="new-trip-days-toggle" onclick="toggleNewTripMultiDaysDropdown()" class="w-full text-left bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none hover:bg-[#E8ECF8] transition-all">
                                 Seleccionar días
                             </button>
-                            <div id="new-trip-days-panel" class="hidden absolute z-20 mt-2 w-full max-h-[220px] overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg p-2 text-sm font-bold">
+                            <div id="new-trip-days-panel" class="hidden absolute z-20 mt-2 w-full max-h-[220px] overflow-y-auto bg-white border border-[#E0E5F2] rounded-xl shadow-lg p-2 text-sm font-bold">
                                 <div id="new-trip-days-list" class="space-y-1"></div>
                             </div>
                         </div>
                     </div>
-                    <p class="text-[10px] text-slate-400 font-medium">Seleccioná los días desde el desplegable.</p>
+                    <p class="text-[10px] text-[#A3AED0] font-medium">Seleccioná los días desde el desplegable.</p>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4 border-t border-slate-50 mt-4 pt-4">
+                <div class="grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
                     <div>
-                        <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Chofer</label>
-                        <select id="new-trip-driver" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Chofer</label>
+                        <select id="new-trip-driver" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                             <!-- Injected by JS -->
                         </select>
                     </div>
                     <div id="new-trip-vehicle-container">
-                        <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Coche / Vehículo</label>
-                        <select id="new-trip-vehicle" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Coche / Vehículo</label>
+                        <select id="new-trip-vehicle" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                              <!-- Injected by JS -->
                         </select>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-3 gap-4 border-t border-slate-50 mt-4 pt-4">
+                <div class="grid grid-cols-3 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
                     <div>
-                        <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Auxiliar 1</label>
-                        <select id="new-trip-aux1" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Auxiliar 1</label>
+                        <select id="new-trip-aux1" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                              <!-- Injected by JS -->
                         </select>
                     </div>
                     <div>
-                        <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Auxiliar 2</label>
-                        <select id="new-trip-aux2" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Auxiliar 2</label>
+                        <select id="new-trip-aux2" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                              <!-- Injected by JS -->
                         </select>
                     </div>
                     <div>
-                        <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Auxiliar 3</label>
-                        <select id="new-trip-aux3" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Auxiliar 3</label>
+                        <select id="new-trip-aux3" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                              <!-- Injected by JS -->
                         </select>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 gap-4 border-t border-slate-50 mt-4 pt-4">
+                <div class="grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
                     <div>
-                        <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Zona</label>
-                        <select id="new-trip-zone" onchange="autoFillLocalidad()" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Zona</label>
+                        <select id="new-trip-zone" onchange="autoFillLocalidad()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                              <!-- Injected by JS -->
                         </select>
                     </div>
                     <div>
-                        <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Localidad (Auto)</label>
-                        <input type="text" id="new-trip-loc" readonly class="w-full bg-slate-100 border border-slate-200 rounded-xl p-3 text-sm font-bold text-slate-500 shadow-sm outline-none">
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Localidad (Auto)</label>
+                        <input type="text" id="new-trip-loc" readonly class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#A3AED0] shadow-sm outline-none">
                     </div>
                 </div>
                 
                  <div>
-                      <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Reparto / Ruta</label>
-                      <select id="new-trip-reparto" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                      <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Reparto / Ruta</label>
+                      <select id="new-trip-reparto" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                            <!-- Injected by JS -->
                       </select>
                  </div>
 
-                 <div class="grid grid-cols-2 gap-4 border-t border-slate-50 mt-4 pt-4">
+                 <div class="grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
                      <div>
-                         <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Hora Salida</label>
-                         <input type="time" id="new-trip-exit" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Hora Salida</label>
+                         <input type="time" id="new-trip-exit" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                      </div>
                      <div>
-                         <label class="text-[10px] font-bold text-slate-500 uppercase block mb-1">Hora Llegada</label>
-                         <input type="time" id="new-trip-return" class="w-full bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-blue-500">
+                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Hora Llegada</label>
+                         <input type="time" id="new-trip-return" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                      </div>
                  </div>
 
-                <details id="trip-delivery-details" class="border border-slate-100 rounded-2xl mt-2 group">
-                    <summary class="cursor-pointer list-none flex items-center justify-between gap-2 p-4 text-[11px] font-black text-slate-600 uppercase tracking-widest hover:bg-slate-50/80 rounded-2xl">
+                <details id="trip-delivery-details" class="border border-[#F4F7FE] rounded-2xl mt-2 group">
+                    <summary class="cursor-pointer list-none flex items-center justify-between gap-2 p-4 text-[11px] font-black text-[#2B3674] uppercase tracking-widest hover:bg-[#F4F7FE]/80 rounded-2xl">
                         <span>Puntos de entrega (orden)</span>
-                        <i data-lucide="chevron-down" class="w-4 h-4 text-slate-400 transition-transform group-open:rotate-180"></i>
+                        <i data-lucide="chevron-down" class="w-4 h-4 text-[#A3AED0] transition-transform group-open:rotate-180"></i>
                     </summary>
-                    <div class="px-4 pb-4 space-y-3 border-t border-slate-50 pt-3">
-                        <p id="trip-delivery-hint" class="text-[10px] text-slate-500 font-medium leading-relaxed"></p>
+                    <div class="px-4 pb-4 space-y-3 border-t border-[#F4F7FE] pt-3">
+                        <p id="trip-delivery-hint" class="text-[10px] text-[#A3AED0] font-medium leading-relaxed"></p>
                         <div id="trip-delivery-editor" class="hidden space-y-3">
-                            <p class="text-[10px] text-slate-400">
+                            <p class="text-[10px] text-[#A3AED0]">
                                 Si elegís un reparto (R8, etc.), las paradas se toman de la plantilla en «Rutas predefinidas» y se cruzan con el directorio de escuelas por nombre.
                             </p>
                             <button
@@ -7953,21 +7951,21 @@
                             >
                                 Cargar / refrescar desde plantilla de reparto
                             </button>
-                            <p class="text-[10px] text-slate-400">Arrastrá las filas para reordenar. El chofer ve la primera cuando el operador inicia el viaje.</p>
+                            <p class="text-[10px] text-[#A3AED0]">Arrastrá las filas para reordenar. El chofer ve la primera cuando el operador inicia el viaje.</p>
                             <ul id="trip-delivery-list" class="space-y-2 min-h-[2rem]"></ul>
                             <div class="flex flex-col sm:flex-row gap-2">
-                                <select id="trip-delivery-add-select" onchange="onTripDeliveryAddClient()" class="flex-1 bg-slate-50 border border-slate-200 rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                                <select id="trip-delivery-add-select" onchange="onTripDeliveryAddClient()" class="flex-1 bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
                             </div>
                         </div>
                     </div>
                 </details>
 
             </div>
-            <div class="p-6 bg-slate-50 border-t border-slate-100 flex gap-4">
-                <button id="new-trip-save-btn" onclick="saveNewTrip()" class="flex-1 bg-emerald-600 text-white py-3.5 rounded-xl font-bold text-xs tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-600/20">
+            <div class="p-6 bg-[#F8FAFF] border-t border-[#F4F7FE] flex gap-4">
+                <button id="new-trip-save-btn" onclick="saveNewTrip()" class="flex-1 bg-indigo-600 text-white py-3.5 rounded-2xl font-bold text-xs tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 uppercase">
                     CREAR VIAJE
                 </button>
-                <button onclick="closeNewTripModal()" class="px-6 border border-slate-200 rounded-xl font-bold text-slate-500 text-xs hover:bg-white transition-all">Cancelar</button>
+                <button onclick="closeNewTripModal()" class="px-6 border border-[#E0E5F2] rounded-2xl font-bold text-[#1B2559] text-xs hover:bg-[#F4F7FE] transition-all">Cancelar</button>
             </div>
         </div>
     </div>
