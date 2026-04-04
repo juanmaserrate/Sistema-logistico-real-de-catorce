@@ -31,6 +31,18 @@ interface Driver {
     username: string;
 }
 
+const STATUS_LABEL: Record<string, string> = {
+    PENDING: 'Pendiente',
+    IN_PROGRESS: 'En curso',
+    COMPLETED: 'Completada',
+};
+
+const STATUS_CLASS: Record<string, string> = {
+    PENDING: 'bg-[#E5E7EB] text-[#636366]',
+    IN_PROGRESS: 'bg-blue-100 text-blue-700',
+    COMPLETED: 'bg-green-100 text-green-700',
+};
+
 const PlanningManager = () => {
     const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
     const [routes, setRoutes] = useState<Route[]>([]);
@@ -45,6 +57,7 @@ const PlanningManager = () => {
     const [stops, setStops] = useState<{ clientId: string; clientName: string }[]>([]);
     const [clientSearch, setClientSearch] = useState('');
     const [searchResults, setSearchResults] = useState<Client[]>([]);
+    const [expandedRouteId, setExpandedRouteId] = useState<number | null>(null);
 
     const fetchRoutes = async () => {
         setLoading(true);
@@ -112,10 +125,22 @@ const PlanningManager = () => {
         });
     };
 
+    const handleDeleteRoute = async (r: Route) => {
+        const driverLabel = r.driver?.fullName || r.driver?.username || 'esta ruta';
+        if (!confirm(`¿Eliminar ruta de ${driverLabel}? Esta acción no se puede deshacer.`)) return;
+        try {
+            const res = await fetch(`/api/v1/routes/${r.id}`, { method: 'DELETE' });
+            if (!res.ok) throw new Error('No se pudo eliminar la ruta');
+            fetchRoutes();
+        } catch (e) {
+            setError(e instanceof Error ? e.message : 'Error al eliminar');
+        }
+    };
+
     const handleCreateRoute = async (e: React.FormEvent) => {
         e.preventDefault();
         if (!driverName.trim()) {
-            setError('Ingresá el nombre del chofer.');
+            setError('Seleccioná un chofer.');
             return;
         }
         if (stops.length === 0) {
@@ -187,28 +212,18 @@ const PlanningManager = () => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-sm font-medium text-[#636366] mb-1">Chofer</label>
-                                <div className="flex gap-2">
-                                    <select
-                                        value={driverName}
-                                        onChange={(e) => setDriverName(e.target.value)}
-                                        onBlur={() => {}}
-                                        className="flex-1 rounded-xl border border-[#E5E7EB] px-3 py-2 text-[#1C1C1E] bg-[#F2F2F7]"
-                                    >
-                                        <option value="">Seleccionar o escribir abajo</option>
-                                        {drivers.map((d) => (
-                                            <option key={d.id} value={d.fullName || d.username}>
-                                                {d.fullName || d.username}
-                                            </option>
-                                        ))}
-                                    </select>
-                                    <input
-                                        type="text"
-                                        placeholder="Nombre chofer"
-                                        value={driverName}
-                                        onChange={(e) => setDriverName(e.target.value)}
-                                        className="flex-1 rounded-xl border border-[#E5E7EB] px-3 py-2 text-[#1C1C1E]"
-                                    />
-                                </div>
+                                <select
+                                    value={driverName}
+                                    onChange={(e) => setDriverName(e.target.value)}
+                                    className="w-full rounded-xl border border-[#E5E7EB] px-3 py-2 text-[#1C1C1E] bg-[#F2F2F7]"
+                                >
+                                    <option value="">Seleccionar chofer</option>
+                                    {drivers.map((d) => (
+                                        <option key={d.id} value={d.fullName || d.username}>
+                                            {d.fullName || d.username}
+                                        </option>
+                                    ))}
+                                </select>
                             </div>
                             <div>
                                 <label className="block text-sm font-medium text-[#636366] mb-1">Patente / vehículo (opcional)</label>
@@ -312,30 +327,66 @@ const PlanningManager = () => {
                     </div>
                 ) : (
                     <ul className="divide-y divide-[#E5E7EB]">
-                        {routes.map((r) => (
-                            <li key={r.id} className="px-6 py-4 hover:bg-[#F8F9FB]">
-                                <div className="flex items-center gap-4">
-                                    <div className="flex items-center gap-2 min-w-0">
-                                        <User className="w-4 h-4 text-[#007AFF] flex-shrink-0" />
-                                        <span className="font-semibold text-[#1C1C1E] truncate">{r.driver?.fullName || r.driver?.username || 'Sin chofer'}</span>
+                        {routes.map((r) => {
+                            const isExpanded = expandedRouteId === r.id;
+                            const statusLabel = STATUS_LABEL[r.status] ?? r.status;
+                            const statusClass = STATUS_CLASS[r.status] ?? 'bg-[#E5E7EB] text-[#636366]';
+                            return (
+                                <li key={r.id} className="px-6 py-4 hover:bg-[#F8F9FB]">
+                                    <div className="flex items-center gap-3">
+                                        <button
+                                            type="button"
+                                            onClick={() => setExpandedRouteId(isExpanded ? null : r.id)}
+                                            className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                                            aria-label={isExpanded ? 'Contraer' : 'Expandir'}
+                                        >
+                                            <ChevronDown
+                                                className={`w-4 h-4 text-[#8E8E93] flex-shrink-0 transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                                            />
+                                            <div className="flex items-center gap-2 min-w-0">
+                                                <User className="w-4 h-4 text-[#007AFF] flex-shrink-0" />
+                                                <span className="font-semibold text-[#1C1C1E] truncate">
+                                                    {r.driver?.fullName || r.driver?.username || 'Sin chofer'}
+                                                </span>
+                                            </div>
+                                            {r.vehicle?.plate && (
+                                                <div className="flex items-center gap-1.5 text-[#8E8E93] text-sm flex-shrink-0">
+                                                    <Truck className="w-4 h-4" />
+                                                    {r.vehicle.plate}
+                                                </div>
+                                            )}
+                                            <span className="text-sm text-[#8E8E93] flex-shrink-0">
+                                                {r.stops.length} parada{r.stops.length !== 1 ? 's' : ''}
+                                            </span>
+                                            <span className={`ml-auto text-xs font-medium px-2 py-0.5 rounded-full flex-shrink-0 ${statusClass}`}>
+                                                {statusLabel}
+                                            </span>
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() => handleDeleteRoute(r)}
+                                            className="p-1.5 rounded-lg hover:bg-red-50 text-[#8E8E93] hover:text-red-600 transition-colors flex-shrink-0"
+                                            aria-label="Eliminar ruta"
+                                        >
+                                            <Trash2 className="w-4 h-4" />
+                                        </button>
                                     </div>
-                                    {r.vehicle?.plate && (
-                                        <div className="flex items-center gap-1.5 text-[#8E8E93] text-sm">
-                                            <Truck className="w-4 h-4" />
-                                            {r.vehicle.plate}
-                                        </div>
+                                    {isExpanded && (
+                                        <ul className="mt-3 pl-7 text-sm text-[#8E8E93] space-y-1">
+                                            {r.stops.map((s) => (
+                                                <li key={s.id} className="flex items-start gap-2">
+                                                    <span className="font-mono text-xs w-5 flex-shrink-0 pt-0.5">{s.sequence}.</span>
+                                                    <span className="text-[#1C1C1E] font-medium">{s.client.name}</span>
+                                                    {s.client.address && (
+                                                        <span className="text-[#8E8E93] text-xs truncate">{s.client.address}</span>
+                                                    )}
+                                                </li>
+                                            ))}
+                                        </ul>
                                     )}
-                                    <span className="text-sm text-[#8E8E93]">{r.stops.length} parada{r.stops.length !== 1 ? 's' : ''}</span>
-                                    <span className="ml-auto text-xs font-medium px-2 py-0.5 rounded-full bg-[#E5E7EB] text-[#636366]">{r.status}</span>
-                                </div>
-                                <ul className="mt-2 pl-6 text-sm text-[#8E8E93] space-y-0.5">
-                                    {r.stops.slice(0, 5).map((s) => (
-                                        <li key={s.id}>{s.sequence}. {s.client.name}</li>
-                                    ))}
-                                    {r.stops.length > 5 && <li>… y {r.stops.length - 5} más</li>}
-                                </ul>
-                            </li>
-                        ))}
+                                </li>
+                            );
+                        })}
                     </ul>
                 )}
             </div>

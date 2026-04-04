@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { MapPin, Send, AlertCircle } from 'lucide-react';
+import { MapPin, Send, AlertCircle, Copy, Check } from 'lucide-react';
 import { API_BASE } from '../config';
 
 export default function ShareLocationPage() {
@@ -7,7 +7,10 @@ export default function ShareLocationPage() {
     const [status, setStatus] = useState<'idle' | 'requesting' | 'sending' | 'ok' | 'error'>('idle');
     const [message, setMessage] = useState('');
     const [lastSent, setLastSent] = useState<Date | null>(null);
+    const [copied, setCopied] = useState(false);
     const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+    const trackingUrl = window.location.origin + '/ubicacion';
 
     const deviceId = (() => {
         let id = localStorage.getItem('tracking_device_id');
@@ -76,6 +79,13 @@ export default function ShareLocationPage() {
         );
     };
 
+    const handleCopy = () => {
+        navigator.clipboard.writeText(trackingUrl).then(() => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 2000);
+        });
+    };
+
     useEffect(() => {
         return () => {
             if (intervalRef.current) clearInterval(intervalRef.current);
@@ -138,24 +148,40 @@ export default function ShareLocationPage() {
                 </p>
 
                 <div className="mt-6 p-4 bg-[#E8F5E9] border border-green-200 rounded-2xl text-left">
-                    <p className="text-[12px] font-bold text-green-800 uppercase tracking-wider mb-1">Para choferes con datos móviles</p>
-                    <p className="text-[13px] text-green-900 mb-2">
-                        Los choferes deben abrir esta página en el celular con <strong>datos móviles o WiFi</strong>. No uses <code className="bg-green-100 px-1 rounded">localhost</code> en el teléfono.
+                    <p className="text-[12px] font-bold text-green-800 uppercase tracking-wider mb-1">Compartir con choferes</p>
+                    <p className="text-[13px] text-green-900 mb-3">
+                        Enviá este enlace a los choferes para que abran la página en su celular con <strong>datos móviles o WiFi</strong>.
                     </p>
-                    <p className="text-[13px] text-green-900">
-                        <strong>URL para compartir con choferes:</strong>
-                    </p>
-                    <a
-                        href="https://uropygial-conservational-joy.ngrok-free.dev/ubicacion"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="mt-1 block break-all text-[14px] font-bold text-[#007AFF] underline"
-                    >
-                        https://uropygial-conservational-joy.ngrok-free.dev/ubicacion
-                    </a>
-                    <p className="text-[12px] text-green-700 mt-2">
-                        Para que funcione, en la oficina deben estar corriendo: (1) servidor backend, (2) frontend (Vite), (3) túnel ngrok apuntando al frontend.
-                    </p>
+                    <p className="text-[13px] text-green-900 font-semibold mb-2">URL para compartir:</p>
+                    <div className="flex items-center gap-2">
+                        <input
+                            type="text"
+                            readOnly
+                            value={trackingUrl}
+                            className="flex-1 bg-white border border-green-300 rounded-xl px-3 py-2 text-[13px] font-medium text-[#1C1C1E] select-all"
+                        />
+                        <button
+                            type="button"
+                            onClick={handleCopy}
+                            className={`flex items-center gap-1.5 px-3 py-2 rounded-xl font-semibold text-[13px] transition-all flex-shrink-0 ${
+                                copied
+                                    ? 'bg-green-600 text-white'
+                                    : 'bg-green-700 text-white hover:bg-green-800'
+                            }`}
+                        >
+                            {copied ? (
+                                <>
+                                    <Check size={14} />
+                                    Copiado
+                                </>
+                            ) : (
+                                <>
+                                    <Copy size={14} />
+                                    Copiar enlace
+                                </>
+                            )}
+                        </button>
+                    </div>
                 </div>
             </div>
         </div>

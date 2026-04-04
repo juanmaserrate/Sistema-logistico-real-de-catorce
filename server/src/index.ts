@@ -890,6 +890,33 @@ app.get('/api/v1/tracking/locations', async (req, res) => {
     }
 });
 
+/** Historial de posiciones de un dispositivo específico para dibujar su recorrido */
+app.get('/api/v1/tracking/device-history', async (req, res) => {
+    try {
+        const { deviceId } = req.query;
+        if (!deviceId || typeof deviceId !== 'string') {
+            return res.status(400).json({ error: 'Query deviceId requerido' });
+        }
+        const hours = Math.min(24, Math.max(1, Number(req.query.hours) || 8));
+        const since = new Date(Date.now() - hours * 3600000);
+        const points = await prisma.deviceLocation.findMany({
+            where: { deviceId: String(deviceId), timestamp: { gte: since } },
+            orderBy: { timestamp: 'asc' },
+            take: 500,
+            select: { latitude: true, longitude: true, timestamp: true, accuracy: true }
+        });
+        res.json({ deviceId, count: points.length, points: points.map(p => ({
+            latitude: p.latitude,
+            longitude: p.longitude,
+            accuracy: p.accuracy,
+            timestamp: p.timestamp.toISOString()
+        })) });
+    } catch (e: any) {
+        console.error('GET /tracking/device-history:', e);
+        res.status(500).json({ error: e?.message || 'Error al obtener historial' });
+    }
+});
+
 // --- REPARTOS (Excel: col 1 = reparto, col 2 = establecimiento) ---
 const REPARTOS_EXCEL_PATHS = [
     'C:\\Users\\juanma\\Desktop\\Repartos y colegios .xlsx',
@@ -1478,6 +1505,25 @@ app.get('/api/v1/routes/:id', async (req, res) => {
     } catch (e: any) {
         console.error('GET /routes/:id:', e);
         res.status(500).json({ error: e?.message || 'Error al obtener ruta' });
+    }
+});
+
+/** Eliminar una ruta y sus paradas */
+app.delete('/api/v1/routes/:id', async (req, res) => {
+    try {
+        const routeId = Number(req.params.id);
+        if (!Number.isFinite(routeId)) {
+            return res.status(400).json({ error: 'ID de ruta inválido' });
+        }
+        const route = await prisma.route.findUnique({ where: { id: routeId } });
+        if (!route) return res.status(404).json({ error: 'Ruta no encontrada' });
+        // Delete stops first, then the route
+        await prisma.stop.deleteMany({ where: { routeId } });
+        await prisma.route.delete({ where: { id: routeId } });
+        res.json({ ok: true, deleted: routeId });
+    } catch (e: any) {
+        console.error('DELETE /routes/:id:', e);
+        res.status(500).json({ error: e?.message || 'Error al eliminar ruta' });
     }
 });
 
@@ -3171,6 +3217,36 @@ app.get('/api/v1/stats/today', async (_req, res) => {
         res.json({ routesToday, routesCompleted, stopsTotal, stopsCompleted, stopsPending, activeTrackers, tripsToday, driversTotal });
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error al calcular estadísticas' });
+    }
+});
+
+app.get('/api/v1/stats/week', async (_req, res) => {
+    try {
+        const days = [];
+        for (let i = 6; i >= 0; i--) {
+            const day = new Date();
+            day.setHours(0, 0, 0, 0);
+            day.setDate(day.getDate() - i);
+            const nextDay = new Date(day);
+            nextDay.setDate(nextDay.getDate() + 1);
+            const [routes, completed, stops, stopsCompleted] = await Promise.all([
+                prisma.route.count({ where: { date: { gte: day, lt: nextDay } } }),
+                prisma.route.count({ where: { date: { gte: day, lt: nextDay }, actualEndTime: { not: null } } }),
+                prisma.stop.count({ where: { route: { date: { gte: day, lt: nextDay } } } }),
+                prisma.stop.count({ where: { status: 'COMPLETED', route: { date: { gte: day, lt: nextDay } } } }),
+            ]);
+            days.push({
+                date: day.toISOString().slice(0, 10),
+                routes,
+                completed,
+                stops,
+                stopsCompleted
+            });
+        }
+        res.json({ days });
+    } catch (e: any) {
+        console.error('GET /stats/week:', e);
+        res.status(500).json({ error: e?.message || 'Error al obtener estadísticas semanales' });
     }
 });
 
