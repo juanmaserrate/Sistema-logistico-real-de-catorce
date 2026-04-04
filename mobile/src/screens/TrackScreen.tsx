@@ -28,6 +28,7 @@ import {
   fetchNavigationToNext,
   postTrackingLocation,
   patchStop,
+  patchRouteRecorrido,
   type NavigationToNext,
 } from '../api';
 import StopDeliveryModal from '../components/StopDeliveryModal';
@@ -61,6 +62,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   const [navLoading, setNavLoading] = useState(false);
   const [navErr, setNavErr] = useState('');
   const [deliveryModalStop, setDeliveryModalStop] = useState<Stop | null>(null);
+  const [trackingOk, setTrackingOk] = useState(true);
   const deviceIdRef = useRef<string>('');
 
   const selected = useMemo(
@@ -333,17 +335,22 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       accuracy: Location.Accuracy.Balanced,
     }).catch(() => null);
     if (!pos || !deviceIdRef.current) return;
-    await postTrackingLocation({
-      deviceId: deviceIdRef.current,
-      deviceLabel: session.fullName,
-      driverId: session.id,
-      routeId,
-      latitude: pos.coords.latitude,
-      longitude: pos.coords.longitude,
-      accuracy: pos.coords.accuracy ?? null,
-      speed: pos.coords.speed ?? null,
-      heading: pos.coords.heading ?? null,
-    }).catch(() => {});
+    try {
+      await postTrackingLocation({
+        deviceId: deviceIdRef.current,
+        deviceLabel: session.fullName,
+        driverId: session.id,
+        routeId,
+        latitude: pos.coords.latitude,
+        longitude: pos.coords.longitude,
+        accuracy: pos.coords.accuracy ?? null,
+        speed: pos.coords.speed ?? null,
+        heading: pos.coords.heading ?? null,
+      });
+      setTrackingOk(true);
+    } catch {
+      setTrackingOk(false);
+    }
   };
 
   const startTracking = async () => {
@@ -366,6 +373,9 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     const routeForPing = selId;
     await setActiveRouteId(routeForPing);
     await sendOnePing(routeForPing);
+    if (routeForPing != null) {
+      await patchRouteRecorrido(routeForPing, session.id, 'start').catch(() => {});
+    }
     const started = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
     if (!started) {
       await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
@@ -384,6 +394,9 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   };
 
   const stopTracking = async () => {
+    if (selId != null) {
+      await patchRouteRecorrido(selId, session.id, 'end').catch(() => {});
+    }
     try {
       const started = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
       if (started) await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
@@ -456,10 +469,23 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
             <Text style={styles.panelSub}>{session.fullName}</Text>
           </View>
           <Pressable
-            onPress={async () => {
-              await stopTracking();
-              await clearSession();
-              onLogout();
+            onPress={() => {
+              Alert.alert(
+                'Cerrar sesión',
+                '¿Seguro que querés salir? Se detendrá el envío de ubicación.',
+                [
+                  { text: 'Cancelar', style: 'cancel' },
+                  {
+                    text: 'Sí, salir',
+                    style: 'destructive',
+                    onPress: async () => {
+                      await stopTracking();
+                      await clearSession();
+                      onLogout();
+                    },
+                  },
+                ]
+              );
             }}
             style={styles.outBtn}
           >
@@ -504,8 +530,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                 </Text>
                 <Text style={styles.nextTap}>Abrir en Maps</Text>
                 <Text style={styles.nextTapHint}>
-                  Con permiso de ubicación: ruta desde donde estás; en Android suele abrir navegación
-                  guiada.
+                  Te lleva desde donde estás al destino.
                 </Text>
               </Pressable>
               {firstPendingStop &&
@@ -527,8 +552,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                 >
                   <Text style={styles.embedNavBtnTxt}>Navegar en la app (GPS + voz)</Text>
                   <Text style={styles.embedNavBtnSub}>
-                    Llegada, foto y observaciones sin salir de R14. Requiere build nativo y Navigation
-                    SDK en Google Cloud.
+                    Llegada, foto y observaciones sin salir de R14. Navegación por voz integrada en la app.
                   </Text>
                 </Pressable>
               ) : null}
@@ -606,7 +630,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
             <Text style={styles.mini}>Cargando trazado por calles…</Text>
           ) : geom == null && selected && selected.stops.length >= 2 ? (
             <Text style={styles.mini}>
-              Sin geometría (falta API Directions en servidor o &lt;2 paradas con GPS).
+              Ruta no disponible en el mapa.
             </Text>
           ) : null}
           {selected && !selected.actualEndTime && routeStopsSorted.length > 0 ? (
@@ -621,7 +645,21 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                   <Text style={styles.stopCardTitle}>
                     {st.sequence}. {st.client?.name || 'Cliente'}
                   </Text>
-                  <Text style={styles.stopCardMeta}>Estado: {st.status}</Text>
+                  <View style={[
+                    styles.stopStatusBadge,
+                    st.status === 'PENDING' && styles.stopStatusPending,
+                    st.status === 'ARRIVED' && styles.stopStatusArrived,
+                    st.status === 'COMPLETED' && styles.stopStatusCompleted,
+                  ]}>
+                    <Text style={[
+                      styles.stopStatusBadgeTxt,
+                      st.status === 'PENDING' && styles.stopStatusPendingTxt,
+                      st.status === 'ARRIVED' && styles.stopStatusArrivedTxt,
+                      st.status === 'COMPLETED' && styles.stopStatusCompletedTxt,
+                    ]}>
+                      {st.status === 'PENDING' ? 'Pendiente' : st.status === 'ARRIVED' ? 'En destino' : st.status === 'COMPLETED' ? 'Entregado' : st.status}
+                    </Text>
+                  </View>
                   <Text style={styles.stopCardMeta}>
                     Llegada: {fmtStopTime(st.actualArrival)} · Salida: {fmtStopTime(st.actualDeparture)}
                   </Text>
@@ -659,9 +697,12 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
             <Text style={styles.refreshTxt}>Actualizar rutas</Text>
           </Pressable>
           {tracking ? (
-            <Text style={styles.live}>
-              ● Entrada fichada: ubicación cada ~20 s a planificación. Tocá «Fichar salida» al terminar.
-            </Text>
+            <View style={styles.liveRow}>
+              <View style={[styles.connectionDot, trackingOk ? styles.connectionDotOk : styles.connectionDotErr]} />
+              <Text style={styles.live}>
+                Entrada fichada: ubicación cada ~20 s a planificación. Tocá «Fichar salida» al terminar.
+              </Text>
+            </View>
           ) : null}
         </ScrollView>
       </View>
@@ -742,26 +783,28 @@ const styles = StyleSheet.create({
   stopBtnArr: {
     marginTop: 10,
     backgroundColor: '#059669',
-    paddingVertical: 10,
+    paddingVertical: 16,
     borderRadius: 12,
     alignItems: 'center',
+    minHeight: 52,
   },
-  stopBtnArrTxt: { color: '#fff', fontWeight: '900', fontSize: 13 },
+  stopBtnArrTxt: { color: '#fff', fontWeight: '900', fontSize: 15 },
   stopBtnOut: {
     marginTop: 10,
     backgroundColor: '#4f46e5',
-    paddingVertical: 10,
+    paddingVertical: 16,
     paddingHorizontal: 8,
     borderRadius: 12,
     alignItems: 'center',
+    minHeight: 52,
   },
-  stopBtnOutTxt: { color: '#fff', fontWeight: '900', fontSize: 13 },
+  stopBtnOutTxt: { color: '#fff', fontWeight: '900', fontSize: 15 },
   stopBtnOutSub: { color: 'rgba(255,255,255,0.85)', fontSize: 9, marginTop: 4, textAlign: 'center' },
   hint: { color: '#64748b', fontSize: 13, marginVertical: 6 },
   chips: { marginTop: 10, maxHeight: 44 },
   chip: {
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
     borderRadius: 20,
     backgroundColor: '#e2e8f0',
     marginRight: 8,
@@ -813,10 +856,10 @@ const styles = StyleSheet.create({
   },
   refreshTxt: { fontWeight: '800', color: '#475569' },
   live: {
-    marginTop: 10,
     fontSize: 11,
     fontWeight: '700',
     color: '#059669',
+    flex: 1,
   },
   navBox: {
     marginTop: 12,
@@ -860,4 +903,22 @@ const styles = StyleSheet.create({
   navStepInstr: { fontSize: 13, fontWeight: '600', color: '#1e293b', lineHeight: 18 },
   navStepMeta: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
   navHint: { fontSize: 10, color: '#94a3b8', marginTop: 10, lineHeight: 14 },
+  stopStatusBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  stopStatusPending: { backgroundColor: '#fef3c7' },
+  stopStatusArrived: { backgroundColor: '#dbeafe' },
+  stopStatusCompleted: { backgroundColor: '#d1fae5' },
+  stopStatusBadgeTxt: { fontSize: 11, fontWeight: '800' },
+  stopStatusPendingTxt: { color: '#92400e' },
+  stopStatusArrivedTxt: { color: '#1e40af' },
+  stopStatusCompletedTxt: { color: '#065f46' },
+  liveRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 6 },
+  connectionDot: { width: 10, height: 10, borderRadius: 5 },
+  connectionDotOk: { backgroundColor: '#22c55e' },
+  connectionDotErr: { backgroundColor: '#ef4444' },
 });

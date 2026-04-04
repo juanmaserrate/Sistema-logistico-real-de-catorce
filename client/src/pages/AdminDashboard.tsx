@@ -1,10 +1,10 @@
 
 import { useState, Component, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { 
-    LogOut, 
-    Truck, 
-    Settings, 
+import {
+    LogOut,
+    Truck,
+    Settings,
     School,
     AlertCircle,
     ChevronRight,
@@ -12,7 +12,9 @@ import {
     Wrench,
     Package,
     Navigation,
-    CalendarCheck
+    CalendarCheck,
+    Users,
+    BarChart3
 } from 'lucide-react';
 import clsx from 'clsx';
 
@@ -23,6 +25,8 @@ import MaintenanceManager from '../components/MaintenanceManager';
 import RepartosManager from '../components/RepartosManager';
 import TrackingManager from '../components/TrackingManager';
 import PlanningManager from '../components/PlanningManager';
+import DriversManager from '../components/DriversManager';
+import StatsManager from '../components/StatsManager';
 
 class TabErrorBoundary extends Component<{ children: ReactNode; fallback: ReactNode }> {
     state = { hasError: false };
@@ -37,14 +41,16 @@ class TabErrorBoundary extends Component<{ children: ReactNode; fallback: ReactN
 
 const AdminDashboard = () => {
     const navigate = useNavigate();
-    const [activeTab, setActiveTab] = useState('planificacion');
+    const [activeTab, setActiveTab] = useState('stats');
     const userFullName = localStorage.getItem('driverName') || 'Administrador';
 
     const menuItems = [
+        { id: 'stats', label: 'Estadísticas', icon: BarChart3 },
         { id: 'planificacion', label: 'Planificación', icon: CalendarCheck },
         { id: 'repartos', label: 'Repartos', icon: Package },
         { id: 'schools', label: 'Escuelas / Clientes', icon: School },
         { id: 'tracking', label: 'Rastreo satelital', icon: Navigation },
+        { id: 'choferes', label: 'Choferes', icon: Users },
         { id: 'maintenance', label: 'Mantenimiento', icon: Wrench },
         { id: 'settings', label: 'Configuración', icon: Settings },
     ];
@@ -138,10 +144,12 @@ const AdminDashboard = () => {
 
                 {/* Tab Content */}
                 <div className="flex-1 overflow-y-auto p-10 bg-[#F8F9FB]">
+                    {activeTab === 'stats' && <StatsManager />}
                     {activeTab === 'planificacion' && <PlanningManager />}
                     {activeTab === 'repartos' && <RepartosManager />}
                     {activeTab === 'schools' && <ClientManager />}
                     {activeTab === 'tracking' && <TrackingManager />}
+                    {activeTab === 'choferes' && <DriversManager />}
                     {activeTab === 'maintenance' && (
                     <TabErrorBoundary fallback={
                         <div className="bg-white rounded-2xl border border-[#E5E7EB] p-12 text-center">

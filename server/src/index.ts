@@ -3147,6 +3147,33 @@ app.put('/api/v1/route-templates/:id', async (req, res) => {
     }
 });
 
+// ── Estadísticas del día ──────────────────────────────────────────────────────
+app.get('/api/v1/stats/today', async (_req, res) => {
+    try {
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+        const tomorrow = new Date(today);
+        tomorrow.setDate(tomorrow.getDate() + 1);
+
+        const thirtyMinAgo = new Date(Date.now() - 30 * 60 * 1000);
+
+        const [routesToday, routesCompleted, stopsTotal, stopsCompleted, stopsPending, activeTrackers, tripsToday, driversTotal] = await Promise.all([
+            prisma.route.count({ where: { date: { gte: today, lt: tomorrow } } }),
+            prisma.route.count({ where: { date: { gte: today, lt: tomorrow }, actualEndTime: { not: null } } }),
+            prisma.stop.count({ where: { route: { date: { gte: today, lt: tomorrow } } } }),
+            prisma.stop.count({ where: { status: 'COMPLETED', route: { date: { gte: today, lt: tomorrow } } } }),
+            prisma.stop.count({ where: { status: 'PENDING', route: { date: { gte: today, lt: tomorrow } } } }),
+            prisma.deviceLocation.findMany({ where: { timestamp: { gte: thirtyMinAgo } }, distinct: ['deviceId'], select: { deviceId: true } }).then(r => r.length),
+            prisma.trip.count({ where: { date: { gte: today, lt: tomorrow } } }),
+            prisma.user.count({ where: { role: 'DRIVER' } }),
+        ]);
+
+        res.json({ routesToday, routesCompleted, stopsTotal, stopsCompleted, stopsPending, activeTrackers, tripsToday, driversTotal });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error al calcular estadísticas' });
+    }
+});
+
 // ── ELIMINADO: endpoint de migración SQLite→PostgreSQL (ya ejecutado) ────────
 if (false) app.post('/api/admin/migrate-sqlite', async (req: any, res: any) => {
     const { key } = req.body || {};

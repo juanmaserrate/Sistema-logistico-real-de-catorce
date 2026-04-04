@@ -26,4 +26,5 @@ export const STORAGE_KEYS = {
   tenantId: 'tenantId',
   deviceId: 'tracking_device_id',
   activeRouteId: 'r14_active_route_id',
+  offlineLocationQueue: 'r14_offline_location_queue',
 } as const;

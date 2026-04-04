@@ -158,3 +158,23 @@ export async function postTrackingLocation(payload: {
     body: JSON.stringify(payload),
   });
 }
+
+export async function patchRouteRecorrido(
+  routeId: number,
+  driverId: string,
+  action: 'start' | 'end'
+): Promise<void> {
+  const res = await fetch(apiUrl(`/api/v1/routes/${routeId}/recorrido`), {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ driverId, action }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    // Don't throw for "already started/ended" errors - those are expected
+    const msg = (data as { error?: string }).error || '';
+    if (!msg.includes('ya fue') && !msg.includes('ya fue')) {
+      throw new Error(msg || 'Error al actualizar recorrido');
+    }
+  }
+}
