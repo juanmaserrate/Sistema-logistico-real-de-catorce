@@ -99,18 +99,22 @@ function runPrismaDbPush(): Promise<void> {
 
 async function ensureSchemaReady() {
     try {
-        // Prueba rápida: si esta tabla no existe, la DB no está inicializada.
-        await prisma.$queryRawUnsafe('SELECT 1 FROM Tenant LIMIT 1');
+        // PostgreSQL requiere comillas dobles para respetar mayúsculas del nombre de tabla.
+        await prisma.$queryRawUnsafe('SELECT 1 FROM "Tenant" LIMIT 1');
     } catch (err: any) {
         const code = err?.code;
         const msg = String(err?.message || '');
         const missingTable =
             code === 'P2021' ||
-            (code === 'P2010' && (/no such table:\s*tenant/i.test(msg) || /relation "tenant" does not exist/i.test(msg)));
+            (code === 'P2010' && (
+                /no such table:\s*tenant/i.test(msg) ||
+                /relation "Tenant" does not exist/i.test(msg) ||
+                /relation "tenant" does not exist/i.test(msg)
+            ));
         if (!missingTable) throw err;
         console.warn('[startup] Missing Prisma tables, running `prisma db push`...');
         await runPrismaDbPush();
-        await prisma.$queryRawUnsafe('SELECT 1 FROM Tenant LIMIT 1');
+        await prisma.$queryRawUnsafe('SELECT 1 FROM "Tenant" LIMIT 1');
         console.log('[startup] Prisma schema applied successfully.');
     }
 }
