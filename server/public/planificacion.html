@@ -349,6 +349,42 @@
 </head>
 <body class="flex h-screen overflow-hidden flex-col">
 
+    <!-- Login Gate -->
+    <div id="login-gate" class="fixed inset-0 z-[9999] flex items-center justify-center" style="background: linear-gradient(135deg, #11047A 0%, #2B0880 60%, #4318FF 100%);">
+        <div class="w-full max-w-md mx-4">
+            <div class="text-center mb-10">
+                <div class="inline-flex items-center gap-3 mb-4">
+                    <div class="w-14 h-14 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center">
+                        <i data-lucide="truck" class="w-7 h-7 text-white"></i>
+                    </div>
+                    <div class="text-left">
+                        <h1 class="text-3xl font-extrabold text-white tracking-tight">Real R14</h1>
+                        <p class="text-white/50 text-xs font-bold uppercase tracking-[0.2em]">Sistema Logístico</p>
+                    </div>
+                </div>
+            </div>
+            <div class="bg-white rounded-3xl p-10 shadow-2xl">
+                <h2 class="text-xl font-bold text-[#1B2559] mb-1">Iniciar sesión</h2>
+                <p class="text-sm text-[#A3AED0] mb-8">Ingresá tus credenciales para acceder al sistema</p>
+                <div id="login-error" class="hidden mb-4 p-3 rounded-xl bg-rose-50 border border-rose-200 text-rose-700 text-sm font-medium"></div>
+                <div class="space-y-5">
+                    <div>
+                        <label class="block text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest mb-2">Usuario</label>
+                        <input id="login-username" type="text" placeholder="Tu nombre de usuario" class="w-full bg-[#F4F7FE] border-2 border-transparent rounded-xl px-4 py-3.5 text-[15px] font-medium text-[#1B2559] focus:border-[#4318FF] focus:bg-white outline-none transition-all" autocomplete="username">
+                    </div>
+                    <div>
+                        <label class="block text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest mb-2">Contraseña</label>
+                        <input id="login-password" type="password" placeholder="••••••••" class="w-full bg-[#F4F7FE] border-2 border-transparent rounded-xl px-4 py-3.5 text-[15px] font-medium text-[#1B2559] focus:border-[#4318FF] focus:bg-white outline-none transition-all" autocomplete="current-password">
+                    </div>
+                    <button onclick="handleLogin()" id="login-btn" class="w-full py-4 rounded-xl bg-[#4318FF] hover:bg-[#3311DB] text-white font-bold text-[15px] transition-all shadow-lg shadow-indigo-200 active:scale-[0.98]">
+                        Ingresar
+                    </button>
+                </div>
+            </div>
+            <p class="text-center text-white/30 text-xs mt-8 font-medium">Real de Catorce © 2026</p>
+        </div>
+    </div>
+
     <!-- Main Content Master -->
     <main class="flex-1 flex flex-col overflow-hidden relative min-h-0 min-w-0 w-full max-w-full">
         <div class="header-area"></div>
@@ -387,6 +423,9 @@
                         </div>
                     </div>
                     
+                        <button onclick="handleLogout()" class="btn-icon-glass" type="button" aria-label="Cerrar sesión" title="Cerrar sesión">
+                            <i data-lucide="log-out" class="w-5 h-5"></i>
+                        </button>
                         <div class="w-10 h-10 rounded-full border-2 border-white/25 overflow-hidden shadow-lg shrink-0">
                             <img src="https://ui-avatars.com/api/?name=Admin+R14&background=4318FF&color=fff" alt="Usuario">
                     </div>
@@ -431,6 +470,11 @@
                     </button>
                     <button type="button" onclick="showSection('schools')" id="btn-schools" class="header-nav-item">
                         <i data-lucide="graduation-cap" class="w-4 h-4"></i> Escuelas
+                    </button>
+                    <span class="nav-section-divider" aria-hidden="true"></span>
+                    <span class="nav-section-label">Reportes</span>
+                    <button type="button" onclick="showSection('reports')" id="btn-reports" class="header-nav-item">
+                        <i data-lucide="file-bar-chart" class="w-4 h-4"></i> Reportes
                     </button>
                 </div>
             </div>
@@ -541,16 +585,6 @@
                         <div>
                             <p class="text-[12px] font-bold text-[#A3AED0] uppercase tracking-wide">En Vista</p>
                             <h3 id="summary-filtered-count" class="text-2xl font-extrabold text-[#1B2559]">0</h3>
-                        </div>
-                    </div>
-
-                    <div class="card-dark p-6 flex items-center gap-5">
-                        <div class="w-14 h-14 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-500">
-                            <i data-lucide="trending-up" class="w-6 h-6"></i>
-                        </div>
-                        <div>
-                            <p class="text-[12px] font-bold text-[#A3AED0] uppercase tracking-wide">Eficiencia</p>
-                            <h3 class="text-2xl font-extrabold text-[#1B2559]">92%</h3>
                         </div>
                     </div>
 
@@ -1371,8 +1405,77 @@
                         </div>
                     </div>
                 </div>
+            </div>
 
+            <!-- ═══ REPORTES ═══ -->
+            <div id="view-reports" class="hidden">
+                <div class="card-dark p-8 mb-8">
+                    <div class="flex flex-wrap items-end gap-6 mb-8">
+                        <div>
+                            <label class="text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest block mb-2">Tipo de reporte</label>
+                            <select id="report-type" onchange="updateReportFilters()" class="bg-[#F4F7FE] border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-[#1B2559] focus:border-indigo-500 outline-none min-w-[220px]">
+                                <option value="stops_by_driver">Paradas por chofer</option>
+                                <option value="stops_by_reparto">Paradas por reparto</option>
+                                <option value="routes_by_driver">Rutas por chofer</option>
+                                <option value="trips_summary">Resumen de viajes</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest block mb-2">Mes</label>
+                            <select id="report-month" class="bg-[#F4F7FE] border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-[#1B2559] focus:border-indigo-500 outline-none min-w-[180px]">
+                                <option value="enero">Enero 2026</option>
+                                <option value="febrero">Febrero 2026</option>
+                                <option value="marzo">Marzo 2026</option>
+                                <option value="abril" selected>Abril 2026</option>
+                                <option value="mayo">Mayo 2026</option>
+                                <option value="junio">Junio 2026</option>
+                                <option value="julio">Julio 2026</option>
+                                <option value="agosto">Agosto 2026</option>
+                                <option value="septiembre">Septiembre 2026</option>
+                                <option value="octubre">Octubre 2026</option>
+                                <option value="noviembre">Noviembre 2026</option>
+                                <option value="diciembre">Diciembre 2026</option>
+                            </select>
+                        </div>
+                        <div id="report-filter-driver" class="">
+                            <label class="text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest block mb-2">Chofer</label>
+                            <select id="report-driver" class="bg-[#F4F7FE] border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-[#1B2559] focus:border-indigo-500 outline-none min-w-[200px]">
+                                <option value="">Todos los choferes</option>
+                            </select>
+                        </div>
+                        <div id="report-filter-reparto" class="hidden">
+                            <label class="text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest block mb-2">Reparto</label>
+                            <select id="report-reparto" class="bg-[#F4F7FE] border-2 border-transparent rounded-xl px-4 py-3 text-sm font-bold text-[#1B2559] focus:border-indigo-500 outline-none min-w-[200px]">
+                                <option value="">Todos los repartos</option>
+                            </select>
+                        </div>
+                        <button onclick="generateReport()" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-200 flex items-center gap-2">
+                            <i data-lucide="play" class="w-4 h-4"></i> Generar reporte
+                        </button>
+                        <button onclick="exportReportExcel()" class="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-emerald-200 flex items-center gap-2">
+                            <i data-lucide="download" class="w-4 h-4"></i> Exportar Excel
+                        </button>
+                    </div>
+                </div>
 
+                <!-- Report KPIs -->
+                <div id="report-kpis" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8"></div>
+
+                <!-- Report Table -->
+                <div class="card-dark overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table id="report-table" class="w-full text-left">
+                            <thead id="report-thead" class="bg-[#F8FAFF]"></thead>
+                            <tbody id="report-tbody" class="divide-y divide-[#F4F7FE]"></tbody>
+                        </table>
+                    </div>
+                    <div id="report-empty" class="p-16 text-center text-[#A3AED0]">
+                        <i data-lucide="file-bar-chart" class="w-12 h-12 mx-auto mb-4 opacity-40"></i>
+                        <p class="font-bold text-lg mb-1">Seleccion&aacute; un reporte</p>
+                        <p class="text-sm">Eleg&iacute; el tipo de reporte y hac&eacute; clic en "Generar reporte"</p>
+                    </div>
+                </div>
+            </div>
 
         </div>
     </main>
@@ -1753,7 +1856,151 @@
             return 'S/D';
         }
 
+        // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
+        const ACCESS_PROFILES = {
+            SUPERADMIN: ['control','weekly','dashboard','vrp','costs','maintenance','routes','users','employees','salaries','schools','reports'],
+            TRAFICO: ['control','weekly','dashboard','vrp','maintenance','routes','users','employees','schools','reports'],
+            RRHH: ['salaries','employees'],
+            ADMINISTRACION: ['weekly','dashboard','salaries','schools','reports']
+        };
+
+        const USER_PROFILES = {
+            juanma: 'SUPERADMIN',
+            german: 'SUPERADMIN',
+            gabriel: 'SUPERADMIN'
+        };
+
+        let currentUserProfile = null;
+        let currentUserModules = [];
+
+        function getUserProfile(username) {
+            const lower = (username || '').toLowerCase().trim();
+            if (USER_PROFILES[lower]) return USER_PROFILES[lower];
+            // Try loading from settings
+            try {
+                const stored = localStorage.getItem('r14.user_profiles');
+                if (stored) {
+                    const parsed = JSON.parse(stored);
+                    if (parsed[lower]) return parsed[lower];
+                }
+            } catch(_) {}
+            return 'SUPERADMIN'; // Default: full access for unknown admin users
+        }
+
+        function applyAccessControl(profile) {
+            currentUserProfile = profile;
+            currentUserModules = ACCESS_PROFILES[profile] || ACCESS_PROFILES.SUPERADMIN;
+
+            // Hide/show nav buttons based on access
+            const allSections = ['control','weekly','dashboard','vrp','costs','maintenance','routes','users','employees','salaries','schools','reports'];
+            allSections.forEach(sec => {
+                const btn = document.getElementById('btn-' + sec);
+                if (btn) {
+                    btn.style.display = currentUserModules.includes(sec) ? '' : 'none';
+                }
+            });
+
+            // Update user avatar and name
+            const username = localStorage.getItem('r14.loggedUser') || 'Admin';
+            const avatarImg = document.querySelector('.app-header img[alt="Usuario"]');
+            if (avatarImg) avatarImg.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=4318FF&color=fff`;
+
+            // Update greeting
+            const headerTitle = document.getElementById('header-title');
+            if (headerTitle && headerTitle.innerText.startsWith('Hola')) {
+                headerTitle.innerText = `Hola, ${username} 👋`;
+            }
+
+            // Navigate to first allowed section
+            const firstAllowed = currentUserModules[0] || 'weekly';
+            showSection(firstAllowed);
+        }
+
+        async function handleLogin() {
+            const username = document.getElementById('login-username').value.trim();
+            const password = document.getElementById('login-password').value;
+            const errorEl = document.getElementById('login-error');
+            const btn = document.getElementById('login-btn');
+
+            if (!username || !password) {
+                errorEl.textContent = 'Completá usuario y contraseña.';
+                errorEl.classList.remove('hidden');
+                return;
+            }
+
+            btn.textContent = 'Ingresando...';
+            btn.disabled = true;
+            errorEl.classList.add('hidden');
+
+            try {
+                const res = await fetch(getServerOrigin() + '/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ username, password })
+                });
+                const data = await res.json();
+
+                if (!res.ok) {
+                    throw new Error(data.error || 'Credenciales incorrectas');
+                }
+
+                // Store session
+                localStorage.setItem('r14.loggedUser', data.fullName || data.username || username);
+                localStorage.setItem('r14.loggedUsername', data.username || username);
+                localStorage.setItem('r14.loggedUserId', data.id || '');
+                localStorage.setItem('r14.loggedRole', data.role || 'ADMIN');
+
+                // Apply access control
+                const profile = getUserProfile(data.username || username);
+                applyAccessControl(profile);
+
+                // Hide login gate
+                document.getElementById('login-gate').style.display = 'none';
+
+            } catch (e) {
+                errorEl.textContent = e.message || 'Error al iniciar sesión';
+                errorEl.classList.remove('hidden');
+            } finally {
+                btn.textContent = 'Ingresar';
+                btn.disabled = false;
+            }
+        }
+
+        function handleLogout() {
+            localStorage.removeItem('r14.loggedUser');
+            localStorage.removeItem('r14.loggedUsername');
+            localStorage.removeItem('r14.loggedUserId');
+            localStorage.removeItem('r14.loggedRole');
+            document.getElementById('login-gate').style.display = 'flex';
+            document.getElementById('login-username').value = '';
+            document.getElementById('login-password').value = '';
+        }
+
+        // Auto-login check on page load
+        function checkExistingSession() {
+            const savedUser = localStorage.getItem('r14.loggedUser');
+            const savedUsername = localStorage.getItem('r14.loggedUsername');
+            if (savedUser && savedUsername) {
+                const profile = getUserProfile(savedUsername);
+                applyAccessControl(profile);
+                document.getElementById('login-gate').style.display = 'none';
+            }
+        }
+
+        // Add Enter key handler for login
+        document.addEventListener('DOMContentLoaded', function() {
+            const pwdInput = document.getElementById('login-password');
+            const usrInput = document.getElementById('login-username');
+            if (pwdInput) pwdInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleLogin(); });
+            if (usrInput) usrInput.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('login-password').focus(); });
+        });
+
         function showSection(id) {
+            // Access control check
+            if (currentUserModules.length > 0 && !currentUserModules.includes(id)) {
+                if (typeof addNotification === 'function') addNotification('warning', 'Acceso denegado', 'No tenés permiso para acceder a este módulo.');
+                return;
+            }
             document.querySelectorAll('.header-nav-item').forEach(b => b.classList.remove('header-nav-item-active'));
             const btn = document.getElementById('btn-' + id);
             if (btn) btn.classList.add('header-nav-item-active');
@@ -1773,7 +2020,8 @@
                 users: 'Gestión de Usuarios',
                 salaries: 'Liquidación de Sueldos',
                 schools: 'Base de Clientes',
-                routes: 'Editor de Rutas'
+                routes: 'Editor de Rutas',
+                reports: 'Reportes y Análisis'
             };
 
             const descs = {
@@ -1787,7 +2035,8 @@
                 users: 'Administración manual de credenciales para choferes y administradores',
                 salaries: 'Nómina detallada con cálculo de adicionales, jornales y brutos',
                 schools: 'Directorio Maestro de Clientes, ubicaciones y zonas logísticas',
-                routes: 'Diseño y estructuración de recorridos predefinidos'
+                routes: 'Diseño y estructuración de recorridos predefinidos',
+                reports: 'Informes detallados de paradas, rutas y operaciones por chofer y reparto'
             };
             document.getElementById('header-title').innerText = titles[id] || 'Sistema R14';
             document.getElementById('header-desc').innerText = descs[id] || '';
@@ -1799,6 +2048,202 @@
             if(id === 'maintenance') loadMaintenanceData();
             if(id === 'routes') loadRouteTemplates();
             if(id === 'users') loadUsers();
+            if(id === 'reports') initReportFilters();
+        }
+
+        // ─── REPORTS MODULE ─────────────────────────────────────────────────
+        function updateReportFilters() {
+            const type = document.getElementById('report-type').value;
+            const driverFilter = document.getElementById('report-filter-driver');
+            const repartoFilter = document.getElementById('report-filter-reparto');
+            if (type === 'stops_by_reparto') {
+                driverFilter.classList.add('hidden');
+                repartoFilter.classList.remove('hidden');
+            } else {
+                driverFilter.classList.remove('hidden');
+                repartoFilter.classList.add('hidden');
+            }
+        }
+
+        function initReportFilters() {
+            // Populate driver filter from planningData
+            const driverSelect = document.getElementById('report-driver');
+            const repartoSelect = document.getElementById('report-reparto');
+            const drivers = [...new Set((planningData || []).map(t => t.driver).filter(Boolean))].sort();
+            const repartos = [...new Set((planningData || []).map(t => t.reparto).filter(Boolean))].sort();
+
+            driverSelect.innerHTML = '<option value="">Todos los choferes</option>' + drivers.map(d => `<option value="${d}">${d}</option>`).join('');
+            repartoSelect.innerHTML = '<option value="">Todos los repartos</option>' + repartos.map(r => `<option value="${r}">${r}</option>`).join('');
+        }
+
+        function generateReport() {
+            const type = document.getElementById('report-type').value;
+            const month = document.getElementById('report-month').value;
+            const driver = document.getElementById('report-driver').value;
+            const reparto = document.getElementById('report-reparto').value;
+
+            // Filter trips by month
+            let trips = (planningData || []).filter(t => {
+                const tripMonth = getMonthKeyFromDate(t.date);
+                return tripMonth === month;
+            });
+
+            if (driver) trips = trips.filter(t => t.driver === driver);
+            if (reparto && type === 'stops_by_reparto') trips = trips.filter(t => t.reparto === reparto);
+
+            const thead = document.getElementById('report-thead');
+            const tbody = document.getElementById('report-tbody');
+            const kpis = document.getElementById('report-kpis');
+            const empty = document.getElementById('report-empty');
+
+            if (trips.length === 0) {
+                empty.style.display = '';
+                thead.innerHTML = '';
+                tbody.innerHTML = '';
+                kpis.innerHTML = '';
+                return;
+            }
+            empty.style.display = 'none';
+
+            if (type === 'stops_by_driver') {
+                generateStopsByDriver(trips, thead, tbody, kpis);
+            } else if (type === 'stops_by_reparto') {
+                generateStopsByReparto(trips, thead, tbody, kpis);
+            } else if (type === 'routes_by_driver') {
+                generateRoutesByDriver(trips, thead, tbody, kpis);
+            } else if (type === 'trips_summary') {
+                generateTripsSummary(trips, thead, tbody, kpis);
+            }
+
+            lucide.createIcons();
+        }
+
+        function generateStopsByDriver(trips, thead, tbody, kpis) {
+            // Group by driver
+            const byDriver = {};
+            trips.forEach(t => {
+                const d = t.driver || 'Sin chofer';
+                if (!byDriver[d]) byDriver[d] = { trips: 0, stops: 0, completed: 0, zones: new Set() };
+                byDriver[d].trips++;
+                const stops = t.stops || [];
+                byDriver[d].stops += stops.length;
+                byDriver[d].completed += stops.filter(s => s.status === 'COMPLETED').length;
+                if (t.zone) byDriver[d].zones.add(t.zone);
+            });
+
+            const rows = Object.entries(byDriver).sort((a, b) => b[1].trips - a[1].trips);
+            const totalTrips = rows.reduce((s, r) => s + r[1].trips, 0);
+            const totalStops = rows.reduce((s, r) => s + r[1].stops, 0);
+            const totalCompleted = rows.reduce((s, r) => s + r[1].completed, 0);
+
+            kpis.innerHTML = `
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600"><i data-lucide="users" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Choferes</p><p class="text-2xl font-extrabold text-[#1B2559]">${rows.length}</p></div></div>
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center text-blue-600"><i data-lucide="truck" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Viajes</p><p class="text-2xl font-extrabold text-[#1B2559]">${totalTrips}</p></div></div>
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-amber-50 flex items-center justify-center text-amber-600"><i data-lucide="map-pin" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Paradas</p><p class="text-2xl font-extrabold text-[#1B2559]">${totalStops}</p></div></div>
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600"><i data-lucide="check-circle" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Completadas</p><p class="text-2xl font-extrabold text-[#1B2559]">${totalCompleted}</p></div></div>
+            `;
+
+            thead.innerHTML = '<tr><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Chofer</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Viajes</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Paradas</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Completadas</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">% \u00c9xito</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Zonas</th></tr>';
+
+            tbody.innerHTML = rows.map(([name, d]) => {
+                const pct = d.stops > 0 ? Math.round((d.completed / d.stops) * 100) : 0;
+                const pctClass = pct >= 90 ? 'text-emerald-700 bg-emerald-50' : pct >= 70 ? 'text-amber-700 bg-amber-50' : 'text-rose-700 bg-rose-50';
+                return `<tr class="hover:bg-[#F8FAFF] transition-colors"><td class="px-6 py-4 font-bold text-[#1B2559]">${name}</td><td class="px-6 py-4 text-center font-bold">${d.trips}</td><td class="px-6 py-4 text-center font-bold">${d.stops}</td><td class="px-6 py-4 text-center font-bold">${d.completed}</td><td class="px-6 py-4 text-center"><span class="px-3 py-1 rounded-lg text-xs font-bold ${pctClass}">${pct}%</span></td><td class="px-6 py-4 text-sm text-[#A3AED0]">${[...d.zones].join(', ') || '-'}</td></tr>`;
+            }).join('');
+        }
+
+        function generateStopsByReparto(trips, thead, tbody, kpis) {
+            const byReparto = {};
+            trips.forEach(t => {
+                const r = t.reparto || 'Sin reparto';
+                if (!byReparto[r]) byReparto[r] = { trips: 0, stops: 0, completed: 0, drivers: new Set() };
+                byReparto[r].trips++;
+                const stops = t.stops || [];
+                byReparto[r].stops += stops.length;
+                byReparto[r].completed += stops.filter(s => s.status === 'COMPLETED').length;
+                if (t.driver) byReparto[r].drivers.add(t.driver);
+            });
+
+            const rows = Object.entries(byReparto).sort((a, b) => b[1].trips - a[1].trips);
+            const totalTrips = rows.reduce((s, r) => s + r[1].trips, 0);
+            const totalStops = rows.reduce((s, r) => s + r[1].stops, 0);
+
+            kpis.innerHTML = `
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600"><i data-lucide="package" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Repartos</p><p class="text-2xl font-extrabold text-[#1B2559]">${rows.length}</p></div></div>
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center text-blue-600"><i data-lucide="truck" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Viajes</p><p class="text-2xl font-extrabold text-[#1B2559]">${totalTrips}</p></div></div>
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-amber-50 flex items-center justify-center text-amber-600"><i data-lucide="map-pin" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Paradas total</p><p class="text-2xl font-extrabold text-[#1B2559]">${totalStops}</p></div></div>
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600"><i data-lucide="users" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Choferes distintos</p><p class="text-2xl font-extrabold text-[#1B2559]">${new Set(trips.map(t=>t.driver).filter(Boolean)).size}</p></div></div>
+            `;
+
+            thead.innerHTML = '<tr><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Reparto</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Viajes</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Paradas</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Completadas</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Choferes</th></tr>';
+
+            tbody.innerHTML = rows.map(([name, d]) => {
+                return `<tr class="hover:bg-[#F8FAFF] transition-colors"><td class="px-6 py-4 font-bold text-[#1B2559]">${name}</td><td class="px-6 py-4 text-center font-bold">${d.trips}</td><td class="px-6 py-4 text-center font-bold">${d.stops}</td><td class="px-6 py-4 text-center font-bold">${d.completed}</td><td class="px-6 py-4 text-sm text-[#A3AED0]">${[...d.drivers].join(', ') || '-'}</td></tr>`;
+            }).join('');
+        }
+
+        function generateRoutesByDriver(trips, thead, tbody, kpis) {
+            const byDriver = {};
+            trips.forEach(t => {
+                const d = t.driver || 'Sin chofer';
+                if (!byDriver[d]) byDriver[d] = { trips: 0, repartos: new Set(), cost: 0, zones: new Set(), vehicles: new Set() };
+                byDriver[d].trips++;
+                if (t.reparto) byDriver[d].repartos.add(t.reparto);
+                byDriver[d].cost += (getTripCalculatedCost ? getTripCalculatedCost(t) : (t.cost || 0));
+                if (t.zone) byDriver[d].zones.add(t.zone);
+                if (t.vehicle) byDriver[d].vehicles.add(t.vehicle);
+            });
+
+            const rows = Object.entries(byDriver).sort((a, b) => b[1].trips - a[1].trips);
+            const totalCost = rows.reduce((s, r) => s + r[1].cost, 0);
+
+            kpis.innerHTML = `
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600"><i data-lucide="users" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Choferes</p><p class="text-2xl font-extrabold text-[#1B2559]">${rows.length}</p></div></div>
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center text-blue-600"><i data-lucide="truck" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Viajes totales</p><p class="text-2xl font-extrabold text-[#1B2559]">${trips.length}</p></div></div>
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600"><i data-lucide="dollar-sign" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Costo total</p><p class="text-2xl font-extrabold text-[#1B2559]">$${Math.round(totalCost).toLocaleString()}</p></div></div>
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-amber-50 flex items-center justify-center text-amber-600"><i data-lucide="route" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Repartos distintos</p><p class="text-2xl font-extrabold text-[#1B2559]">${new Set(trips.map(t=>t.reparto).filter(Boolean)).size}</p></div></div>
+            `;
+
+            thead.innerHTML = '<tr><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Chofer</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Viajes</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Repartos</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Veh\u00edculo</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-right">Costo ($)</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Zonas</th></tr>';
+
+            tbody.innerHTML = rows.map(([name, d]) => {
+                return `<tr class="hover:bg-[#F8FAFF] transition-colors"><td class="px-6 py-4 font-bold text-[#1B2559]">${name}</td><td class="px-6 py-4 text-center font-bold">${d.trips}</td><td class="px-6 py-4 text-sm">${[...d.repartos].join(', ') || '-'}</td><td class="px-6 py-4 text-sm font-medium">${[...d.vehicles].join(', ') || '-'}</td><td class="px-6 py-4 text-right font-bold text-emerald-700">$${Math.round(d.cost).toLocaleString()}</td><td class="px-6 py-4 text-sm text-[#A3AED0]">${[...d.zones].join(', ') || '-'}</td></tr>`;
+            }).join('');
+        }
+
+        function generateTripsSummary(trips, thead, tbody, kpis) {
+            const totalCost = trips.reduce((s, t) => s + (getTripCalculatedCost ? getTripCalculatedCost(t) : (t.cost || 0)), 0);
+            const propioTrips = trips.filter(t => (t.contractType || '').toLowerCase() !== 'tercerizado');
+            const tercTrips = trips.filter(t => (t.contractType || '').toLowerCase() === 'tercerizado');
+
+            kpis.innerHTML = `
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600"><i data-lucide="truck" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Viajes</p><p class="text-2xl font-extrabold text-[#1B2559]">${trips.length}</p></div></div>
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-blue-50 flex items-center justify-center text-blue-600"><i data-lucide="building" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Propios</p><p class="text-2xl font-extrabold text-[#1B2559]">${propioTrips.length}</p></div></div>
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-amber-50 flex items-center justify-center text-amber-600"><i data-lucide="handshake" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Tercerizados</p><p class="text-2xl font-extrabold text-[#1B2559]">${tercTrips.length}</p></div></div>
+                <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600"><i data-lucide="dollar-sign" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Costo total</p><p class="text-2xl font-extrabold text-[#1B2559]">$${Math.round(totalCost).toLocaleString()}</p></div></div>
+            `;
+
+            thead.innerHTML = '<tr><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Fecha</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Chofer</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Reparto</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Zona</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Contrato</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Estado</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-right">Costo ($)</th></tr>';
+
+            const sorted = [...trips].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
+            tbody.innerHTML = sorted.map(t => {
+                const cost = getTripCalculatedCost ? getTripCalculatedCost(t) : (t.cost || 0);
+                const statusClass = t.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700' : t.status === 'IN_PROGRESS' ? 'bg-blue-50 text-blue-700' : 'bg-slate-100 text-slate-600';
+                const contractClass = (t.contractType || '').toLowerCase() === 'tercerizado' ? 'bg-amber-50 text-amber-700' : 'bg-indigo-50 text-indigo-700';
+                return `<tr class="hover:bg-[#F8FAFF] transition-colors"><td class="px-6 py-4 text-sm font-medium">${t.date || '-'}</td><td class="px-6 py-4 font-bold text-[#1B2559]">${t.driver || '-'}</td><td class="px-6 py-4 text-sm">${t.reparto || '-'}</td><td class="px-6 py-4 text-sm">${t.zone || '-'}</td><td class="px-6 py-4 text-center"><span class="px-2 py-1 rounded-lg text-[10px] font-bold ${contractClass}">${(t.contractType || 'PROPIO').toUpperCase()}</span></td><td class="px-6 py-4 text-center"><span class="px-2 py-1 rounded-lg text-[10px] font-bold ${statusClass}">${t.status || 'PENDING'}</span></td><td class="px-6 py-4 text-right font-bold text-emerald-700">$${Math.round(cost).toLocaleString()}</td></tr>`;
+            }).join('');
+        }
+
+        function exportReportExcel() {
+            const table = document.getElementById('report-table');
+            if (!table || !table.querySelector('tbody tr')) {
+                if (typeof addNotification === 'function') addNotification('warning', 'Sin datos', 'Gener\u00e1 un reporte antes de exportar.');
+                return;
+            }
+            const wb = XLSX.utils.table_to_book(table, { sheet: 'Reporte' });
+            const type = document.getElementById('report-type').value;
+            const month = document.getElementById('report-month').value;
+            XLSX.writeFile(wb, `reporte_${type}_${month}_2026.xlsx`);
         }
 
         // --- USERS MODULE ---
@@ -7279,6 +7724,7 @@
             }
         }
 
+        checkExistingSession();
         setTimeout(renderNotifications, 500);
     </script>
 
