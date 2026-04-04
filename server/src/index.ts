@@ -1,5 +1,7 @@
 
 import express from 'express';
+import { createServer } from 'http';
+import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
 import { PrismaClient } from '@prisma/client';
 import multer from 'multer';
@@ -11,15 +13,20 @@ import dotenv from 'dotenv';
 
 dotenv.config();
 
-// Defaults robustos para Railway/local cuando faltan variables.
+// DATABASE_URL debe ser una URL de PostgreSQL (Railway la inyecta automáticamente).
 if (!process.env.DATABASE_URL) {
-    process.env.DATABASE_URL = process.env.RAILWAY_ENVIRONMENT ? 'file:/data/r14.db' : 'file:./prisma/r14.db';
+    console.error('[startup] ERROR: DATABASE_URL no está definida. Configurá la variable de entorno con la URL de PostgreSQL.');
+    process.exit(1);
 }
 if (!process.env.UPLOADS_DIR && process.env.RAILWAY_ENVIRONMENT) {
     process.env.UPLOADS_DIR = '/data/uploads';
 }
 
 const app = express();
+const httpServer = createServer(app);
+const io = new SocketIOServer(httpServer, {
+    cors: { origin: '*', methods: ['GET', 'POST'] }
+});
 /** Detrás de proxy (Railway, etc.) para IPs y HTTPS correctos */
 app.set('trust proxy', 1);
 const prisma = new PrismaClient();
@@ -99,7 +106,7 @@ async function ensureSchemaReady() {
         const msg = String(err?.message || '');
         const missingTable =
             code === 'P2021' ||
-            (code === 'P2010' && /no such table:\s*tenant/i.test(msg));
+            (code === 'P2010' && (/no such table:\s*tenant/i.test(msg) || /relation "tenant" does not exist/i.test(msg)));
         if (!missingTable) throw err;
         console.warn('[startup] Missing Prisma tables, running `prisma db push`...');
         await runPrismaDbPush();
@@ -696,7 +703,7 @@ app.post('/api/v1/settings', async (req, res) => {
 // --- RASTREO SATELITAL (app móvil choferes ↔ Torre de Control) ---
 app.post('/api/v1/tracking/location', async (req, res) => {
     try {
-        const { deviceId, deviceLabel, driverId, routeId, latitude, longitude, accuracy, speed, heading } =
+        const { deviceId, deviceLabel, driverId, routeId, latitude, longitude, accuracy, speed, heading, capturedAt } =
             req.body || {};
         if (latitude == null || longitude == null || !deviceId) {
             return res.status(400).json({ error: 'Faltan deviceId, latitude o longitude' });
@@ -732,9 +739,11 @@ app.post('/api/v1/tracking/location', async (req, res) => {
                 accuracy: accuracy != null && Number.isFinite(Number(accuracy)) ? Number(accuracy) : null,
                 speed: speed != null && Number.isFinite(Number(speed)) ? Number(speed) : null,
                 heading: heading != null && Number.isFinite(Number(heading)) ? Number(heading) : null,
-                offRouteMeters
+                offRouteMeters,
+                capturedAt: capturedAt ? new Date(capturedAt) : null
             }
         });
+        io.emit('location:update', record);
         res.json(record);
     } catch (e: any) {
         console.error('POST /tracking/location:', e);
@@ -852,11 +861,13 @@ app.get('/api/v1/routes/:id/live-summary', async (req, res) => {
 
 app.get('/api/v1/tracking/locations', async (req, res) => {
     try {
-        const all = await prisma.deviceLocation.findMany({
+        const since = new Date(Date.now() - 24 * 3600000);
+        const recent = await prisma.deviceLocation.findMany({
+            where: { timestamp: { gte: since } },
             orderBy: { timestamp: 'desc' }
         });
         const byDevice = new Map<string, { deviceId: string; deviceLabel: string | null; latitude: number; longitude: number; accuracy: number | null; timestamp: string }>();
-        for (const r of all) {
+        for (const r of recent) {
             if (!byDevice.has(r.deviceId)) {
                 byDevice.set(r.deviceId, {
                     deviceId: r.deviceId,
@@ -2698,11 +2709,13 @@ app.get('/api/v1/fleet/locations', async (req, res) => {
                 : null
         }));
 
-        const allDev = await prisma.deviceLocation.findMany({
+        const since24h = new Date(Date.now() - 24 * 3600000);
+        const recentDev = await prisma.deviceLocation.findMany({
+            where: { timestamp: { gte: since24h } },
             orderBy: { timestamp: 'desc' }
         });
-        const latestByDevice = new Map<string, (typeof allDev)[0]>();
-        for (const r of allDev) {
+        const latestByDevice = new Map<string, (typeof recentDev)[0]>();
+        for (const r of recentDev) {
             if (!latestByDevice.has(r.deviceId)) latestByDevice.set(r.deviceId, r);
         }
 
@@ -3148,7 +3161,7 @@ async function bootstrapData() {
     }
 }
 
-app.listen(port, host, () => {
+httpServer.listen(port, host, () => {
     console.log(`R14 server listening on ${host}:${port}`);
     // No bloquea el healthcheck de Railway.
     bootstrapData().catch((err) => {

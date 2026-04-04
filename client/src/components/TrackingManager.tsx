@@ -1,15 +1,15 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { MapPin, Smartphone, RefreshCw, ExternalLink, Clock } from 'lucide-react';
+import { io, type Socket } from 'socket.io-client';
+import { MapPin, Smartphone, RefreshCw, ExternalLink, Clock, Wifi, WifiOff } from 'lucide-react';
 
 const defaultCenter: [number, number] = [-34.6037, -58.3816];
 
-// Límite del mapa a Argentina (no carga más datos, solo evita arrastrar fuera)
 const argentinaBounds = L.latLngBounds(
-    [-55.2, -73.6],  // sudoeste
-    [-21.8, -53.6]   // noreste
+    [-55.2, -73.6],
+    [-21.8, -53.6]
 );
 
 const createIcon = () =>
@@ -29,11 +29,16 @@ type DeviceLocation = {
     timestamp: string;
 };
 
+// En desarrollo apunta al servidor Express directo; en producción usa el mismo origen.
+const SOCKET_URL = import.meta.env.DEV ? 'http://localhost:3002' : '';
+
 const TrackingManager = () => {
     const [locations, setLocations] = useState<DeviceLocation[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [mapReady, setMapReady] = useState(false);
+    const [connected, setConnected] = useState(false);
+    const socketRef = useRef<Socket | null>(null);
 
     const fetchLocations = async () => {
         setError(null);
@@ -46,7 +51,7 @@ const TrackingManager = () => {
                 const err = await res.json();
                 setError(err?.error || 'Error al cargar ubicaciones');
             }
-        } catch (e) {
+        } catch {
             setError('API no disponible. Comprueba que el servidor esté encendido.');
         } finally {
             setLoading(false);
@@ -54,13 +59,32 @@ const TrackingManager = () => {
     };
 
     useEffect(() => {
-        fetchLocations();
-        const interval = setInterval(fetchLocations, 15000);
-        return () => clearInterval(interval);
-    }, []);
-
-    useEffect(() => {
         setMapReady(true);
+        // Carga inicial de ubicaciones históricas
+        fetchLocations();
+
+        // Conexión WebSocket
+        const socket = io(SOCKET_URL, {
+            transports: ['websocket', 'polling'],
+            reconnectionDelay: 2000,
+            reconnectionAttempts: Infinity,
+        });
+        socketRef.current = socket;
+
+        socket.on('connect', () => setConnected(true));
+        socket.on('disconnect', () => setConnected(false));
+
+        // Cada vez que llega un ping GPS de cualquier chofer, actualiza su posición en el mapa
+        socket.on('location:update', (loc: DeviceLocation) => {
+            setLocations(prev => {
+                const filtered = prev.filter(l => l.deviceId !== loc.deviceId);
+                return [...filtered, loc];
+            });
+        });
+
+        return () => {
+            socket.disconnect();
+        };
     }, []);
 
     const openInMap = (lat: number, lng: number) => {
@@ -93,15 +117,21 @@ const TrackingManager = () => {
                     <h2 className="text-[22px] font-bold text-[#1C1C1E]">Rastreo satelital</h2>
                     <p className="text-[14px] text-[#8E8E93] font-medium">Ubicación en tiempo real de los dispositivos que usan la app</p>
                 </div>
-                <button
-                    type="button"
-                    onClick={() => { setLoading(true); fetchLocations(); }}
-                    disabled={loading}
-                    className="flex items-center gap-2 bg-[#007AFF] text-white px-6 py-3 rounded-2xl font-bold text-sm hover:opacity-90 disabled:opacity-70 transition-all"
-                >
-                    <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
-                    Actualizar
-                </button>
+                <div className="flex items-center gap-3">
+                    <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold ${connected ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+                        {connected ? <Wifi size={13} /> : <WifiOff size={13} />}
+                        {connected ? 'En vivo' : 'Reconectando…'}
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => { setLoading(true); fetchLocations(); }}
+                        disabled={loading}
+                        className="flex items-center gap-2 bg-[#007AFF] text-white px-6 py-3 rounded-2xl font-bold text-sm hover:opacity-90 disabled:opacity-70 transition-all"
+                    >
+                        <RefreshCw size={18} className={loading ? 'animate-spin' : ''} />
+                        Actualizar
+                    </button>
+                </div>
             </div>
 
             {error && (
@@ -162,7 +192,7 @@ const TrackingManager = () => {
                     <div className="p-20 text-center">
                         <Smartphone className="mx-auto text-[#AEAEB2]" size={48} />
                         <p className="text-[#8E8E93] font-medium mt-4">Aún no hay dispositivos reportando ubicación.</p>
-                        <p className="text-[13px] text-[#AEAEB2] mt-2">Los teléfonos deben abrir la página de envío de ubicación para aparecer aquí.</p>
+                        <p className="text-[13px] text-[#AEAEB2] mt-2">Los choferes deben fichar entrada en la app para aparecer aquí.</p>
                     </div>
                 ) : (
                     <ul className="divide-y divide-[#F2F2F7]">
@@ -195,17 +225,6 @@ const TrackingManager = () => {
                         ))}
                     </ul>
                 )}
-            </div>
-
-            <div className="bg-[#F8F9FB] border border-[#E5E7EB] rounded-2xl p-6">
-                <p className="text-[13px] font-bold text-[#8E8E93] uppercase tracking-wider mb-2">Cómo enviar ubicación desde un teléfono (choferes con datos móviles)</p>
-                <p className="text-[14px] text-[#1C1C1E] font-medium mb-1">
-                    Los choferes abren en el celular esta URL (con datos o WiFi):
-                </p>
-                <a href="https://uropygial-conservational-joy.ngrok-free.dev/ubicacion" target="_blank" rel="noopener noreferrer" className="text-[#007AFF] font-bold text-sm break-all underline block mb-2">
-                    https://uropygial-conservational-joy.ngrok-free.dev/ubicacion
-                </a>
-                <p className="text-[#8E8E93] text-[13px]">Permitir acceso a la ubicación; la posición se envía cada 30 segundos. Debe estar corriendo el túnel ngrok y el servidor.</p>
             </div>
         </div>
     );

@@ -3,7 +3,7 @@ generator client {
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -304,6 +304,7 @@ model DeviceLocation {
   speed            Float? // m/s si el cliente lo envía
   heading          Float? // grados
   offRouteMeters   Float? // distancia mínima a la polilínea planificada (m), si aplica
+  capturedAt       DateTime? // timestamp real del GPS en el dispositivo (enviado por la app)
   timestamp        DateTime @default(now())
   createdAt        DateTime @default(now())
 

@@ -43,7 +43,11 @@ export default defineConfig({
     ],
     port: 5175,
     proxy: {
-        '/api': 'http://127.0.0.1:3002'
+        '/api': 'http://127.0.0.1:3002',
+        '/socket.io': {
+            target: 'http://127.0.0.1:3002',
+            ws: true,
+        }
     }
   }
 })
