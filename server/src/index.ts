@@ -3147,10 +3147,8 @@ app.put('/api/v1/route-templates/:id', async (req, res) => {
     }
 });
 
-// ── TEMPORAL: migrar datos de SQLite a PostgreSQL ────────────────────────────
-// Llamar UNA VEZ con POST /api/admin/migrate-sqlite  { "key": "r14-migrate-2026" }
-// Remover este bloque después de la migración exitosa.
-app.post('/api/admin/migrate-sqlite', async (req: any, res: any) => {
+// ── ELIMINADO: endpoint de migración SQLite→PostgreSQL (ya ejecutado) ────────
+if (false) app.post('/api/admin/migrate-sqlite', async (req: any, res: any) => {
     const { key } = req.body || {};
     if (key !== 'r14-migrate-2026') return res.status(403).json({ error: 'Forbidden' });
 
@@ -3245,7 +3243,7 @@ app.post('/api/admin/migrate-sqlite', async (req: any, res: any) => {
 
     res.json({ success: true, results });
 });
-// ── FIN TEMPORAL ─────────────────────────────────────────────────────────────
+// ── FIN ──────────────────────────────────────────────────────────────────────
 
 const host = process.env.HOST || '0.0.0.0';
 
