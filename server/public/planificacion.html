@@ -602,12 +602,36 @@
                     </div>
                 </div>
 
+                <!-- Bulk Action Bar -->
+                <div id="weekly-bulk-bar" class="hidden card-dark p-4 flex flex-wrap items-center gap-4 border-2 border-indigo-200 bg-indigo-50/50">
+                    <div class="flex items-center gap-3">
+                        <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white">
+                            <i data-lucide="check-square" class="w-5 h-5"></i>
+                        </div>
+                        <div>
+                            <p class="text-sm font-black text-[#1B2559]"><span id="weekly-selected-count">0</span> viajes seleccionados</p>
+                            <p class="text-[10px] text-[#A3AED0] font-bold uppercase">Acciones masivas</p>
+                        </div>
+                    </div>
+                    <div class="flex-1"></div>
+                    <button onclick="openBulkEditModal()" class="px-5 py-3 rounded-2xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center gap-2">
+                        <i data-lucide="edit-3" class="w-4 h-4"></i> Editar seleccionados
+                    </button>
+                    <button onclick="bulkDeleteTrips()" class="px-5 py-3 rounded-2xl bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-700 transition-all shadow-lg shadow-rose-200 flex items-center gap-2">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i> Eliminar seleccionados
+                    </button>
+                    <button onclick="clearTripSelection()" class="px-4 py-3 rounded-2xl border border-[#E0E5F2] text-[#1B2559] text-[11px] font-bold hover:bg-[#F4F7FE] transition-all">
+                        Cancelar
+                    </button>
+                </div>
+
                 <!-- Main Data Table Container -->
                 <div class="table-container">
                     <div class="overflow-x-auto custom-scrollbar" role="region" aria-label="Tabla de viajes — desplazamiento horizontal">
                         <table class="w-full min-w-[1240px] text-left whitespace-nowrap">
                             <thead>
                                 <tr>
+                                    <th class="sticky-col z-20 w-12"><input type="checkbox" id="weekly-select-all" onchange="toggleSelectAllTrips(this.checked)" class="rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500 cursor-pointer"></th>
                                     <th class="sticky-col z-20">ID / Fecha</th>
                                     <th>Zona / Localidad</th>
                                     <th>Chofer</th>
@@ -4543,7 +4567,10 @@
                 const cost = isPropio ? getTripCalculatedCost(t) : (Number(t.value) || 0);
                 
                 return `
-                    <tr class="hover:bg-[#F4F7FE] transition-colors group">
+                    <tr class="hover:bg-[#F4F7FE] transition-colors group" id="weekly-row-${t.id}">
+                        <td class="sticky-col z-20 w-12 text-center align-middle">
+                            <input type="checkbox" class="weekly-trip-checkbox rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500 cursor-pointer" value="${t.id}" onchange="onTripCheckboxChange()">
+                        </td>
                         <td class="sticky-col font-bold text-[#1B2559]">
                            <div class="flex items-start gap-1">
                                 <button type="button" class="p-1 rounded-lg text-[#A3AED0] hover:text-indigo-600 hover:bg-[#E8ECF8] shrink-0 mt-0.5" onclick="event.stopPropagation(); toggleWeeklyTripStopsRow(${t.id})" title="Ver u ocultar puntos de ruta">
@@ -4599,7 +4626,10 @@
                         </td>
                         <td class="px-3 text-center align-middle">
                             <div class="flex flex-col items-center gap-1.5">
-                                <button type="button" onclick="openEditTripModal(${t.id})" class="p-2 text-slate-300 hover:text-indigo-600 transition-all" title="Editar viaje"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
+                                <div class="flex gap-1 justify-center">
+                                    <button type="button" onclick="openEditTripModal(${t.id})" class="p-2 text-slate-300 hover:text-indigo-600 transition-all" title="Editar viaje"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
+                                    <button type="button" onclick="deleteSingleTrip(${t.id})" class="p-2 text-slate-300 hover:text-rose-600 transition-all" title="Eliminar viaje"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                                </div>
                                 <div class="flex gap-1 justify-center">
                                     <button type="button" onclick="operatorTripRecorrido(${t.id},'start')" class="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100" title="Iniciar viaje (operador)"><i data-lucide="play" class="w-3.5 h-3.5"></i></button>
                                     <button type="button" onclick="operatorTripRecorrido(${t.id},'end')" class="p-1.5 rounded-lg bg-[#F4F7FE] text-[#2B3674] hover:bg-[#E8ECF8]" title="Finalizar viaje (operador)"><i data-lucide="square" class="w-3.5 h-3.5"></i></button>
@@ -4608,7 +4638,7 @@
                         </td>
                     </tr>
                     <tr id="weekly-detail-${t.id}" class="hidden bg-[#F8FAFF]/90">
-                        <td colspan="16" class="p-0 border-b border-[#E0E5F2] align-top">
+                        <td colspan="17" class="p-0 border-b border-[#E0E5F2] align-top">
                             <div id="weekly-stops-wrap-${t.id}" class="px-4 py-3 sm:px-6 sm:py-4">
                                 <p class="text-[11px] text-[#A3AED0]">Usá la flecha para cargar los puntos.</p>
                             </div>
@@ -4621,7 +4651,7 @@
             if (data.length === 0) {
                 body.innerHTML = `
                     <tr>
-                        <td colspan="16" class="py-20 text-center">
+                        <td colspan="17" class="py-20 text-center">
                             <div class="flex flex-col items-center opacity-30">
                                 <i data-lucide="package-search" class="w-12 h-12 mb-4"></i>
                                 <span class="text-sm font-bold uppercase tracking-widest">No se encontraron viajes para este período</span>
@@ -4793,6 +4823,183 @@
                 addNotification('error', 'Error de Conexión', 'No se pudo conectar con el servidor de datos.');
                 planningData = [];
                 filterWeeklyData();
+            }
+        }
+
+        // ─── TRIP SELECTION & BULK ACTIONS ─────────────────────────────────
+        let selectedTripIds = new Set();
+
+        function onTripCheckboxChange() {
+            selectedTripIds = new Set(
+                [...document.querySelectorAll('.weekly-trip-checkbox:checked')].map(cb => parseInt(cb.value))
+            );
+            updateBulkBar();
+        }
+
+        function toggleSelectAllTrips(checked) {
+            document.querySelectorAll('.weekly-trip-checkbox').forEach(cb => { cb.checked = checked; });
+            onTripCheckboxChange();
+        }
+
+        function clearTripSelection() {
+            selectedTripIds.clear();
+            document.querySelectorAll('.weekly-trip-checkbox').forEach(cb => { cb.checked = false; });
+            const selectAll = document.getElementById('weekly-select-all');
+            if (selectAll) selectAll.checked = false;
+            updateBulkBar();
+        }
+
+        function updateBulkBar() {
+            const bar = document.getElementById('weekly-bulk-bar');
+            const countEl = document.getElementById('weekly-selected-count');
+            if (!bar) return;
+            if (selectedTripIds.size > 0) {
+                bar.classList.remove('hidden');
+                countEl.textContent = selectedTripIds.size;
+            } else {
+                bar.classList.add('hidden');
+            }
+        }
+
+        async function deleteSingleTrip(id) {
+            if (!confirm(`¿Eliminar el viaje #${id}? Esta acción no se puede deshacer.`)) return;
+            try {
+                const res = await fetch(`${API_URL}/trips/${id}`, { method: 'DELETE' });
+                if (!res.ok) throw new Error('Error al eliminar');
+                planningData = planningData.filter(t => t.id !== id);
+                filterWeeklyData();
+                if (typeof addNotification === 'function') addNotification('success', 'Viaje eliminado', `Viaje #${id} fue eliminado correctamente.`);
+            } catch (e) {
+                if (typeof addNotification === 'function') addNotification('error', 'Error', e.message);
+            }
+        }
+
+        async function bulkDeleteTrips() {
+            const ids = [...selectedTripIds];
+            if (ids.length === 0) return;
+            if (!confirm(`¿Eliminar ${ids.length} viaje(s) seleccionados? Esta acción no se puede deshacer.`)) return;
+
+            let ok = 0, fail = 0;
+            for (const id of ids) {
+                try {
+                    const res = await fetch(`${API_URL}/trips/${id}`, { method: 'DELETE' });
+                    if (res.ok) { ok++; } else { fail++; }
+                } catch (_) { fail++; }
+            }
+
+            planningData = planningData.filter(t => !selectedTripIds.has(t.id));
+            clearTripSelection();
+            filterWeeklyData();
+
+            if (typeof addNotification === 'function') {
+                if (fail === 0) addNotification('success', 'Eliminación masiva', `${ok} viaje(s) eliminados correctamente.`);
+                else addNotification('warning', 'Eliminación parcial', `${ok} eliminados, ${fail} con error.`);
+            }
+        }
+
+        function openBulkEditModal() {
+            if (selectedTripIds.size === 0) return;
+            const modal = document.getElementById('bulk-edit-modal');
+            document.getElementById('bulk-edit-count').textContent = `${selectedTripIds.size} viajes seleccionados`;
+
+            // Populate dropdowns from existing data
+            const drivers = [...new Set(planningData.map(t => t.driver).filter(Boolean))].sort();
+            const zones = [...new Set(planningData.map(t => t.zone).filter(Boolean))].sort();
+            const repartos = [...new Set(planningData.map(t => t.reparto || t.tripType).filter(Boolean))].sort();
+            const plates = [...new Set(allVehicles.map(v => v.plate).filter(Boolean))].sort();
+            const auxNames = [...new Set(planningData.flatMap(t => [t.auxiliar, t.auxiliar2, t.auxiliar3]).filter(Boolean))].sort();
+
+            const driverSel = document.getElementById('bulk-edit-driver');
+            driverSel.innerHTML = '<option value="">— No cambiar —</option>' + drivers.map(d => `<option value="${d}">${d}</option>`).join('');
+
+            const zoneSel = document.getElementById('bulk-edit-zone');
+            zoneSel.innerHTML = '<option value="">— No cambiar —</option>' + zones.map(z => `<option value="${z}">${z}</option>`).join('');
+
+            const repartoSel = document.getElementById('bulk-edit-reparto');
+            repartoSel.innerHTML = '<option value="">— No cambiar —</option>' + repartos.map(r => `<option value="${r}">${r}</option>`).join('');
+
+            const vehicleSel = document.getElementById('bulk-edit-vehicle');
+            vehicleSel.innerHTML = '<option value="">— No cambiar —</option>' + plates.map(p => `<option value="${p}">${p}</option>`).join('');
+
+            const aux1Sel = document.getElementById('bulk-edit-aux1');
+            aux1Sel.innerHTML = '<option value="">— No cambiar —</option>' + auxNames.map(a => `<option value="${a}">${a}</option>`).join('');
+
+            const buSel = document.getElementById('bulk-edit-bu');
+            const buList = getBusinessUnitsCatalog();
+            buSel.innerHTML = '<option value="">— No cambiar —</option>' + buList.map(b => `<option value="${b}">${b}</option>`).join('');
+
+            // Reset all fields
+            document.getElementById('bulk-edit-contract').value = '';
+            document.getElementById('bulk-edit-status').value = '';
+            document.getElementById('bulk-edit-provider').value = '';
+            document.getElementById('bulk-edit-vuelta').value = '';
+
+            modal.classList.remove('hidden');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function closeBulkEditModal() {
+            document.getElementById('bulk-edit-modal').classList.add('hidden');
+        }
+
+        async function applyBulkEdit() {
+            const ids = [...selectedTripIds];
+            if (ids.length === 0) return;
+
+            // Collect only non-empty fields
+            const changes = {};
+            const driver = document.getElementById('bulk-edit-driver').value;
+            const contract = document.getElementById('bulk-edit-contract').value;
+            const bu = document.getElementById('bulk-edit-bu').value;
+            const reparto = document.getElementById('bulk-edit-reparto').value;
+            const zone = document.getElementById('bulk-edit-zone').value;
+            const vehicle = document.getElementById('bulk-edit-vehicle').value;
+            const aux1 = document.getElementById('bulk-edit-aux1').value;
+            const status = document.getElementById('bulk-edit-status').value;
+            const provider = document.getElementById('bulk-edit-provider').value.trim();
+            const vuelta = document.getElementById('bulk-edit-vuelta').value;
+
+            if (driver) changes.driver = driver;
+            if (contract) changes.contractType = contract;
+            if (bu) changes.businessUnit = bu;
+            if (reparto) changes.tripType = reparto;
+            if (zone) changes.zone = zone;
+            if (vehicle) changes.plate = vehicle;
+            if (aux1) changes.auxiliar = aux1;
+            if (status) changes.status = status;
+            if (provider) changes.provider = provider;
+            if (vuelta) changes.vuelta = vuelta;
+
+            if (Object.keys(changes).length === 0) {
+                if (typeof addNotification === 'function') addNotification('warning', 'Edición masiva', 'No seleccionaste ningún campo para cambiar.');
+                return;
+            }
+
+            let ok = 0, fail = 0;
+            for (const id of ids) {
+                try {
+                    const res = await fetch(`${API_URL}/trips/${id}`, {
+                        method: 'PUT',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(changes)
+                    });
+                    if (res.ok) {
+                        ok++;
+                        // Update local data too
+                        const local = planningData.find(t => t.id === id);
+                        if (local) Object.assign(local, changes);
+                    } else { fail++; }
+                } catch (_) { fail++; }
+            }
+
+            closeBulkEditModal();
+            clearTripSelection();
+            filterWeeklyData();
+
+            const changedFields = Object.keys(changes).join(', ');
+            if (typeof addNotification === 'function') {
+                if (fail === 0) addNotification('success', 'Edición masiva', `${ok} viaje(s) actualizados. Campos: ${changedFields}`);
+                else addNotification('warning', 'Edición parcial', `${ok} actualizados, ${fail} con error.`);
             }
         }
 
@@ -8112,6 +8319,97 @@
             </div>
         </div>
     </div>
+    <!-- Modal: Edición Masiva de Viajes -->
+    <div id="bulk-edit-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
+        <div class="bg-white rounded-3xl w-full max-w-2xl max-h-[90vh] shadow-2xl overflow-hidden flex flex-col">
+            <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center bg-[#F8FAFF]">
+                <div>
+                    <h3 class="font-black text-[#1B2559] uppercase tracking-widest text-sm">Edición Masiva</h3>
+                    <p id="bulk-edit-count" class="text-[11px] text-[#A3AED0] font-medium mt-1">0 viajes seleccionados</p>
+                </div>
+                <button onclick="closeBulkEditModal()" class="text-[#A3AED0] hover:text-[#1B2559] transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="p-8 space-y-5 overflow-y-auto custom-scrollbar flex-1">
+                <p class="text-sm text-[#A3AED0] font-medium">Solo los campos que completes se aplicarán a todos los viajes seleccionados. Dejá en blanco los que no quieras modificar.</p>
+                <div class="grid grid-cols-2 gap-5">
+                    <div>
+                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Chofer</label>
+                        <select id="bulk-edit-driver" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="">— No cambiar —</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Contrato</label>
+                        <select id="bulk-edit-contract" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="">— No cambiar —</option>
+                            <option value="Propio">Propio</option>
+                            <option value="Tercerizado">Tercerizado</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Unidad de Negocio</label>
+                        <select id="bulk-edit-bu" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="">— No cambiar —</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Reparto / Ruta</label>
+                        <select id="bulk-edit-reparto" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="">— No cambiar —</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Zona</label>
+                        <select id="bulk-edit-zone" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="">— No cambiar —</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Vehículo / Patente</label>
+                        <select id="bulk-edit-vehicle" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="">— No cambiar —</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Auxiliar 1</label>
+                        <select id="bulk-edit-aux1" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="">— No cambiar —</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Estado</label>
+                        <select id="bulk-edit-status" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="">— No cambiar —</option>
+                            <option value="PENDIENTE">PENDIENTE</option>
+                            <option value="EN_CURSO">EN CURSO</option>
+                            <option value="COMPLETED">COMPLETADO</option>
+                            <option value="CANCELADO">CANCELADO</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Proveedor</label>
+                        <input id="bulk-edit-provider" type="text" placeholder="No cambiar" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Vuelta</label>
+                        <select id="bulk-edit-vuelta" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="">— No cambiar —</option>
+                            <option value="1">1ª vuelta</option>
+                            <option value="2">2ª vuelta</option>
+                            <option value="3">3ª vuelta o más</option>
+                        </select>
+                    </div>
+                </div>
+            </div>
+            <div class="p-6 bg-[#F8FAFF] border-t border-[#F4F7FE] flex gap-4">
+                <button onclick="applyBulkEdit()" class="flex-1 bg-indigo-600 text-white py-3.5 rounded-2xl font-bold text-xs tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 uppercase">
+                    APLICAR CAMBIOS
+                </button>
+                <button onclick="closeBulkEditModal()" class="px-6 border border-[#E0E5F2] rounded-2xl font-bold text-[#1B2559] text-xs hover:bg-[#F4F7FE] transition-all">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
 <!-- New Trip Modal -->
     <div id="new-trip-modal" class="modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center p-3" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
         <div class="bg-white rounded-3xl w-[96vw] max-w-6xl max-h-[92vh] shadow-2xl overflow-hidden flex flex-col">
