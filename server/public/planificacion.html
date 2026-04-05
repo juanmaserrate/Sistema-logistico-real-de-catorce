@@ -560,6 +560,9 @@
                             <button onclick="setGridFilter('Tercerizado')" class="px-5 py-3 rounded-[12px] text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Tercerizado</button>
                         </div>
 
+                        <button onclick="exportWeeklyExcel()" class="px-5 py-4 rounded-2xl bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 flex items-center gap-2">
+                            <i data-lucide="download" class="w-4 h-4"></i> EXPORTAR
+                        </button>
                         <button onclick="openNewTripModal()" class="px-6 py-4 rounded-2xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center gap-2">
                             <i data-lucide="plus" class="w-4 h-4"></i> NUEVO VIAJE
                         </button>
@@ -1098,6 +1101,62 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Configuración de Perfiles -->
+                <div class="card-dark p-8">
+                    <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
+                        <div>
+                            <h4 class="text-lg font-bold text-[#1B2559]">Configuración de Perfiles de Acceso</h4>
+                            <p class="text-sm text-[#A3AED0] font-medium">Asigná perfiles a cada usuario para controlar qué módulos pueden ver</p>
+                        </div>
+                        <button onclick="saveProfileAssignments()" class="px-6 py-3 rounded-2xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center gap-2 uppercase tracking-widest">
+                            <i data-lucide="save" class="w-4 h-4"></i> Guardar Perfiles
+                        </button>
+                    </div>
+
+                    <!-- Add assignment -->
+                    <div class="flex flex-wrap items-end gap-4 mb-6 p-5 bg-[#F4F7FE] rounded-2xl">
+                        <div class="flex-1 min-w-[180px]">
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Nombre de usuario</label>
+                            <input id="profile-new-username" type="text" placeholder="Ej: maria, carlos..." class="w-full bg-white border-0 rounded-2xl px-4 py-3 text-sm font-medium text-[#1B2559] outline-none">
+                        </div>
+                        <div class="min-w-[180px]">
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Perfil</label>
+                            <select id="profile-new-role" class="w-full bg-white border-0 rounded-2xl px-4 py-3 text-sm font-bold text-[#1B2559] outline-none">
+                                <option value="TRAFICO">TRAFICO</option>
+                                <option value="RRHH">RRHH</option>
+                                <option value="ADMINISTRACION">ADMINISTRACION</option>
+                                <option value="SUPERADMIN">SUPERADMIN</option>
+                            </select>
+                        </div>
+                        <button onclick="addProfileAssignment()" class="px-5 py-3 rounded-2xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">
+                            Asignar
+                        </button>
+                    </div>
+
+                    <!-- Assignments table -->
+                    <div class="overflow-x-auto custom-scrollbar rounded-2xl border border-[#F4F7FE]">
+                        <table class="w-full text-left">
+                            <thead>
+                                <tr>
+                                    <th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest bg-[#F8FAFF]">Usuario</th>
+                                    <th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest bg-[#F8FAFF]">Perfil Asignado</th>
+                                    <th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest bg-[#F8FAFF]">Módulos</th>
+                                    <th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest bg-[#F8FAFF] text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="profile-assignments-body" class="divide-y divide-[#F4F7FE]"></tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- Profiles reference card -->
+                <div class="card-dark p-8">
+                    <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-6">Referencia de Perfiles</h4>
+                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4" id="profiles-reference-grid">
+                        <!-- Filled by JS -->
+                    </div>
+                </div>
             </div>
 
             <!-- Modal: Nueva/Editar Reparación -->
@@ -1332,6 +1391,23 @@
                         </div>
                         <h2 id="control-kpi-delayed" class="text-3xl font-black text-amber-600">--</h2>
                     </div>
+                </div>
+
+                <!-- Alertas de Vencimientos -->
+                <div id="control-expiry-alerts" class="card-dark p-6 hidden">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center">
+                                <i data-lucide="alert-triangle" class="w-5 h-5 text-rose-600"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest">Alertas de Vencimientos</h4>
+                                <p class="text-[11px] text-[#A3AED0] font-medium">Documentación próxima a vencer o ya vencida</p>
+                            </div>
+                        </div>
+                        <span id="control-expiry-count" class="text-xs font-black text-rose-600 bg-rose-50 px-3 py-1.5 rounded-xl">0</span>
+                    </div>
+                    <div id="control-expiry-list" class="space-y-2 max-h-[320px] overflow-y-auto custom-scrollbar"></div>
                 </div>
 
                 <div class="card-dark overflow-hidden">
@@ -1993,6 +2069,141 @@
             if (usrInput) usrInput.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('login-password').focus(); });
         });
 
+        // ─── PROFILE MANAGEMENT ─────────────────────────────────────────────
+        function getStoredProfiles() {
+            try {
+                const raw = localStorage.getItem('r14.user_profiles');
+                return raw ? JSON.parse(raw) : {};
+            } catch(_) { return {}; }
+        }
+
+        function saveStoredProfiles(profiles) {
+            localStorage.setItem('r14.user_profiles', JSON.stringify(profiles));
+        }
+
+        function getAllProfileAssignments() {
+            const stored = getStoredProfiles();
+            const hardcoded = { juanma: 'SUPERADMIN', german: 'SUPERADMIN', gabriel: 'SUPERADMIN' };
+            return { ...stored, ...hardcoded };
+        }
+
+        function renderProfileAssignments() {
+            const tbody = document.getElementById('profile-assignments-body');
+            if (!tbody) return;
+            const all = getAllProfileAssignments();
+            const hardcoded = ['juanma', 'german', 'gabriel'];
+            const MODULE_LABELS = {
+                control: 'Torre de Control', weekly: 'Logística Semanal', dashboard: 'Dashboard',
+                vrp: 'Mapa y Ruteo', costs: 'Motor de Costos', maintenance: 'Mantenimiento',
+                routes: 'Rutas', users: 'Usuarios', employees: 'Personal',
+                salaries: 'Salarios', schools: 'Escuelas', reports: 'Reportes'
+            };
+
+            const rows = Object.entries(all).sort((a, b) => a[0].localeCompare(b[0]));
+            if (rows.length === 0) {
+                tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-12 text-center text-[#A3AED0] italic">No hay perfiles asignados. Los usuarios sin asignación tendrán acceso completo.</td></tr>';
+                return;
+            }
+            tbody.innerHTML = rows.map(([user, profile]) => {
+                const isHardcoded = hardcoded.includes(user.toLowerCase());
+                const modules = (ACCESS_PROFILES[profile] || []).map(m => MODULE_LABELS[m] || m);
+                return `<tr>
+                    <td class="px-6 py-4 text-sm font-bold text-[#1B2559]">${user}${isHardcoded ? ' <span class="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg ml-2">FIJO</span>' : ''}</td>
+                    <td class="px-6 py-4">
+                        ${isHardcoded
+                            ? `<span class="text-sm font-bold text-indigo-600">${profile}</span>`
+                            : `<select onchange="updateProfileAssignment('${user}', this.value)" class="bg-[#F4F7FE] border-0 rounded-xl px-3 py-2 text-sm font-bold text-[#1B2559] outline-none">
+                                ${['SUPERADMIN','TRAFICO','RRHH','ADMINISTRACION'].map(p => `<option value="${p}" ${p === profile ? 'selected' : ''}>${p}</option>`).join('')}
+                            </select>`
+                        }
+                    </td>
+                    <td class="px-6 py-4 text-[11px] text-[#A3AED0] font-medium max-w-xs">${modules.join(', ')}</td>
+                    <td class="px-6 py-4 text-center">
+                        ${isHardcoded
+                            ? '<span class="text-[10px] text-[#A3AED0]">Protegido</span>'
+                            : `<button onclick="removeProfileAssignment('${user}')" class="p-2 text-slate-300 hover:text-rose-600 transition-all"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`
+                        }
+                    </td>
+                </tr>`;
+            }).join('');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function renderProfilesReference() {
+            const grid = document.getElementById('profiles-reference-grid');
+            if (!grid) return;
+            const MODULE_LABELS = {
+                control: 'Torre de Control', weekly: 'Logística Semanal', dashboard: 'Dashboard',
+                vrp: 'Mapa y Ruteo', costs: 'Motor de Costos', maintenance: 'Mantenimiento',
+                routes: 'Rutas', users: 'Usuarios', employees: 'Personal',
+                salaries: 'Salarios', schools: 'Escuelas', reports: 'Reportes'
+            };
+            const colors = {
+                SUPERADMIN: { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-700', dot: 'bg-indigo-500' },
+                TRAFICO: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', dot: 'bg-emerald-500' },
+                RRHH: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', dot: 'bg-amber-500' },
+                ADMINISTRACION: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700', dot: 'bg-purple-500' }
+            };
+            grid.innerHTML = Object.entries(ACCESS_PROFILES).map(([profile, modules]) => {
+                const c = colors[profile] || colors.SUPERADMIN;
+                return `<div class="rounded-2xl border ${c.border} ${c.bg} p-5">
+                    <div class="flex items-center gap-2 mb-3">
+                        <span class="w-2.5 h-2.5 rounded-full ${c.dot}"></span>
+                        <h5 class="text-xs font-black ${c.text} uppercase tracking-widest">${profile}</h5>
+                    </div>
+                    <div class="space-y-1.5">
+                        ${modules.map(m => `<div class="text-[11px] font-medium ${c.text} opacity-80">• ${MODULE_LABELS[m] || m}</div>`).join('')}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function addProfileAssignment() {
+            const usernameEl = document.getElementById('profile-new-username');
+            const roleEl = document.getElementById('profile-new-role');
+            const username = (usernameEl.value || '').trim().toLowerCase();
+            const role = roleEl.value;
+            if (!username) {
+                if (typeof addNotification === 'function') addNotification('warning', 'Perfiles', 'Escribí un nombre de usuario.');
+                return;
+            }
+            const profiles = getStoredProfiles();
+            profiles[username] = role;
+            saveStoredProfiles(profiles);
+            usernameEl.value = '';
+            renderProfileAssignments();
+            if (typeof addNotification === 'function') addNotification('success', 'Perfil asignado', `${username} → ${role}`);
+        }
+
+        function updateProfileAssignment(username, newRole) {
+            const profiles = getStoredProfiles();
+            profiles[username] = newRole;
+            saveStoredProfiles(profiles);
+            renderProfileAssignments();
+        }
+
+        function removeProfileAssignment(username) {
+            const profiles = getStoredProfiles();
+            delete profiles[username];
+            saveStoredProfiles(profiles);
+            renderProfileAssignments();
+            if (typeof addNotification === 'function') addNotification('info', 'Perfil removido', `${username} fue eliminado de la lista de perfiles.`);
+        }
+
+        function saveProfileAssignments() {
+            // Also save to API for persistence across devices
+            const profiles = getStoredProfiles();
+            fetch(`${API_URL}/settings`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ key: 'user_profiles', value: profiles })
+            }).then(() => {
+                if (typeof addNotification === 'function') addNotification('success', 'Perfiles guardados', 'La configuración de perfiles se guardó en el servidor.');
+            }).catch(() => {
+                if (typeof addNotification === 'function') addNotification('warning', 'Perfiles', 'Se guardó localmente pero no se pudo sincronizar con el servidor.');
+            });
+        }
+
         function showSection(id) {
             // Access control check
             if (currentUserModules.length > 0 && !currentUserModules.includes(id)) {
@@ -2044,8 +2255,9 @@
             if(id === 'salaries') loadSalariesTable();
             if(id === 'vrp') setTimeout(initVrpMap, 100);
             if(id === 'maintenance') loadMaintenanceData();
+            if(id === 'control') checkExpiryAlerts();
             if(id === 'routes') loadRouteTemplates();
-            if(id === 'users') loadUsers();
+            if(id === 'users') { loadUsers(); renderProfileAssignments(); renderProfilesReference(); }
             if(id === 'reports') initReportFilters();
         }
 
@@ -3038,6 +3250,79 @@
 
         function refreshControlLiveNow() {
             loadControlLiveData();
+        }
+
+        function checkExpiryAlerts() {
+            const container = document.getElementById('control-expiry-alerts');
+            const listEl = document.getElementById('control-expiry-list');
+            const countEl = document.getElementById('control-expiry-count');
+            if (!container || !listEl) return;
+
+            const vehicles = EXCEL_MAINTENANCE_SEED?.vehicles || {};
+            // Also merge from maintenanceCache
+            const merged = { ...vehicles, ...(maintenanceCache?.vehicles || {}) };
+            const today = new Date();
+            const alerts = [];
+
+            const docTypes = [
+                { key: 'vtv', label: 'VTV' },
+                { key: 'bromatologia', label: 'Bromatología' },
+                { key: 'senasa', label: 'Senasa' },
+                { key: 'driverLicenseExpiry', label: 'Licencia de Conducir' }
+            ];
+
+            Object.entries(merged).forEach(([plate, v]) => {
+                docTypes.forEach(({ key, label }) => {
+                    const val = v[key];
+                    if (!val || val === '-----' || val === '') return;
+                    if (val.toUpperCase().includes('VENCIDO')) {
+                        alerts.push({ plate, driver: v.driverName || '', type: label, status: 'expired', text: val, daysLeft: -999 });
+                        return;
+                    }
+                    const dateMatch = val.match(/^\d{4}-\d{2}-\d{2}/);
+                    if (!dateMatch) return;
+                    const expDate = new Date(dateMatch[0] + 'T00:00:00');
+                    const diffMs = expDate - today;
+                    const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+                    if (daysLeft <= 45) {
+                        alerts.push({ plate, driver: v.driverName || '', type: label, status: daysLeft <= 0 ? 'expired' : 'warning', date: dateMatch[0], daysLeft });
+                    }
+                });
+            });
+
+            alerts.sort((a, b) => a.daysLeft - b.daysLeft);
+
+            if (alerts.length === 0) {
+                container.classList.add('hidden');
+                return;
+            }
+
+            container.classList.remove('hidden');
+            countEl.textContent = alerts.length + ' alerta' + (alerts.length !== 1 ? 's' : '');
+
+            listEl.innerHTML = alerts.map(a => {
+                const isExpired = a.status === 'expired';
+                const bgClass = isExpired ? 'bg-rose-50 border-rose-200' : 'bg-amber-50 border-amber-200';
+                const textClass = isExpired ? 'text-rose-700' : 'text-amber-700';
+                const iconColor = isExpired ? 'text-rose-500' : 'text-amber-500';
+                const statusText = isExpired
+                    ? (a.daysLeft === -999 ? a.text : `Venció hace ${Math.abs(a.daysLeft)} días`)
+                    : `Vence en ${a.daysLeft} días`;
+                const dateText = a.date ? ` (${new Date(a.date + 'T00:00:00').toLocaleDateString('es-AR')})` : '';
+                return `<div class="flex items-center gap-4 p-4 rounded-xl border ${bgClass}">
+                    <i data-lucide="${isExpired ? 'x-circle' : 'alert-triangle'}" class="w-5 h-5 ${iconColor} shrink-0"></i>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="text-sm font-black ${textClass}">${a.plate}</span>
+                            <span class="text-[10px] font-bold ${textClass} bg-white/60 px-2 py-0.5 rounded-lg">${a.type}</span>
+                            ${a.driver ? `<span class="text-[11px] text-[#A3AED0] font-medium">· ${a.driver}</span>` : ''}
+                        </div>
+                        <p class="text-[11px] font-bold ${textClass} mt-0.5">${statusText}${dateText}</p>
+                    </div>
+                </div>`;
+            }).join('');
+
+            if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
         function preflightBadgeClass(status) {
@@ -4510,6 +4795,50 @@
             }
         }
 
+        function exportWeeklyExcel() {
+            const monthEl = document.getElementById('planning-month-select');
+            const month = monthEl ? monthEl.value : 'enero';
+            const data = (filteredPlanning && filteredPlanning.length > 0) ? filteredPlanning : planningData;
+
+            if (!data || data.length === 0) {
+                if (typeof addNotification === 'function') addNotification('warning', 'Export', 'No hay datos para exportar.');
+                return;
+            }
+
+            const rows = data.map(t => ({
+                'Fecha': t.date || '',
+                'Chofer': t.driver || '',
+                'Zona': t.zone || '',
+                'Localidad': t.localidad || '',
+                'Reparto': t.reparto || '',
+                'Unidad Negocio': t.businessUnit || '',
+                'Contrato': t.contract || '',
+                'Patente': t.plate || '',
+                'Auxiliar 1': t.auxiliar1 || '',
+                'Auxiliar 2': t.auxiliar2 || '',
+                'Auxiliar 3': t.auxiliar3 || '',
+                'Vuelta': t.vuelta || '1',
+                'Hora Salida': t.horaSalida || '',
+                'Hora Llegada': t.horaLlegada || '',
+                'Costo ($)': typeof getTripCalculatedCost === 'function' ? getTripCalculatedCost(t) : (Number(t.value) || 0),
+                'Proveedor': t.provider || '',
+                'Estado': t.status || '',
+                'Observaciones': t.observations || ''
+            }));
+
+            const ws = XLSX.utils.json_to_sheet(rows);
+
+            // Style header row width
+            const colWidths = Object.keys(rows[0] || {}).map(k => ({ wch: Math.max(k.length + 2, 14) }));
+            ws['!cols'] = colWidths;
+
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, `Planificacion ${month}`);
+            XLSX.writeFile(wb, `R14_Planificacion_${month}_${new Date().toISOString().slice(0,10)}.xlsx`);
+
+            if (typeof addNotification === 'function') addNotification('success', 'Excel exportado', `Se exportaron ${rows.length} viajes de ${month}.`);
+        }
+
         function filterWeeklyData() {
             const query = (document.getElementById('planning-search')?.value || '').toLowerCase();
             const planningMonth = document.getElementById('planning-month-select');
@@ -5916,6 +6245,7 @@
                 }
                 renderMaintenanceVehicleList();
                 renderMaintenanceRecords();
+                checkExpiryAlerts();
             } catch (e) {
                 console.error("Error loading maintenance:", e);
                 maintenanceVehicles = [];
