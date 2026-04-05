@@ -2007,7 +2007,7 @@
             errorEl.classList.add('hidden');
 
             try {
-                const res = await fetch(getServerOrigin() + '/auth/login', {
+                const res = await fetch(getServerOrigin() + '/api/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ username, password })
@@ -2018,14 +2018,15 @@
                     throw new Error(data.error || 'Credenciales incorrectas');
                 }
 
-                // Store session
-                localStorage.setItem('r14.loggedUser', data.fullName || data.username || username);
-                localStorage.setItem('r14.loggedUsername', data.username || username);
-                localStorage.setItem('r14.loggedUserId', data.id || '');
-                localStorage.setItem('r14.loggedRole', data.role || 'ADMIN');
+                // Store session — server returns { success, user: { id, fullName, role } }
+                const u = data.user || data;
+                localStorage.setItem('r14.loggedUser', u.fullName || u.username || username);
+                localStorage.setItem('r14.loggedUsername', u.username || username);
+                localStorage.setItem('r14.loggedUserId', u.id || '');
+                localStorage.setItem('r14.loggedRole', u.role || 'ADMIN');
 
                 // Apply access control
-                const profile = getUserProfile(data.username || username);
+                const profile = getUserProfile(u.username || username);
                 applyAccessControl(profile);
 
                 // Hide login gate
