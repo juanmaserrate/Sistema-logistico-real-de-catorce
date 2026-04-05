@@ -974,31 +974,7 @@
                     </div>
                 </div>
 
-                <div class="table-container">
-                    <div class="p-6 border-b border-[#F4F7FE] flex items-center justify-between">
-                        <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Documentación y Ficha Técnica</h4>
-                    </div>
-                    <div class="overflow-x-auto custom-scrollbar">
-                        <table class="w-full min-w-[920px] text-left whitespace-nowrap">
-                            <thead>
-                                <tr>
-                                    <th>Patente</th>
-                                    <th>Chofer</th>
-                                    <th>Marca/Modelo</th>
-                                    <th>VTV</th>
-                                    <th>Broma.</th>
-                                    <th>Senasa</th>
-                                    <th>Licencia</th>
-                                    <th class="text-center">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody id="maintenance-vehicle-table-body" class="divide-y divide-[#F4F7FE]">
-                                <!-- Dynamic rows -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
+                <!-- 1. Historial de Reparaciones (primero) -->
                 <div id="maintenance-records" class="card-dark p-8 space-y-8 w-full min-w-0 overflow-hidden">
                     <div class="flex flex-col md:flex-row justify-between items-center gap-6">
                         <div>
@@ -1035,6 +1011,49 @@
                             <div id="maintenance-totals-by-cat-body" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm"></div>
                         </div>
                     </div>
+                </div>
+
+                <!-- 2. Documentación y Ficha Técnica -->
+                <div class="table-container">
+                    <div class="p-6 border-b border-[#F4F7FE] flex items-center justify-between">
+                        <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Documentación y Ficha Técnica</h4>
+                    </div>
+                    <div class="overflow-x-auto custom-scrollbar">
+                        <table class="w-full min-w-[920px] text-left whitespace-nowrap">
+                            <thead>
+                                <tr>
+                                    <th>Patente</th>
+                                    <th>Chofer</th>
+                                    <th>Marca/Modelo</th>
+                                    <th>VTV</th>
+                                    <th>Broma.</th>
+                                    <th>Senasa</th>
+                                    <th>Licencia</th>
+                                    <th class="text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="maintenance-vehicle-table-body" class="divide-y divide-[#F4F7FE]">
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 3. Alertas de Vencimientos -->
+                <div id="maint-expiry-alerts" class="card-dark p-6 hidden">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center">
+                                <i data-lucide="alert-triangle" class="w-5 h-5 text-rose-600"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest">Alertas de Vencimientos</h4>
+                                <p class="text-[11px] text-[#A3AED0] font-medium">Documentación próxima a vencer o ya vencida</p>
+                            </div>
+                        </div>
+                        <span id="maint-expiry-count" class="text-xs font-black text-rose-600 bg-rose-50 px-3 py-1.5 rounded-xl">0</span>
+                    </div>
+                    <div id="maint-expiry-list" class="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar"></div>
                 </div>
             </div>
 
@@ -2279,7 +2298,7 @@
             if(id === 'schools') loadSchools();
             if(id === 'salaries') loadSalariesTable();
             if(id === 'vrp') setTimeout(initVrpMap, 100);
-            if(id === 'maintenance') loadMaintenanceData();
+            if(id === 'maintenance') { loadMaintenanceData(); checkExpiryAlerts(); }
             if(id === 'control') checkExpiryAlerts();
             if(id === 'routes') loadRouteTemplates();
             if(id === 'users') { loadUsers(); renderProfileAssignments(); renderProfilesReference(); }
@@ -3278,13 +3297,7 @@
         }
 
         function checkExpiryAlerts() {
-            const container = document.getElementById('control-expiry-alerts');
-            const listEl = document.getElementById('control-expiry-list');
-            const countEl = document.getElementById('control-expiry-count');
-            if (!container || !listEl) return;
-
             const vehicles = EXCEL_MAINTENANCE_SEED?.vehicles || {};
-            // Also merge from maintenanceCache
             const merged = { ...vehicles, ...(maintenanceCache?.vehicles || {}) };
             const today = new Date();
             const alerts = [];
@@ -3317,15 +3330,7 @@
 
             alerts.sort((a, b) => a.daysLeft - b.daysLeft);
 
-            if (alerts.length === 0) {
-                container.classList.add('hidden');
-                return;
-            }
-
-            container.classList.remove('hidden');
-            countEl.textContent = alerts.length + ' alerta' + (alerts.length !== 1 ? 's' : '');
-
-            listEl.innerHTML = alerts.map(a => {
+            const alertsHtml = alerts.map(a => {
                 const isExpired = a.status === 'expired';
                 const bgClass = isExpired ? 'bg-rose-50 border-rose-200' : 'bg-amber-50 border-amber-200';
                 const textClass = isExpired ? 'text-rose-700' : 'text-amber-700';
@@ -3346,6 +3351,23 @@
                     </div>
                 </div>`;
             }).join('');
+
+            const countLabel = alerts.length + ' alerta' + (alerts.length !== 1 ? 's' : '');
+
+            // Render in both Torre de Control and Mantenimiento
+            [
+                { container: 'control-expiry-alerts', list: 'control-expiry-list', count: 'control-expiry-count' },
+                { container: 'maint-expiry-alerts', list: 'maint-expiry-list', count: 'maint-expiry-count' }
+            ].forEach(({ container, list, count }) => {
+                const cEl = document.getElementById(container);
+                const lEl = document.getElementById(list);
+                const nEl = document.getElementById(count);
+                if (!cEl || !lEl) return;
+                if (alerts.length === 0) { cEl.classList.add('hidden'); return; }
+                cEl.classList.remove('hidden');
+                if (nEl) nEl.textContent = countLabel;
+                lEl.innerHTML = alertsHtml;
+            });
 
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
