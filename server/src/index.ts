@@ -3166,23 +3166,34 @@ app.get('/api/v1/route-templates/resolve-for-trip', async (req, res) => {
 
 app.put('/api/v1/route-templates/:id', async (req, res) => {
     const { id } = req.params;
-    const { stops } = req.body; // Expected: array of strings or {name} objects
-    
+    const { stops, name } = req.body; // Expected: array of strings or {name} objects, plus optional name
+
     try {
-        await (prisma as any).routeStopTemplate.deleteMany({
-            where: { routeTemplateId: id }
-        });
-
-        const stopsToCreate = stops.map((s: any, idx: number) => ({
-            routeTemplateId: id,
-            name: typeof s === 'string' ? s : s.name,
-            sequence: idx + 1
-        }));
-
-        for (const stop of stopsToCreate) {
-             await (prisma as any).routeStopTemplate.create({ data: stop });
+        // Update name if provided
+        if (typeof name === 'string' && name.trim()) {
+            await (prisma as any).routeTemplate.update({
+                where: { id },
+                data: { name: name.trim() }
+            });
         }
-        
+
+        // Update stops if provided
+        if (Array.isArray(stops)) {
+            await (prisma as any).routeStopTemplate.deleteMany({
+                where: { routeTemplateId: id }
+            });
+
+            const stopsToCreate = stops.map((s: any, idx: number) => ({
+                routeTemplateId: id,
+                name: typeof s === 'string' ? s : s.name,
+                sequence: idx + 1
+            }));
+
+            for (const stop of stopsToCreate) {
+                 await (prisma as any).routeStopTemplate.create({ data: stop });
+            }
+        }
+
         const updated = await (prisma as any).routeTemplate.findUnique({
             where: { id },
             include: { stops: { orderBy: { sequence: 'asc' } } }
@@ -3190,6 +3201,40 @@ app.put('/api/v1/route-templates/:id', async (req, res) => {
         res.json(updated);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
+    }
+});
+
+// Crear una plantilla de ruta vacía (sólo nombre, sin paradas)
+app.post('/api/v1/route-templates/empty', async (req, res) => {
+    try {
+        const name = String(req.body?.name || '').trim();
+        if (!name) return res.status(400).json({ error: 'name es obligatorio' });
+
+        // Verificar que no exista una con ese nombre (case-insensitive)
+        const all = await (prisma as any).routeTemplate.findMany({ select: { id: true, name: true } });
+        const dup = all.find((t: any) => String(t.name || '').trim().toUpperCase() === name.toUpperCase());
+        if (dup) return res.status(409).json({ error: `Ya existe una ruta con el nombre "${name}"` });
+
+        const created = await (prisma as any).routeTemplate.create({ data: { name } });
+        const full = await (prisma as any).routeTemplate.findUnique({
+            where: { id: created.id },
+            include: { stops: { orderBy: { sequence: 'asc' } } }
+        });
+        res.json(full);
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error creando plantilla' });
+    }
+});
+
+// Eliminar una plantilla de ruta
+app.delete('/api/v1/route-templates/:id', async (req, res) => {
+    const { id } = req.params;
+    try {
+        await (prisma as any).routeStopTemplate.deleteMany({ where: { routeTemplateId: id } });
+        await (prisma as any).routeTemplate.delete({ where: { id } });
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error eliminando plantilla' });
     }
 });
 

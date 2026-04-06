@@ -498,16 +498,22 @@
                         <h3 class="text-2xl font-bold text-[#1B2559]">Rutas Predefinidas</h3>
                         <p class="text-sm text-[#A3AED0] font-medium">Gestión de paradas y secuencias por reparto</p>
                     </div>
-                    <button onclick="saveCurrentRouteTemplate()" class="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200">
-                        Guardar Cambios
-                    </button>
+                    <div class="flex items-center gap-3">
+                        <button onclick="createNewRouteTemplate()" class="px-6 py-4 bg-white text-indigo-600 border-2 border-indigo-600 rounded-2xl font-bold hover:bg-indigo-50 transition-all flex items-center gap-2">
+                            <i data-lucide="plus" class="w-4 h-4"></i>
+                            Nueva Ruta
+                        </button>
+                        <button onclick="saveCurrentRouteTemplate()" class="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200">
+                            Guardar Cambios
+                        </button>
+                    </div>
                 </div>
 
                 <div class="grid grid-cols-12 gap-8 h-[calc(100vh-350px)] min-w-0 max-w-full">
                     <!-- Templates List -->
                     <div class="col-span-4 card-dark overflow-hidden flex flex-col min-w-0">
                         <div class="p-5 border-b border-[#F4F7FE]">
-                            <input type="text" placeholder="Filtrar repartos..." class="w-full bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm text-[#1B2559] focus:ring-2 focus:ring-indigo-500/20 outline-none">
+                            <input id="routes-templates-filter" type="text" placeholder="Filtrar repartos..." oninput="renderRouteTemplatesList()" class="w-full bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm text-[#1B2559] focus:ring-2 focus:ring-indigo-500/20 outline-none">
                         </div>
                         <div id="routes-templates-list" class="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar">
                             <!-- Injected -->
@@ -516,15 +522,49 @@
 
                     <!-- Stops Editor -->
                     <div class="col-span-8 card-dark flex flex-col overflow-hidden min-w-0">
-                        <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center">
+                        <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center gap-4 flex-wrap">
                             <h4 id="editing-route-name" class="font-bold text-[#1B2559] uppercase tracking-widest text-sm">Seleccione un reparto</h4>
-                            <span class="text-[10px] text-[#A3AED0] font-bold uppercase">Arrastre para reordenar</span>
+                            <div class="flex items-center gap-3">
+                                <button id="add-stop-btn" onclick="openAddStopModal()" class="hidden px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-700 transition-all flex items-center gap-2">
+                                    <i data-lucide="plus" class="w-3 h-3"></i>
+                                    Agregar Escuela
+                                </button>
+                                <span class="text-[10px] text-[#A3AED0] font-bold uppercase">Arrastre para reordenar</span>
+                            </div>
                         </div>
                         <div id="routes-stops-editor" class="flex-1 overflow-y-auto p-8 space-y-4 custom-scrollbar">
                             <div class="flex flex-col items-center justify-center h-full opacity-30 py-20">
                                 <i data-lucide="route" class="w-16 h-16 mb-4 text-[#A3AED0]"></i>
                                 <span class="text-sm font-bold uppercase tracking-widest">Editor de secuencias</span>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL: Agregar Escuela a Ruta -->
+            <div id="add-stop-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col" style="max-height: 85vh;">
+                    <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center">
+                        <div>
+                            <h3 class="text-lg font-extrabold text-[#1B2559]">Agregar Escuela a Ruta</h3>
+                            <p class="text-xs text-[#A3AED0] font-medium mt-1">Seleccione una o más escuelas para agregar como paradas</p>
+                        </div>
+                        <button onclick="closeAddStopModal()" class="w-9 h-9 rounded-xl bg-[#F4F7FE] hover:bg-[#E0E5F2] flex items-center justify-center transition-all">
+                            <i data-lucide="x" class="w-4 h-4 text-[#1B2559]"></i>
+                        </button>
+                    </div>
+                    <div class="p-6 border-b border-[#F4F7FE]">
+                        <input id="add-stop-search" type="text" placeholder="Buscar escuela por nombre o zona..." oninput="renderAddStopList()" class="w-full bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm text-[#1B2559] focus:ring-2 focus:ring-indigo-500/20 outline-none">
+                    </div>
+                    <div id="add-stop-list" class="flex-1 overflow-y-auto p-4 space-y-2 custom-scrollbar">
+                        <!-- Injected -->
+                    </div>
+                    <div class="p-5 border-t border-[#F4F7FE] flex items-center justify-between gap-4 bg-[#F8FAFF]">
+                        <span id="add-stop-count" class="text-xs text-[#A3AED0] font-bold uppercase">0 seleccionadas</span>
+                        <div class="flex items-center gap-3">
+                            <button onclick="closeAddStopModal()" class="px-5 py-3 bg-white text-[#1B2559] border border-[#E0E5F2] rounded-xl font-bold text-xs uppercase hover:bg-[#F4F7FE] transition-all">Cancelar</button>
+                            <button onclick="confirmAddStops()" class="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200">Agregar Selección</button>
                         </div>
                     </div>
                 </div>
@@ -3631,16 +3671,246 @@
 
         function renderRouteTemplatesList() {
             const list = document.getElementById('routes-templates-list');
-            list.innerHTML = routeTemplates.map(rt => `
-                <button onclick="selectRouteTemplate('${rt.id}')" class="w-full text-left p-4 rounded-xl border border-transparent hover:border-[#F4F7FE] hover:bg-[#F4F7FE] transition-all flex items-center justify-between group">
-                    <div>
-                        <div class="text-sm font-black text-[#1B2559] group-hover:text-indigo-600">${rt.name}</div>
-                        <div class="text-[10px] text-[#A3AED0] font-bold uppercase">${rt.stops.length} Destinos</div>
+            if (!list) return;
+            const filterEl = document.getElementById('routes-templates-filter');
+            const filter = (filterEl?.value || '').toLowerCase().trim();
+            const filtered = filter
+                ? routeTemplates.filter(rt => String(rt.name || '').toLowerCase().includes(filter))
+                : routeTemplates;
+
+            if (filtered.length === 0) {
+                list.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-12 opacity-40">
+                        <i data-lucide="search-x" class="w-10 h-10 mb-3 text-[#A3AED0]"></i>
+                        <span class="text-xs font-bold uppercase tracking-widest text-[#A3AED0]">Sin resultados</span>
                     </div>
-                    <i data-lucide="chevron-right" class="w-4 h-4 text-slate-300 opacity-0 group-hover:opacity-100 transition-all"></i>
-                </button>
-            `).join('');
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            list.innerHTML = filtered.map(rt => {
+                const isEditing = currentlyEditingRoute && currentlyEditingRoute.id === rt.id;
+                const activeClass = isEditing ? 'border-indigo-200 bg-indigo-50' : 'border-transparent hover:border-[#F4F7FE] hover:bg-[#F4F7FE]';
+                return `
+                <div class="w-full p-4 rounded-xl border ${activeClass} transition-all flex items-center justify-between group cursor-pointer" onclick="selectRouteTemplate('${rt.id}')">
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm font-black text-[#1B2559] ${isEditing ? 'text-indigo-600' : 'group-hover:text-indigo-600'} truncate">${rt.name}</div>
+                        <div class="text-[10px] text-[#A3AED0] font-bold uppercase">${(rt.stops || []).length} Destinos</div>
+                    </div>
+                    <div class="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-all">
+                        <button onclick="event.stopPropagation(); renameRouteTemplate('${rt.id}')" title="Renombrar" class="w-8 h-8 rounded-lg bg-white border border-[#E0E5F2] hover:border-indigo-500 hover:text-indigo-600 flex items-center justify-center text-[#A3AED0] transition-all">
+                            <i data-lucide="pencil" class="w-3 h-3"></i>
+                        </button>
+                        <button onclick="event.stopPropagation(); deleteRouteTemplate('${rt.id}')" title="Eliminar" class="w-8 h-8 rounded-lg bg-white border border-[#E0E5F2] hover:border-rose-500 hover:text-rose-600 flex items-center justify-center text-[#A3AED0] transition-all">
+                            <i data-lucide="trash-2" class="w-3 h-3"></i>
+                        </button>
+                    </div>
+                </div>
+                `;
+            }).join('');
             lucide.createIcons();
+        }
+
+        async function createNewRouteTemplate() {
+            const name = prompt('Nombre de la nueva ruta (ej. R12):');
+            if (!name || !name.trim()) return;
+            const trimmed = name.trim();
+            try {
+                const res = await fetch(`${API_URL}/route-templates/empty`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: trimmed })
+                });
+                const data = await res.json();
+                if (!res.ok) {
+                    addNotification('warning', 'No se pudo crear', data.error || 'Error desconocido');
+                    return;
+                }
+                addNotification('info', 'Ruta Creada', `Se creó la ruta "${trimmed}". Agregale escuelas.`);
+                await loadRouteTemplates();
+                // Auto-seleccionar la nueva ruta
+                const created = routeTemplates.find(rt => String(rt.name || '').trim().toUpperCase() === trimmed.toUpperCase());
+                if (created) selectRouteTemplate(created.id);
+            } catch (e) {
+                console.error('Error creando ruta:', e);
+                addNotification('warning', 'Error', 'No se pudo crear la ruta');
+            }
+        }
+
+        async function renameRouteTemplate(id) {
+            const rt = routeTemplates.find(t => t.id === id);
+            if (!rt) return;
+            const name = prompt('Nuevo nombre para la ruta:', rt.name);
+            if (!name || !name.trim() || name.trim() === rt.name) return;
+            try {
+                const res = await fetch(`${API_URL}/route-templates/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name.trim() })
+                });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    addNotification('warning', 'No se pudo renombrar', data.error || 'Error desconocido');
+                    return;
+                }
+                addNotification('info', 'Ruta Renombrada', `Ahora se llama "${name.trim()}"`);
+                if (currentlyEditingRoute && currentlyEditingRoute.id === id) {
+                    currentlyEditingRoute.name = name.trim();
+                    document.getElementById('editing-route-name').innerText = `EDITANDO: ${name.trim()}`;
+                }
+                await loadRouteTemplates();
+            } catch (e) {
+                console.error('Error renombrando ruta:', e);
+                addNotification('warning', 'Error', 'No se pudo renombrar la ruta');
+            }
+        }
+
+        async function deleteRouteTemplate(id) {
+            const rt = routeTemplates.find(t => t.id === id);
+            if (!rt) return;
+            if (!confirm(`¿Eliminar definitivamente la ruta "${rt.name}"?\n\nEsta acción no se puede deshacer.`)) return;
+            try {
+                const res = await fetch(`${API_URL}/route-templates/${id}`, { method: 'DELETE' });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    addNotification('warning', 'No se pudo eliminar', data.error || 'Error desconocido');
+                    return;
+                }
+                addNotification('info', 'Ruta Eliminada', `Se borró "${rt.name}"`);
+                if (currentlyEditingRoute && currentlyEditingRoute.id === id) {
+                    currentlyEditingRoute = null;
+                    document.getElementById('editing-route-name').innerText = 'Seleccione un reparto';
+                    document.getElementById('add-stop-btn')?.classList.add('hidden');
+                    document.getElementById('routes-stops-editor').innerHTML = `
+                        <div class="flex flex-col items-center justify-center h-full opacity-30 py-20">
+                            <i data-lucide="route" class="w-16 h-16 mb-4 text-[#A3AED0]"></i>
+                            <span class="text-sm font-bold uppercase tracking-widest">Editor de secuencias</span>
+                        </div>
+                    `;
+                    lucide.createIcons();
+                }
+                await loadRouteTemplates();
+            } catch (e) {
+                console.error('Error eliminando ruta:', e);
+                addNotification('warning', 'Error', 'No se pudo eliminar la ruta');
+            }
+        }
+
+        // --- Modal: Agregar Escuela a Ruta ---
+        let addStopSelected = new Set();
+
+        function openAddStopModal() {
+            if (!currentlyEditingRoute) {
+                addNotification('warning', 'Sin Selección', 'Primero seleccioná o creá una ruta');
+                return;
+            }
+            addStopSelected = new Set();
+            const search = document.getElementById('add-stop-search');
+            if (search) search.value = '';
+            renderAddStopList();
+            document.getElementById('add-stop-modal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function closeAddStopModal() {
+            document.getElementById('add-stop-modal').classList.add('hidden');
+            addStopSelected = new Set();
+        }
+
+        function renderAddStopList() {
+            const list = document.getElementById('add-stop-list');
+            if (!list) return;
+            const search = (document.getElementById('add-stop-search')?.value || '').toLowerCase().trim();
+
+            // Excluir escuelas que ya están en la ruta actual
+            const currentNames = new Set((currentlyEditingRoute?.stops || []).map(s => norm(s.name)));
+            let filtered = (allSchools || []).filter(s => !currentNames.has(norm(s.name)));
+
+            if (search) {
+                filtered = filtered.filter(s =>
+                    String(s.name || '').toLowerCase().includes(search) ||
+                    String(s.zone || '').toLowerCase().includes(search) ||
+                    String(s.address || '').toLowerCase().includes(search)
+                );
+            }
+
+            filtered.sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'es', { sensitivity: 'base' }));
+
+            if (filtered.length === 0) {
+                list.innerHTML = `
+                    <div class="flex flex-col items-center justify-center py-12 opacity-40">
+                        <i data-lucide="search-x" class="w-10 h-10 mb-3 text-[#A3AED0]"></i>
+                        <span class="text-xs font-bold uppercase tracking-widest text-[#A3AED0]">Sin escuelas disponibles</span>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
+            list.innerHTML = filtered.map(s => {
+                const checked = addStopSelected.has(s.id);
+                return `
+                <label class="flex items-center gap-3 p-3 rounded-xl border ${checked ? 'border-indigo-300 bg-indigo-50' : 'border-[#E0E5F2] hover:border-indigo-200 hover:bg-[#F8FAFF]'} cursor-pointer transition-all">
+                    <input type="checkbox" ${checked ? 'checked' : ''} onchange="toggleAddStopSelection('${s.id}')" class="w-4 h-4 rounded text-indigo-600 focus:ring-indigo-500">
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm font-bold text-[#1B2559] truncate">${s.name}</div>
+                        <div class="text-[10px] text-[#A3AED0] font-bold uppercase truncate">${s.zone || 'Sin zona'} · ${s.address || 'Sin dirección'}</div>
+                    </div>
+                </label>
+                `;
+            }).join('');
+
+            const countEl = document.getElementById('add-stop-count');
+            if (countEl) countEl.innerText = `${addStopSelected.size} seleccionadas`;
+            lucide.createIcons();
+        }
+
+        function toggleAddStopSelection(id) {
+            if (addStopSelected.has(id)) addStopSelected.delete(id);
+            else addStopSelected.add(id);
+            const countEl = document.getElementById('add-stop-count');
+            if (countEl) countEl.innerText = `${addStopSelected.size} seleccionadas`;
+        }
+
+        function confirmAddStops() {
+            if (!currentlyEditingRoute) return closeAddStopModal();
+            if (addStopSelected.size === 0) {
+                addNotification('warning', 'Sin Selección', 'Seleccioná al menos una escuela');
+                return;
+            }
+            const toAdd = [...addStopSelected]
+                .map(id => allSchools.find(s => s.id === id))
+                .filter(Boolean);
+
+            // Insertar antes del último stop si es REAL 14 (punto de llegada), si no, al final
+            const stops = currentlyEditingRoute.stops || [];
+            const lastIsReturn = stops.length > 0 && norm(stops[stops.length - 1].name) === norm('REAL 14');
+            const insertAt = lastIsReturn ? stops.length - 1 : stops.length;
+
+            toAdd.forEach((school, i) => {
+                stops.splice(insertAt + i, 0, { name: school.name, sequence: 0 });
+            });
+
+            // Recalcular sequence
+            currentlyEditingRoute.stops = stops.map((s, idx) => ({ name: s.name, sequence: idx + 1 }));
+
+            renderRouteStopsEditor();
+            renderRouteTemplatesList();
+            closeAddStopModal();
+            addNotification('info', 'Escuelas Agregadas', `${toAdd.length} parada(s) agregadas. No olvidés guardar los cambios.`);
+        }
+
+        function removeStopFromRoute(idx) {
+            if (!currentlyEditingRoute) return;
+            const stops = currentlyEditingRoute.stops || [];
+            if (idx < 0 || idx >= stops.length) return;
+            const removed = stops[idx];
+            if (!confirm(`¿Quitar "${removed.name}" de la ruta?`)) return;
+            stops.splice(idx, 1);
+            currentlyEditingRoute.stops = stops.map((s, i) => ({ name: s.name, sequence: i + 1 }));
+            renderRouteStopsEditor();
+            renderRouteTemplatesList();
         }
 
         function selectRouteTemplate(id) {
@@ -3648,23 +3918,43 @@
             if (!currentlyEditingRoute) return;
 
             document.getElementById('editing-route-name').innerText = `EDITANDO: ${currentlyEditingRoute.name}`;
+            document.getElementById('add-stop-btn')?.classList.remove('hidden');
             renderRouteStopsEditor();
+            renderRouteTemplatesList();
         }
 
         function renderRouteStopsEditor() {
             const editor = document.getElementById('routes-stops-editor');
             if (!currentlyEditingRoute) return;
 
+            const stops = currentlyEditingRoute.stops || [];
+
+            if (stops.length === 0) {
+                editor.innerHTML = `
+                    <div class="flex flex-col items-center justify-center h-full opacity-60 py-20">
+                        <i data-lucide="map-pin-off" class="w-16 h-16 mb-4 text-[#A3AED0]"></i>
+                        <span class="text-sm font-bold uppercase tracking-widest text-[#1B2559] mb-2">Ruta vacía</span>
+                        <span class="text-xs text-[#A3AED0] mb-6">Agregá escuelas con el botón de arriba</span>
+                        <button onclick="openAddStopModal()" class="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-700 transition-all flex items-center gap-2 shadow-lg shadow-indigo-200">
+                            <i data-lucide="plus" class="w-3 h-3"></i>
+                            Agregar Primera Escuela
+                        </button>
+                    </div>
+                `;
+                lucide.createIcons();
+                return;
+            }
+
             let deliveryCount = 0;
-            const totalStops = currentlyEditingRoute.stops.length;
+            const totalStops = stops.length;
 
             editor.innerHTML = `
                 <div class="space-y-2" id="sortable-stops">
-                    ${currentlyEditingRoute.stops.map((s, idx) => {
+                    ${stops.map((s, idx) => {
                         const isControl = norm(s.name) === norm('REAL 14');
                         let labelText = 'Punto de Entrega';
                         let displayContent = '';
-                        
+
                         if (isControl) {
                             if (idx === 0) labelText = '<span class="text-indigo-600">Punto de Partida</span>';
                             else if (idx === totalStops - 1) labelText = '<span class="text-rose-600">Punto de Llegada</span>';
@@ -3681,18 +3971,21 @@
                                 <span class="group-hover:hidden flex items-center justify-center">${displayContent}</span>
                                 <i data-lucide="more-vertical" class="w-3 h-3 hidden group-hover:block"></i>
                             </div>
-                            <div class="flex-1">
-                                <div class="text-sm font-bold text-[#1B2559]">${s.name}</div>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-sm font-bold text-[#1B2559] truncate">${s.name}</div>
                                 <div class="text-[9px] text-[#A3AED0] uppercase font-black tracking-widest">
                                     ${labelText}
                                 </div>
                             </div>
+                            <button onclick="event.stopPropagation(); removeStopFromRoute(${idx})" title="Quitar parada" class="w-8 h-8 rounded-lg bg-white border border-[#E0E5F2] hover:border-rose-500 hover:text-rose-600 flex items-center justify-center text-[#A3AED0] opacity-0 group-hover:opacity-100 transition-all">
+                                <i data-lucide="x" class="w-3 h-3"></i>
+                            </button>
                         </div>
                         `;
                     }).join('')}
                 </div>
             `;
-            
+
             new Sortable(document.getElementById('sortable-stops'), {
                 animation: 150,
                 ghostClass: 'bg-indigo-600/10',
@@ -3705,18 +3998,31 @@
                     renderRouteStopsEditor();
                 }
             });
-            
+
             lucide.createIcons();
         }
 
         async function saveCurrentRouteTemplate() {
-            if (!currentlyEditingRoute) return;
+            if (!currentlyEditingRoute) {
+                addNotification('warning', 'Sin Selección', 'Seleccioná una ruta para guardar');
+                return;
+            }
 
+            // Preferir el DOM si existe (para capturar el orden tras drag-and-drop),
+            // si no, usar el estado en memoria (tras add/remove sin re-render).
             const stopElements = document.querySelectorAll('#sortable-stops .stop-item');
-            const newStops = Array.from(stopElements).map((el, idx) => ({
-                name: el.getAttribute('data-name'),
-                sequence: idx + 1
-            }));
+            let newStops;
+            if (stopElements.length > 0) {
+                newStops = Array.from(stopElements).map((el, idx) => ({
+                    name: el.getAttribute('data-name'),
+                    sequence: idx + 1
+                }));
+            } else {
+                newStops = (currentlyEditingRoute.stops || []).map((s, idx) => ({
+                    name: s.name,
+                    sequence: idx + 1
+                }));
+            }
 
             try {
                 const res = await fetch(`${API_URL}/route-templates/${currentlyEditingRoute.id}`, {
@@ -3725,10 +4031,23 @@
                     body: JSON.stringify({ stops: newStops })
                 });
                 if (res.ok) {
-                    addNotification('info', 'Plantilla Guardada', `Se actualizó el orden para ${currentlyEditingRoute.name}`);
-                    loadRouteTemplates();
+                    addNotification('info', 'Plantilla Guardada', `Se actualizó "${currentlyEditingRoute.name}"`);
+                    const editingId = currentlyEditingRoute.id;
+                    await loadRouteTemplates();
+                    // Mantener selección luego del reload
+                    const stillThere = routeTemplates.find(rt => rt.id === editingId);
+                    if (stillThere) {
+                        currentlyEditingRoute = stillThere;
+                        renderRouteTemplatesList();
+                    }
+                } else {
+                    const data = await res.json().catch(() => ({}));
+                    addNotification('warning', 'Error al Guardar', data.error || 'No se pudo guardar la plantilla');
                 }
-            } catch (e) { console.error("Error saving template", e); }
+            } catch (e) {
+                console.error("Error saving template", e);
+                addNotification('warning', 'Error', 'No se pudo guardar la plantilla');
+            }
         }
 
 
