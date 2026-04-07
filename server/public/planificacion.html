@@ -476,6 +476,9 @@
                     <button type="button" onclick="showSection('reports')" id="btn-reports" class="header-nav-item">
                         <i data-lucide="file-bar-chart" class="w-4 h-4"></i> Reportes
                     </button>
+                    <button type="button" onclick="showSection('audit')" id="btn-audit" class="header-nav-item">
+                        <i data-lucide="shield-check" class="w-4 h-4"></i> Auditoría
+                    </button>
                 </div>
             </div>
         </header>
@@ -567,6 +570,88 @@
                             <button onclick="confirmAddStops()" class="px-6 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200">Agregar Selección</button>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- VIEW: AUDITORÍA -->
+            <div id="view-audit" class="hidden view-animate space-y-6">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 flex-wrap">
+                    <div>
+                        <h3 class="text-2xl font-bold text-[#1B2559]">Auditoría</h3>
+                        <p class="text-sm text-[#A3AED0] font-medium">Historial completo de acciones realizadas en el sistema</p>
+                    </div>
+                    <button onclick="loadAuditLog()" class="px-6 py-3 bg-white border border-[#E0E5F2] text-[#1B2559] rounded-2xl font-bold text-sm hover:bg-[#F4F7FE] transition-all flex items-center gap-2 shadow-sm">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i> Actualizar
+                    </button>
+                </div>
+
+                <!-- Filtros -->
+                <div class="card-dark p-6">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest block mb-2">Entidad</label>
+                            <select id="audit-filter-entity" onchange="loadAuditLog()" class="w-full bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm text-[#1B2559] outline-none">
+                                <option value="">Todas</option>
+                                <option value="trip">Viajes</option>
+                                <option value="user">Usuarios</option>
+                                <option value="route-template">Rutas predefinidas</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest block mb-2">Usuario</label>
+                            <input id="audit-filter-user" type="text" placeholder="Nombre..." oninput="loadAuditLog()" class="w-full bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm text-[#1B2559] outline-none">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest block mb-2">Desde</label>
+                            <input id="audit-filter-from" type="date" onchange="loadAuditLog()" class="w-full bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm text-[#1B2559] outline-none">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest block mb-2">Hasta</label>
+                            <input id="audit-filter-to" type="date" onchange="loadAuditLog()" class="w-full bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm text-[#1B2559] outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tabla -->
+                <div class="card-dark overflow-hidden">
+                    <div id="audit-table-wrap" class="overflow-x-auto custom-scrollbar">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b border-[#F4F7FE]">
+                                    <th class="text-left px-6 py-4 text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Fecha/Hora</th>
+                                    <th class="text-left px-6 py-4 text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Usuario</th>
+                                    <th class="text-left px-6 py-4 text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Acción</th>
+                                    <th class="text-left px-6 py-4 text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Entidad</th>
+                                    <th class="text-left px-6 py-4 text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Detalle</th>
+                                    <th class="text-left px-6 py-4 text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">IP</th>
+                                    <th class="text-left px-6 py-4 text-[10px] font-black text-[#A3AED0] uppercase tracking-widest"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="audit-tbody">
+                                <tr><td colspan="7" class="text-center py-16 text-[#A3AED0] text-sm font-bold">Cargando...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="audit-pagination" class="px-6 py-4 border-t border-[#F4F7FE] flex items-center justify-between hidden">
+                        <span id="audit-count" class="text-xs text-[#A3AED0] font-bold uppercase"></span>
+                        <div class="flex items-center gap-2">
+                            <button id="audit-prev-btn" onclick="auditPrevPage()" class="px-4 py-2 bg-white border border-[#E0E5F2] rounded-xl text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all disabled:opacity-40">← Anterior</button>
+                            <button id="audit-next-btn" onclick="auditNextPage()" class="px-4 py-2 bg-white border border-[#E0E5F2] rounded-xl text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all disabled:opacity-40">Siguiente →</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL: Detalle Auditoría -->
+            <div id="audit-detail-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col" style="max-height: 80vh;">
+                    <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center">
+                        <h3 class="font-extrabold text-[#1B2559] text-lg">Detalle del Cambio</h3>
+                        <button onclick="document.getElementById('audit-detail-modal').classList.add('hidden')" class="w-9 h-9 rounded-xl bg-[#F4F7FE] hover:bg-[#E0E5F2] flex items-center justify-center">
+                            <i data-lucide="x" class="w-4 h-4 text-[#1B2559]"></i>
+                        </button>
+                    </div>
+                    <div id="audit-detail-body" class="flex-1 overflow-y-auto p-6 custom-scrollbar space-y-4 text-sm text-[#1B2559]"></div>
                 </div>
             </div>
 
@@ -1671,6 +1756,17 @@
             return API_URL.replace(/\/$/, '').replace(/\/api\/v1$/, '');
         }
 
+        /** Headers estándar con identificación del usuario activo para el audit log */
+        function getActorHeaders() {
+            const name = localStorage.getItem('r14.loggedUser') || '';
+            const id   = localStorage.getItem('r14.loggedUserId') || '';
+            return {
+                'Content-Type': 'application/json',
+                ...(name ? { 'X-Actor-Name': name } : {}),
+                ...(id   ? { 'X-Actor-Id':   id   } : {})
+            };
+        }
+
         async function refreshApiStatusFromHealth() {
             try {
                 const res = await fetch(`${getServerOrigin()}/api/health`, {
@@ -2015,7 +2111,7 @@
 
         // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
         const ACCESS_PROFILES = {
-            SUPERADMIN: ['control','weekly','dashboard','vrp','costs','maintenance','routes','users','employees','salaries','schools','reports'],
+            SUPERADMIN: ['control','weekly','dashboard','vrp','costs','maintenance','routes','users','employees','salaries','schools','reports','audit'],
             TRAFICO: ['control','weekly','dashboard','vrp','maintenance','routes','users','employees','schools','reports'],
             RRHH: ['salaries','employees'],
             ADMINISTRACION: ['weekly','dashboard','salaries','schools','reports']
@@ -2302,6 +2398,9 @@
             const view = document.getElementById('view-' + id);
             if(view) view.classList.remove('hidden');
 
+            // Recordar última vista
+            localStorage.setItem('r14.lastView', id);
+
             const titles = {
                 control: 'Torre de Control / En Vivo',
                 weekly: 'Planificación Semanal',
@@ -2314,7 +2413,8 @@
                 salaries: 'Liquidación de Sueldos',
                 schools: 'Base de Clientes',
                 routes: 'Editor de Rutas',
-                reports: 'Reportes y Análisis'
+                reports: 'Reportes y Análisis',
+                audit: 'Auditoría del Sistema'
             };
 
             const descs = {
@@ -2329,7 +2429,8 @@
                 salaries: 'Nómina detallada con cálculo de adicionales, jornales y brutos',
                 schools: 'Directorio Maestro de Clientes, ubicaciones y zonas logísticas',
                 routes: 'Diseño y estructuración de recorridos predefinidos',
-                reports: 'Informes detallados de paradas, rutas y operaciones por chofer y reparto'
+                reports: 'Informes detallados de paradas, rutas y operaciones por chofer y reparto',
+                audit: 'Registro completo de quién hizo qué y cuándo en el sistema'
             };
             document.getElementById('header-title').innerText = titles[id] || 'Sistema R14';
             document.getElementById('header-desc').innerText = descs[id] || '';
@@ -2343,6 +2444,7 @@
             if(id === 'routes') loadRouteTemplates();
             if(id === 'users') { loadUsers(); renderProfileAssignments(); renderProfilesReference(); }
             if(id === 'reports') initReportFilters();
+            if(id === 'audit') loadAuditLog();
         }
 
         // ─── REPORTS MODULE ─────────────────────────────────────────────────
@@ -4051,6 +4153,126 @@
         }
 
 
+        // ── AUDITORÍA ────────────────────────────────────────────────────────────
+        let auditCurrentOffset = 0;
+        const AUDIT_PAGE_SIZE = 50;
+        let auditTotal = 0;
+
+        const ACTION_LABELS = { CREATE: 'Creó', UPDATE: 'Modificó', DELETE: 'Eliminó' };
+        const ACTION_COLORS = { CREATE: 'bg-emerald-50 text-emerald-700 border-emerald-200', UPDATE: 'bg-indigo-50 text-indigo-700 border-indigo-200', DELETE: 'bg-rose-50 text-rose-700 border-rose-200' };
+        const ENTITY_LABELS = { trip: 'Viaje', user: 'Usuario', 'route-template': 'Ruta predefinida' };
+
+        async function loadAuditLog(resetPage = true) {
+            if (resetPage) auditCurrentOffset = 0;
+            const entity = document.getElementById('audit-filter-entity')?.value || '';
+            const user   = document.getElementById('audit-filter-user')?.value || '';
+            const from   = document.getElementById('audit-filter-from')?.value || '';
+            const to     = document.getElementById('audit-filter-to')?.value || '';
+            const tbody  = document.getElementById('audit-tbody');
+            if (!tbody) return;
+
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center py-16"><div class="inline-block w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></td></tr>`;
+
+            try {
+                const q = new URLSearchParams({ limit: String(AUDIT_PAGE_SIZE), offset: String(auditCurrentOffset) });
+                if (entity) q.set('entity', entity);
+                if (user)   q.set('user', user);
+                if (from)   q.set('from', from);
+                if (to)     q.set('to', to + 'T23:59:59');
+                const res  = await fetch(`${API_URL}/audit?${q}`);
+                const data = await res.json();
+                auditTotal = data.total || 0;
+                const logs = data.logs || [];
+
+                if (logs.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-16 text-[#A3AED0] text-sm font-bold">No se encontraron registros</td></tr>`;
+                } else {
+                    tbody.innerHTML = logs.map((log, i) => {
+                        const dt = new Date(log.createdAt);
+                        const dateStr = dt.toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'2-digit' });
+                        const timeStr = dt.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' });
+                        const actionClass = ACTION_COLORS[log.action] || 'bg-gray-50 text-gray-600 border-gray-200';
+                        const actionLabel = ACTION_LABELS[log.action] || log.action;
+                        const entityLabel = ENTITY_LABELS[log.entity] || log.entity;
+                        const hasDiff = log.before || log.after;
+                        return `
+                        <tr class="border-b border-[#F4F7FE] hover:bg-[#F8FAFF] transition-all">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-xs font-bold text-[#1B2559]">${dateStr}</div>
+                                <div class="text-[10px] text-[#A3AED0]">${timeStr}</div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="text-xs font-bold text-[#1B2559]">${log.userName || '<span class="text-[#A3AED0]">Sistema</span>'}</div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="inline-flex items-center px-2 py-1 rounded-lg border text-[10px] font-black uppercase tracking-widest ${actionClass}">${actionLabel}</span>
+                            </td>
+                            <td class="px-6 py-4 text-xs font-bold text-[#A3AED0] uppercase">${entityLabel}</td>
+                            <td class="px-6 py-4 text-xs text-[#1B2559] max-w-xs truncate">${log.entityName || log.entityId || '—'}</td>
+                            <td class="px-6 py-4 text-[10px] text-[#A3AED0] font-mono">${log.ip || '—'}</td>
+                            <td class="px-6 py-4">
+                                ${hasDiff ? `<button onclick="showAuditDetail(${i})" class="px-3 py-1 bg-white border border-[#E0E5F2] rounded-lg text-[10px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Ver</button>` : ''}
+                            </td>
+                        </tr>
+                        `;
+                    }).join('');
+                    // Store logs for detail modal
+                    window._auditLogs = logs;
+                }
+
+                // Pagination
+                const pag = document.getElementById('audit-pagination');
+                const cnt = document.getElementById('audit-count');
+                const prevBtn = document.getElementById('audit-prev-btn');
+                const nextBtn = document.getElementById('audit-next-btn');
+                if (pag) pag.classList.remove('hidden');
+                if (cnt) cnt.innerText = `${auditCurrentOffset + 1}–${Math.min(auditCurrentOffset + AUDIT_PAGE_SIZE, auditTotal)} de ${auditTotal}`;
+                if (prevBtn) prevBtn.disabled = auditCurrentOffset === 0;
+                if (nextBtn) nextBtn.disabled = auditCurrentOffset + AUDIT_PAGE_SIZE >= auditTotal;
+            } catch(e) {
+                console.error('Error cargando audit log:', e);
+                tbody.innerHTML = `<tr><td colspan="7" class="text-center py-16 text-rose-500 text-sm font-bold">Error cargando registros</td></tr>`;
+            }
+            lucide.createIcons();
+        }
+
+        function auditPrevPage() {
+            if (auditCurrentOffset === 0) return;
+            auditCurrentOffset = Math.max(0, auditCurrentOffset - AUDIT_PAGE_SIZE);
+            loadAuditLog(false);
+        }
+
+        function auditNextPage() {
+            if (auditCurrentOffset + AUDIT_PAGE_SIZE >= auditTotal) return;
+            auditCurrentOffset += AUDIT_PAGE_SIZE;
+            loadAuditLog(false);
+        }
+
+        function showAuditDetail(idx) {
+            const log = (window._auditLogs || [])[idx];
+            if (!log) return;
+            const body = document.getElementById('audit-detail-body');
+            if (!body) return;
+            const formatJson = (str) => {
+                if (!str) return '<span class="text-[#A3AED0]">—</span>';
+                try {
+                    return `<pre class="bg-[#F4F7FE] rounded-xl p-4 text-xs overflow-auto custom-scrollbar whitespace-pre-wrap break-all">${JSON.stringify(JSON.parse(str), null, 2)}</pre>`;
+                } catch { return `<pre class="bg-[#F4F7FE] rounded-xl p-4 text-xs">${str}</pre>`; }
+            };
+            body.innerHTML = `
+                <div class="grid grid-cols-2 gap-4 text-xs">
+                    <div><span class="font-black text-[#A3AED0] uppercase tracking-widest">Acción</span><p class="font-bold mt-1">${ACTION_LABELS[log.action] || log.action}</p></div>
+                    <div><span class="font-black text-[#A3AED0] uppercase tracking-widest">Entidad</span><p class="font-bold mt-1">${ENTITY_LABELS[log.entity] || log.entity} — ${log.entityName || log.entityId || '—'}</p></div>
+                    <div><span class="font-black text-[#A3AED0] uppercase tracking-widest">Usuario</span><p class="font-bold mt-1">${log.userName || 'Sistema'}</p></div>
+                    <div><span class="font-black text-[#A3AED0] uppercase tracking-widest">Fecha</span><p class="font-bold mt-1">${new Date(log.createdAt).toLocaleString('es-AR')}</p></div>
+                </div>
+                ${log.before ? `<div><p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-2">Estado anterior</p>${formatJson(log.before)}</div>` : ''}
+                ${log.after  ? `<div><p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-2">Estado nuevo</p>${formatJson(log.after)}</div>` : ''}
+            `;
+            document.getElementById('audit-detail-modal').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
         async function loadSchools() {
             try {
                 const res = await fetch(`${API_URL}/clients`);
@@ -5069,7 +5291,7 @@
             try {
                 const res = await fetch(`${API_URL}/trips`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getActorHeaders(),
                     body: JSON.stringify(data)
                 });
                 if (res.ok) {
@@ -5205,7 +5427,7 @@
         async function deleteSingleTrip(id) {
             if (!confirm(`¿Eliminar el viaje #${id}? Esta acción no se puede deshacer.`)) return;
             try {
-                const res = await fetch(`${API_URL}/trips/${id}`, { method: 'DELETE' });
+                const res = await fetch(`${API_URL}/trips/${id}`, { method: 'DELETE', headers: getActorHeaders() });
                 if (!res.ok) throw new Error('Error al eliminar');
                 planningData = planningData.filter(t => t.id !== id);
                 filterWeeklyData();
@@ -5223,7 +5445,7 @@
             let ok = 0, fail = 0;
             for (const id of ids) {
                 try {
-                    const res = await fetch(`${API_URL}/trips/${id}`, { method: 'DELETE' });
+                    const res = await fetch(`${API_URL}/trips/${id}`, { method: 'DELETE', headers: getActorHeaders() });
                     if (res.ok) { ok++; } else { fail++; }
                 } catch (_) { fail++; }
             }
@@ -5321,7 +5543,7 @@
                 try {
                     const res = await fetch(`${API_URL}/trips/${id}`, {
                         method: 'PUT',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: getActorHeaders(),
                         body: JSON.stringify(changes)
                     });
                     if (res.ok) {
@@ -6460,7 +6682,9 @@
                     loadMaintenanceData(),
                     loadCostsData()
                 ]);
-                showSection('weekly'); 
+                // Restaurar la última vista visitada (o ir a 'weekly' por defecto)
+                const lastView = localStorage.getItem('r14.lastView') || 'weekly';
+                showSection(lastView);
             } catch (e) {
                 console.error("Init failed:", e);
             } finally {
@@ -8580,7 +8804,7 @@
                     const results = await Promise.allSettled(payloads.map(p =>
                         fetch(`${API_URL}/trips`, {
                             method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
+                            headers: getActorHeaders(),
                             body: JSON.stringify(p)
                         })
                     ));

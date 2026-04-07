@@ -71,6 +71,73 @@ app.use((req, res, next) => {
     next();
 });
 
+// ── Audit Log Helper ─────────────────────────────────────────────────────────
+async function logAction(
+    req: express.Request,
+    action: 'CREATE' | 'UPDATE' | 'DELETE',
+    entity: string,
+    entityId?: string | number | null,
+    entityName?: string | null,
+    before?: any,
+    after?: any
+) {
+    try {
+        const actorName = String(req.headers['x-actor-name'] || '').trim() || null;
+        const actorId   = String(req.headers['x-actor-id']   || '').trim() || null;
+        const ip = (req.headers['x-forwarded-for'] as string || req.socket?.remoteAddress || '').split(',')[0].trim();
+        await (prisma as any).auditLog.create({
+            data: {
+                userId:     actorId,
+                userName:   actorName,
+                action,
+                entity,
+                entityId:   entityId != null ? String(entityId) : null,
+                entityName: entityName ?? null,
+                before:     before != null ? JSON.stringify(before) : null,
+                after:      after  != null ? JSON.stringify(after)  : null,
+                ip:         ip || null,
+            }
+        });
+    } catch (e) {
+        // Audit never breaks the main flow
+        console.warn('[audit] Error logging action:', e);
+    }
+}
+
+// ── Audit Log Endpoint ───────────────────────────────────────────────────────
+app.get('/api/v1/audit', async (req, res) => {
+    try {
+        const limit  = Math.min(Number(req.query.limit  || 200), 500);
+        const offset = Number(req.query.offset || 0);
+        const entity = String(req.query.entity || '').trim() || undefined;
+        const user   = String(req.query.user   || '').trim() || undefined;
+        const from   = req.query.from ? new Date(String(req.query.from)) : undefined;
+        const to     = req.query.to   ? new Date(String(req.query.to))   : undefined;
+
+        const where: any = {};
+        if (entity) where.entity = entity;
+        if (user)   where.userName = { contains: user };
+        if (from || to) {
+            where.createdAt = {};
+            if (from) where.createdAt.gte = from;
+            if (to)   where.createdAt.lte = to;
+        }
+
+        const [logs, total] = await Promise.all([
+            (prisma as any).auditLog.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                take: limit,
+                skip: offset
+            }),
+            (prisma as any).auditLog.count({ where })
+        ]);
+        res.json({ logs, total, limit, offset });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error en audit log' });
+    }
+});
+
 // Seed Initial Tenant
 async function initTenant() {
     const tenantId = 'default-tenant';
@@ -2429,19 +2496,27 @@ app.get('/api/v1/trips', async (req, res) => {
 });
 
 app.post('/api/v1/trips', async (req, res) => {
-    const trip = await prisma.trip.create({ data: req.body });
-    res.json(trip);
+    try {
+        const trip = await prisma.trip.create({ data: req.body });
+        await logAction(req, 'CREATE', 'trip', trip.id, trip.driver || String(trip.id), null, trip);
+        res.json(trip);
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error creando viaje' });
+    }
 });
 
 app.put('/api/v1/trips/:id', async (req, res) => {
     const { id } = req.params;
     const body = { ...req.body };
-    delete body.stops; // Avoid Prisma nested write conflicts if sent accidentally
-    const trip = await prisma.trip.update({
-        where: { id: parseInt(id) },
-        data: body
-    });
-    res.json(trip);
+    delete body.stops;
+    try {
+        const before = await prisma.trip.findUnique({ where: { id: parseInt(id) } });
+        const trip = await prisma.trip.update({ where: { id: parseInt(id) }, data: body });
+        await logAction(req, 'UPDATE', 'trip', trip.id, trip.driver || id, before, trip);
+        res.json(trip);
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error actualizando viaje' });
+    }
 });
 
 /** Paradas de entrega (Route/Stop) vinculadas al viaje semanal, en orden. */
@@ -2641,6 +2716,7 @@ app.patch('/api/v1/trips/:tripId/recorrido-operador', async (req, res) => {
 app.delete('/api/v1/trips/:id', async (req, res) => {
     try {
         const id = parseInt(req.params.id);
+        const before = await prisma.trip.findUnique({ where: { id } });
         await prisma.tripLocation.deleteMany({ where: { tripId: id } });
         await (prisma as any).tripStop.deleteMany({ where: { tripId: id } });
         const linked = await prisma.route.findUnique({ where: { tripId: id } });
@@ -2649,6 +2725,7 @@ app.delete('/api/v1/trips/:id', async (req, res) => {
             await prisma.route.delete({ where: { id: linked.id } });
         }
         await prisma.trip.delete({ where: { id } });
+        await logAction(req, 'DELETE', 'trip', id, before?.driver || String(id), before, null);
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -2928,6 +3005,7 @@ app.post('/api/v1/users', async (req, res) => {
             },
             select: { id: true, username: true, fullName: true, role: true, tenantId: true, createdAt: true }
         });
+        await logAction(req, 'CREATE', 'user', user.id, user.username, null, { username: user.username, role: user.role });
         res.status(201).json(user);
     } catch (e: any) {
         if (e?.code === 'P2002') return res.status(409).json({ error: 'El usuario ya existe' });
@@ -3198,6 +3276,7 @@ app.put('/api/v1/route-templates/:id', async (req, res) => {
             where: { id },
             include: { stops: { orderBy: { sequence: 'asc' } } }
         });
+        await logAction(req, 'UPDATE', 'route-template', id, updated?.name, null, { name: updated?.name, stopsCount: updated?.stops?.length });
         res.json(updated);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -3210,7 +3289,6 @@ app.post('/api/v1/route-templates/empty', async (req, res) => {
         const name = String(req.body?.name || '').trim();
         if (!name) return res.status(400).json({ error: 'name es obligatorio' });
 
-        // Verificar que no exista una con ese nombre (case-insensitive)
         const all = await (prisma as any).routeTemplate.findMany({ select: { id: true, name: true } });
         const dup = all.find((t: any) => String(t.name || '').trim().toUpperCase() === name.toUpperCase());
         if (dup) return res.status(409).json({ error: `Ya existe una ruta con el nombre "${name}"` });
@@ -3220,6 +3298,7 @@ app.post('/api/v1/route-templates/empty', async (req, res) => {
             where: { id: created.id },
             include: { stops: { orderBy: { sequence: 'asc' } } }
         });
+        await logAction(req, 'CREATE', 'route-template', created.id, name, null, { name });
         res.json(full);
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error creando plantilla' });
@@ -3230,8 +3309,10 @@ app.post('/api/v1/route-templates/empty', async (req, res) => {
 app.delete('/api/v1/route-templates/:id', async (req, res) => {
     const { id } = req.params;
     try {
+        const before = await (prisma as any).routeTemplate.findUnique({ where: { id }, include: { stops: true } });
         await (prisma as any).routeStopTemplate.deleteMany({ where: { routeTemplateId: id } });
         await (prisma as any).routeTemplate.delete({ where: { id } });
+        await logAction(req, 'DELETE', 'route-template', id, before?.name, before, null);
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error eliminando plantilla' });

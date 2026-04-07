@@ -291,6 +291,25 @@ model EstablishmentMapping {
   @@index([clientId])
 }
 
+// Registro de auditoría: quién hizo qué y cuándo
+model AuditLog {
+  id         String   @id @default(uuid())
+  userId     String?  // null si fue acción de sistema
+  userName   String?  // nombre visible del usuario
+  action     String   // CREATE | UPDATE | DELETE
+  entity     String   // trip | route | vehicle | user | client | route-template | maintenance
+  entityId   String?  // id del registro afectado
+  entityName String?  // nombre legible (ej. "GARCIA" para un viaje)
+  before     String?  // JSON del estado anterior (para UPDATE/DELETE)
+  after      String?  // JSON del estado nuevo (para CREATE/UPDATE)
+  ip         String?
+  createdAt  DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entity])
+  @@index([userId])
+}
+
 // Rastreo satelital: ubicaciones enviadas por la app móvil de choferes
 model DeviceLocation {
   id               String   @id @default(uuid())
