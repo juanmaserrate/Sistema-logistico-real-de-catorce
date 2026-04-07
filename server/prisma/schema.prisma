@@ -18,15 +18,17 @@ model Tenant {
 }
 
 model User {
-  id           String   @id @default(uuid())
+  id           String     @id @default(uuid())
   tenantId     String
-  username     String   @unique
+  username     String     @unique
   password     String
   fullName     String
-  role         String   @default("DRIVER")
-  createdAt    DateTime @default(now())
-  driverRoutes Route[]  @relation("DriverRoutes")
-  tenant       Tenant   @relation(fields: [tenantId], references: [id])
+  role         String     @default("DRIVER")
+  pushToken    String?    // Token Expo para notificaciones push
+  createdAt    DateTime   @default(now())
+  driverRoutes Route[]    @relation("DriverRoutes")
+  tenant       Tenant     @relation(fields: [tenantId], references: [id])
+  incidents    Incident[]
 }
 
 model Vehicle {
@@ -44,23 +46,25 @@ model Vehicle {
   insurance      String?
   usefulLife     String?
   vehicleType    String?
+  currentKm      Float?  // Kilometraje actual (actualizado por chofer al iniciar recorrido)
   routes         Route[]
   tenant         Tenant  @relation(fields: [tenantId], references: [id])
 }
 
 model Client {
-  id              String  @id @default(uuid())
-  tenantId        String
-  name            String
-  address         String?
-  latitude        Float?
-  longitude       Float?
-  timeWindowStart String?
-  timeWindowEnd   String?
-  serviceTime     Int     @default(15)
-  zone            String?
-  priority        Int     @default(0)
-  barrio                   String?
+  id                String  @id @default(uuid())
+  tenantId          String
+  name              String
+  address           String?
+  latitude          Float?
+  longitude         Float?
+  timeWindowStart   String?
+  timeWindowEnd     String?
+  serviceTime       Int     @default(15)
+  zone              String?
+  priority          Int     @default(0)
+  barrio            String?
+  requiresProofPhoto Boolean @default(false) // Si es true, la app móvil exige foto al entregar
   tenant                   Tenant  @relation(fields: [tenantId], references: [id])
   stops                    Stop[]
   establishmentMappings    EstablishmentMapping[]
@@ -289,6 +293,25 @@ model EstablishmentMapping {
   client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([clientId])
+}
+
+// Incidencias reportadas por choferes desde la app móvil
+model Incident {
+  id          String    @id @default(uuid())
+  driverId    String
+  tripId      Int?
+  type        String    // MECANICO | TRANSITO | ESCUELA | OTRO
+  description String
+  photoUrl    String?
+  status      String    @default("OPEN")  // OPEN | CLOSED
+  resolution  String?
+  createdAt   DateTime  @default(now())
+  closedAt    DateTime?
+  driver      User      @relation(fields: [driverId], references: [id])
+
+  @@index([status])
+  @@index([driverId])
+  @@index([createdAt])
 }
 
 // Registro de auditoría: quién hizo qué y cuándo

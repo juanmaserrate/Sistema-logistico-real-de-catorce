@@ -2205,8 +2205,10 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
     }
     const stop = await prisma.stop.update({
         where: { id: Number(id) },
-        data
+        data,
+        include: { route: { select: { id: true, tripId: true } } }
     });
+    io.emit('stop:updated', { stop });
     res.json(stop);
 });
 
@@ -2499,6 +2501,9 @@ app.post('/api/v1/trips', async (req, res) => {
     try {
         const trip = await prisma.trip.create({ data: req.body });
         await logAction(req, 'CREATE', 'trip', trip.id, trip.driver || String(trip.id), null, trip);
+        io.emit('trip:created', { trip });
+        // Notificar al chofer asignado
+        if (trip.driver) notifyDriver(trip.driver, 'Nuevo viaje asignado', `Tenés un viaje asignado para ${trip.zone || 'hoy'}`, { tripId: trip.id });
         res.json(trip);
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error creando viaje' });
@@ -2513,6 +2518,7 @@ app.put('/api/v1/trips/:id', async (req, res) => {
         const before = await prisma.trip.findUnique({ where: { id: parseInt(id) } });
         const trip = await prisma.trip.update({ where: { id: parseInt(id) }, data: body });
         await logAction(req, 'UPDATE', 'trip', trip.id, trip.driver || id, before, trip);
+        io.emit('trip:updated', { trip });
         res.json(trip);
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error actualizando viaje' });
@@ -2726,6 +2732,7 @@ app.delete('/api/v1/trips/:id', async (req, res) => {
         }
         await prisma.trip.delete({ where: { id } });
         await logAction(req, 'DELETE', 'trip', id, before?.driver || String(id), before, null);
+        io.emit('trip:deleted', { id });
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
@@ -3317,6 +3324,142 @@ app.delete('/api/v1/route-templates/:id', async (req, res) => {
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error eliminando plantilla' });
     }
+});
+
+// ── Push Notifications ───────────────────────────────────────────────────────
+app.post('/api/v1/users/:id/push-token', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const token = String(req.body?.token || '').trim();
+        if (!token) return res.status(400).json({ error: 'token requerido' });
+        await prisma.user.update({ where: { id }, data: { pushToken: token } });
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message });
+    }
+});
+
+/** Envía notificación push a un usuario a través de la API de Expo. */
+async function sendExpoPush(pushToken: string, title: string, body: string, data?: any) {
+    try {
+        if (!pushToken.startsWith('ExponentPushToken[') && !pushToken.startsWith('ExpoPushToken[')) return;
+        await fetch('https://exp.host/--/api/v2/push/send', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'Accept-encoding': 'gzip, deflate' },
+            body: JSON.stringify({ to: pushToken, title, body, data: data || {}, sound: 'default', priority: 'high' })
+        });
+    } catch (e) { console.warn('[push] Error sending notification:', e); }
+}
+
+/** Notifica a un chofer por nombre de usuario si tiene push token. */
+async function notifyDriver(driverUsername: string, title: string, body: string, data?: any) {
+    try {
+        const name = driverUsername.trim().toUpperCase();
+        const user = await prisma.user.findFirst({ where: { username: name }, select: { pushToken: true } });
+        if (user?.pushToken) await sendExpoPush(user.pushToken, title, body, data);
+    } catch (_) {}
+}
+
+// ── Incidents ─────────────────────────────────────────────────────────────────
+app.get('/api/v1/incidents', async (req, res) => {
+    try {
+        const status = String(req.query.status || '').trim() || undefined;
+        const where: any = {};
+        if (status) where.status = status;
+        const incidents = await (prisma as any).incident.findMany({
+            where,
+            orderBy: { createdAt: 'desc' },
+            take: 200,
+            include: { driver: { select: { id: true, fullName: true, username: true } } }
+        });
+        res.json(incidents);
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message });
+    }
+});
+
+app.post('/api/v1/incidents', async (req, res) => {
+    try {
+        const { driverId, tripId, type, description, photoUrl } = req.body;
+        if (!driverId || !type || !description) return res.status(400).json({ error: 'driverId, type y description son obligatorios' });
+        const incident = await (prisma as any).incident.create({
+            data: { driverId, tripId: tripId || null, type, description, photoUrl: photoUrl || null }
+        });
+        // Notificar a todos los admins via socket
+        io.emit('incident:created', { incident });
+        res.status(201).json(incident);
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message });
+    }
+});
+
+app.patch('/api/v1/incidents/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const { status, resolution } = req.body;
+        const data: any = {};
+        if (status) data.status = status;
+        if (resolution) data.resolution = resolution;
+        if (status === 'CLOSED') data.closedAt = new Date();
+        const incident = await (prisma as any).incident.update({ where: { id }, data });
+        res.json(incident);
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message });
+    }
+});
+
+// ── Vehicle KM update ─────────────────────────────────────────────────────────
+app.patch('/api/v1/vehicles/:plate/km', async (req, res) => {
+    try {
+        const { plate } = req.params;
+        const km = Number(req.body?.km);
+        if (!Number.isFinite(km) || km < 0) return res.status(400).json({ error: 'km debe ser un número válido' });
+        const vehicle = await prisma.vehicle.upsert({
+            where: { plate },
+            update: { currentKm: km },
+            create: { plate, tenantId: 'default-tenant', currentKm: km, status: 'ACTIVE' }
+        });
+        res.json({ success: true, currentKm: vehicle.currentKm });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message });
+    }
+});
+
+// ── Client: toggle requiresProofPhoto ────────────────────────────────────────
+app.patch('/api/v1/clients/:id/requires-proof', async (req, res) => {
+    try {
+        const { id } = req.params;
+        const requires = Boolean(req.body?.requiresProofPhoto);
+        const client = await prisma.client.update({ where: { id }, data: { requiresProofPhoto: requires } });
+        res.json({ success: true, requiresProofPhoto: client.requiresProofPhoto });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message });
+    }
+});
+
+// ── Trips bulk import ─────────────────────────────────────────────────────────
+app.post('/api/v1/trips/bulk', async (req, res) => {
+    const rows: any[] = Array.isArray(req.body?.trips) ? req.body.trips : [];
+    if (!rows.length) return res.status(400).json({ error: 'El array trips está vacío' });
+
+    let created = 0, errors: { row: number; error: string }[] = [];
+    for (let i = 0; i < rows.length; i++) {
+        try {
+            const row = rows[i];
+            if (!row.date) { errors.push({ row: i + 1, error: 'Falta fecha' }); continue; }
+            await prisma.trip.create({ data: { ...row, createdAt: undefined, updatedAt: undefined } });
+            created++;
+        } catch (e: any) {
+            errors.push({ row: i + 1, error: e?.message || 'Error desconocido' });
+        }
+    }
+    res.json({ created, errors, total: rows.length });
+});
+
+// ── WebSocket: emitir actualizaciones en tiempo real ─────────────────────────
+io.on('connection', (socket) => {
+    console.log(`[ws] Cliente conectado: ${socket.id}`);
+    socket.on('disconnect', () => console.log(`[ws] Cliente desconectado: ${socket.id}`));
 });
 
 // ── Estadísticas del día ──────────────────────────────────────────────────────

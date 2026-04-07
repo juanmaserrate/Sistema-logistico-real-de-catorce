@@ -27,4 +27,6 @@ export const STORAGE_KEYS = {
   deviceId: 'tracking_device_id',
   activeRouteId: 'r14_active_route_id',
   offlineLocationQueue: 'r14_offline_location_queue',
+  offlineStopQueue: 'r14_offline_stop_queue',     // Cola offline de paradas pendientes
+  offlineIncidentQueue: 'r14_offline_incident_queue', // Cola offline de incidencias pendientes
 } as const;

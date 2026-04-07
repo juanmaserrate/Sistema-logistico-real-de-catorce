@@ -1,5 +1,6 @@
-import { API_BASE, assertApiConfigured } from './config';
-import type { Route, RouteGeometry, SessionUser } from './types';
+import { API_BASE, assertApiConfigured, STORAGE_KEYS } from './config';
+import type { Route, RouteGeometry, SessionUser, Incident } from './types';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 function apiUrl(path: string): string {
   assertApiConfigured();
@@ -93,6 +94,59 @@ export async function fetchNavigationToNext(
   };
 }
 
+// ── Offline Stop Queue ────────────────────────────────────────────────────────
+
+interface OfflineStopAction {
+  stopId: number;
+  body: {
+    status?: string;
+    actualArrival?: string;
+    actualDeparture?: string;
+    observations?: string;
+    proofPhotoUrl?: string | null;
+    deliveryWithoutIssues?: boolean | null;
+  };
+  timestamp: string;
+}
+
+async function readStopQueue(): Promise<OfflineStopAction[]> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.offlineStopQueue);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
+
+async function writeStopQueue(queue: OfflineStopAction[]): Promise<void> {
+  await AsyncStorage.setItem(STORAGE_KEYS.offlineStopQueue, JSON.stringify(queue.slice(-100)));
+}
+
+export async function flushStopQueue(): Promise<number> {
+  const queue = await readStopQueue();
+  if (!queue.length) return 0;
+  let sent = 0;
+  for (const action of queue) {
+    try {
+      const res = await fetch(apiUrl(`/api/v1/stops/${action.stopId}`), {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(action.body),
+      });
+      if (!res.ok) break;
+      sent++;
+    } catch { break; }
+  }
+  if (sent === queue.length) await AsyncStorage.removeItem(STORAGE_KEYS.offlineStopQueue);
+  else if (sent > 0) await writeStopQueue(queue.slice(sent));
+  return sent;
+}
+
+export async function getPendingStopCount(): Promise<number> {
+  const q = await readStopQueue();
+  return q.length;
+}
+
 export async function patchStop(
   stopId: number,
   body: {
@@ -104,16 +158,30 @@ export async function patchStop(
     deliveryWithoutIssues?: boolean | null;
   }
 ): Promise<unknown> {
-  const res = await fetch(apiUrl(`/api/v1/stops/${stopId}`), {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) {
-    throw new Error((data as { error?: string }).error || 'No se pudo actualizar la parada');
+  try {
+    const res = await fetch(apiUrl(`/api/v1/stops/${stopId}`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error((data as { error?: string }).error || 'No se pudo actualizar la parada');
+    }
+    // Flush any pending offline actions on success
+    flushStopQueue().catch(() => {});
+    return data;
+  } catch (e: any) {
+    // Network error → queue for later
+    const isNetworkError = e?.message?.includes('Network') || e?.message?.includes('fetch') || e?.message?.includes('network');
+    if (isNetworkError || !navigator.onLine) {
+      const queue = await readStopQueue();
+      queue.push({ stopId, body, timestamp: new Date().toISOString() });
+      await writeStopQueue(queue);
+      return { queued: true };
+    }
+    throw e;
   }
-  return data;
 }
 
 /**
@@ -171,10 +239,100 @@ export async function patchRouteRecorrido(
   });
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
-    // Don't throw for "already started/ended" errors - those are expected
     const msg = (data as { error?: string }).error || '';
     if (!msg.includes('ya fue') && !msg.includes('ya fue')) {
       throw new Error(msg || 'Error al actualizar recorrido');
     }
+  }
+}
+
+// ── Push Token ────────────────────────────────────────────────────────────────
+export async function registerPushToken(userId: string, token: string): Promise<void> {
+  try {
+    await fetch(apiUrl(`/api/v1/users/${userId}/push-token`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token }),
+    });
+  } catch (e) {
+    console.warn('[push] Error registering token:', e);
+  }
+}
+
+// ── Vehicle KM ────────────────────────────────────────────────────────────────
+export async function updateVehicleKm(plate: string, km: number): Promise<void> {
+  try {
+    await fetch(apiUrl(`/api/v1/vehicles/${encodeURIComponent(plate)}/km`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ km }),
+    });
+  } catch (e) {
+    console.warn('[km] Error updating km:', e);
+  }
+}
+
+// ── Incidents ─────────────────────────────────────────────────────────────────
+
+interface OfflineIncidentAction {
+  driverId: string;
+  tripId?: number | null;
+  type: string;
+  description: string;
+  photoUrl?: string | null;
+  timestamp: string;
+}
+
+async function readIncidentQueue(): Promise<OfflineIncidentAction[]> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.offlineIncidentQueue);
+    if (!raw) return [];
+    return JSON.parse(raw) || [];
+  } catch { return []; }
+}
+
+export async function flushIncidentQueue(): Promise<void> {
+  const queue = await readIncidentQueue();
+  if (!queue.length) return;
+  let sent = 0;
+  for (const action of queue) {
+    try {
+      const res = await fetch(apiUrl('/api/v1/incidents'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(action),
+      });
+      if (!res.ok) break;
+      sent++;
+    } catch { break; }
+  }
+  if (sent === queue.length) await AsyncStorage.removeItem(STORAGE_KEYS.offlineIncidentQueue);
+  else if (sent > 0) {
+    await AsyncStorage.setItem(STORAGE_KEYS.offlineIncidentQueue, JSON.stringify(queue.slice(sent)));
+  }
+}
+
+export async function reportIncident(payload: {
+  driverId: string;
+  tripId?: number | null;
+  type: string;
+  description: string;
+  photoUrl?: string | null;
+}): Promise<Incident | { queued: true }> {
+  try {
+    const res = await fetch(apiUrl('/api/v1/incidents'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (!res.ok) throw new Error('Server error');
+    flushIncidentQueue().catch(() => {});
+    return (await res.json()) as Incident;
+  } catch {
+    // Queue offline
+    const queue = await readIncidentQueue();
+    queue.push({ ...payload, timestamp: new Date().toISOString() });
+    await AsyncStorage.setItem(STORAGE_KEYS.offlineIncidentQueue, JSON.stringify(queue));
+    return { queued: true };
   }
 }

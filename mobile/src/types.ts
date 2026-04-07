@@ -53,3 +53,14 @@ export interface RouteGeometry {
   points: GeometryPoint[];
   stops: GeometryStop[];
 }
+
+export interface Incident {
+  id: string;
+  driverId: string;
+  tripId?: number | null;
+  type: 'MECANICO' | 'TRANSITO' | 'ESCUELA' | 'OTRO';
+  description: string;
+  photoUrl?: string | null;
+  status: 'OPEN' | 'CLOSED';
+  createdAt: string;
+}

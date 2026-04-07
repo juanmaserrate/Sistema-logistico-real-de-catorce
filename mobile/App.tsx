@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect, useState } from 'react';
-import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -12,6 +12,7 @@ import {
   isGoogleNavigationNativeAvailable,
 } from './src/navigation/NavProviderGate';
 import type { RootStackParamList } from './src/navigation/types';
+import { registerPushToken } from './src/api';
 
 const EmbeddedNavigationScreenLazy = React.lazy(
   () => import('./src/screens/EmbeddedNavigationScreen')
@@ -24,9 +25,25 @@ export default function App() {
   const [session, setSession] = useState<SessionUser | null>(null);
 
   useEffect(() => {
-    loadSession().then((s) => {
+    loadSession().then(async (s) => {
       setSession(s);
       setBoot(false);
+      // Registrar push token si hay sesión activa
+      if (s) {
+        try {
+          // expo-notifications es opcional: si no está instalado, falla silenciosamente
+          const Notifications = await import('expo-notifications').catch(() => null);
+          if (Notifications) {
+            const { status } = await Notifications.requestPermissionsAsync();
+            if (status === 'granted') {
+              const token = await Notifications.getExpoPushTokenAsync().catch(() => null);
+              if (token?.data) {
+                registerPushToken(s.id, token.data).catch(() => {});
+              }
+            }
+          }
+        } catch { /* push no disponible en esta build */ }
+      }
     });
   }, []);
 

@@ -12,6 +12,7 @@ import {
   AppState,
   type AppStateStatus,
   RefreshControl,
+  TextInput,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -29,9 +30,14 @@ import {
   postTrackingLocation,
   patchStop,
   patchRouteRecorrido,
+  flushStopQueue,
+  flushIncidentQueue,
+  getPendingStopCount,
+  updateVehicleKm,
   type NavigationToNext,
 } from '../api';
 import StopDeliveryModal from '../components/StopDeliveryModal';
+import IncidentModal from '../components/IncidentModal';
 import {
   getOrCreateDeviceId,
   setActiveRouteId,
@@ -64,6 +70,15 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   const [deliveryModalStop, setDeliveryModalStop] = useState<Stop | null>(null);
   const [trackingOk, setTrackingOk] = useState(true);
   const deviceIdRef = useRef<string>('');
+  // Incidencias
+  const [incidentModalOpen, setIncidentModalOpen] = useState(false);
+  // Modo offline
+  const [isOnline, setIsOnline] = useState(true);
+  const [pendingOffline, setPendingOffline] = useState(0);
+  // Odómetro modal al iniciar recorrido
+  const [kmModalOpen, setKmModalOpen] = useState(false);
+  const [kmInput, setKmInput] = useState('');
+  const pendingStartRef = useRef<{ routeId: number; plate: string | null } | null>(null);
 
   const selected = useMemo(
     () => (selId != null ? routes.find((r) => r.id === selId) ?? null : null),
@@ -256,10 +271,34 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     loadRoutes();
   }, [loadRoutes]);
 
+  /** Monitor de conectividad: flush de colas offline al reconectarse. */
+  useEffect(() => {
+    const update = (state: any) => {
+      const online = state?.isConnected ?? true;
+      setIsOnline(online);
+      if (online) {
+        // Flush ambas colas al volver a tener señal
+        flushStopQueue().then((n) => { if (n > 0) getPendingStopCount().then(setPendingOffline); });
+        flushIncidentQueue().catch(() => {});
+      }
+    };
+    // Expo SDK 54 usa @react-native-community/netinfo importado como NetInfo
+    // Como no está instalado explícitamente, lo dejamos como polling de AppState
+    const poll = setInterval(async () => {
+      const n = await getPendingStopCount();
+      setPendingOffline(n);
+    }, 5000);
+    return () => clearInterval(poll);
+  }, []);
+
   /** Al volver del escritorio / otra app: misma ruta que editó logística en la web. */
   useEffect(() => {
     const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
-      if (next === 'active') loadRoutes({ silent: true });
+      if (next === 'active') {
+        loadRoutes({ silent: true });
+        flushStopQueue().then((n) => { if (n > 0) getPendingStopCount().then(setPendingOffline); });
+        flushIncidentQueue().catch(() => {});
+      }
     });
     return () => sub.remove();
   }, [loadRoutes]);
@@ -353,7 +392,42 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     }
   };
 
-  const startTracking = async () => {
+  /** Abre el modal de odómetro antes de iniciar el recorrido. */
+  const promptKmAndStart = () => {
+    const plate = selected?.vehicle?.plate ?? null;
+    pendingStartRef.current = { routeId: selId!, plate };
+    setKmInput('');
+    setKmModalOpen(true);
+  };
+
+  const confirmKmAndStart = async () => {
+    const km = parseFloat(kmInput);
+    const { routeId, plate } = pendingStartRef.current ?? {};
+    setKmModalOpen(false);
+    if (plate && !isNaN(km) && km > 0) {
+      updateVehicleKm(plate, km).catch(() => {});
+    }
+    await doStartTracking();
+  };
+
+  const skipKmAndStart = async () => {
+    setKmModalOpen(false);
+    await doStartTracking();
+  };
+
+  const startTracking = () => {
+    if (routes.length > 0 && selId == null) {
+      Alert.alert('Ruta', 'Seleccioná una ruta en la lista de arriba antes de fichar entrada.');
+      return;
+    }
+    if (selected?.vehicle?.plate) {
+      promptKmAndStart();
+    } else {
+      void doStartTracking();
+    }
+  };
+
+  const doStartTracking = async () => {
     if (routes.length > 0 && selId == null) {
       Alert.alert('Ruta', 'Seleccioná una ruta en la lista de arriba antes de fichar entrada.');
       return;
@@ -506,6 +580,13 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           bounces
           contentContainerStyle={styles.panelScrollContent}
         >
+          {/* Banner offline */}
+          {pendingOffline > 0 && (
+            <View style={styles.offlineBanner}>
+              <Text style={styles.offlineTxt}>⚡ {pendingOffline} acción(es) pendiente(s) de sincronizar</Text>
+            </View>
+          )}
+
           {!tracking ? (
             <Pressable style={styles.ficharEntrada} onPress={startTracking}>
               <Text style={styles.ficharEntradaTxt}>Fichar entrada</Text>
@@ -519,6 +600,12 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
               <Text style={styles.ficharSalidaSub}>Se detiene el reporte de posición.</Text>
             </Pressable>
           )}
+
+          {/* Botón incidencia */}
+          <Pressable style={styles.incidentBtn} onPress={() => setIncidentModalOpen(true)}>
+            <Text style={styles.incidentBtnTxt}>⚠️  Reportar incidencia</Text>
+          </Pressable>
+
           {err ? <Text style={styles.err}>{err}</Text> : null}
           {firstPendingClient ? (
             <View>
@@ -712,6 +799,43 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         onClose={() => setDeliveryModalStop(null)}
         onSaved={() => loadRoutes({ silent: true })}
       />
+
+      {/* Modal incidencias */}
+      <IncidentModal
+        visible={incidentModalOpen}
+        session={session}
+        tripId={null}
+        onClose={() => setIncidentModalOpen(false)}
+        onSent={() => { /* notificado */ }}
+      />
+
+      {/* Modal odómetro */}
+      {kmModalOpen && (
+        <View style={StyleSheet.absoluteFill}>
+          <Pressable style={styles.kmBackdrop} onPress={() => setKmModalOpen(false)} />
+          <View style={styles.kmSheet}>
+            <Text style={styles.kmTitle}>¿Cuál es el odómetro actual?</Text>
+            <Text style={styles.kmSub}>Ingresá los kilómetros del vehículo antes de salir. Podés saltar este paso.</Text>
+            <TextInput
+              style={styles.kmInput}
+              keyboardType="numeric"
+              placeholder="Ej: 125000"
+              placeholderTextColor="#94a3b8"
+              value={kmInput}
+              onChangeText={setKmInput}
+              autoFocus
+            />
+            <View style={styles.kmActions}>
+              <Pressable style={styles.kmSkipBtn} onPress={() => void skipKmAndStart()}>
+                <Text style={styles.kmSkipTxt}>Saltar</Text>
+              </Pressable>
+              <Pressable style={styles.kmConfirmBtn} onPress={() => void confirmKmAndStart()}>
+                <Text style={styles.kmConfirmTxt}>Confirmar y fichar</Text>
+              </Pressable>
+            </View>
+          </View>
+        </View>
+      )}
     </View>
   );
 }
@@ -847,6 +971,46 @@ const styles = StyleSheet.create({
     color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
   },
+  offlineBanner: {
+    backgroundColor: '#fef9c3',
+    borderRadius: 10,
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    marginBottom: 10,
+    borderWidth: 1,
+    borderColor: '#fde047',
+  },
+  offlineTxt: { fontSize: 12, fontWeight: '700', color: '#854d0e', textAlign: 'center' },
+  incidentBtn: {
+    marginTop: 8,
+    backgroundColor: '#fff7ed',
+    borderWidth: 1.5,
+    borderColor: '#fed7aa',
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: 'center',
+  },
+  incidentBtnTxt: { fontSize: 14, fontWeight: '800', color: '#c2410c' },
+  kmBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.55)' },
+  kmSheet: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: '#f8fafc',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: 24,
+    paddingBottom: 36,
+  },
+  kmTitle:   { fontSize: 17, fontWeight: '900', color: '#0f172a', marginBottom: 6 },
+  kmSub:     { fontSize: 12, color: '#64748b', marginBottom: 16 },
+  kmInput:   { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 14, fontSize: 20, fontWeight: '700', color: '#0f172a', marginBottom: 16, textAlign: 'center' },
+  kmActions: { flexDirection: 'row', gap: 10 },
+  kmSkipBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: '#e2e8f0', alignItems: 'center' },
+  kmSkipTxt: { fontWeight: '800', color: '#475569' },
+  kmConfirmBtn: { flex: 2, paddingVertical: 14, borderRadius: 12, backgroundColor: '#4f46e5', alignItems: 'center' },
+  kmConfirmTxt: { fontWeight: '900', color: '#fff' },
   refreshFull: {
     marginTop: 12,
     backgroundColor: '#f1f5f9',
