@@ -742,7 +742,7 @@
                     </div>
                     
                     <div class="flex items-center gap-3">
-                        <select id="planning-month-select" onchange="syncPlanningMonth(this.value)" class="bg-white border-0 rounded-2xl px-5 py-4 text-xs font-bold text-[#1B2559] shadow-sm outline-none hover:bg-gray-50 transition-all cursor-pointer">
+                        <select id="planning-month-select" onchange="syncPlanningMonth(this.value)" class="bg-white border-0 rounded-2xl px-5 py-4 text-xs font-bold text-[#1B2559] shadow-sm outline-none hover:bg-[#F4F7FE] transition-all cursor-pointer">
                             <option value="enero">Enero 2026</option>
                             <option value="febrero">Febrero 2026</option>
                             <option value="marzo">Marzo 2026</option>
@@ -762,7 +762,7 @@
                             <button onclick="setGridFilter('Tercerizado')" class="px-5 py-3 rounded-[12px] text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Tercerizado</button>
                         </div>
 
-                        <button onclick="exportWeeklyExcel()" class="px-5 py-4 rounded-2xl bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 flex items-center gap-2">
+                        <button onclick="exportWeeklyExcel()" class="px-5 py-4 rounded-2xl bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200 flex items-center gap-2">
                             <i data-lucide="download" class="w-4 h-4"></i> EXPORTAR
                         </button>
                         <label class="px-5 py-4 rounded-2xl bg-white border-2 border-emerald-600 text-emerald-700 text-[11px] font-bold hover:bg-emerald-50 transition-all flex items-center gap-2 cursor-pointer">
@@ -823,7 +823,7 @@
                     <button onclick="openBulkEditModal()" class="px-5 py-3 rounded-2xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center gap-2">
                         <i data-lucide="edit-3" class="w-4 h-4"></i> Editar seleccionados
                     </button>
-                    <button onclick="bulkDeleteTrips()" class="px-5 py-3 rounded-2xl bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-700 transition-all shadow-lg shadow-rose-200 flex items-center gap-2">
+                    <button onclick="bulkDeleteTrips()" class="px-5 py-3 rounded-2xl bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-600 transition-all shadow-lg shadow-rose-200 flex items-center gap-2">
                         <i data-lucide="trash-2" class="w-4 h-4"></i> Eliminar seleccionados
                     </button>
                     <button onclick="clearTripSelection()" class="px-4 py-3 rounded-2xl border border-[#E0E5F2] text-[#1B2559] text-[11px] font-bold hover:bg-[#F4F7FE] transition-all">
@@ -873,7 +873,7 @@
                         <p class="text-sm text-[#A3AED0] font-medium">Costos y volumen según la planificación semanal del mes seleccionado</p>
                     </div>
                     <div class="flex flex-wrap items-center gap-3">
-                        <select id="dashboard-month-select" onchange="syncPlanningMonth(this.value)" class="bg-white border-0 rounded-2xl px-5 py-4 text-xs font-bold text-[#1B2559] shadow-sm outline-none hover:bg-gray-50 cursor-pointer">
+                        <select id="dashboard-month-select" onchange="syncPlanningMonth(this.value)" class="bg-white border-0 rounded-2xl px-5 py-4 text-xs font-bold text-[#1B2559] shadow-sm outline-none hover:bg-[#F4F7FE] cursor-pointer">
                             <option value="enero">Enero 2026</option>
                             <option value="febrero">Febrero 2026</option>
                             <option value="marzo">Marzo 2026</option>
@@ -902,9 +902,9 @@
                         <p class="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">Costo propio</p>
                         <p id="dash-kpi-propio" class="text-xl font-black text-indigo-700">$ 0</p>
                     </div>
-                    <div class="card-dark p-5 border border-purple-100 bg-gradient-to-br from-purple-50/80 to-white">
-                        <p class="text-[10px] font-black text-purple-600 uppercase tracking-widest mb-1">Costo tercerizado</p>
-                        <p id="dash-kpi-tercerizado" class="text-xl font-black text-purple-700">$ 0</p>
+                    <div class="card-dark p-5 border border-indigo-100 bg-gradient-to-br from-indigo-50/80 to-white">
+                        <p class="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">Costo tercerizado</p>
+                        <p id="dash-kpi-tercerizado" class="text-xl font-black text-indigo-700">$ 0</p>
                     </div>
                     <div class="card-dark p-5 border border-[#F4F7FE]">
                         <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">Costo total</p>
@@ -1028,7 +1028,7 @@
                         <select id="school-zone-filter" onchange="filterSchools()" class="bg-[#F4F7FE] border-0 rounded-2xl py-3.5 px-4 text-xs font-bold text-[#1B2559] outline-none min-w-[160px]">
                             <option value="">Todas las zonas</option>
                         </select>
-                        <button id="btn-delete-selected-schools" onclick="deleteSelectedSchools()" class="hidden px-4 py-3 rounded-2xl bg-red-50 text-red-600 hover:bg-red-100 text-xs font-bold transition-all whitespace-nowrap">
+                        <button id="btn-delete-selected-schools" onclick="deleteSelectedSchools()" class="hidden px-4 py-3 rounded-2xl bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-bold transition-all whitespace-nowrap">
                             Eliminar seleccionadas
                         </button>
                         <div class="text-xs font-bold text-indigo-600 bg-indigo-50 px-6 py-4 rounded-2xl whitespace-nowrap uppercase tracking-widest">
@@ -1127,7 +1127,7 @@
                                     <div class="text-center py-6 text-[#A3AED0] text-xs font-medium italic">Marcá escuelas arriba o cargá un reparto</div>
                     </div>
                             </div>
-                            <div id="vrp-route-summary" class="hidden rounded-2xl bg-slate-900 text-white p-4 space-y-1">
+                            <div id="vrp-route-summary" class="hidden rounded-2xl bg-[#1B2559] text-white p-4 space-y-1">
                                 <p class="text-[9px] font-black uppercase tracking-widest text-white/50">Último cálculo</p>
                                 <div class="flex flex-wrap gap-4">
                                     <div><span class="text-[10px] text-white/60">Distancia</span><p id="vrp-sum-km" class="text-lg font-black text-emerald-300">—</p></div>
@@ -1156,9 +1156,9 @@
                             </button>
                             <div class="bg-white/95 px-4 py-3 rounded-2xl shadow-lg border border-[#F4F7FE] text-[10px] font-bold text-[#2B3674] max-w-[200px]">
                                 <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block mr-1"></span> Escuela
-                                <span class="w-2 h-2 rounded-full bg-slate-800 inline-block ml-2 mr-1"></span> Orden ruta
+                                <span class="w-2 h-2 rounded-full bg-[#1B2559] inline-block ml-2 mr-1"></span> Orden ruta
                                 <div class="mt-2 pt-2 border-t border-[#F4F7FE] flex items-center gap-2">
-                                    <span id="traffic-indicator" class="w-2 h-2 rounded-full bg-slate-300 shrink-0"></span>
+                                    <span id="traffic-indicator" class="w-2 h-2 rounded-full bg-[#E0E5F2] shrink-0"></span>
                                     <span class="text-[#A3AED0]">Tráfico: <span id="traffic-status" class="text-[#1B2559]">OFF</span></span>
                     </div>
                             </div>
@@ -1195,7 +1195,7 @@
                                 <span class="text-[10px] font-black text-[#A3AED0] uppercase whitespace-nowrap">Mes</span>
                                 <input type="month" id="maintenance-filter-period" onchange="renderMaintenanceRecords()" oninput="renderMaintenanceRecords()" class="bg-transparent border-0 text-xs font-bold text-[#1B2559] outline-none min-w-[9.5rem]">
                             </label>
-                            <button type="button" onclick="clearMaintenancePeriodFilter()" class="px-5 py-3 rounded-2xl text-xs font-bold bg-white border border-[#E3E8F4] text-[#5B6B9E] hover:bg-[#F4F7FE] transition-all">Todos los meses</button>
+                            <button type="button" onclick="clearMaintenancePeriodFilter()" class="px-5 py-3 rounded-2xl text-xs font-bold bg-white border border-[#E3E8F4] text-[#A3AED0] hover:bg-[#F4F7FE] transition-all">Todos los meses</button>
                             <button onclick="addRepairRow()" class="px-6 py-4 bg-indigo-600 text-white rounded-2xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center gap-2">
                                 <i data-lucide="plus" class="w-4 h-4"></i> NUEVA REPARACIÓN
                             </button>
@@ -1208,7 +1208,7 @@
                         <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#F4F7FE] p-6 rounded-2xl">
                             <div>
                                 <span class="text-sm font-bold text-[#A3AED0] uppercase tracking-widest">Total costo (vista filtrada)</span>
-                                <p id="maintenance-total-meta" class="text-xs text-[#7C8DB5] mt-2 font-medium"></p>
+                                <p id="maintenance-total-meta" class="text-xs text-[#A3AED0] mt-2 font-medium"></p>
                             </div>
                             <span id="maintenance-total-value" class="text-2xl font-extrabold text-[#1B2559]">$ 0</span>
                         </div>
@@ -1457,7 +1457,7 @@
                         <button id="modal-unblock-role-driver" type="button" onclick="resolveUnblockRole('DRIVER')" class="px-5 py-3 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700 transition-all">
                             DRIVER
                         </button>
-                        <button id="modal-unblock-role-admin" type="button" onclick="resolveUnblockRole('ADMIN')" class="px-5 py-3 rounded-xl bg-rose-600 text-white text-sm font-bold hover:bg-rose-700 transition-all">
+                        <button id="modal-unblock-role-admin" type="button" onclick="resolveUnblockRole('ADMIN')" class="px-5 py-3 rounded-xl bg-rose-600 text-white text-sm font-bold hover:bg-rose-600 transition-all">
                             ADMIN
                         </button>
                     </div>
@@ -1567,7 +1567,7 @@
                 </div>
 
                 <!-- TOTAL FINAL CALCULATION BOX -->
-                <div class="bg-gradient-to-r from-[#11047A] to-[#2B0880] p-10 rounded-3xl shadow-2xl flex flex-col md:flex-row justify-between items-center gap-8 border border-white/10">
+                <div class="bg-gradient-to-r from-[#11047A] to-[#1B2559] p-10 rounded-3xl shadow-2xl flex flex-col md:flex-row justify-between items-center gap-8 border border-white/10">
                     <div class="flex items-center gap-8">
                         <div class="w-16 h-16 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20">
                             <i data-lucide="calculator" class="w-8 h-8 text-white"></i>
@@ -1600,7 +1600,7 @@
                         </button>
                         <div class="px-5 py-3 bg-emerald-50 rounded-2xl flex items-center gap-3">
                             <span class="relative flex h-3 w-3">
-                              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                              <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
                               <span class="relative inline-flex rounded-full h-3 w-3 bg-emerald-500"></span>
                             </span>
                             <span class="text-xs font-black text-emerald-700 uppercase">Live Feed</span>
@@ -1691,7 +1691,7 @@
                         </div>
                     </div>
                     <div id="control-preflight-summary" class="p-6 bg-indigo-50/40 text-sm border-t border-[#F4F7FE] min-h-[80px]">
-                        <p class="text-[#6B7280] text-xs italic">Preflight: validá API, Google Maps, choferes y rutas con un clic.</p>
+                        <p class="text-[#A3AED0] text-xs italic">Preflight: validá API, Google Maps, choferes y rutas con un clic.</p>
                     </div>
                     <div id="control-live-summary" class="p-6 bg-[#F8FAFF]/80 text-sm border-t border-[#F4F7FE] min-h-[80px]">
                         <p class="text-[#A3AED0] text-xs italic">Elegí una ruta y pulsá «Cargar» para ver tramos entre paradas y último desvío.</p>
@@ -1703,7 +1703,7 @@
                         <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Feed de Actividad Logística</h4>
                         <div class="flex items-center gap-2">
                              <input type="text" id="control-search" oninput="renderControlFeed()" placeholder="Filtrar por chofer, unidad o reparto..." class="bg-[#F4F7FE] border-0 rounded-xl px-4 py-2 text-xs font-bold text-[#1B2559] outline-none">
-                             <button class="w-10 h-10 bg-[#F4F7FE] rounded-xl flex items-center justify-center text-[#1B2559] hover:bg-gray-100 transition-all"><i data-lucide="filter" class="w-4 h-4"></i></button>
+                             <button class="w-10 h-10 bg-[#F4F7FE] rounded-xl flex items-center justify-center text-[#1B2559] hover:bg-[#F4F7FE] transition-all"><i data-lucide="filter" class="w-4 h-4"></i></button>
                         </div>
                     </div>
                     <div class="table-container border-0 rounded-0 shadow-none">
@@ -1776,7 +1776,7 @@
                         <button onclick="generateReport()" class="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-indigo-200 flex items-center gap-2">
                             <i data-lucide="play" class="w-4 h-4"></i> Generar reporte
                         </button>
-                        <button onclick="exportReportExcel()" class="px-6 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-emerald-200 flex items-center gap-2">
+                        <button onclick="exportReportExcel()" class="px-6 py-3 bg-emerald-600 hover:bg-emerald-600 text-white rounded-xl font-bold text-sm transition-all shadow-lg shadow-emerald-200 flex items-center gap-2">
                             <i data-lucide="download" class="w-4 h-4"></i> Exportar Excel
                         </button>
                     </div>
@@ -1823,7 +1823,7 @@
             <div class="p-8 bg-[#F8FAFF] border-t border-[#F4F7FE] flex justify-end gap-3">
                 <button onclick="closeSchoolModal()" class="px-6 py-3 rounded-xl border border-[#E0E5F2] text-[#A3AED0] font-bold text-sm hover:bg-[#E8ECF8] transition-all">Cerrar</button>
                 <button id="btn-edit-school" onclick="enableSchoolEdit()" class="px-6 py-3 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 transition-all">Editar Cliente</button>
-                <button id="btn-save-school" onclick="saveSchoolChanges()" class="hidden px-6 py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-700 transition-all">Guardar Cambios</button>
+                <button id="btn-save-school" onclick="saveSchoolChanges()" class="hidden px-6 py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-600 transition-all">Guardar Cambios</button>
             </div>
         </div>
     </div>
@@ -1902,7 +1902,7 @@
                 results.innerHTML = `<p class="text-center text-sm text-[#A3AED0] font-medium py-6">Sin resultados para "<strong>${q}</strong>"</p>`;
                 return;
             }
-            const COLORS = { indigo: 'bg-indigo-50 text-indigo-600', violet: 'bg-violet-50 text-violet-600', emerald: 'bg-emerald-50 text-emerald-600', amber: 'bg-amber-50 text-amber-600' };
+            const COLORS = { indigo: 'bg-indigo-50 text-indigo-600', violet: 'bg-indigo-50 text-indigo-600', emerald: 'bg-emerald-50 text-emerald-600', amber: 'bg-amber-50 text-amber-600' };
             results.innerHTML = _gsResults.map((r, i) => `
                 <button class="gs-item w-full flex items-center gap-3 px-4 py-3 rounded-xl hover:bg-indigo-50 transition-all text-left group" onclick="(() => { _gsResults[${i}].action(); closeGlobalSearch(); })()">
                     <div class="w-9 h-9 rounded-xl ${COLORS[r.color] || COLORS.indigo} flex items-center justify-center shrink-0">
@@ -2558,7 +2558,7 @@
                     <td class="px-6 py-4 text-center">
                         ${isHardcoded
                             ? '<span class="text-[10px] text-[#A3AED0]">Protegido</span>'
-                            : `<button onclick="removeProfileAssignment('${user}')" class="p-2 text-slate-300 hover:text-rose-600 transition-all"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`
+                            : `<button onclick="removeProfileAssignment('${user}')" class="p-2 text-[#A3AED0] hover:text-rose-600 transition-all"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`
                         }
                     </td>
                 </tr>`;
@@ -2579,7 +2579,7 @@
                 SUPERADMIN: { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-700', dot: 'bg-indigo-500' },
                 TRAFICO: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', dot: 'bg-emerald-500' },
                 RRHH: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', dot: 'bg-amber-500' },
-                ADMINISTRACION: { bg: 'bg-purple-50', border: 'border-purple-200', text: 'text-purple-700', dot: 'bg-purple-500' }
+                ADMINISTRACION: { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-700', dot: 'bg-indigo-500' }
             };
             grid.innerHTML = Object.entries(ACCESS_PROFILES).map(([profile, modules]) => {
                 const c = colors[profile] || colors.SUPERADMIN;
@@ -2884,7 +2884,7 @@
             const sorted = [...trips].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
             tbody.innerHTML = sorted.map(t => {
                 const cost = getTripCalculatedCost ? getTripCalculatedCost(t) : (t.cost || 0);
-                const statusClass = t.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700' : t.status === 'IN_PROGRESS' ? 'bg-indigo-50 text-blue-700' : 'bg-[#F4F7FE] text-[#2B3674]';
+                const statusClass = t.status === 'COMPLETED' ? 'bg-emerald-50 text-emerald-700' : t.status === 'IN_PROGRESS' ? 'bg-indigo-50 text-indigo-700' : 'bg-[#F4F7FE] text-[#2B3674]';
                 const contractClass = (t.contractType || '').toLowerCase() === 'tercerizado' ? 'bg-amber-50 text-amber-700' : 'bg-indigo-50 text-indigo-700';
                 return `<tr class="hover:bg-[#F8FAFF] transition-colors"><td class="px-6 py-4 text-sm font-medium">${t.date || '-'}</td><td class="px-6 py-4 font-bold text-[#1B2559]">${t.driver || '-'}</td><td class="px-6 py-4 text-sm">${t.reparto || '-'}</td><td class="px-6 py-4 text-sm">${t.zone || '-'}</td><td class="px-6 py-4 text-center"><span class="px-2 py-1 rounded-lg text-[10px] font-bold ${contractClass}">${(t.contractType || 'PROPIO').toUpperCase()}</span></td><td class="px-6 py-4 text-center"><span class="px-2 py-1 rounded-lg text-[10px] font-bold ${statusClass}">${t.status || 'PENDING'}</span></td><td class="px-6 py-4 text-right font-bold text-emerald-700">$${Math.round(cost).toLocaleString()}</td></tr>`;
             }).join('');
@@ -2918,7 +2918,7 @@
         function roleBadgeClass(role) {
             const normalized = String(role || '').toUpperCase();
             if (normalized === 'ADMIN') return 'bg-rose-100 text-rose-700';
-            if (normalized === 'BLOCKED') return 'bg-slate-200 text-[#2B3674]';
+            if (normalized === 'BLOCKED') return 'bg-[#E0E5F2] text-[#2B3674]';
             return 'bg-indigo-100 text-indigo-700';
         }
 
@@ -2940,7 +2940,7 @@
                 btnDriver.classList.add('opacity-80');
             }
             if (btnAdmin) {
-                btnAdmin.classList.remove('ring-2', 'ring-rose-400', 'ring-offset-2');
+                btnAdmin.classList.remove('ring-2', 'ring-rose-500', 'ring-offset-2');
                 btnAdmin.classList.add('opacity-80');
             }
             if (recommended === 'DRIVER' && btnDriver) {
@@ -2948,7 +2948,7 @@
                 btnDriver.classList.remove('opacity-80');
             }
             if (recommended === 'ADMIN' && btnAdmin) {
-                btnAdmin.classList.add('ring-2', 'ring-rose-400', 'ring-offset-2');
+                btnAdmin.classList.add('ring-2', 'ring-rose-500', 'ring-offset-2');
                 btnAdmin.classList.remove('opacity-80');
             }
             modal.classList.remove('hidden');
@@ -3013,9 +3013,9 @@
             body.innerHTML = rows.map((u) => `
                 <tr>
                     <td class="font-bold text-[#1B2559]">${u.username || ''}</td>
-                    <td class="text-[#5B6B9E]">${u.fullName || ''}</td>
+                    <td class="text-[#A3AED0]">${u.fullName || ''}</td>
                     <td><span class="inline-flex px-3 py-1 rounded-full text-[11px] font-black ${roleBadgeClass(u.role)}">${u.role || ''}</span></td>
-                    <td class="text-[#7C8DB5] text-xs">${u.createdAt ? new Date(u.createdAt).toLocaleString('es-AR') : '-'}</td>
+                    <td class="text-[#A3AED0] text-xs">${u.createdAt ? new Date(u.createdAt).toLocaleString('es-AR') : '-'}</td>
                     <td>
                         <input id="pwd-${u.id}" type="text" placeholder="Nueva contraseña" class="w-48 bg-[#F4F7FE] border-0 rounded-xl px-3 py-2 text-xs font-medium text-[#1B2559] outline-none" />
                     </td>
@@ -3159,7 +3159,7 @@
             statusText.classList.remove('text-emerald-200', 'text-rose-200', 'text-white/45');
             const origin = typeof getServerOrigin === 'function' ? getServerOrigin() : '';
                 if (connected) {
-                dot.className = 'w-2 h-2 rounded-full bg-emerald-400 shrink-0 ring-2 ring-emerald-300/50';
+                dot.className = 'w-2 h-2 rounded-full bg-emerald-500 shrink-0 ring-2 ring-emerald-300/50';
                 statusText.classList.add('text-emerald-200');
                 if (label) label.textContent = 'API en línea';
                 statusText.removeAttribute('title');
@@ -3789,7 +3789,7 @@
         async function runOperationalPreflight() {
             const box = document.getElementById('control-preflight-summary');
             if (!box) return;
-            box.innerHTML = '<p class="text-xs text-[#6B7280]">Ejecutando preflight…</p>';
+            box.innerHTML = '<p class="text-xs text-[#A3AED0]">Ejecutando preflight…</p>';
             try {
                 const res = await fetch(`${API_URL}/preflight`);
                 const data = await res.json().catch(() => ({}));
@@ -3805,7 +3805,7 @@
                 box.innerHTML = `
                     <div class="flex items-center justify-between mb-3">
                         <h5 class="text-xs font-black uppercase tracking-widest text-[#374151]">Preflight operativo (${data?.date || '-'})</h5>
-                        <span class="text-[10px] font-bold text-[#6B7280]">${new Date(data?.generatedAt || Date.now()).toLocaleString('es-AR')}</span>
+                        <span class="text-[10px] font-bold text-[#A3AED0]">${new Date(data?.generatedAt || Date.now()).toLocaleString('es-AR')}</span>
                     </div>
                     <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3">
                         ${rows.map(([label, item]) => `
@@ -3926,7 +3926,7 @@
                                     : '—';
                                 const okCell = s.deliveryWithoutIssues === true
                                     ? '<span class="text-emerald-600 font-black">Sí</span>'
-                                    : '<span class="text-slate-300">—</span>';
+                                    : '<span class="text-[#A3AED0]">—</span>';
                                 let photoHref = (s.proofPhotoUrl || '').trim();
                                 if (photoHref && !/^https?:/i.test(photoHref)) {
                                     const o = window.location.origin;
@@ -4402,7 +4402,7 @@
                         }
 
                         return `
-                        <div class="stop-item bg-white border border-[#E0E5F2] p-4 rounded-xl flex items-center gap-4 cursor-move hover:border-blue-500 hover:shadow-sm transition-all group" data-name="${s.name}">
+                        <div class="stop-item bg-white border border-[#E0E5F2] p-4 rounded-xl flex items-center gap-4 cursor-move hover:border-indigo-500 hover:shadow-sm transition-all group" data-name="${s.name}">
                             <div class="w-8 h-8 rounded-lg bg-[#F8FAFF] flex items-center justify-center text-[10px] font-black text-[#A3AED0] group-hover:text-indigo-600 group-hover:bg-indigo-50 transition-all">
                                 <span class="group-hover:hidden flex items-center justify-center">${displayContent}</span>
                                 <i data-lucide="more-vertical" class="w-3 h-3 hidden group-hover:block"></i>
@@ -4608,7 +4608,7 @@
                         const dt = new Date(log.createdAt);
                         const dateStr = dt.toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'2-digit' });
                         const timeStr = dt.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' });
-                        const actionClass = ACTION_COLORS[log.action] || 'bg-gray-50 text-gray-600 border-gray-200';
+                        const actionClass = ACTION_COLORS[log.action] || 'bg-[#F4F7FE] text-[#A3AED0] border-[#E0E5F2]';
                         const actionLabel = ACTION_LABELS[log.action] || log.action;
                         const entityLabel = ENTITY_LABELS[log.entity] || log.entity;
                         const hasDiff = log.before || log.after;
@@ -4722,10 +4722,10 @@
             const grid = document.getElementById('schools-grid');
             if(!grid) return;
             grid.innerHTML = schools.map(c => `
-                <div onclick="openSchoolModal('${c.id}')" class="card-dark p-6 hover:border-blue-500/50 transition-all group cursor-pointer ${selectedSchoolsForDelete.has(c.id) ? 'ring-2 ring-red-300 border-red-300' : ''}">
+                <div onclick="openSchoolModal('${c.id}')" class="card-dark p-6 hover:border-indigo-500/50 transition-all group cursor-pointer ${selectedSchoolsForDelete.has(c.id) ? 'ring-2 ring-rose-300 border-rose-300' : ''}">
                     <div class="flex justify-between items-start mb-4">
                         <div class="flex items-center gap-2">
-                            <button type="button" onclick="toggleSchoolSelection('${c.id}', event)" class="w-5 h-5 rounded-md border ${selectedSchoolsForDelete.has(c.id) ? 'bg-red-500 border-red-500 text-white' : 'bg-white border-[#E0E5F2] text-transparent'} flex items-center justify-center">
+                            <button type="button" onclick="toggleSchoolSelection('${c.id}', event)" class="w-5 h-5 rounded-md border ${selectedSchoolsForDelete.has(c.id) ? 'bg-rose-500 border-rose-500 text-white' : 'bg-white border-[#E0E5F2] text-transparent'} flex items-center justify-center">
                                 <i data-lucide="check" class="w-3 h-3"></i>
                             </button>
                         <div class="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
@@ -4747,7 +4747,7 @@
                             <span class="text-[#2B3674] font-black">${c.serviceTime} min</span>
                          </div>
                     </div>
-                    ${c.requiresProofPhoto ? `<div class="mt-2 flex items-center gap-1 text-[10px] font-bold text-red-500"><i data-lucide="camera" class="w-3 h-3"></i> Foto obligatoria</div>` : ''}
+                    ${c.requiresProofPhoto ? `<div class="mt-2 flex items-center gap-1 text-[10px] font-bold text-rose-500"><i data-lucide="camera" class="w-3 h-3"></i> Foto obligatoria</div>` : ''}
                 </div>
             `).join('');
             updateSelectedSchoolsDeleteButton();
@@ -4806,51 +4806,51 @@
                 <div id="school-edit-content" class="space-y-6">
                     <div>
                         <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Nombre de la Escuela / Cliente *</label>
-                        <input type="text" id="edit-school-name" value="${esc(s.name)}" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500" required>
+                        <input type="text" id="edit-school-name" value="${esc(s.name)}" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500" required>
                     </div>
                     <div>
                         <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Dirección</label>
-                        <input type="text" id="edit-school-address" value="${esc(s.address)}" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
+                        <input type="text" id="edit-school-address" value="${esc(s.address)}" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Zona</label>
-                            <input type="text" id="edit-school-zone" value="${esc(s.zone)}" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
+                            <input type="text" id="edit-school-zone" value="${esc(s.zone)}" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
                         </div>
                         <div>
                             <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Barrio / Localidad</label>
-                            <input type="text" id="edit-school-barrio" value="${esc(s.barrio)}" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
+                            <input type="text" id="edit-school-barrio" value="${esc(s.barrio)}" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
                         </div>
                     </div>
                     <div class="grid grid-cols-3 gap-4">
                         <div>
                             <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Ventana Inicio</label>
-                            <input type="time" id="edit-school-start" value="${esc(s.timeWindowStart)}" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
+                            <input type="time" id="edit-school-start" value="${esc(s.timeWindowStart)}" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
                         </div>
                         <div>
                             <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Ventana Fin</label>
-                            <input type="time" id="edit-school-end" value="${esc(s.timeWindowEnd)}" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
+                            <input type="time" id="edit-school-end" value="${esc(s.timeWindowEnd)}" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
                         </div>
                         <div>
                             <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Servicio (min)</label>
-                            <input type="number" id="edit-school-service" value="${s.serviceTime != null ? esc(s.serviceTime) : 15}" min="1" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
+                            <input type="number" id="edit-school-service" value="${s.serviceTime != null ? esc(s.serviceTime) : 15}" min="1" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
                         </div>
                     </div>
                     <div class="grid grid-cols-2 gap-4">
                         <div>
                             <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Latitud (GPS)</label>
-                            <input type="text" id="edit-school-lat" value="${s.latitude != null && s.latitude !== '' ? esc(s.latitude) : ''}" placeholder="-34.6037" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
+                            <input type="text" id="edit-school-lat" value="${s.latitude != null && s.latitude !== '' ? esc(s.latitude) : ''}" placeholder="-34.6037" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
                         </div>
                         <div>
                             <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Longitud (GPS)</label>
-                            <input type="text" id="edit-school-lng" value="${s.longitude != null && s.longitude !== '' ? esc(s.longitude) : ''}" placeholder="-58.3816" class="w-full bg-slate-900 border border-slate-800 rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
+                            <input type="text" id="edit-school-lng" value="${s.longitude != null && s.longitude !== '' ? esc(s.longitude) : ''}" placeholder="-58.3816" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
                         </div>
                     </div>
-                    <label class="flex items-start gap-3 p-4 rounded-xl border border-slate-700 bg-slate-800/50 cursor-pointer mt-2">
-                        <input type="checkbox" id="edit-school-requires-proof" ${s.requiresProofPhoto ? 'checked' : ''} class="mt-0.5 w-5 h-5 rounded-lg border-slate-600 text-red-500 focus:ring-red-500 bg-slate-900">
+                    <label class="flex items-start gap-3 p-4 rounded-xl border border-[#1B2559] bg-[#1B2559]/50 cursor-pointer mt-2">
+                        <input type="checkbox" id="edit-school-requires-proof" ${s.requiresProofPhoto ? 'checked' : ''} class="mt-0.5 w-5 h-5 rounded-lg border-[#1B2559] text-rose-500 focus:ring-rose-500 bg-[#1B2559]">
                         <div>
                             <span class="text-sm font-bold text-white block">Requiere foto de entrega obligatoria</span>
-                            <span class="text-[11px] text-slate-400 font-medium">El chofer debe sacar foto al completar esta parada en la app móvil.</span>
+                            <span class="text-[11px] text-[#A3AED0] font-medium">El chofer debe sacar foto al completar esta parada en la app móvil.</span>
                         </div>
                     </label>
                 </div>
@@ -5054,7 +5054,7 @@
                         </td>
                         <td class="font-black text-indigo-600">$${(Number(t.value || 0)).toLocaleString()}</td>
                         <td>
-                            <span class="status-badge ${t.paymentStatus === 'PAID' ? 'bg-indigo-100 text-blue-700' : 'bg-red-100 text-red-700'}">
+                            <span class="status-badge ${t.paymentStatus === 'PAID' ? 'bg-indigo-100 text-indigo-700' : 'bg-rose-100 text-rose-700'}">
                                 ${t.paymentStatus || 'PENDIENTE'}
                             </span>
                         </td>
@@ -5523,7 +5523,7 @@
             wrap.innerHTML = `
                 <div class="flex flex-wrap items-center gap-2 mb-3">
                     <span class="text-[10px] font-black uppercase tracking-wider text-[#A3AED0]">Puntos (${rows.length}) · orden de visita</span>
-                    <button type="button" onclick="weeklyStopsSave(${tripId})" class="text-[10px] font-black uppercase bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700">Guardar</button>
+                    <button type="button" onclick="weeklyStopsSave(${tripId})" class="text-[10px] font-black uppercase bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-600">Guardar</button>
                     <button type="button" onclick="weeklyStopsFromTemplate(${tripId})" class="text-[10px] font-black uppercase bg-indigo-50 text-indigo-700 border border-indigo-100 px-3 py-1.5 rounded-lg hover:bg-indigo-100">Desde plantilla</button>
                 </div>
                 <ul id="weekly-stops-ul-${tripId}" class="space-y-1.5 pr-1 w-full">
@@ -5531,7 +5531,7 @@
                         .map(
                             (row, i) => `
                         <li draggable="true" data-idx="${i}" class="weekly-stop-item flex items-center gap-2 bg-white border border-[#E0E5F2] rounded-xl px-3 py-2 text-sm font-bold text-[#2B3674] cursor-grab shadow-sm">
-                            <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-300 shrink-0"></i>
+                            <i data-lucide="grip-vertical" class="w-4 h-4 text-[#A3AED0] shrink-0"></i>
                             <span class="text-[#A3AED0] text-xs w-5">${i + 1}</span>
                             <span class="flex-1 min-w-0 truncate" title="${escapeHtmlWeekly(row.address || '')}">${escapeHtmlWeekly(row.name)}</span>
                             <button type="button" onclick="weeklyStopsRemove(${tripId},${i})" class="text-rose-500 font-bold px-2 py-0.5 rounded-lg hover:bg-rose-50 shrink-0" title="Quitar">✕</button>
@@ -5587,9 +5587,9 @@
                             ${(t.auxiliar2 || t.auxiliar3) ? `<div class="text-[9px] text-[#A3AED0] font-bold">${[t.auxiliar2, t.auxiliar3].filter(Boolean).join(', ')}</div>` : ''}
                         </td>
                         <td class="font-bold text-[#2B3674]">${t.tripType || t.reparto || '--'}</td>
-                        <td><div class="text-[10px] text-orange-600 font-bold uppercase">${formatBusinessUnit(t.businessUnit)}</div></td>
+                        <td><div class="text-[10px] text-amber-600 font-bold uppercase">${formatBusinessUnit(t.businessUnit)}</div></td>
                         <td>
-                            <span class="status-badge ${isPropio ? 'bg-indigo-100 text-indigo-600' : 'bg-purple-100 text-purple-600'}">
+                            <span class="status-badge ${isPropio ? 'bg-indigo-100 text-indigo-600' : 'bg-indigo-100 text-indigo-600'}">
                                 ${t.contractType || 'Externo'}
                             </span>
                         </td>
@@ -5601,7 +5601,7 @@
                         <td>
                             <div class="text-[10px] text-[#A3AED0] font-bold uppercase">${t.vehicleType || 'VANS'}</div>
                         </td>
-                        <td class="text-xs font-black ${isPropio ? 'text-indigo-600' : 'text-purple-600'}">
+                        <td class="text-xs font-black ${isPropio ? 'text-indigo-600' : 'text-indigo-600'}">
                             $ ${cost.toLocaleString('es-AR')}
                         </td>
                         <td class="font-bold text-indigo-600">${resolveTripPlate(t)}</td>
@@ -5615,15 +5615,15 @@
                         </td>
                         <td class="align-top">${formatRouteRealCell(t)}</td>
                         <td>
-                            <span class="status-badge ${t.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-orange-700'}">
+                            <span class="status-badge ${t.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
                                 ${t.status}
                             </span>
                         </td>
                         <td class="px-3 text-center align-middle">
                             <div class="flex flex-col items-center gap-1.5">
                                 <div class="flex gap-1 justify-center">
-                                    <button type="button" onclick="openEditTripModal(${t.id})" class="p-2 text-slate-300 hover:text-indigo-600 transition-all" title="Editar viaje"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
-                                    <button type="button" onclick="deleteSingleTrip(${t.id})" class="p-2 text-slate-300 hover:text-rose-600 transition-all" title="Eliminar viaje"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                                    <button type="button" onclick="openEditTripModal(${t.id})" class="p-2 text-[#A3AED0] hover:text-indigo-600 transition-all" title="Editar viaje"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
+                                    <button type="button" onclick="deleteSingleTrip(${t.id})" class="p-2 text-[#A3AED0] hover:text-rose-600 transition-all" title="Eliminar viaje"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                                 </div>
                                 <div class="flex gap-1 justify-center">
                                     <button type="button" onclick="operatorTripRecorrido(${t.id},'start')" class="p-1.5 rounded-lg bg-emerald-50 text-emerald-700 hover:bg-emerald-100" title="Iniciar viaje (operador)"><i data-lucide="play" class="w-3.5 h-3.5"></i></button>
@@ -6190,7 +6190,7 @@
             });
             
             list.innerHTML = filtered.map(s => `
-                <div onclick="toggleVrpSchool('${s.id}')" class="flex items-center gap-3 p-2 hover:bg-[#F4F7FE] rounded-lg cursor-pointer transition-all ${selectedSchoolsForVrp.has(s.id) ? 'bg-indigo-50 border-blue-200' : ''}">
+                <div onclick="toggleVrpSchool('${s.id}')" class="flex items-center gap-3 p-2 hover:bg-[#F4F7FE] rounded-lg cursor-pointer transition-all ${selectedSchoolsForVrp.has(s.id) ? 'bg-indigo-50 border-indigo-200' : ''}">
                     <div class="w-4 h-4 rounded border border-[#E0E5F2] flex items-center justify-center ${selectedSchoolsForVrp.has(s.id) ? 'bg-indigo-600 border-blue-600' : 'bg-white'}">
                         ${selectedSchoolsForVrp.has(s.id) ? '<i data-lucide="check" class="text-white w-3 h-3"></i>' : ''}
                     </div>
@@ -6321,20 +6321,20 @@
                 const s = allSchools.find(school => school.id === id);
                 if (!s) return '';
                 return `
-                    <div class="bg-white border border-[#F4F7FE] p-2 rounded-xl flex items-center gap-2 group hover:border-blue-200 transition-all">
-                        <div class="w-5 h-5 rounded-full bg-slate-900 flex items-center justify-center text-[10px] font-black text-white shrink-0">${idx + 1}</div>
+                    <div class="bg-white border border-[#F4F7FE] p-2 rounded-xl flex items-center gap-2 group hover:border-indigo-200 transition-all">
+                        <div class="w-5 h-5 rounded-full bg-[#1B2559] flex items-center justify-center text-[10px] font-black text-white shrink-0">${idx + 1}</div>
                         <div class="flex-1 min-w-0">
                             <p class="text-[11px] font-bold text-[#1B2559] truncate">${s.name}</p>
                             <p class="text-[9px] text-[#A3AED0] truncate">${s.barrio || s.zone || 'GBA'}</p>
                         </div>
                         <div class="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button onclick="moveVrpStop(${idx}, -1)" class="p-1 text-[#A3AED0] hover:text-blue-500" ${idx === 0 ? 'disabled' : ''}>
+                            <button onclick="moveVrpStop(${idx}, -1)" class="p-1 text-[#A3AED0] hover:text-indigo-500" ${idx === 0 ? 'disabled' : ''}>
                                 <i data-lucide="chevron-up" class="w-3.5 h-3.5"></i>
                             </button>
-                            <button onclick="moveVrpStop(${idx}, 1)" class="p-1 text-[#A3AED0] hover:text-blue-500" ${idx === currentVrpSequence.length - 1 ? 'disabled' : ''}>
+                            <button onclick="moveVrpStop(${idx}, 1)" class="p-1 text-[#A3AED0] hover:text-indigo-500" ${idx === currentVrpSequence.length - 1 ? 'disabled' : ''}>
                                 <i data-lucide="chevron-down" class="w-3.5 h-3.5"></i>
                             </button>
-                            <button onclick="toggleVrpSchool('${s.id}')" class="p-1.5 text-slate-300 hover:text-red-500 transition-colors">
+                            <button onclick="toggleVrpSchool('${s.id}')" class="p-1.5 text-[#A3AED0] hover:text-rose-500 transition-colors">
                                 <i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
                             </button>
                         </div>
@@ -6767,15 +6767,15 @@
                             <div class="flex items-center justify-between ml-4 border-l-2 border-dashed border-[#E0E5F2] pl-4 py-1">
                                 <div class="flex items-center gap-2">
                                     <i data-lucide="clock" class="w-3 h-3 text-[#A3AED0]"></i>
-                                    <span class="text-[10px] font-black text-blue-500 uppercase">${formatDuration(leg.duration)}</span>
+                                    <span class="text-[10px] font-black text-indigo-500 uppercase">${formatDuration(leg.duration)}</span>
                                 </div>
                                 <div class="flex items-center gap-2 pr-4">
                                     <i data-lucide="map" class="w-3 h-3 text-[#A3AED0]"></i>
                                     <span class="text-[10px] font-black text-[#A3AED0] uppercase">${(leg.distance/1000).toFixed(1)} km</span>
                                 </div>
                             </div>
-                            <div class="bg-white p-3 rounded-xl border border-[#F4F7FE] flex items-center gap-3 shadow-sm hover:border-blue-200 transition-all">
-                                <div onclick="highlightVrpStop('${s.id}')" class="w-6 h-6 rounded-full bg-slate-900 flex items-center justify-center text-[10px] font-black text-white cursor-pointer hover:bg-indigo-600 hover:scale-110 transition-all shadow-lg active:scale-95">
+                            <div class="bg-white p-3 rounded-xl border border-[#F4F7FE] flex items-center gap-3 shadow-sm hover:border-indigo-200 transition-all">
+                                <div onclick="highlightVrpStop('${s.id}')" class="w-6 h-6 rounded-full bg-[#1B2559] flex items-center justify-center text-[10px] font-black text-white cursor-pointer hover:bg-indigo-600 hover:scale-110 transition-all shadow-lg active:scale-95">
                                     ${i+1}
                                 </div>
                                 <div class="flex-1">
@@ -6798,7 +6798,7 @@
                     <div class="flex items-center justify-between ml-4 border-l-2 border-dashed border-[#E0E5F2] pl-4 py-1">
                          <div class="flex items-center gap-2">
                              <i data-lucide="clock" class="w-3 h-3 text-[#A3AED0]"></i>
-                             <span class="text-[10px] font-black text-blue-500 uppercase">Retorno: ${formatDuration(lastLeg.duration)}</span>
+                             <span class="text-[10px] font-black text-indigo-500 uppercase">Retorno: ${formatDuration(lastLeg.duration)}</span>
                          </div>
                          <div class="flex items-center gap-2 pr-4">
                              <i data-lucide="map" class="w-3 h-3 text-[#A3AED0]"></i>
@@ -6815,7 +6815,7 @@
                         Abrir Ruta en Google Maps
                     </button>
 
-                    <div class="bg-slate-900 p-4 rounded-xl flex justify-between items-center text-white mt-4">
+                    <div class="bg-[#1B2559] p-4 rounded-xl flex justify-between items-center text-white mt-4">
                         <div class="flex gap-8">
                             <div>
                                 <p class="text-[9px] font-black opacity-50 uppercase tracking-widest">Tiempo Total (con Tráfico)</p>
@@ -7079,7 +7079,7 @@
                 await loadGoogleMapsScript(apiKey);
             } catch (e) {
                 console.error(e);
-                el.innerHTML = '<div class="flex items-center justify-center h-full text-red-600 text-sm p-8 text-center">No se pudo cargar Google Maps. Revisá la clave y la red.</div>';
+                el.innerHTML = '<div class="flex items-center justify-center h-full text-rose-600 text-sm p-8 text-center">No se pudo cargar Google Maps. Revisá la clave y la red.</div>';
                 return;
             }
             if (vrpMap) {
@@ -7126,7 +7126,7 @@
                 btn.classList.remove('bg-white/95', 'text-[#2B3674]');
                 status.innerText = 'Activo';
                 status.classList.add('text-indigo-600');
-                indicator.classList.remove('bg-slate-200');
+                indicator.classList.remove('bg-[#E0E5F2]');
                 indicator.classList.add('bg-indigo-600', 'animate-pulse');
                 // El usuario ve la capa de tráfico activarse visualmente
             } else {
@@ -7136,7 +7136,7 @@
                 status.innerText = 'Inactivo';
                 status.classList.remove('text-indigo-600');
                 indicator.classList.remove('bg-indigo-600', 'animate-pulse');
-                indicator.classList.add('bg-slate-200');
+                indicator.classList.add('bg-[#E0E5F2]');
             }
         }
 
@@ -7728,7 +7728,7 @@
                                     <td class="px-3 py-2"><input type="text" value="${esc(r.notes)}" oninput="updateRepairField('${r.plate}','${r.id}','notes', this.value)" class="w-52 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
                                     <td class="px-3 py-2 text-right">
                                         <button onclick="saveRepairRow('${r.plate}','${r.id}')" class="p-2 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 mr-1 shadow-sm"><i data-lucide="save" class="w-4 h-4"></i></button>
-                                        <button onclick="deleteRepair('${r.plate}','${r.id}')" class="p-2 rounded-lg bg-red-50 text-red-500 hover:bg-red-100 shadow-sm"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                                        <button onclick="deleteRepair('${r.plate}','${r.id}')" class="p-2 rounded-lg bg-rose-50 text-rose-500 hover:bg-rose-100 shadow-sm"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                                     </td>
                                 </tr>
                             `).join('')}
@@ -7763,7 +7763,7 @@
                 catWrap.classList.remove('hidden');
                 catBody.innerHTML = catEntries.map(([c, v]) => `
                     <div class="flex justify-between gap-4 bg-[#F8FAFF] rounded-xl px-4 py-3 border border-[#EEF2FF]">
-                        <span class="text-[#5B6B9E] font-medium truncate" title="${esc(c)}">${esc(c)}</span>
+                        <span class="text-[#A3AED0] font-medium truncate" title="${esc(c)}">${esc(c)}</span>
                         <span class="font-extrabold text-[#1B2559] whitespace-nowrap">${fmtCur(v)}</span>
                     </div>
                 `).join('');
@@ -8037,7 +8037,7 @@
                         <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-tight">${n.title}</h5>
                         <div class="flex items-center gap-2">
                             <span class="text-[9px] font-bold text-[#A3AED0]">${n.time}</span>
-                            <button onclick="removeNotification(${n.id})" class="p-1 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-all">
+                            <button onclick="removeNotification(${n.id})" class="p-1 text-[#A3AED0] hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all">
                                 <i data-lucide="x" class="w-3 h-3"></i>
                             </button>
                         </div>
@@ -8082,7 +8082,7 @@
             const palette = {
                 info: 'bg-indigo-600 text-white',
                 success: 'bg-emerald-600 text-white',
-                warning: 'bg-amber-500 text-slate-900',
+                warning: 'bg-amber-500 text-[#1B2559]',
                 critical: 'bg-rose-600 text-white'
             };
             const color = palette[type] || palette.info;
@@ -8370,14 +8370,14 @@
                         <div class="text-[11px] text-[#A3AED0] font-bold uppercase tracking-widest">${e.Sector || 'Operaciones'}</div>
                     </td>
                     <td class="px-6 py-4">
-                        <span class="px-2.5 py-1 rounded-full text-[10px] font-black ${e['Tipo Puesto'] === 'Chofer' ? 'bg-indigo-100 text-indigo-700' : 'bg-orange-100 text-orange-700'}">
+                        <span class="px-2.5 py-1 rounded-full text-[10px] font-black ${e['Tipo Puesto'] === 'Chofer' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700'}">
                             ${e['Tipo Puesto']?.toUpperCase() || ''}
                         </span>
                     </td>
                     <td class="px-6 py-4 text-center font-bold text-[#A3AED0]">${e.Antigüedad || 0} años</td>
                     <td class="px-6 py-4 text-right">
                         <div class="font-black text-[#1B2559] text-base">$${(e.Bruto || 0).toLocaleString('es-AR')}</div>
-                        ${e.Jornal ? `<div class="text-[9px] text-orange-500 font-black tracking-wider uppercase">Jornal: $${e.Jornal.toLocaleString('es-AR')}</div>` : ''}
+                        ${e.Jornal ? `<div class="text-[9px] text-amber-500 font-black tracking-wider uppercase">Jornal: $${e.Jornal.toLocaleString('es-AR')}</div>` : ''}
                     </td>
                     <td class="px-6 py-4 text-right">
                         <div class="text-[11px] font-bold text-[#A3AED0]">Base: $${(e['Escala Base'] || 0).toLocaleString('es-AR')}</div>
@@ -8385,8 +8385,8 @@
                     </td>
                     <td class="px-6 py-4 text-center">
                         <div class="flex justify-center gap-1">
-                            <button onclick="editEmployeeSalary('${e.Apellido}')" class="p-2 text-slate-300 hover:text-indigo-600 transition-all"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
-                            <button onclick="deleteEmployeeSalary('${e.Apellido}')" class="p-2 text-slate-300 hover:text-rose-600 transition-all"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            <button onclick="editEmployeeSalary('${e.Apellido}')" class="p-2 text-[#A3AED0] hover:text-indigo-600 transition-all"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
+                            <button onclick="deleteEmployeeSalary('${e.Apellido}')" class="p-2 text-[#A3AED0] hover:text-rose-600 transition-all"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                         </div>
                     </td>
                 </tr>
@@ -8774,7 +8774,7 @@
                 .map(
                     (row, i) => `
                 <li draggable="true" data-idx="${i}" class="trip-delivery-item flex items-center gap-2 bg-[#F8FAFF] border border-[#F4F7FE] rounded-xl px-3 py-2 text-sm font-bold text-[#2B3674] cursor-grab active:cursor-grabbing">
-                    <i data-lucide="grip-vertical" class="w-4 h-4 text-slate-300 shrink-0"></i>
+                    <i data-lucide="grip-vertical" class="w-4 h-4 text-[#A3AED0] shrink-0"></i>
                     <span class="text-[#A3AED0] text-xs w-5">${i + 1}</span>
                     <span class="flex-1 min-w-0 truncate" title="${escapeHtmlTrip(row.address || '')}">${escapeHtmlTrip(row.name)}</span>
                     <button type="button" onclick="tripDeliveryRemoveStop(${i})" class="text-rose-500 p-1 rounded-lg hover:bg-rose-50 font-bold" aria-label="Quitar">✕</button>
@@ -9386,7 +9386,7 @@
                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Valor Jornal ($)</label>
                         <div class="relative">
                             <span class="absolute left-4 top-1/2 -translate-y-1/2 text-[#A3AED0] font-bold">$</span>
-                            <input type="number" id="edit-salary-jornal" class="w-full bg-orange-50 border border-orange-100 rounded-xl p-3 pl-8 text-sm font-black text-orange-700 shadow-sm outline-none focus:ring-2 focus:ring-orange-500">
+                            <input type="number" id="edit-salary-jornal" class="w-full bg-amber-50 border border-amber-100 rounded-xl p-3 pl-8 text-sm font-black text-amber-700 shadow-sm outline-none focus:ring-2 focus:ring-amber-500">
                         </div>
                     </div>
                 </div>
