@@ -1965,9 +1965,7 @@
                 });
 
                 // Viajes
-                _socket.on('trip:created', ({ trip }) => {
-                    if (typeof addNotification === 'function')
-                        addNotification('info', 'Nuevo viaje', `Se creó el viaje de ${trip.driver || 'sin chofer'}`);
+                _socket.on('trip:created', () => {
                     loadWeeklyData();
                 });
                 _socket.on('trip:updated', () => {
@@ -1979,11 +1977,8 @@
                     if (weekly && !weekly.classList.contains('hidden')) loadWeeklyData();
                 });
 
-                // Paradas (mobile marca entrega)
-                _socket.on('stop:updated', ({ stop }) => {
-                    if (typeof addNotification === 'function' && stop?.status === 'COMPLETED')
-                        addNotification('info', 'Parada completada', `Parada #${stop.id} marcada como entregada`);
-                });
+                // Paradas (mobile marca entrega) — sin popup para no saturar con cada entrega
+                _socket.on('stop:updated', () => {});
 
                 // Incidencias
                 _socket.on('incident:created', ({ incident }) => {
@@ -3197,9 +3192,7 @@
         }
 
         async function configureGoogleMapsKey() {
-            if (typeof addNotification === 'function') {
-                addNotification('info', 'Google Maps', 'La clave se administra ahora desde el servidor (revisá las variables de entorno o configuración remota).');
-            }
+            // La clave se administra desde el servidor (variables de entorno)
         }
 
         function loadGoogleMapsScript(apiKey) {
@@ -5816,9 +5809,7 @@
                 
                 planningData = await res.json();
                 console.log(`Datos cargados: ${planningData.length} registros found.`);
-                if ((planningData || []).length === 0) {
-                    addNotification('warning', 'Sin viajes', 'La base está vacía en producción. Importá/sincronizá viajes para ver la logística semanal.');
-                }
+                // Sin viajes: el estado vacío ya es visible en la tabla
                 filterWeeklyData();
             } catch(e) {
                 console.error("Error loading weekly data:", e);
@@ -6171,10 +6162,7 @@
             };
 
             filteredPlanning = planningData.filter((t) => baseMatch(t, true));
-            if (filteredPlanning.length === 0 && planningData.length > 0) {
-                // No mezclar meses automáticamente: evita confusión cuando un mes no tiene viajes.
-                addNotification('info', 'Sin viajes en el mes', 'No hay viajes para el mes seleccionado con los filtros actuales.');
-            }
+            // Sin resultados para el filtro: visible en la tabla vacía, sin popup
             
             renderPlanningTable(filteredPlanning);
         }
@@ -7140,7 +7128,7 @@
                 status.classList.add('text-indigo-600');
                 indicator.classList.remove('bg-slate-200');
                 indicator.classList.add('bg-indigo-600', 'animate-pulse');
-                addNotification('info', 'Tráfico', 'Capa de tráfico de Google Maps activa.');
+                // El usuario ve la capa de tráfico activarse visualmente
             } else {
                 vrpGoogleTrafficLayer.setMap(null);
                 btn.classList.remove('bg-indigo-600', 'text-white');
