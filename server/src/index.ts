@@ -515,23 +515,34 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     try {
         const { username, password } = req.body;
         const user = await prisma.user.findUnique({ where: { username } });
-        if (user && await verifyPassword(password, user.password)) {
-            if (String(user.role || '').toUpperCase() === 'BLOCKED') {
-                return res.status(403).json({ error: "Usuario bloqueado. Contactá al administrador." });
-            }
-            // Migrate legacy plain-text password to bcrypt hash transparently
-            if (!user.password.startsWith('$2')) {
+        if (!user) return res.status(401).json({ error: "Credenciales inválidas" });
+
+        if (String(user.role || '').toUpperCase() === 'BLOCKED') {
+            return res.status(403).json({ error: "Usuario bloqueado. Contactá al administrador." });
+        }
+
+        // Verificación: soporte de contraseñas bcrypt (hash $2*) y plain-text legacy
+        let isValid = false;
+        const isBcrypt = user.password.startsWith('$2');
+        if (isBcrypt) {
+            isValid = await verifyPassword(password, user.password).catch(() => false);
+        } else {
+            // Contraseña plain-text (migración legacy): comparar y luego hashear
+            isValid = (password === user.password);
+            if (isValid) {
                 const hashed = await hashPassword(password);
                 await prisma.user.update({ where: { id: user.id }, data: { password: hashed } }).catch(() => {});
             }
-            const token = generateToken({ id: user.id, username: user.username, role: user.role, fullName: user.fullName });
-            return res.json({
-                success: true,
-                token,
-                user: { id: user.id, fullName: user.fullName, role: user.role, tenantId: user.tenantId }
-            });
         }
-        res.status(401).json({ error: "Credenciales inválidas" });
+
+        if (!isValid) return res.status(401).json({ error: "Credenciales inválidas" });
+
+        const token = generateToken({ id: user.id, username: user.username, role: user.role, fullName: user.fullName });
+        return res.json({
+            success: true,
+            token,
+            user: { id: user.id, fullName: user.fullName, role: user.role, tenantId: user.tenantId }
+        });
     } catch (e) {
         res.status(500).json({ error: "Error de login" });
     }
