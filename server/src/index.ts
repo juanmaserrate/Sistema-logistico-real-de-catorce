@@ -909,6 +909,8 @@ app.post('/api/v1/tracking/location', trackingLimiter, async (req, res) => {
             }
         });
         io.emit('location:update', record);
+        // También emitir al room del chofer (para suscriptores específicos)
+        if (record.driverId) io.to(`driver:${record.driverId}`).emit('location:own', record);
         res.json(record);
 
         // Calcular offRoute en background — no bloquea la respuesta HTTP
@@ -3566,9 +3568,24 @@ app.post('/api/v1/trips/bulk', async (req, res) => {
     res.json({ created, errors, total: rows.length });
 });
 
-// ── WebSocket: emitir actualizaciones en tiempo real ─────────────────────────
+// ── WebSocket: rooms por chofer ───────────────────────────────────────────────
 io.on('connection', (socket) => {
     console.log(`[ws] Cliente conectado: ${socket.id}`);
+
+    // El cliente puede suscribirse a actualizaciones de un chofer específico
+    // Uso: socket.emit('join:driver', 'id_del_chofer')
+    socket.on('join:driver', (driverId: unknown) => {
+        if (typeof driverId === 'string' && driverId.trim()) {
+            socket.join(`driver:${driverId.trim()}`);
+        }
+    });
+
+    socket.on('leave:driver', (driverId: unknown) => {
+        if (typeof driverId === 'string' && driverId.trim()) {
+            socket.leave(`driver:${driverId.trim()}`);
+        }
+    });
+
     socket.on('disconnect', () => console.log(`[ws] Cliente desconectado: ${socket.id}`));
 });
 
