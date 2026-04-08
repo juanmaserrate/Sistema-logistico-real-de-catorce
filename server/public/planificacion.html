@@ -762,6 +762,15 @@
                             <button onclick="setGridFilter('Tercerizado')" class="px-5 py-3 rounded-[12px] text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Tercerizado</button>
                         </div>
 
+                        <button onclick="openCatalogModal('CHOFER')" class="px-4 py-4 rounded-2xl bg-white border border-[#E0E5F2] text-[#1B2559] text-[11px] font-bold hover:bg-[#F4F7FE] transition-all flex items-center gap-2" title="Gestionar catálogo de choferes">
+                            <i data-lucide="user" class="w-4 h-4"></i> CHOFERES
+                        </button>
+                        <button onclick="openCatalogModal('AUXILIAR')" class="px-4 py-4 rounded-2xl bg-white border border-[#E0E5F2] text-[#1B2559] text-[11px] font-bold hover:bg-[#F4F7FE] transition-all flex items-center gap-2" title="Gestionar catálogo de auxiliares">
+                            <i data-lucide="users" class="w-4 h-4"></i> AUXILIARES
+                        </button>
+                        <button onclick="openCatalogModal('DRIVER')" class="px-4 py-4 rounded-2xl bg-white border border-[#E0E5F2] text-[#1B2559] text-[11px] font-bold hover:bg-[#F4F7FE] transition-all flex items-center gap-2" title="Gestionar repartos y sus usuarios móviles">
+                            <i data-lucide="truck" class="w-4 h-4"></i> REPARTOS
+                        </button>
                         <button onclick="exportWeeklyExcel()" class="px-5 py-4 rounded-2xl bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200 flex items-center gap-2">
                             <i data-lucide="download" class="w-4 h-4"></i> EXPORTAR
                         </button>
@@ -9136,18 +9145,25 @@
             document.getElementById('new-trip-modal-title').innerText = 'Nuevo Viaje';
             document.getElementById('new-trip-save-btn').innerText = 'CREAR VIAJE';
 
-            // Traer choferes y auxiliares desde el catálogo de usuarios (para que
-            // funcione incluso cuando aún no hay viajes cargados en planningData).
-            const [driversFromDb, auxFromDb] = await Promise.all([
-                fetchUsersByRole('DRIVER'),
-                fetchUsersByRole('AUXILIAR')
+            // Traer choferes, auxiliares y repartos (usuarios móviles) desde sus
+            // catálogos respectivos en la tabla User.
+            //   - CHOFER   → personas que manejan (nómina)
+            //   - AUXILIAR → personas que acompañan (nómina)
+            //   - DRIVER   → repartos con login para la app móvil (R1, R8, etc.)
+            const [choferesFromDb, auxFromDb, repartoUsersFromDb] = await Promise.all([
+                fetchUsersByRole('CHOFER'),
+                fetchUsersByRole('AUXILIAR'),
+                fetchUsersByRole('DRIVER')
             ]);
 
-            const driverNamesFromDb = driversFromDb
+            const driverNamesFromDb = choferesFromDb
                 .map(u => (u.fullName || u.username || '').trim())
                 .filter(Boolean);
             const auxNamesFromDb = auxFromDb
                 .map(u => (u.fullName || u.username || '').trim())
+                .filter(Boolean);
+            const repartoUserNames = repartoUsersFromDb
+                .map(u => (u.username || u.fullName || '').trim().toUpperCase())
                 .filter(Boolean);
 
             // Combinar catálogo de usuarios con los nombres que aparecen en viajes
@@ -9174,7 +9190,7 @@
             if (uniqueVehicles.length === 0) uniqueVehicles.push('VANS', 'MINIBUS', 'DUCATO', 'UTILITARIO');
 
             const driverPlaceholder = uniqueDrivers.length === 0
-                ? '<option value="">⚠ No hay choferes cargados — creá uno en Usuarios</option>'
+                ? '<option value="">⚠ No hay choferes cargados — creá uno en el catálogo CHOFERES</option>'
                 : '<option value="">Seleccionar Chofer</option>';
             document.getElementById('new-trip-driver').innerHTML = driverPlaceholder + uniqueDrivers.map(d => `<option value="${d}">${d}</option>`).join('');
 
@@ -9182,17 +9198,37 @@
             document.getElementById('new-trip-aux1').innerHTML = auxOptions;
             document.getElementById('new-trip-aux2').innerHTML = auxOptions;
             document.getElementById('new-trip-aux3').innerHTML = auxOptions;
-            
+
             document.getElementById('new-trip-zone').innerHTML = '<option value="">Seleccionar Zona</option>' + uniqueZones.map(z => `<option value="${z}">${z}</option>`).join('');
-            
+
             document.getElementById('new-trip-vehicle').innerHTML = '<option value="">Seleccionar Vehículo</option>' + uniqueVehicles.map(v => `<option value="${v}">${v}</option>`).join('');
             populateBusinessUnitSelect('DMC');
-            
-            // Populate Reparto / Routes
+
+            // Reparto (usuario móvil): combinamos los repartos del catálogo DRIVER
+            // con los nombres de plantillas de ruta (RouteTemplate) que pueda tener
+            // el sistema, para que funcione aunque no se haya creado el user todavía.
+            // El nombre elegido se guarda en trip.reparto (y trip.tripType) para que
+            // (a) la app móvil lo filtre por User.username y
+            // (b) las paradas se puedan cargar desde la plantilla del mismo nombre.
             const repartoSelect = document.getElementById('new-trip-reparto');
             if (repartoSelect) {
-                const rtOptions = routeTemplates.map(rt => `<option value="${rt.name}">${rt.name}</option>`).join('');
-                repartoSelect.innerHTML = '<option value="">Seleccionar Reparto</option>' + rtOptions + '<option value="LIBRE">LIBRE / OTRO</option>';
+                const templateNames = (routeTemplates || [])
+                    .map(rt => String(rt.name || '').trim().toUpperCase())
+                    .filter(Boolean);
+                const allRepartos = [...new Set([...repartoUserNames, ...templateNames])].sort();
+                const rtOptions = allRepartos.map(name => {
+                    const hasUser = repartoUserNames.includes(name);
+                    const hasTemplate = templateNames.includes(name);
+                    let suffix = '';
+                    if (hasUser && hasTemplate) suffix = ''; // perfecto, sin marca
+                    else if (hasUser) suffix = ' (sin plantilla de paradas)';
+                    else if (hasTemplate) suffix = ' ⚠ sin usuario móvil';
+                    return `<option value="${name}">${name}${suffix}</option>`;
+                }).join('');
+                const placeholder = allRepartos.length === 0
+                    ? '<option value="">⚠ No hay repartos — creá uno en el catálogo REPARTOS</option>'
+                    : '<option value="">Seleccionar Reparto (usuario móvil)</option>';
+                repartoSelect.innerHTML = placeholder + rtOptions + '<option value="LIBRE">LIBRE / OTRO</option>';
             }
 
             // Reset fields
@@ -9273,7 +9309,9 @@
             document.getElementById('new-trip-aux2').value = trip.auxiliar2 || '';
             document.getElementById('new-trip-aux3').value = trip.auxiliar3 || '';
             document.getElementById('new-trip-zone').value = trip.zone || '';
-            document.getElementById('new-trip-reparto').value = trip.tripType || trip.reparto || '';
+            // El campo reparto ahora representa al usuario móvil. Priorizamos
+            // trip.reparto (nuevo modelo) y caemos a trip.tripType si no existe.
+            document.getElementById('new-trip-reparto').value = (trip.reparto || trip.tripType || '').toUpperCase();
             
             if (trip.exitTime) {
                 const exitD = new Date(trip.exitTime);
@@ -9343,6 +9381,10 @@
                 return alert('Para editar un viaje existente solo se permite una fecha.');
             }
 
+            // El campo new-trip-reparto ahora es el usuario móvil (rol DRIVER).
+            // Lo guardamos tanto en trip.reparto (nuevo) como en trip.tripType
+            // (legacy, para no romper reportes/filtros que lo usaban).
+            const repartoValue = document.getElementById('new-trip-reparto').value || null;
             const baseTripData = {
                 businessUnit: document.getElementById('new-trip-bu').value,
                 driver: document.getElementById('new-trip-driver').value,
@@ -9351,11 +9393,12 @@
                 auxiliar2: document.getElementById('new-trip-aux2').value || null,
                 auxiliar3: document.getElementById('new-trip-aux3').value || null,
                 zone: document.getElementById('new-trip-zone').value,
-                tripType: document.getElementById('new-trip-reparto').value || null,
+                reparto: repartoValue,
+                tripType: repartoValue,
                 contractType: document.getElementById('new-trip-contract').value,
                 provider: document.getElementById('new-trip-contract').value === 'Propio' ? 'R14 LOG' : 'EXTERNO',
                 status: 'PENDING',
-                priority: '1' 
+                priority: '1'
             };
 
             try {
@@ -9417,10 +9460,192 @@
                 const msg = id ? 'Viaje Actualizado' : `Viajes creados (${targetDates.length})`;
                 if (typeof addNotification === 'function') addNotification('success', msg, 'La operación fue exitosa.');
                 closeNewTripModal();
-                loadWeeklyData(); 
+                loadWeeklyData();
             } catch (err) {
                 console.error(err);
                 alert('Error guardando viaje: ' + err.message);
+            }
+        }
+
+        // ── Catálogo de Choferes / Auxiliares / Repartos ─────────────────────
+        // Usa un único modal con un estado `currentCatalogRole` para decidir qué
+        // catálogo editar. Todos viven en la tabla User con roles distintos.
+        let currentCatalogRole = 'CHOFER'; // CHOFER | AUXILIAR | DRIVER
+        const catalogLabels = {
+            CHOFER:   { title: 'Choferes',   singular: 'chofer',   icon: 'user',  needsLogin: false },
+            AUXILIAR: { title: 'Auxiliares', singular: 'auxiliar', icon: 'users', needsLogin: false },
+            DRIVER:   { title: 'Repartos',   singular: 'reparto',  icon: 'truck', needsLogin: true  }
+        };
+
+        async function openCatalogModal(role) {
+            currentCatalogRole = role;
+            const meta = catalogLabels[role];
+            const modal = document.getElementById('catalog-modal');
+            if (!modal) return;
+            document.getElementById('catalog-modal-title').innerText = meta.title;
+            document.getElementById('catalog-modal-hint').innerText = meta.needsLogin
+                ? 'Cada reparto tiene un usuario y contraseña para que el celular del vehículo se loguee en la app móvil.'
+                : `Catálogo de ${meta.singular}es (personas). Estos datos alimentan la planilla semanal y los costos — no tienen login en la app.`;
+            const loginCol = document.getElementById('catalog-login-col');
+            if (loginCol) loginCol.style.display = meta.needsLogin ? '' : 'none';
+            const pwdInputWrap = document.getElementById('catalog-new-pwd-wrap');
+            if (pwdInputWrap) pwdInputWrap.style.display = meta.needsLogin ? '' : 'none';
+            const userInputWrap = document.getElementById('catalog-new-username-wrap');
+            if (userInputWrap) userInputWrap.style.display = meta.needsLogin ? '' : 'none';
+            document.getElementById('catalog-new-fullname').value = '';
+            const pwd = document.getElementById('catalog-new-password');
+            if (pwd) pwd.value = '';
+            const uname = document.getElementById('catalog-new-username');
+            if (uname) uname.value = '';
+            modal.classList.remove('hidden');
+            await loadCatalogRows();
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function closeCatalogModal() {
+            document.getElementById('catalog-modal').classList.add('hidden');
+        }
+
+        async function loadCatalogRows() {
+            const tbody = document.getElementById('catalog-table-body');
+            if (!tbody) return;
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-[#A3AED0] text-xs font-bold">Cargando...</td></tr>';
+            try {
+                const res = await fetch(`${API_URL}/users?role=${encodeURIComponent(currentCatalogRole)}`);
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const rows = await res.json();
+                renderCatalogRows(Array.isArray(rows) ? rows : []);
+            } catch (e) {
+                console.error('Error cargando catálogo:', e);
+                tbody.innerHTML = `<tr><td colspan="4" class="text-center py-8 text-rose-500 text-xs font-bold">No se pudo cargar el catálogo</td></tr>`;
+            }
+        }
+
+        function renderCatalogRows(rows) {
+            const tbody = document.getElementById('catalog-table-body');
+            const meta = catalogLabels[currentCatalogRole];
+            if (!tbody) return;
+            if (rows.length === 0) {
+                tbody.innerHTML = `<tr><td colspan="4" class="text-center py-8 text-[#A3AED0] text-xs font-bold">Sin ${meta.title.toLowerCase()} cargados todavía. Agregá el primero abajo.</td></tr>`;
+                return;
+            }
+            tbody.innerHTML = rows.map(u => {
+                const safeName = (u.fullName || u.username || '').replace(/"/g, '&quot;');
+                const loginCell = meta.needsLogin
+                    ? `<td class="text-[#A3AED0] font-mono text-xs">${u.username || '-'}</td>`
+                    : '';
+                const pwdBtn = meta.needsLogin
+                    ? `<button onclick="promptCatalogResetPassword('${u.id}','${safeName}')" class="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 text-[10px] font-bold hover:bg-amber-100 transition-all">Cambiar pass</button>`
+                    : '';
+                return `
+                <tr class="border-b border-[#F4F7FE]">
+                    <td class="font-bold text-[#1B2559] py-3"><input type="text" value="${safeName}" data-user-id="${u.id}" class="catalog-name-input w-full bg-transparent border-0 outline-none font-bold text-[#1B2559]"></td>
+                    ${loginCell}
+                    <td class="text-[#A3AED0] text-xs">${u.createdAt ? new Date(u.createdAt).toLocaleDateString('es-AR') : '-'}</td>
+                    <td class="text-right whitespace-nowrap">
+                        <button onclick="saveCatalogName('${u.id}')" class="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-[10px] font-bold hover:bg-indigo-100 transition-all mr-1">Guardar</button>
+                        ${pwdBtn}
+                        <button onclick="deleteCatalogEntry('${u.id}','${safeName}')" class="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 text-[10px] font-bold hover:bg-rose-100 transition-all ml-1">Eliminar</button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        async function addCatalogEntry() {
+            const meta = catalogLabels[currentCatalogRole];
+            const fullName = (document.getElementById('catalog-new-fullname').value || '').trim();
+            if (!fullName) return alert(`Nombre del ${meta.singular} es obligatorio`);
+
+            let username = fullName.toUpperCase();
+            let password = '';
+            if (meta.needsLogin) {
+                const usernameInput = (document.getElementById('catalog-new-username').value || '').trim();
+                username = (usernameInput || fullName).toUpperCase();
+                password = (document.getElementById('catalog-new-password').value || '').trim();
+                if (!password) return alert('La contraseña es obligatoria para los repartos');
+            }
+
+            try {
+                const res = await fetch(`${API_URL}/users`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        username,
+                        fullName,
+                        role: currentCatalogRole,
+                        password: password || 'no-login'
+                    })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data?.error || `HTTP ${res.status}`);
+                document.getElementById('catalog-new-fullname').value = '';
+                const pwd = document.getElementById('catalog-new-password');
+                if (pwd) pwd.value = '';
+                const uname = document.getElementById('catalog-new-username');
+                if (uname) uname.value = '';
+                await loadCatalogRows();
+                if (typeof addNotification === 'function') addNotification('success', 'Agregado', `${fullName} se guardó correctamente.`);
+            } catch (e) {
+                console.error(e);
+                alert('No se pudo guardar: ' + e.message);
+            }
+        }
+
+        async function saveCatalogName(userId) {
+            const input = document.querySelector(`.catalog-name-input[data-user-id="${userId}"]`);
+            if (!input) return;
+            const fullName = (input.value || '').trim();
+            if (!fullName) return alert('El nombre no puede estar vacío');
+            try {
+                const res = await fetch(`${API_URL}/users/${userId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ fullName })
+                });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data?.error || `HTTP ${res.status}`);
+                }
+                if (typeof addNotification === 'function') addNotification('success', 'Actualizado', 'Nombre guardado.');
+            } catch (e) {
+                console.error(e);
+                alert('No se pudo actualizar: ' + e.message);
+            }
+        }
+
+        async function deleteCatalogEntry(userId, name) {
+            if (!confirm(`¿Eliminar a "${name}"? Esto no borra los viajes históricos que lo referencien.`)) return;
+            try {
+                const res = await fetch(`${API_URL}/users/${userId}`, { method: 'DELETE' });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data?.error || `HTTP ${res.status}`);
+                }
+                await loadCatalogRows();
+                if (typeof addNotification === 'function') addNotification('info', 'Eliminado', `${name} fue eliminado.`);
+            } catch (e) {
+                console.error(e);
+                alert('No se pudo eliminar: ' + e.message);
+            }
+        }
+
+        async function promptCatalogResetPassword(userId, name) {
+            const pwd = prompt(`Nueva contraseña para ${name}:`);
+            if (!pwd || !pwd.trim()) return;
+            try {
+                const res = await fetch(`${API_URL}/users/${userId}/password`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password: pwd.trim() })
+                });
+                if (!res.ok) {
+                    const data = await res.json().catch(() => ({}));
+                    throw new Error(data?.error || `HTTP ${res.status}`);
+                }
+                if (typeof addNotification === 'function') addNotification('success', 'Contraseña cambiada', `Nueva contraseña guardada para ${name}.`);
+            } catch (e) {
+                console.error(e);
+                alert('No se pudo cambiar la contraseña: ' + e.message);
             }
         }
 
@@ -9575,6 +9800,55 @@
     </div>
 
 <!-- New Trip Modal -->
+    <!-- MODAL: CATÁLOGO DE CHOFERES / AUXILIARES / REPARTOS -->
+    <div id="catalog-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-3" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
+        <div class="bg-white rounded-3xl w-[96vw] max-w-4xl max-h-[92vh] shadow-2xl overflow-hidden flex flex-col">
+            <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center bg-[#F8FAFF]">
+                <div>
+                    <h3 id="catalog-modal-title" class="font-black text-[#1B2559] uppercase tracking-widest text-sm">Choferes</h3>
+                    <p id="catalog-modal-hint" class="text-xs text-[#A3AED0] font-medium mt-1">Catálogo de choferes (personas).</p>
+                </div>
+                <button onclick="closeCatalogModal()" class="text-[#A3AED0] hover:text-[#1B2559] transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto custom-scrollbar flex-1">
+                <div class="bg-[#F8FAFF] border border-[#F4F7FE] rounded-2xl p-4 mb-6">
+                    <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-3">Agregar nuevo</p>
+                    <div class="flex flex-wrap gap-3 items-end">
+                        <div class="flex-1 min-w-[220px]">
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Nombre completo</label>
+                            <input id="catalog-new-fullname" type="text" placeholder="Ej: JUAN PEREZ" class="w-full bg-white border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <div id="catalog-new-username-wrap" class="flex-1 min-w-[180px]" style="display:none;">
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Usuario (login)</label>
+                            <input id="catalog-new-username" type="text" placeholder="Ej: R8" class="w-full bg-white border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] font-mono outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <div id="catalog-new-pwd-wrap" class="flex-1 min-w-[180px]" style="display:none;">
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Contraseña</label>
+                            <input id="catalog-new-password" type="text" placeholder="••••••" class="w-full bg-white border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] font-mono outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <button onclick="addCatalogEntry()" class="px-6 py-3 rounded-xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200">
+                            AGREGAR
+                        </button>
+                    </div>
+                </div>
+                <table class="w-full text-left text-sm">
+                    <thead>
+                        <tr class="border-b-2 border-[#F4F7FE]">
+                            <th class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest py-3">Nombre</th>
+                            <th id="catalog-login-col" class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest py-3" style="display:none;">Usuario</th>
+                            <th class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest py-3">Alta</th>
+                            <th class="text-right text-[10px] font-black text-[#A3AED0] uppercase tracking-widest py-3">Acciones</th>
+                        </tr>
+                    </thead>
+                    <tbody id="catalog-table-body"></tbody>
+                </table>
+            </div>
+            <div class="p-4 bg-[#F8FAFF] border-t border-[#F4F7FE] flex justify-end">
+                <button onclick="closeCatalogModal()" class="px-6 py-3 rounded-xl border border-[#E0E5F2] text-[#1B2559] text-xs font-bold hover:bg-[#F4F7FE] transition-all">CERRAR</button>
+            </div>
+        </div>
+    </div>
+
     <div id="new-trip-modal" class="modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center p-3" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
         <div class="bg-white rounded-3xl w-[96vw] max-w-6xl max-h-[92vh] shadow-2xl overflow-hidden flex flex-col">
             <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center bg-[#F8FAFF]">
@@ -9709,10 +9983,11 @@
                 </div>
                 
                  <div>
-                      <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Reparto / Ruta</label>
+                      <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Reparto (usuario móvil)</label>
                       <select id="new-trip-reparto" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                            <!-- Injected by JS -->
                       </select>
+                      <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">El reparto elegido es quien verá este viaje en la app móvil. Si además existe una plantilla de ruta con el mismo nombre, las paradas se cargan automáticamente.</p>
                  </div>
 
                  <div class="grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">

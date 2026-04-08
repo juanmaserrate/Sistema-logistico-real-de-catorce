@@ -301,6 +301,35 @@ async function upsertDriverUserForPlanning(driverName: string | null | undefined
     });
 }
 
+/**
+ * Dado un Trip, resuelve QUÉ usuario de la app móvil debe recibir la ruta.
+ * Prioriza trip.reparto (el username del reparto-user, nuevo modelo) sobre
+ * trip.driver (legacy, nombre del chofer persona).
+ * Devuelve el User correspondiente o null si no se puede resolver.
+ */
+async function resolveRepartoUserForTrip(trip: { reparto?: string | null; driver?: string | null }, tenantId: string) {
+    // 1. Prioridad: reparto explícito (nuevo modelo)
+    const repartoName = String(trip.reparto ?? '').trim();
+    if (repartoName) {
+        const user = await prisma.user.findFirst({
+            where: { username: repartoName.toUpperCase(), role: 'DRIVER' }
+        });
+        if (user) return user;
+    }
+    // 2. Fallback legacy: el campo driver es el username del usuario móvil
+    const driverName = String(trip.driver ?? '').trim();
+    if (driverName && driverName.toUpperCase() !== 'SIN CHOFER') {
+        // Solo hace upsert si parece un reparto-user (no una persona con role CHOFER)
+        const existing = await prisma.user.findFirst({
+            where: { username: driverName.toUpperCase() }
+        });
+        if (existing && existing.role === 'DRIVER') return existing;
+        // Si no existe o tiene otro rol, usamos upsert legacy para no romper viajes viejos
+        return upsertDriverUserForPlanning(driverName, tenantId);
+    }
+    return null;
+}
+
 // --- Página del sistema (para abrir en el navegador) ---
 app.get('/', (req, res) => {
     res.type('html').send(`
@@ -2714,8 +2743,9 @@ app.post('/api/v1/trips', async (req, res) => {
         const trip = await prisma.trip.create({ data: req.body });
         await logAction(req, 'CREATE', 'trip', trip.id, trip.driver || String(trip.id), null, trip);
         io.emit('trip:created', { trip });
-        // Notificar al chofer asignado
-        if (trip.driver) notifyDriver(trip.driver, 'Nuevo viaje asignado', `Tenés un viaje asignado para ${trip.zone || 'hoy'}`, { tripId: trip.id });
+        // Notificar al usuario del reparto (nuevo modelo) o al chofer legacy
+        const notifyTarget = String(trip.reparto || trip.driver || '').trim();
+        if (notifyTarget) notifyDriver(notifyTarget, 'Nuevo viaje asignado', `Tenés un viaje asignado para ${trip.zone || 'hoy'}`, { tripId: trip.id });
         res.json(trip);
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error creando viaje' });
@@ -2797,25 +2827,28 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
 
         let route = await prisma.route.findUnique({ where: { tripId } });
         if (!route) {
-            const driverUser = await upsertDriverUserForPlanning(trip.driver, tenantId);
+            const repartoUser = await resolveRepartoUserForTrip(trip, tenantId);
+            if (!repartoUser) throw new Error('Asigná un reparto o chofer válido al viaje');
             route = await prisma.route.create({
                 data: {
                     tenantId,
                     date: new Date(trip.date),
-                    driverId: driverUser.id,
+                    driverId: repartoUser.id,
                     status: 'PLANNED',
                     tripId
                 }
             });
-        } else if (trip.driver) {
+        } else {
             try {
-                const driverUser = await upsertDriverUserForPlanning(trip.driver, tenantId);
-                await prisma.route.update({
-                    where: { id: route.id },
-                    data: { driverId: driverUser.id, date: new Date(trip.date) }
-                });
+                const repartoUser = await resolveRepartoUserForTrip(trip, tenantId);
+                if (repartoUser) {
+                    await prisma.route.update({
+                        where: { id: route.id },
+                        data: { driverId: repartoUser.id, date: new Date(trip.date) }
+                    });
+                }
             } catch {
-                /* mantiene chofer actual en ruta */
+                /* mantiene reparto actual en ruta */
             }
         }
 
@@ -3203,9 +3236,14 @@ app.post('/api/v1/users', async (req, res) => {
         const role = String(req.body?.role || 'DRIVER').trim().toUpperCase();
 
         if (!username) return res.status(400).json({ error: 'username es obligatorio' });
-        if (!password) return res.status(400).json({ error: 'password es obligatorio' });
-        if (!['DRIVER', 'ADMIN'].includes(role)) {
-            return res.status(400).json({ error: 'role inválido (usar DRIVER o ADMIN)' });
+        if (!['DRIVER', 'ADMIN', 'CHOFER', 'AUXILIAR'].includes(role)) {
+            return res.status(400).json({ error: 'role inválido (usar DRIVER, ADMIN, CHOFER o AUXILIAR)' });
+        }
+        // Solo DRIVER y ADMIN requieren password real (loguean en el sistema).
+        // CHOFER y AUXILIAR son catálogos de personas: sin login.
+        const requiresPassword = role === 'DRIVER' || role === 'ADMIN';
+        if (requiresPassword && !password) {
+            return res.status(400).json({ error: 'password es obligatorio para DRIVER/ADMIN' });
         }
 
         await prisma.tenant.upsert({
@@ -3217,7 +3255,7 @@ app.post('/api/v1/users', async (req, res) => {
         const user = await prisma.user.create({
             data: {
                 username,
-                password: await hashPassword(password),
+                password: requiresPassword ? await hashPassword(password) : '-',
                 fullName: fullName || username,
                 role,
                 tenantId: 'default-tenant'
@@ -3264,8 +3302,8 @@ app.patch('/api/v1/users/:id', async (req, res) => {
         }
         if (roleRaw !== undefined) {
             const role = String(roleRaw || '').trim().toUpperCase();
-            if (!['DRIVER', 'ADMIN', 'BLOCKED'].includes(role)) {
-                return res.status(400).json({ error: 'role inválido (usar DRIVER, ADMIN o BLOCKED)' });
+            if (!['DRIVER', 'ADMIN', 'BLOCKED', 'CHOFER', 'AUXILIAR'].includes(role)) {
+                return res.status(400).json({ error: 'role inválido (usar DRIVER, ADMIN, BLOCKED, CHOFER o AUXILIAR)' });
             }
             data.role = role;
         }
