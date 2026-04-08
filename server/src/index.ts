@@ -1053,6 +1053,22 @@ app.post('/api/v1/tracking/location', trackingLimiter, async (req, res) => {
     }
 });
 
+/** El chofer terminó el recorrido: marcar todas sus DeviceLocations activas como inactivas */
+app.post('/api/v1/tracking/deactivate-device', async (req, res) => {
+    try {
+        const { deviceId } = req.body || {};
+        if (!deviceId) return res.status(400).json({ error: 'deviceId requerido' });
+        const result = await prisma.deviceLocation.updateMany({
+            where: { deviceId: String(deviceId), isActive: true },
+            data: { isActive: false }
+        });
+        res.json({ deactivated: result.count });
+    } catch (e: any) {
+        console.error('POST /tracking/deactivate-device:', e);
+        res.status(500).json({ error: e?.message || 'Error al desactivar dispositivo' });
+    }
+});
+
 /** Historial de posiciones para dibujar el recorrido real en el mapa (operador) */
 app.get('/api/v1/tracking/history', async (req, res) => {
     try {
@@ -1908,11 +1924,20 @@ app.patch('/api/v1/routes/:id/recorrido', async (req, res) => {
                 where: { id: routeId },
                 data: { actualStartTime: startAt, actualEndTime: now, status: 'COMPLETED' }
             });
+            await prisma.deviceLocation.updateMany({
+                where: { routeId, isActive: true },
+                data: { isActive: false }
+            });
             return res.json(updated);
         }
         const updated = await prisma.route.update({
             where: { id: routeId },
             data: { actualEndTime: now, status: 'COMPLETED' }
+        });
+        // Marcar DeviceLocations del recorrido como inactivas (conservar para historial)
+        await prisma.deviceLocation.updateMany({
+            where: { routeId, isActive: true },
+            data: { isActive: false }
         });
         return res.json(updated);
     } catch (e: any) {
@@ -3062,6 +3087,11 @@ app.delete('/api/v1/trips/:id', async (req, res) => {
         await (prisma as any).tripStop.deleteMany({ where: { tripId: id } });
         const linked = await prisma.route.findUnique({ where: { tripId: id } });
         if (linked) {
+            // Marcar DeviceLocations del recorrido como inactivas (conservar para historial)
+            await prisma.deviceLocation.updateMany({
+                where: { routeId: linked.id, isActive: true },
+                data: { isActive: false }
+            });
             await prisma.stop.deleteMany({ where: { routeId: linked.id } });
             await prisma.route.delete({ where: { id: linked.id } });
         }
@@ -3180,7 +3210,7 @@ app.get('/api/v1/fleet/locations', async (req, res) => {
 
         const since24h = new Date(Date.now() - 24 * 3600000);
         const recentDev = await prisma.deviceLocation.findMany({
-            where: { timestamp: { gte: since24h } },
+            where: { isActive: true, timestamp: { gte: since24h } },
             orderBy: { timestamp: 'desc' }
         });
         const latestByDevice = new Map<string, (typeof recentDev)[0]>();

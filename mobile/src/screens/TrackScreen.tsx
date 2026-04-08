@@ -30,6 +30,7 @@ import {
   postTrackingLocation,
   patchStop,
   patchRouteRecorrido,
+  deactivateDevice,
   flushStopQueue,
   flushIncidentQueue,
   getPendingStopCount,
@@ -551,6 +552,10 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       if (started) await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
     } catch {
       /* */
+    }
+    // Notificar al servidor que el dispositivo ya no está en ruta
+    if (deviceIdRef.current) {
+      await deactivateDevice(deviceIdRef.current);
     }
     await setActiveRouteId(null);
     setTracking(false);

@@ -357,9 +357,12 @@ model DeviceLocation {
   capturedAt       DateTime? // timestamp real del GPS en el dispositivo (enviado por la app)
   timestamp        DateTime @default(now())
   createdAt        DateTime @default(now())
+  /// false = recorrido finalizado o viaje borrado; se conserva para historial pero no aparece en el mapa en vivo
+  isActive         Boolean  @default(true)
 
   @@index([deviceId])
   @@index([timestamp])
   @@index([routeId, timestamp])
   @@index([driverId])
+  @@index([isActive, timestamp])
 }

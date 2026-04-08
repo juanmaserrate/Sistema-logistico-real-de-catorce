@@ -312,6 +312,19 @@ export async function patchRouteRecorrido(
   }
 }
 
+/** Notifica al servidor que el dispositivo ya no está en ruta: marca sus DeviceLocations como inactivas */
+export async function deactivateDevice(deviceId: string): Promise<void> {
+  try {
+    await fetch(apiUrl('/api/v1/tracking/deactivate-device'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ deviceId }),
+    });
+  } catch {
+    // Si falla (sin red), no bloquear el flujo del chofer
+  }
+}
+
 // ── Historial de rutas ────────────────────────────────────────────────────────
 
 export async function fetchRouteHistory(driverId: string, days = 30): Promise<Route[]> {
