@@ -5906,10 +5906,46 @@
                 const url = `${API_URL}/trips`;
                 const res = await fetch(url);
                 if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-                
+
                 planningData = await res.json();
                 console.log(`Datos cargados: ${planningData.length} registros found.`);
-                // Sin viajes: el estado vacío ya es visible en la tabla
+
+                // Auto-ajuste del filtro de mes: si el mes seleccionado no tiene viajes
+                // pero hay viajes en otros meses, saltamos al mes con MAS viajes.
+                // Esto evita que el operador vea "vacio" cuando los datos estan en otro mes.
+                try {
+                    const monthSelect = document.getElementById('planning-month-select');
+                    if (monthSelect && Array.isArray(planningData) && planningData.length > 0) {
+                        const monthMap = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
+                        const tripsByMonth = {};
+                        planningData.forEach(t => {
+                            if (!t.date) return;
+                            const cleanDate = String(t.date).includes(' ') ? String(t.date).replace(/ /g, 'T') : String(t.date);
+                            const d = new Date(cleanDate);
+                            if (isNaN(d)) return;
+                            // Usamos UTC para evitar shifts por timezone
+                            const m = monthMap[d.getUTCMonth()];
+                            tripsByMonth[m] = (tripsByMonth[m] || 0) + 1;
+                        });
+                        const currentMonth = monthSelect.value;
+                        const currentCount = tripsByMonth[currentMonth] || 0;
+                        if (currentCount === 0) {
+                            // Buscar el mes con mas viajes
+                            const sorted = Object.entries(tripsByMonth).sort((a, b) => b[1] - a[1]);
+                            if (sorted.length > 0) {
+                                const targetMonth = sorted[0][0];
+                                console.log(`[loadWeeklyData] Mes "${currentMonth}" sin viajes. Saltando a "${targetMonth}" (${sorted[0][1]} viajes).`);
+                                monthSelect.value = targetMonth;
+                                const dashM = document.getElementById('dashboard-month-select');
+                                if (dashM) dashM.value = targetMonth;
+                            }
+                        }
+                    }
+                } catch (autoErr) {
+                    console.warn('[loadWeeklyData] Auto-ajuste de mes fallo:', autoErr);
+                }
+
+                // Sin viajes: el estado vacio ya es visible en la tabla
                 filterWeeklyData();
             } catch(e) {
                 console.error("Error loading weekly data:", e);
