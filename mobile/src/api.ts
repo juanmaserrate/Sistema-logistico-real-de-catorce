@@ -264,6 +264,25 @@ export async function patchRouteRecorrido(
   }
 }
 
+// ── Reordenamiento de paradas ─────────────────────────────────────────────────
+
+export async function reorderRouteStops(
+  routeId: number,
+  newOrder: { stopId: number; sequence: number }[],
+  justification: string,
+  driverName: string
+): Promise<void> {
+  const res = await fetch(apiUrl(`/api/v1/routes/${routeId}/stops/reorder`), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify({ newOrder, justification, driverName }),
+  });
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error((data as { error?: string }).error || 'No se pudo reordenar las paradas');
+  }
+}
+
 // ── Push Token ────────────────────────────────────────────────────────────────
 export async function registerPushToken(userId: string, token: string): Promise<void> {
   try {

@@ -71,24 +71,30 @@ model Client {
 }
 
 model Route {
-  id              Int       @id @default(autoincrement())
-  tenantId        String
-  date            DateTime
-  status          String    @default("PLANNED")
-  vehicleId       String?
-  driverId        String?
-  tripId          Int?      @unique
-  totalKm         Float?
-  estimatedTime   Int?
-  actualStartTime DateTime?
-  actualEndTime   DateTime?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  driver          User?     @relation("DriverRoutes", fields: [driverId], references: [id])
-  vehicle         Vehicle?  @relation(fields: [vehicleId], references: [id])
-  tenant          Tenant    @relation(fields: [tenantId], references: [id])
-  trip            Trip?     @relation(fields: [tripId], references: [id])
-  stops           Stop[]
+  id                 Int       @id @default(autoincrement())
+  tenantId           String
+  date               DateTime
+  status             String    @default("PLANNED")
+  vehicleId          String?
+  driverId           String?
+  tripId             Int?      @unique
+  totalKm            Float?
+  estimatedTime      Int?
+  actualStartTime    DateTime?
+  actualEndTime      DateTime?
+  /// Justificación del chofer al reordenar paradas
+  reorderReason      String?
+  /// Fecha/hora en que el chofer reordenó las paradas
+  reorderedAt        DateTime?
+  /// Nombre del chofer que reordenó (snapshot)
+  reorderedByDriver  String?
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+  driver             User?     @relation("DriverRoutes", fields: [driverId], references: [id])
+  vehicle            Vehicle?  @relation(fields: [vehicleId], references: [id])
+  tenant             Tenant    @relation(fields: [tenantId], references: [id])
+  trip               Trip?     @relation(fields: [tripId], references: [id])
+  stops              Stop[]
 
   @@index([date])
   @@index([status])
@@ -99,6 +105,8 @@ model Stop {
   routeId         Int
   clientId        String
   sequence        Int
+  /// Secuencia original asignada por el planificador (antes de reordenamiento del chofer)
+  plannedSequence Int?
   plannedEta      DateTime?
   actualArrival   DateTime?
   actualDeparture DateTime?

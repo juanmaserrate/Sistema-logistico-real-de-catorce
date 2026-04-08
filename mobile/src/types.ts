@@ -11,17 +11,25 @@ export interface Client {
   address?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  timeWindowStart?: string | null;
+  timeWindowEnd?: string | null;
+  barrio?: string | null;
+  zone?: string | null;
+  requiresProofPhoto?: boolean;
 }
 
 export interface Stop {
   id: number;
   sequence: number;
+  /** Secuencia original del planificador antes de que el chofer reordene */
+  plannedSequence?: number | null;
   status: string;
   actualArrival: string | null;
   actualDeparture: string | null;
   observations?: string | null;
   proofPhotoUrl?: string | null;
   deliveryWithoutIssues?: boolean | null;
+  reasonCode?: string | null;
   client: Client;
 }
 
@@ -33,6 +41,10 @@ export interface Route {
   actualEndTime?: string | null;
   stops: Stop[];
   vehicle?: { plate?: string } | null;
+  /** Justificación del chofer al reordenar paradas */
+  reorderReason?: string | null;
+  reorderedAt?: string | null;
+  reorderedByDriver?: string | null;
 }
 
 export interface GeometryPoint {

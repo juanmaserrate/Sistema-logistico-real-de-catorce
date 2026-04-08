@@ -38,12 +38,14 @@ import {
 } from '../api';
 import StopDeliveryModal from '../components/StopDeliveryModal';
 import IncidentModal from '../components/IncidentModal';
+import ReorderModal from '../components/ReorderModal';
 import {
   getOrCreateDeviceId,
   setActiveRouteId,
   clearSession,
 } from '../sessionStorage';
 import { BACKGROUND_LOCATION_TASK } from '../locationTask';
+import { API_BASE } from '../config';
 
 type Props = {
   session: SessionUser;
@@ -70,6 +72,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   const [deliveryModalStop, setDeliveryModalStop] = useState<Stop | null>(null);
   const [trackingOk, setTrackingOk] = useState(true);
   const deviceIdRef = useRef<string>('');
+  const socketRef = useRef<any>(null);
   // Incidencias
   const [incidentModalOpen, setIncidentModalOpen] = useState(false);
   // Modo offline
@@ -79,6 +82,10 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   const [kmModalOpen, setKmModalOpen] = useState(false);
   const [kmInput, setKmInput] = useState('');
   const pendingStartRef = useRef<{ routeId: number; plate: string | null } | null>(null);
+  // Reordenamiento de paradas
+  const [reorderModalOpen, setReorderModalOpen] = useState(false);
+  // Toast de ruta actualizada
+  const [routeChangedToast, setRouteChangedToast] = useState(false);
 
   const selected = useMemo(
     () => (selId != null ? routes.find((r) => r.id === selId) ?? null : null),
@@ -302,6 +309,42 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     });
     return () => sub.remove();
   }, [loadRoutes]);
+
+  /** Socket.IO: escuchar cambios de ruta en tiempo real desde planificación. */
+  useEffect(() => {
+    if (!API_BASE) return;
+    let socket: any;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      const { io } = require('socket.io-client');
+      const base = API_BASE.replace(/\/api\/v1\/?$/, '');
+      socket = io(base, {
+        transports: ['websocket'],
+        reconnectionAttempts: 5,
+        reconnectionDelay: 2000,
+      });
+      socketRef.current = socket;
+      socket.on('connect', () => {
+        socket.emit('join:driver', session.id);
+      });
+      socket.on('route:updated', () => {
+        loadRoutes({ silent: true });
+        setRouteChangedToast(true);
+        setTimeout(() => setRouteChangedToast(false), 3500);
+      });
+    } catch {
+      /* socket.io-client no disponible en este build */
+    }
+    return () => {
+      try {
+        if (socket) {
+          socket.emit('leave:driver', session.id);
+          socket.disconnect();
+        }
+        socketRef.current = null;
+      } catch { /* */ }
+    };
+  }, [session.id, loadRoutes]);
 
   const firstFocusSkip = useRef(true);
   useFocusEffect(
@@ -580,6 +623,13 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           bounces
           contentContainerStyle={styles.panelScrollContent}
         >
+          {/* Toast: ruta actualizada por planificación */}
+          {routeChangedToast ? (
+            <View style={styles.toastBanner}>
+              <Text style={styles.toastTxt}>🔄 Tu ruta fue actualizada por planificación</Text>
+            </View>
+          ) : null}
+
           {/* Banner offline */}
           {pendingOffline > 0 && (
             <View style={styles.offlineBanner}>
@@ -722,29 +772,62 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           ) : null}
           {selected && !selected.actualEndTime && routeStopsSorted.length > 0 ? (
             <View style={styles.stopsSection}>
-              <Text style={styles.stopsSectionTitle}>Paradas del recorrido</Text>
+              <View style={styles.stopsSectionHeader}>
+                <Text style={styles.stopsSectionTitle}>Paradas del recorrido</Text>
+                {hasPendingStops ? (
+                  <Pressable style={styles.reorderBtn} onPress={() => setReorderModalOpen(true)}>
+                    <Text style={styles.reorderBtnTxt}>↕ Reordenar</Text>
+                  </Pressable>
+                ) : null}
+              </View>
               <Text style={styles.stopsSectionHint}>
                 Llegada y salida con horario; al finalizar entrega podés cargar observaciones, foto y marcar si fue
                 sin inconvenientes.
               </Text>
+              {selected.reorderReason ? (
+                <View style={styles.reorderBanner}>
+                  <Text style={styles.reorderBannerTxt}>
+                    🔀 Orden modificado: {selected.reorderReason}
+                  </Text>
+                </View>
+              ) : null}
               {routeStopsSorted.map((st) => (
                 <View key={st.id} style={styles.stopCard}>
                   <Text style={styles.stopCardTitle}>
                     {st.sequence}. {st.client?.name || 'Cliente'}
                   </Text>
+                  {st.client?.address ? (
+                    <Text style={styles.stopClientAddr}>{st.client.address}</Text>
+                  ) : null}
+                  {(st.client?.barrio || st.client?.zone) ? (
+                    <Text style={styles.stopClientZone}>
+                      {[st.client.barrio, st.client.zone].filter(Boolean).join(' · ')}
+                    </Text>
+                  ) : null}
+                  {(st.client?.timeWindowStart || st.client?.timeWindowEnd) ? (
+                    <Text style={styles.stopClientHorario}>
+                      🕐 {st.client.timeWindowStart ?? '--'} – {st.client.timeWindowEnd ?? '--'}
+                    </Text>
+                  ) : null}
                   <View style={[
                     styles.stopStatusBadge,
                     st.status === 'PENDING' && styles.stopStatusPending,
                     st.status === 'ARRIVED' && styles.stopStatusArrived,
                     st.status === 'COMPLETED' && styles.stopStatusCompleted,
+                    st.status === 'UNDELIVERABLE' && styles.stopStatusUndeliverable,
                   ]}>
                     <Text style={[
                       styles.stopStatusBadgeTxt,
                       st.status === 'PENDING' && styles.stopStatusPendingTxt,
                       st.status === 'ARRIVED' && styles.stopStatusArrivedTxt,
                       st.status === 'COMPLETED' && styles.stopStatusCompletedTxt,
+                      st.status === 'UNDELIVERABLE' && styles.stopStatusUndeliverableTxt,
                     ]}>
-                      {st.status === 'PENDING' ? 'Pendiente' : st.status === 'ARRIVED' ? 'En destino' : st.status === 'COMPLETED' ? 'Entregado' : st.status}
+                      {st.status === 'PENDING' ? 'Pendiente'
+                        : st.status === 'ARRIVED' ? 'En destino'
+                        : st.status === 'COMPLETED' ? 'Entregado'
+                        : st.status === 'UNDELIVERABLE' ? 'No entregado'
+                        : st.status}
                     </Text>
                   </View>
                   <Text style={styles.stopCardMeta}>
@@ -765,6 +848,16 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                       ) : null}
                     </View>
                   ) : null}
+                  {st.status === 'UNDELIVERABLE' ? (
+                    <View style={styles.stopDoneBox}>
+                      {st.reasonCode ? (
+                        <Text style={styles.stopUndeliverableReason}>✗ {st.reasonCode.replace(/_/g, ' ')}</Text>
+                      ) : null}
+                      {st.observations ? (
+                        <Text style={styles.stopObs} numberOfLines={3}>Obs.: {st.observations}</Text>
+                      ) : null}
+                    </View>
+                  ) : null}
                   {st.status === 'PENDING' ? (
                     <Pressable style={styles.stopBtnArr} onPress={() => onMarkArrival(st)}>
                       <Text style={styles.stopBtnArrTxt}>Registrar llegada</Text>
@@ -773,7 +866,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                   {st.status === 'ARRIVED' ? (
                     <Pressable style={styles.stopBtnOut} onPress={() => setDeliveryModalStop(st)}>
                       <Text style={styles.stopBtnOutTxt}>Finalizar entrega</Text>
-                      <Text style={styles.stopBtnOutSub}>Salida, observaciones, foto y check opcional</Text>
+                      <Text style={styles.stopBtnOutSub}>Entregado · No entregado · Observaciones · Foto</Text>
                     </Pressable>
                   ) : null}
                 </View>
@@ -808,6 +901,21 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         onClose={() => setIncidentModalOpen(false)}
         onSent={() => { /* notificado */ }}
       />
+
+      {/* Modal reordenamiento de paradas */}
+      {selected && selId !== null ? (
+        <ReorderModal
+          visible={reorderModalOpen}
+          routeId={selId}
+          stops={selected.stops}
+          driverName={session.fullName}
+          onClose={() => setReorderModalOpen(false)}
+          onSaved={() => {
+            setReorderModalOpen(false);
+            loadRoutes({ silent: true });
+          }}
+        />
+      ) : null}
 
       {/* Modal odómetro */}
       {kmModalOpen && (
@@ -888,8 +996,19 @@ const styles = StyleSheet.create({
   embedNavBtnTxt: { fontSize: 14, fontWeight: '900', color: '#3730a3' },
   embedNavBtnSub: { fontSize: 10, color: '#6366f1', marginTop: 6, lineHeight: 14 },
   stopsSection: { marginTop: 14 },
+  stopsSectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   stopsSectionTitle: { fontSize: 12, fontWeight: '900', color: '#0f172a', letterSpacing: 0.3 },
   stopsSectionHint: { fontSize: 10, color: '#64748b', marginTop: 4, lineHeight: 14, marginBottom: 8 },
+  reorderBtn: { backgroundColor: '#eef2ff', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: '#c7d2fe' },
+  reorderBtnTxt: { fontSize: 11, fontWeight: '800', color: '#3730a3' },
+  reorderBanner: { backgroundColor: '#eff6ff', borderRadius: 10, padding: 8, marginBottom: 8, borderWidth: 1, borderColor: '#bfdbfe' },
+  reorderBannerTxt: { fontSize: 10, color: '#1d4ed8', fontWeight: '700', lineHeight: 14 },
+  stopClientAddr: { fontSize: 11, color: '#475569', marginTop: 3, lineHeight: 15 },
+  stopClientZone: { fontSize: 10, color: '#94a3b8', marginTop: 2 },
+  stopClientHorario: { fontSize: 10, color: '#7c3aed', fontWeight: '700', marginTop: 3 },
+  stopUndeliverableReason: { fontSize: 11, fontWeight: '800', color: '#e11d48' },
+  toastBanner: { backgroundColor: '#dbeafe', borderRadius: 10, padding: 8, marginBottom: 8, borderWidth: 1, borderColor: '#93c5fd' },
+  toastTxt: { fontSize: 12, color: '#1e40af', fontWeight: '800', textAlign: 'center' },
   stopCard: {
     backgroundColor: '#fff',
     borderRadius: 14,
@@ -1077,10 +1196,12 @@ const styles = StyleSheet.create({
   stopStatusPending: { backgroundColor: '#fef3c7' },
   stopStatusArrived: { backgroundColor: '#dbeafe' },
   stopStatusCompleted: { backgroundColor: '#d1fae5' },
+  stopStatusUndeliverable: { backgroundColor: '#ffe4e6' },
   stopStatusBadgeTxt: { fontSize: 11, fontWeight: '800' },
   stopStatusPendingTxt: { color: '#92400e' },
   stopStatusArrivedTxt: { color: '#1e40af' },
   stopStatusCompletedTxt: { color: '#065f46' },
+  stopStatusUndeliverableTxt: { color: '#9f1239' },
   liveRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 6 },
   connectionDot: { width: 10, height: 10, borderRadius: 5 },
   connectionDotOk: { backgroundColor: '#22c55e' },

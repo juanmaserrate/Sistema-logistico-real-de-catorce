@@ -2318,10 +2318,80 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
     const stop = await prisma.stop.update({
         where: { id: Number(id) },
         data,
-        include: { route: { select: { id: true, tripId: true } } }
+        include: { route: { select: { id: true, tripId: true, driverId: true } } }
     });
     io.emit('stop:updated', { stop });
+    // Notificar a Torre de Control y a la app del chofer
+    if (stop.route?.driverId) {
+        io.to(`driver:${stop.route.driverId}`).emit('route:updated', { routeId: stop.route.id, type: 'stop_status' });
+    }
     res.json(stop);
+});
+
+// ── Reordenamiento de paradas por el chofer ───────────────────────────────────
+app.post('/api/v1/routes/:id/stops/reorder', async (req, res) => {
+    try {
+        const routeId = Number(req.params.id);
+        const { newOrder, justification, driverName } = req.body as {
+            newOrder: { stopId: number; sequence: number }[];
+            justification: string;
+            driverName?: string;
+        };
+        if (!Array.isArray(newOrder) || newOrder.length === 0) {
+            res.status(400).json({ error: 'newOrder requerido' });
+            return;
+        }
+
+        // Obtener secuencias actuales para preservar plannedSequence original
+        const currentStops = await prisma.stop.findMany({
+            where: { routeId },
+            select: { id: true, sequence: true, plannedSequence: true }
+        });
+        const currentMap = new Map(currentStops.map(s => [s.id, s]));
+
+        // Actualizar secuencias en transacción
+        await prisma.$transaction(
+            newOrder.map(item =>
+                prisma.stop.update({
+                    where: { id: item.stopId },
+                    data: {
+                        sequence: item.sequence,
+                        // Guardar secuencia original solo la primera vez que se reordena
+                        plannedSequence: currentMap.get(item.stopId)?.plannedSequence
+                            ?? currentMap.get(item.stopId)?.sequence
+                            ?? item.sequence,
+                    }
+                })
+            )
+        );
+
+        // Guardar metadata de reordenamiento en la ruta
+        const updatedRoute = await prisma.route.update({
+            where: { id: routeId },
+            data: {
+                reorderReason: String(justification || '').trim() || null,
+                reorderedAt: new Date(),
+                reorderedByDriver: driverName ? String(driverName).trim() : null,
+            },
+            include: {
+                stops: { orderBy: { sequence: 'asc' }, include: { client: true } },
+                vehicle: true,
+            }
+        });
+
+        // Emitir evento para Torre de Control y chofer
+        io.emit('route:updated', {
+            routeId,
+            type: 'reorder',
+            reason: justification,
+            driverName: driverName || null,
+        });
+
+        res.json({ success: true, route: updatedRoute });
+    } catch (e: any) {
+        console.error('POST /routes/:id/stops/reorder:', e);
+        res.status(500).json({ error: e?.message || 'Error al reordenar' });
+    }
 });
 
 async function requestOptimizedTripFromOsrm(coords: number[][]) {
