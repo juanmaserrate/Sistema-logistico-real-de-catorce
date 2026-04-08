@@ -11,6 +11,7 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <script src="/vendor/markerclusterer.min.js"></script>
     <style>
         /* Mapa VRP: altura flexible + capa de composición (menos repaints al arrastrar) */
         #map {
@@ -1022,7 +1023,7 @@
                 <div class="card-dark p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div class="flex-1 relative w-full">
                         <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3AED0]"></i>
-                        <input type="text" id="school-search" oninput="filterSchools()" placeholder="Buscar escuela por nombre, barrio o zona..." class="w-full bg-[#F4F7FE] border-0 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium text-[#1B2559] outline-none">
+                        <input type="text" id="school-search" oninput="filterSchoolsDebounced()" placeholder="Buscar escuela por nombre, barrio o zona..." class="w-full bg-[#F4F7FE] border-0 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium text-[#1B2559] outline-none">
                     </div>
                     <div class="flex flex-wrap items-center gap-3">
                         <select id="school-zone-filter" onchange="filterSchools()" class="bg-[#F4F7FE] border-0 rounded-2xl py-3.5 px-4 text-xs font-bold text-[#1B2559] outline-none min-w-[160px]">
@@ -1081,7 +1082,7 @@
                                     <button type="button" onclick="loadVrpFromTemplate(document.getElementById('vrp-template-select').value)" class="shrink-0 px-4 py-3 rounded-2xl bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase hover:bg-indigo-100 border border-indigo-100">Cargar</button>
                                     </div>
                                 <label class="mt-3 flex items-start gap-2 cursor-pointer select-none">
-                                    <input type="checkbox" id="vrp-solo-reparto-mapa" class="mt-0.5 rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500" onchange="updateVrpMarkersStatus()">
+                                    <input type="checkbox" id="vrp-solo-reparto-mapa" class="mt-0.5 rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500" onchange="updateVrpMarkersStatusDebounced()">
                                     <span class="text-[11px] font-bold text-[#2B3674] leading-snug">Solo mostrar en el mapa las escuelas del reparto (se activa al cargar una plantilla; podés desmarcar para ver el resto según filtros).</span>
                                 </label>
                                 </div>
@@ -2114,6 +2115,23 @@
             await calculateCosts(false);
         }
 
+        // --- PERFORMANCE UTILS ---
+        function debounce(fn, ms) {
+            let t;
+            return function(...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), ms); };
+        }
+        // Wrappers debounced para interacciones del usuario (lazy init para que las funciones target ya estén definidas)
+        let _filterSchoolsDebouncedFn = null;
+        function filterSchoolsDebounced() {
+            if (!_filterSchoolsDebouncedFn) _filterSchoolsDebouncedFn = debounce(filterSchools, 150);
+            _filterSchoolsDebouncedFn();
+        }
+        let _updateVrpDebouncedFn = null;
+        function updateVrpMarkersStatusDebounced() {
+            if (!_updateVrpDebouncedFn) _updateVrpDebouncedFn = debounce(updateVrpMarkersStatus, 120);
+            _updateVrpDebouncedFn();
+        }
+
         // --- OTHER GLOBALS ---
         let activeFilter = 'ALL';
         let currentSchoolFilter = 'ALL';
@@ -2152,11 +2170,12 @@
         let controlLastFleetNextStopsKey = '';
         let controlShowTraffic = false;
         /** Límites aproximados Provincia de Buenos Aires (relaja pan fuera de la zona) */
+        // Zona operativa R14: sur GBA (Berazategui/F. Varela) → norte Capital (Belgrano/Núñez)
         const CONTROL_BA_BOUNDS = {
-            south: -40.25,
-            north: -33.75,
-            west: -62.5,
-            east: -56.9
+            south: -35.05,
+            north: -34.50,
+            west: -58.62,
+            east: -58.22
         };
         const BUSINESS_UNIT_STORAGE_KEY = 'r14.business_units';
         const GOOGLE_MAPS_KEY_STORAGE = 'r14.google_maps_api_key';
@@ -3272,17 +3291,14 @@
             return googleMapsLoaderPromise;
         }
 
-        /** Agrupación de pins (mucho más fluido con cientos de escuelas) */
+        /** Agrupación de pins — usa el script local ya cargado en <head> (sin CDN) */
         async function loadVrpClustererModule() {
             if (vrpClustererModulePromise) return vrpClustererModulePromise;
-            vrpClustererModulePromise = (async () => {
-                try {
-                    return await import('https://cdn.jsdelivr.net/npm/@googlemaps/markerclusterer@2.5.3/+esm');
-                } catch (e) {
-                    console.warn('MarkerClusterer no cargó (se usan pins sueltos):', e);
-                    return null;
-                }
-            })();
+            vrpClustererModulePromise = Promise.resolve(
+                window.markerClusterer
+                    ? window.markerClusterer
+                    : null
+            );
             return vrpClustererModulePromise;
         }
 
@@ -3362,16 +3378,16 @@
                     el.innerHTML = '';
                     const baBounds = getControlBaLatLngBoundsGoogle();
                     controlMap = new google.maps.Map(el, {
-                        center: { lat: -34.78, lng: -58.98 },
-                        zoom: 9,
-                        minZoom: 8,
-                        maxZoom: 16,
+                        center: { lat: -34.72, lng: -58.42 },
+                        zoom: 11,
+                        minZoom: 10,
+                        maxZoom: 18,
                         mapTypeControl: false,
                         streetViewControl: false,
                         fullscreenControl: true,
                         restriction: {
                             latLngBounds: baBounds,
-                            strictBounds: false
+                            strictBounds: true
                         }
                     });
                     controlGoogleTrafficLayer = new google.maps.TrafficLayer();
@@ -6699,7 +6715,7 @@
 
         function onVrpMapFiltersChange() {
             filterVrpList();
-            updateVrpMarkersStatus();
+            updateVrpMarkersStatusDebounced();
         }
 
         function clearVrpMapFilters() {
@@ -6728,12 +6744,18 @@
                 }
                 vrpSyncMarkerMap(m, visible);
                 if (!visible) {
-                    m.setLabel({ text: '', color: 'transparent' });
+                    if (m.__lastState !== 'hidden') {
+                        m.setLabel({ text: '', color: 'transparent' });
+                        m.__lastState = 'hidden';
+                    }
                     return;
                 }
                 const seqIndex = currentVrpSequence.indexOf(client.id);
                 const num = seqIndex >= 0 ? seqIndex + 1 : null;
                 const dimmed = !solo && hasSelection && seqIndex < 0;
+                const stateKey = `${num}|${dimmed}`;
+                if (m.__lastState === stateKey) return;
+                m.__lastState = stateKey;
                 m.setIcon(vrpSchoolMarkerIcon(num, dimmed));
                 m.setLabel(
                     num != null
@@ -7225,8 +7247,10 @@
             }
             el.innerHTML = '';
             vrpMap = new google.maps.Map(el, {
-                center: { lat: -34.78, lng: -58.4 },
+                center: { lat: -34.72, lng: -58.42 },
                 zoom: 11,
+                minZoom: 10,
+                maxZoom: 18,
                 mapTypeControl: false,
                 streetViewControl: false,
                 fullscreenControl: true,
@@ -7234,7 +7258,11 @@
                 isFractionalZoomEnabled: true,
                 clickableIcons: false,
                 keyboardShortcuts: true,
-                tilt: 0
+                tilt: 0,
+                restriction: {
+                    latLngBounds: CONTROL_BA_BOUNDS,
+                    strictBounds: true
+                }
             });
             vrpGoogleTrafficLayer = new google.maps.TrafficLayer();
             if (trafficEnabled) vrpGoogleTrafficLayer.setMap(vrpMap);
