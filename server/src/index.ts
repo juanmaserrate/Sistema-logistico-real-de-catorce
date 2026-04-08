@@ -479,37 +479,6 @@ app.get('/api/v1/preflight', async (_req, res) => {
     }
 });
 
-// Endpoint one-time para crear el primer admin cuando la DB está vacía.
-// Solo funciona si no existe ningún usuario con role ADMIN en la base.
-// Queda desactivado automáticamente en cuanto hay al menos un ADMIN.
-app.post('/api/auth/bootstrap-admin', async (req, res) => {
-    try {
-        const { username, password, fullName } = req.body || {};
-        if (!username || !password) return res.status(400).json({ error: 'username y password son obligatorios' });
-        const adminCount = await prisma.user.count({ where: { role: 'ADMIN' } });
-        if (adminCount > 0) return res.status(403).json({ error: 'Ya existe al menos un admin. Este endpoint está desactivado.' });
-        await prisma.tenant.upsert({
-            where: { id: 'default-tenant' },
-            update: {},
-            create: { id: 'default-tenant', name: 'Real de Catorce' }
-        });
-        const user = await prisma.user.create({
-            data: {
-                username: String(username).trim().toUpperCase(),
-                password: await hashPassword(String(password)),
-                fullName: String(fullName || username).trim().toUpperCase(),
-                role: 'ADMIN',
-                tenantId: 'default-tenant'
-            }
-        });
-        const token = generateToken({ id: user.id, username: user.username, role: user.role, fullName: user.fullName });
-        res.status(201).json({ success: true, token, user: { id: user.id, username: user.username, role: user.role } });
-    } catch (e: any) {
-        if (e?.code === 'P2002') return res.status(409).json({ error: 'El usuario ya existe' });
-        res.status(500).json({ error: (e as Error).message });
-    }
-});
-
 // Auth
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
     try {
