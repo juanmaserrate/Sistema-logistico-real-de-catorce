@@ -3,15 +3,25 @@ import type { ExpoConfig } from 'expo/config';
 const mapsKeyAndroid = process.env.GOOGLE_MAPS_ANDROID_KEY || '';
 const mapsKeyIos = process.env.GOOGLE_MAPS_IOS_KEY || mapsKeyAndroid;
 
+// EAS projectId: pegar acá el ID que devuelve `eas init` la primera vez.
+// Sin esto, la app NO puede recibir updates OTA (solo APK estático).
+// Ejemplo: '12345678-1234-1234-1234-1234567890ab'
+const easProjectId = '';
+
 const config: ExpoConfig = {
   name: 'R14 Seguimiento',
   slug: 'r14-seguimiento',
   version: '1.0.0',
-  // updates removido para desarrollo con Expo Go
   newArchEnabled: false,
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'light',
+  // EAS Update: permite pushear cambios JS sin reinstalar el APK.
+  // runtimeVersion se ata a appVersion: cuando subís la versión, se "rompen" los updates viejos y se requiere nuevo APK.
+  runtimeVersion: { policy: 'appVersion' },
+  updates: easProjectId
+    ? { url: `https://u.expo.dev/${easProjectId}`, enabled: true, checkAutomatically: 'ON_LOAD', fallbackToCacheTimeout: 3000 }
+    : undefined,
   splash: {
     image: './assets/splash-icon.png',
     resizeMode: 'contain',
@@ -83,7 +93,7 @@ const config: ExpoConfig = {
     './plugins/withNavigationDesugaring',
   ],
   extra: {
-    // projectId removido temporalmente para Expo Go dev
+    ...(easProjectId ? { eas: { projectId: easProjectId } } : {}),
   },
 };
 

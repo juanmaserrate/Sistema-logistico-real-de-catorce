@@ -15,6 +15,7 @@ import {
 import * as ImagePicker from 'expo-image-picker';
 import { reportIncident, uploadProofPhoto } from '../api';
 import type { SessionUser } from '../types';
+import { compressPhoto, getLiteMode } from '../utils/photoUtils';
 
 type IncidentType = 'MECANICO' | 'TRANSITO' | 'ESCUELA' | 'OTRO';
 
@@ -38,6 +39,9 @@ export default function IncidentModal({ visible, session, tripId, onClose, onSen
   const [description, setDesc]    = useState('');
   const [photoUri, setPhotoUri]   = useState<string | null>(null);
   const [saving, setSaving]       = useState(false);
+  const [liteMode, setLiteModeState] = useState(false);
+
+  React.useEffect(() => { getLiteMode().then(setLiteModeState); }, []);
 
   const reset = () => {
     setType('OTRO');
@@ -65,7 +69,7 @@ export default function IncidentModal({ visible, session, tripId, onClose, onSen
     try {
       let photoUrl: string | null = null;
       if (photoUri) {
-        try { photoUrl = await uploadProofPhoto(photoUri); } catch { /* foto no crítica */ }
+        try { photoUrl = await uploadProofPhoto(await compressPhoto(photoUri, liteMode)); } catch { /* foto no crítica */ }
       }
       const result = await reportIncident({
         driverId: session.id,

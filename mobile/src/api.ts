@@ -7,6 +7,34 @@ function apiUrl(path: string): string {
   return `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
+const ROUTES_CACHE_KEY = 'r14_routes_today_cache';
+
+/** Fetch with automatic retry (exponential backoff) and configurable timeout. */
+async function fetchWithRetry(
+  url: string,
+  options: RequestInit & { timeout?: number } = {},
+  retries = 3
+): Promise<Response> {
+  const { timeout = 10000, ...fetchOpts } = options;
+  let lastErr: unknown;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    const tid = setTimeout(() => controller.abort(), timeout);
+    try {
+      const res = await fetch(url, { ...fetchOpts, signal: controller.signal });
+      clearTimeout(tid);
+      return res;
+    } catch (e) {
+      clearTimeout(tid);
+      lastErr = e;
+      if (attempt < retries) {
+        await new Promise((r) => setTimeout(r, 1000 * Math.pow(2, attempt)));
+      }
+    }
+  }
+  throw lastErr;
+}
+
 const AUTH_TOKEN_KEY = 'r14_auth_token';
 
 async function getAuthToken(): Promise<string | null> {
@@ -50,11 +78,29 @@ export async function fetchRoutesToday(driverId: string): Promise<Route[]> {
     date: localYmd(new Date()),
     _ts: String(Date.now()),
   });
-  const res = await fetch(apiUrl(`/api/v1/routes?${q}`), {
-    headers: { 'Cache-Control': 'no-cache', ...(await authHeaders()) },
-  });
-  if (!res.ok) throw new Error('No se pudieron cargar las rutas');
-  return (await res.json()) as Route[];
+  try {
+    const res = await fetchWithRetry(
+      apiUrl(`/api/v1/routes?${q}`),
+      { headers: { 'Cache-Control': 'no-cache', ...(await authHeaders()) } }
+    );
+    if (!res.ok) throw new Error('No se pudieron cargar las rutas');
+    const routes = (await res.json()) as Route[];
+    // Save to cache for offline fallback
+    AsyncStorage.setItem(ROUTES_CACHE_KEY, JSON.stringify({ driverId, routes, ts: Date.now() })).catch(() => {});
+    return routes;
+  } catch (e) {
+    // Offline fallback: return cached routes if they belong to the same driver
+    try {
+      const raw = await AsyncStorage.getItem(ROUTES_CACHE_KEY);
+      if (raw) {
+        const cached = JSON.parse(raw);
+        if (cached?.driverId === driverId && Array.isArray(cached.routes)) {
+          return cached.routes as Route[];
+        }
+      }
+    } catch {}
+    throw e;
+  }
 }
 
 export async function fetchRouteGeometry(routeId: number): Promise<RouteGeometry | null> {
@@ -122,6 +168,7 @@ interface OfflineStopAction {
     observations?: string;
     proofPhotoUrl?: string | null;
     deliveryWithoutIssues?: boolean | null;
+    reasonCode?: string | null;
   };
   timestamp: string;
 }
@@ -173,6 +220,7 @@ export async function patchStop(
     observations?: string;
     proofPhotoUrl?: string | null;
     deliveryWithoutIssues?: boolean | null;
+    reasonCode?: string | null;
   }
 ): Promise<unknown> {
   try {
@@ -268,9 +316,10 @@ export async function patchRouteRecorrido(
 
 export async function fetchRouteHistory(driverId: string, days = 30): Promise<Route[]> {
   const q = new URLSearchParams({ driverId, days: String(days), _ts: String(Date.now()) });
-  const res = await fetch(apiUrl(`/api/v1/routes?${q}`), {
-    headers: { 'Cache-Control': 'no-cache', ...(await authHeaders()) },
-  });
+  const res = await fetchWithRetry(
+    apiUrl(`/api/v1/routes?${q}`),
+    { headers: { 'Cache-Control': 'no-cache', ...(await authHeaders()) } }
+  );
   if (!res.ok) throw new Error('No se pudo cargar el historial');
   return (await res.json()) as Route[];
 }

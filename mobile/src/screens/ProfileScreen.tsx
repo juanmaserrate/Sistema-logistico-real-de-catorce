@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View,
   Text,
@@ -11,6 +11,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import type { SessionUser } from '../types';
+import { getLiteMode, setLiteMode } from '../utils/photoUtils';
 
 type Props = {
   session: SessionUser;
@@ -26,6 +27,15 @@ const ROLE_LABELS: Record<string, string> = {
 
 export default function ProfileScreen({ session, navigation, onLogout }: Props) {
   const insets = useSafeAreaInsets();
+  const [liteMode, setLiteModeState] = useState(false);
+
+  useEffect(() => { getLiteMode().then(setLiteModeState); }, []);
+
+  const toggleLiteMode = async () => {
+    const next = !liteMode;
+    setLiteModeState(next);
+    await setLiteMode(next);
+  };
 
   const confirmLogout = () => {
     Alert.alert(
@@ -82,6 +92,21 @@ export default function ProfileScreen({ session, navigation, onLogout }: Props) 
             <Text style={styles.infoValue} selectable>{session.tenantId}</Text>
           </View>
         </View>
+
+        {/* Modo LITE */}
+        <Pressable style={styles.liteCard} onPress={toggleLiteMode}>
+          <View style={styles.liteLeft}>
+            <Text style={styles.liteTitle}>⚡ Modo LITE</Text>
+            <Text style={styles.liteSub}>
+              {liteMode
+                ? 'Activo · fotos comprimidas, menor uso de datos'
+                : 'Activá para ahorrar datos en zonas con señal baja'}
+            </Text>
+          </View>
+          <View style={[styles.toggleTrack, liteMode && styles.toggleTrackOn]}>
+            <View style={[styles.toggleThumb, liteMode && styles.toggleThumbOn]} />
+          </View>
+        </Pressable>
 
         {/* Links rápidos */}
         <View style={styles.linksSection}>
@@ -153,6 +178,41 @@ const styles = StyleSheet.create({
   },
   infoLabel: { fontSize: 10, fontWeight: '800', color: '#94a3b8', letterSpacing: 0.5, marginBottom: 4 },
   infoValue: { fontSize: 14, fontWeight: '700', color: '#0f172a' },
+  liteCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  liteLeft: { flex: 1 },
+  liteTitle: { fontSize: 14, fontWeight: '800', color: '#0f172a' },
+  liteSub: { fontSize: 11, color: '#64748b', marginTop: 3 },
+  toggleTrack: {
+    width: 46,
+    height: 26,
+    borderRadius: 13,
+    backgroundColor: '#cbd5e1',
+    padding: 3,
+    justifyContent: 'center',
+  },
+  toggleTrackOn: { backgroundColor: '#4f46e5' },
+  toggleThumb: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 2,
+    alignSelf: 'flex-start',
+  },
+  toggleThumbOn: { alignSelf: 'flex-end' },
   linksSection: {
     backgroundColor: '#fff',
     borderRadius: 16,

@@ -1599,6 +1599,17 @@ app.post('/api/v1/routes-direct', async (req, res) => {
             include: { stops: true }
         });
 
+        // Notificar al chofer que tiene una nueva ruta asignada
+        if (user.pushToken) {
+            const dateStr = new Date(date).toLocaleDateString('es-AR', { weekday: 'short', day: 'numeric', month: 'short' });
+            sendExpoPush(
+                user.pushToken,
+                '🗺️ Nueva ruta asignada',
+                `Tenés ${(stops || []).length} paradas para ${dateStr}`,
+                { routeId: route.id }
+            ).catch(() => {});
+        }
+
         res.json({ success: true, routeId: route.id });
     } catch (e: any) {
         console.error("Direct Route Error:", e);

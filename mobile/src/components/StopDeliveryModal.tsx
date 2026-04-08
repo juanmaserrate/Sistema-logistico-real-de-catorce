@@ -17,6 +17,7 @@ import * as ImagePicker from 'expo-image-picker';
 import type { Stop } from '../types';
 import { patchStop, uploadProofPhoto } from '../api';
 import { assertApiConfigured } from '../config';
+import { compressPhoto, getLiteMode } from '../utils/photoUtils';
 
 type Props = {
   visible: boolean;
@@ -41,8 +42,11 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [deliveryOk, setDeliveryOk] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [liteMode, setLiteModeState] = useState(false);
   // UNDELIVERABLE
   const [undeliverableReason, setUndeliverableReason] = useState<string>('');
+
+  useEffect(() => { getLiteMode().then(setLiteModeState); }, []);
 
   useEffect(() => {
     if (visible && stop) {
@@ -74,7 +78,7 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
     try {
       assertApiConfigured();
       let proofUrl: string | null | undefined;
-      if (photoUri) proofUrl = await uploadProofPhoto(photoUri);
+      if (photoUri) proofUrl = await uploadProofPhoto(await compressPhoto(photoUri, liteMode));
       await patchStop(stop.id, {
         status: 'COMPLETED',
         actualDeparture: new Date().toISOString(),
@@ -101,7 +105,7 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
     try {
       assertApiConfigured();
       let proofUrl: string | null | undefined;
-      if (photoUri) proofUrl = await uploadProofPhoto(photoUri);
+      if (photoUri) proofUrl = await uploadProofPhoto(await compressPhoto(photoUri, liteMode));
       await patchStop(stop.id, {
         status: 'UNDELIVERABLE',
         actualDeparture: new Date().toISOString(),
