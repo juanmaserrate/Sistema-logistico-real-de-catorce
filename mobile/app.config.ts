@@ -3,10 +3,8 @@ import type { ExpoConfig } from 'expo/config';
 const mapsKeyAndroid = process.env.GOOGLE_MAPS_ANDROID_KEY || '';
 const mapsKeyIos = process.env.GOOGLE_MAPS_IOS_KEY || mapsKeyAndroid;
 
-// EAS projectId: pegar acá el ID que devuelve `eas init` la primera vez.
-// Sin esto, la app NO puede recibir updates OTA (solo APK estático).
-// Ejemplo: '12345678-1234-1234-1234-1234567890ab'
-const easProjectId = '';
+// EAS projectId del proyecto r14-seguimiento en expo.dev/accounts/juanmaserrate1
+const easProjectId = '383c6e56-502c-42f8-a683-067c79908cec';
 
 const config: ExpoConfig = {
   name: 'R14 Seguimiento',
@@ -92,8 +90,9 @@ const config: ExpoConfig = {
     './plugins/withGoogleMapsDedup',
     './plugins/withNavigationDesugaring',
   ],
+  owner: 'juanmaserrate1',
   extra: {
-    ...(easProjectId ? { eas: { projectId: easProjectId } } : {}),
+    eas: { projectId: easProjectId },
   },
 };
 
