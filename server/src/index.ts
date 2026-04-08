@@ -262,6 +262,29 @@ function runPrismaDbPush(): Promise<void> {
     });
 }
 
+async function applyColumnMigrations() {
+    // Migraciones aditivas seguras (ADD COLUMN IF NOT EXISTS): no destruyen datos.
+    // Cada migración es idempotente y solo agrega lo que falta.
+    const migrations: { name: string; sql: string }[] = [
+        {
+            name: 'DeviceLocation.isActive',
+            sql: `ALTER TABLE "DeviceLocation" ADD COLUMN IF NOT EXISTS "isActive" BOOLEAN NOT NULL DEFAULT true`
+        },
+        {
+            name: 'DeviceLocation.isActive index',
+            sql: `CREATE INDEX IF NOT EXISTS "DeviceLocation_isActive_timestamp_idx" ON "DeviceLocation"("isActive", "timestamp")`
+        },
+    ];
+    for (const m of migrations) {
+        try {
+            await prisma.$executeRawUnsafe(m.sql);
+            console.log(`[startup] Migration OK: ${m.name}`);
+        } catch (e: any) {
+            console.warn(`[startup] Migration skipped (${m.name}): ${e?.message?.slice(0, 100)}`);
+        }
+    }
+}
+
 async function ensureSchemaReady() {
     // SOLO correr db push si las tablas core no existen (DB recién creada).
     // NUNCA correr en cada arranque: aunque db push sin --accept-data-loss falla
@@ -269,10 +292,10 @@ async function ensureSchemaReady() {
     // Si falta una tabla, lo detectamos por el query de Tenant.
     try {
         await prisma.$queryRawUnsafe('SELECT 1 FROM "Tenant" LIMIT 1');
-        // Si Tenant existe, asumimos que el schema ya fue aplicado por una migración previa.
-        // Cualquier cambio de schema debe hacerse manualmente con `prisma migrate` o `prisma db push`
-        // ejecutado deliberadamente por el operador, NO automáticamente al arranque.
-        console.log('[startup] Schema check OK (Tenant table exists). Skipping db push.');
+        // Si Tenant existe, asumimos que el schema base ya fue aplicado.
+        // Aplicar solo migraciones aditivas (ADD COLUMN IF NOT EXISTS) que son seguras.
+        await applyColumnMigrations();
+        console.log('[startup] Schema check OK (Tenant table exists).');
     } catch (err: any) {
         const code = err?.code;
         const msg = String(err?.message || '');
