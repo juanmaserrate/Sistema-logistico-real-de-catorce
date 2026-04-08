@@ -9118,32 +9118,66 @@
             document.getElementById('modal-salary-edit').classList.add('hidden');
         }
 
-        function openNewTripModal() {
+        async function fetchUsersByRole(role) {
+            try {
+                const res = await fetch(`${API_URL}/users?role=${encodeURIComponent(role)}`);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return Array.isArray(data) ? data : [];
+            } catch (e) {
+                console.warn(`No se pudieron cargar usuarios ${role}:`, e);
+                return [];
+            }
+        }
+
+        async function openNewTripModal() {
             document.getElementById('new-trip-modal').classList.remove('hidden');
             document.getElementById('new-trip-id').value = '';
             document.getElementById('new-trip-modal-title').innerText = 'Nuevo Viaje';
             document.getElementById('new-trip-save-btn').innerText = 'CREAR VIAJE';
-            
-            // Populate Dropdowns from existing planningData for auto-completeness
-            const uniqueDrivers = [...new Set(planningData.map(t => t.driver).filter(Boolean))].sort();
-            const uniqueAux = [...new Set([
-                ...planningData.map(t => t.auxiliar), 
+
+            // Traer choferes y auxiliares desde el catálogo de usuarios (para que
+            // funcione incluso cuando aún no hay viajes cargados en planningData).
+            const [driversFromDb, auxFromDb] = await Promise.all([
+                fetchUsersByRole('DRIVER'),
+                fetchUsersByRole('AUXILIAR')
+            ]);
+
+            const driverNamesFromDb = driversFromDb
+                .map(u => (u.fullName || u.username || '').trim())
+                .filter(Boolean);
+            const auxNamesFromDb = auxFromDb
+                .map(u => (u.fullName || u.username || '').trim())
+                .filter(Boolean);
+
+            // Combinar catálogo de usuarios con los nombres que aparecen en viajes
+            // históricos (para no perder nombres "legacy" que no estén en User).
+            const driversFromTrips = planningData.map(t => t.driver).filter(Boolean);
+            const auxFromTrips = [
+                ...planningData.map(t => t.auxiliar),
                 ...planningData.map(t => t.auxiliar2),
                 ...planningData.map(t => t.auxiliar3)
-            ].filter(Boolean))].sort();
+            ].filter(Boolean);
+
+            const uniqueDrivers = [...new Set([...driverNamesFromDb, ...driversFromTrips])].sort();
+            const uniqueAux = [...new Set([...auxNamesFromDb, ...auxFromTrips])].sort();
+
             const uniqueZonesRaw = [...new Set(planningData.map(t => t.zone).filter(Boolean))];
             let processedZones = uniqueZonesRaw.map(z => {
                 if (z === 'ALTE. BROWN' || z === 'ALTE BROWN') return 'ALMIRANTE BROWN';
                 return z;
             });
             const uniqueZones = [...new Set(processedZones)].sort();
-            
+
             // We usually have basic vehicle types like VANS, MINIBUS, DUCATO
             const uniqueVehicles = [...new Set(planningData.map(t => t.vehicleType).filter(Boolean))].sort();
             if (uniqueVehicles.length === 0) uniqueVehicles.push('VANS', 'MINIBUS', 'DUCATO', 'UTILITARIO');
 
-            document.getElementById('new-trip-driver').innerHTML = '<option value="">Seleccionar Chofer</option>' + uniqueDrivers.map(d => `<option value="${d}">${d}</option>`).join('');
-            
+            const driverPlaceholder = uniqueDrivers.length === 0
+                ? '<option value="">⚠ No hay choferes cargados — creá uno en Usuarios</option>'
+                : '<option value="">Seleccionar Chofer</option>';
+            document.getElementById('new-trip-driver').innerHTML = driverPlaceholder + uniqueDrivers.map(d => `<option value="${d}">${d}</option>`).join('');
+
             const auxOptions = '<option value="">Sin Auxiliar</option>' + uniqueAux.map(a => `<option value="${a}">${a}</option>`).join('');
             document.getElementById('new-trip-aux1').innerHTML = auxOptions;
             document.getElementById('new-trip-aux2').innerHTML = auxOptions;
@@ -9208,7 +9242,7 @@
             const trip = planningData.find(t => t.id === id);
             if (!trip) return;
 
-            openNewTripModal(); // This opens and populates dropdowns
+            await openNewTripModal(); // This opens and populates dropdowns
             
             document.getElementById('new-trip-id').value = trip.id;
             document.getElementById('new-trip-modal-title').innerText = `Editar Viaje #${trip.id}`;
