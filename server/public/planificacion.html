@@ -4714,7 +4714,6 @@
                 filterSchools();
             } catch(e) {
                 console.error("Error loading schools:", e);
-                addNotification('error', 'Error de Red', 'No se pudo conectar con el servidor API.');
             }
         }
 
@@ -5813,7 +5812,6 @@
                 filterWeeklyData();
             } catch(e) {
                 console.error("Error loading weekly data:", e);
-                addNotification('error', 'Error de Conexión', 'No se pudo conectar con el servidor de datos.');
                 planningData = [];
                 filterWeeklyData();
             }
@@ -8009,10 +8007,7 @@
         }
 
         // --- NOTIFICATIONS LOGIC ---
-        let notifications = [
-            { id: Date.now() - 3600000, type: 'info', title: 'Sistema R14 Activo', text: 'El motor de ruteo está funcionando con normalidad.', time: '1 hora' },
-            { id: Date.now() - 7200000, type: 'critical', title: 'Vencimiento de Seguro', text: 'La patente ABC-123 tiene el seguro vencido.', time: '2 horas' }
-        ];
+        let notifications = [];
 
         function cleanupOldNotifications() {
             const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
