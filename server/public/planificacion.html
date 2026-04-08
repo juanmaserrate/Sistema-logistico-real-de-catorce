@@ -8219,7 +8219,7 @@
             }, 3200);
         }
 
-        // Modo estricto: toast automático para TODA mutación HTTP.
+        // Modo estricto: toast automático para TODA mutación HTTP + inyección de token en todas las llamadas a /api/.
         (function enableGlobalMutationToasts() {
             if (!window.fetch || window.__r14MutationToastsPatched) return;
             window.__r14MutationToastsPatched = true;
@@ -8244,6 +8244,21 @@
                 const url = extractUrl(input);
                 const isMutation = mutationMethods.has(method);
                 const skipToast = shouldSkipToast(url);
+
+                // Inyectar token en todas las llamadas a /api/ si hay sesión activa
+                const token = localStorage.getItem('r14.authToken');
+                if (token && url.includes('/api/')) {
+                    const existingHeaders = (init && init.headers) ? init.headers : {};
+                    const hasAuth = typeof existingHeaders === 'object'
+                        ? (existingHeaders['Authorization'] || existingHeaders['authorization'])
+                        : false;
+                    if (!hasAuth) {
+                        init = Object.assign({}, init, {
+                            headers: Object.assign({}, existingHeaders, { 'Authorization': `Bearer ${token}` })
+                        });
+                    }
+                }
+
                 try {
                     const res = await baseFetch(input, init);
                     if (isMutation && !skipToast) {
