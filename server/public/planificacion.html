@@ -2016,12 +2016,14 @@
 
         /** Headers estándar con identificación del usuario activo para el audit log */
         function getActorHeaders() {
-            const name = localStorage.getItem('r14.loggedUser') || '';
-            const id   = localStorage.getItem('r14.loggedUserId') || '';
+            const name  = localStorage.getItem('r14.loggedUser') || '';
+            const id    = localStorage.getItem('r14.loggedUserId') || '';
+            const token = localStorage.getItem('r14.authToken') || '';
             return {
                 'Content-Type': 'application/json',
-                ...(name ? { 'X-Actor-Name': name } : {}),
-                ...(id   ? { 'X-Actor-Id':   id   } : {})
+                ...(name  ? { 'X-Actor-Name':  name  } : {}),
+                ...(id    ? { 'X-Actor-Id':     id    } : {}),
+                ...(token ? { 'Authorization': `Bearer ${token}` } : {})
             };
         }
 
@@ -2455,12 +2457,13 @@
                     throw new Error(data.error || 'Credenciales incorrectas');
                 }
 
-                // Store session — server returns { success, user: { id, fullName, role } }
+                // Store session — server returns { success, token, user: { id, fullName, role } }
                 const u = data.user || data;
                 localStorage.setItem('r14.loggedUser', u.fullName || u.username || username);
                 localStorage.setItem('r14.loggedUsername', u.username || username);
                 localStorage.setItem('r14.loggedUserId', u.id || '');
                 localStorage.setItem('r14.loggedRole', u.role || 'ADMIN');
+                if (data.token) localStorage.setItem('r14.authToken', data.token);
 
                 // Apply access control
                 const profile = getUserProfile(u.username || username);
@@ -2483,6 +2486,7 @@
             localStorage.removeItem('r14.loggedUsername');
             localStorage.removeItem('r14.loggedUserId');
             localStorage.removeItem('r14.loggedRole');
+            localStorage.removeItem('r14.authToken');
             document.getElementById('login-gate').style.display = 'flex';
             document.getElementById('login-username').value = '';
             document.getElementById('login-password').value = '';

@@ -10,6 +10,10 @@ import fs from 'fs';
 import { spawn } from 'child_process';
 import * as XLSX from 'xlsx';
 import dotenv from 'dotenv';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
+import rateLimit from 'express-rate-limit';
+import helmet from 'helmet';
 
 dotenv.config();
 
@@ -50,8 +54,100 @@ const storage = multer.diskStorage({
 });
 const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
-app.use(cors({ origin: '*', methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'], allowedHeaders: ['Content-Type', 'Authorization'] }));
+// ── Seguridad: Helmet (cabeceras HTTP de protección) ────────────────────────
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+
+// ── Seguridad: CORS ──────────────────────────────────────────────────────────
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
+app.use(cors({
+    origin: (origin, callback) => {
+        if (!origin) return callback(null, true); // mobile apps, curl, server-to-server
+        if (allowedOrigins.length === 0 || allowedOrigins.includes('*')) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        callback(new Error('Not allowed by CORS'));
+    },
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Actor-Name', 'X-Actor-Id']
+}));
 app.use(express.json());
+
+// ── Seguridad: JWT ────────────────────────────────────────────────────────────
+const JWT_SECRET = process.env.JWT_SECRET || 'r14-dev-secret-CAMBIAR-en-produccion';
+const JWT_EXPIRES_IN = '30d';
+
+function generateToken(user: { id: string; username: string; role: string; fullName: string }): string {
+    return jwt.sign(
+        { userId: user.id, username: user.username, role: user.role, fullName: user.fullName },
+        JWT_SECRET,
+        { expiresIn: JWT_EXPIRES_IN }
+    );
+}
+
+function requireAuth(req: any, res: any, next: any) {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
+    if (!token) return res.status(401).json({ error: 'Autenticación requerida. Iniciá sesión.' });
+    try {
+        req.user = jwt.verify(token, JWT_SECRET);
+        next();
+    } catch {
+        return res.status(401).json({ error: 'Token inválido o expirado. Volvé a iniciar sesión.' });
+    }
+}
+
+// ── Seguridad: Rate Limiting ───────────────────────────────────────────────────
+const generalLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 200,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Demasiadas peticiones. Intentá en un minuto.' }
+});
+const loginLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 10,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Demasiados intentos de login. Esperá un minuto.' }
+});
+const trackingLimiter = rateLimit({
+    windowMs: 60_000,
+    max: 300,
+    standardHeaders: true,
+    legacyHeaders: false,
+    message: { error: 'Demasiadas actualizaciones de ubicación.' }
+});
+app.use('/api/', generalLimiter);
+
+// ── Seguridad: Auth middleware aplicado a rutas sensibles ──────────────────────
+const PROTECTED_PREFIXES = [
+    '/api/v1/users',
+    '/api/v1/trips',
+    '/api/v1/routes',
+    '/api/v1/clients',
+    '/api/v1/vehicles',
+    '/api/v1/maintenance',
+    '/api/v1/incidents',
+    '/api/v1/audit',
+    '/api/v1/salaries',
+    '/api/upload-photo',
+];
+app.use((req: any, res: any, next: any) => {
+    if (PROTECTED_PREFIXES.some(p => req.path.startsWith(p) || (req.originalUrl || '').includes(p))) {
+        return requireAuth(req, res, next);
+    }
+    next();
+});
+
+// ── Seguridad: Bcrypt helpers ──────────────────────────────────────────────────
+const BCRYPT_ROUNDS = 10;
+async function hashPassword(plain: string): Promise<string> {
+    return bcrypt.hash(plain, BCRYPT_ROUNDS);
+}
+async function verifyPassword(plain: string, stored: string): Promise<boolean> {
+    if (!stored.startsWith('$2')) return plain === stored; // legacy plain text
+    return bcrypt.compare(plain, stored);
+}
 app.get('/health', (_req, res) => res.status(200).type('text/plain').send('ok'));
 app.use('/uploads', express.static(uploadsDir));
 app.use(express.static(path.join(__dirname, '../public')));
@@ -369,16 +465,25 @@ app.get('/api/v1/preflight', async (_req, res) => {
 });
 
 // Auth
-app.post('/api/auth/login', async (req, res) => {
+app.post('/api/auth/login', loginLimiter, async (req, res) => {
     try {
         const { username, password } = req.body;
-        // Search in User model (New)
         const user = await prisma.user.findUnique({ where: { username } });
-        if (user && user.password === password) {
+        if (user && await verifyPassword(password, user.password)) {
             if (String(user.role || '').toUpperCase() === 'BLOCKED') {
                 return res.status(403).json({ error: "Usuario bloqueado. Contactá al administrador." });
             }
-            return res.json({ success: true, user: { id: user.id, fullName: user.fullName, role: user.role, tenantId: user.tenantId } });
+            // Migrate legacy plain-text password to bcrypt hash transparently
+            if (!user.password.startsWith('$2')) {
+                const hashed = await hashPassword(password);
+                await prisma.user.update({ where: { id: user.id }, data: { password: hashed } }).catch(() => {});
+            }
+            const token = generateToken({ id: user.id, username: user.username, role: user.role, fullName: user.fullName });
+            return res.json({
+                success: true,
+                token,
+                user: { id: user.id, fullName: user.fullName, role: user.role, tenantId: user.tenantId }
+            });
         }
         res.status(401).json({ error: "Credenciales inválidas" });
     } catch (e) {
@@ -772,7 +877,7 @@ app.post('/api/v1/settings', async (req, res) => {
 });
 
 // --- RASTREO SATELITAL (app móvil choferes ↔ Torre de Control) ---
-app.post('/api/v1/tracking/location', async (req, res) => {
+app.post('/api/v1/tracking/location', trackingLimiter, async (req, res) => {
     try {
         const { deviceId, deviceLabel, driverId, routeId, latitude, longitude, accuracy, speed, heading, capturedAt } =
             req.body || {};
@@ -787,18 +892,7 @@ app.post('/api/v1/tracking/location', async (req, res) => {
         const rid = routeId != null && String(routeId).trim() !== '' && Number.isFinite(Number(routeId)) ? Number(routeId) : null;
         const did = driverId != null && String(driverId).trim() !== '' ? String(driverId).trim() : null;
 
-        let offRouteMeters: number | null = null;
-        if (rid != null) {
-            try {
-                const poly = await getRoutePolylinePointsCachedOrBuild(rid);
-                if (poly && poly.length >= 2) {
-                    offRouteMeters = minDistanceToPolylineMeters(lat, lng, poly);
-                }
-            } catch {
-                /* sin geometría o sin API key: no bloquear el ping */
-            }
-        }
-
+        // INSERT primero — no esperar el cálculo de offRoute para responder rápido
         const record = await prisma.deviceLocation.create({
             data: {
                 deviceId: String(deviceId).trim(),
@@ -810,12 +904,28 @@ app.post('/api/v1/tracking/location', async (req, res) => {
                 accuracy: accuracy != null && Number.isFinite(Number(accuracy)) ? Number(accuracy) : null,
                 speed: speed != null && Number.isFinite(Number(speed)) ? Number(speed) : null,
                 heading: heading != null && Number.isFinite(Number(heading)) ? Number(heading) : null,
-                offRouteMeters,
+                offRouteMeters: null,
                 capturedAt: capturedAt ? new Date(capturedAt) : null
             }
         });
         io.emit('location:update', record);
         res.json(record);
+
+        // Calcular offRoute en background — no bloquea la respuesta HTTP
+        if (rid != null) {
+            setImmediate(async () => {
+                try {
+                    const poly = await getRoutePolylinePointsCachedOrBuild(rid);
+                    if (poly && poly.length >= 2) {
+                        const meters = minDistanceToPolylineMeters(lat, lng, poly);
+                        await prisma.deviceLocation.update({
+                            where: { id: record.id },
+                            data: { offRouteMeters: meters }
+                        }).catch(() => {});
+                    }
+                } catch { /* sin geometría o sin API key */ }
+            });
+        }
     } catch (e: any) {
         console.error('POST /tracking/location:', e);
         res.status(500).json({ error: e?.message || 'Error al guardar ubicación' });
@@ -3005,7 +3115,7 @@ app.post('/api/v1/users', async (req, res) => {
         const user = await prisma.user.create({
             data: {
                 username,
-                password,
+                password: await hashPassword(password),
                 fullName: fullName || username,
                 role,
                 tenantId: 'default-tenant'
@@ -3030,7 +3140,7 @@ app.patch('/api/v1/users/:id/password', async (req, res) => {
         const existing = await prisma.user.findUnique({ where: { id }, select: { id: true } });
         if (!existing) return res.status(404).json({ error: 'Usuario no encontrado' });
 
-        await prisma.user.update({ where: { id }, data: { password } });
+        await prisma.user.update({ where: { id }, data: { password: await hashPassword(password) } });
         res.json({ success: true });
     } catch (e: any) {
         res.status(500).json({ error: (e as Error).message });
@@ -3619,6 +3729,50 @@ if (false) app.post('/api/admin/migrate-sqlite', async (req: any, res: any) => {
 
 const host = process.env.HOST || '0.0.0.0';
 
+// ── Cleanup automático de datos históricos ────────────────────────────────────
+async function cleanupOldData() {
+    const now = Date.now();
+    const thirtyDaysAgo  = new Date(now - 30 * 24 * 60 * 60 * 1000);
+    const ninetyDaysAgo  = new Date(now - 90 * 24 * 60 * 60 * 1000);
+
+    try {
+        const r = await prisma.deviceLocation.deleteMany({ where: { timestamp: { lt: thirtyDaysAgo } } });
+        if (r.count > 0) console.log(`[cleanup] GPS: ${r.count} registros borrados`);
+    } catch (e) { console.error('[cleanup] Error GPS:', e); }
+
+    try {
+        const r = await (prisma as any).auditLog.deleteMany({ where: { createdAt: { lt: ninetyDaysAgo } } });
+        if (r.count > 0) console.log(`[cleanup] AuditLog: ${r.count} registros borrados`);
+    } catch { /* tabla puede no existir */ }
+
+    try {
+        const r = await prisma.alert.deleteMany({ where: { createdAt: { lt: thirtyDaysAgo } } });
+        if (r.count > 0) console.log(`[cleanup] Alerts: ${r.count} registros borrados`);
+    } catch (e) { console.error('[cleanup] Error alerts:', e); }
+
+    // Limpiar fotos de entrega > 90 días
+    try {
+        if (fs.existsSync(uploadsDir)) {
+            const cutoff = now - 90 * 24 * 60 * 60 * 1000;
+            let deleted = 0;
+            for (const file of fs.readdirSync(uploadsDir)) {
+                const fp = path.join(uploadsDir, file);
+                try {
+                    const stat = fs.statSync(fp);
+                    if (stat.mtimeMs < cutoff) { fs.unlinkSync(fp); deleted++; }
+                } catch { /* skip */ }
+            }
+            if (deleted > 0) console.log(`[cleanup] Fotos: ${deleted} archivos borrados`);
+        }
+    } catch (e) { console.error('[cleanup] Error fotos:', e); }
+}
+
+function startCleanupJob() {
+    cleanupOldData().catch(e => console.error('[cleanup] Error inicial:', e));
+    setInterval(() => cleanupOldData().catch(e => console.error('[cleanup] Error periódico:', e)), 24 * 60 * 60 * 1000);
+    console.log('[cleanup] Job iniciado — limpia GPS/Audit/Alerts/Fotos cada 24h');
+}
+
 async function bootstrapData() {
     try {
         await ensureSchemaReady();
@@ -3626,6 +3780,7 @@ async function bootstrapData() {
         startupReady = true;
         startupError = null;
         console.log('[startup] Data initialization complete.');
+        startCleanupJob();
         backfillAddressesFromCoords().catch(() => {});
     } catch (err) {
         console.error('[startup] Fatal startup error:', err);

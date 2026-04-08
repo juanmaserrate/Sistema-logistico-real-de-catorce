@@ -7,6 +7,17 @@ function apiUrl(path: string): string {
   return `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
+const AUTH_TOKEN_KEY = 'r14_auth_token';
+
+async function getAuthToken(): Promise<string | null> {
+  try { return await AsyncStorage.getItem(AUTH_TOKEN_KEY); } catch { return null; }
+}
+
+async function authHeaders(): Promise<Record<string, string>> {
+  const token = await getAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
 export async function login(username: string, password: string): Promise<SessionUser> {
   const res = await fetch(apiUrl('/api/auth/login'), {
     method: 'POST',
@@ -15,9 +26,15 @@ export async function login(username: string, password: string): Promise<Session
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((data as { error?: string }).error || 'Error de login');
+  const token = (data as { token?: string }).token;
+  if (token) await AsyncStorage.setItem(AUTH_TOKEN_KEY, token).catch(() => {});
   const u = (data as { user?: SessionUser }).user;
   if (!u) throw new Error('Respuesta inválida');
   return u;
+}
+
+export async function logout(): Promise<void> {
+  await AsyncStorage.removeItem(AUTH_TOKEN_KEY).catch(() => {});
 }
 
 function localYmd(d: Date): string {
@@ -34,7 +51,7 @@ export async function fetchRoutesToday(driverId: string): Promise<Route[]> {
     _ts: String(Date.now()),
   });
   const res = await fetch(apiUrl(`/api/v1/routes?${q}`), {
-    headers: { 'Cache-Control': 'no-cache' },
+    headers: { 'Cache-Control': 'no-cache', ...(await authHeaders()) },
   });
   if (!res.ok) throw new Error('No se pudieron cargar las rutas');
   return (await res.json()) as Route[];
@@ -198,6 +215,7 @@ export async function uploadProofPhoto(localUri: string): Promise<string> {
 
   const res = await fetch(apiUrl('/api/upload-photo'), {
     method: 'POST',
+    headers: { ...(await authHeaders()) },
     body: form,
   });
   const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
@@ -234,7 +252,7 @@ export async function patchRouteRecorrido(
 ): Promise<void> {
   const res = await fetch(apiUrl(`/api/v1/routes/${routeId}/recorrido`), {
     method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ driverId, action }),
   });
   if (!res.ok) {
@@ -251,7 +269,7 @@ export async function registerPushToken(userId: string, token: string): Promise<
   try {
     await fetch(apiUrl(`/api/v1/users/${userId}/push-token`), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({ token }),
     });
   } catch (e) {
@@ -264,7 +282,7 @@ export async function updateVehicleKm(plate: string, km: number): Promise<void> 
   try {
     await fetch(apiUrl(`/api/v1/vehicles/${encodeURIComponent(plate)}/km`), {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({ km }),
     });
   } catch (e) {
@@ -299,7 +317,7 @@ export async function flushIncidentQueue(): Promise<void> {
     try {
       const res = await fetch(apiUrl('/api/v1/incidents'), {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
         body: JSON.stringify(action),
       });
       if (!res.ok) break;
@@ -322,7 +340,7 @@ export async function reportIncident(payload: {
   try {
     const res = await fetch(apiUrl('/api/v1/incidents'), {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error('Server error');
