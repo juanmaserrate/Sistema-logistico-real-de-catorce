@@ -9153,7 +9153,7 @@
 
         async function fetchUsersByRole(role) {
             try {
-                const res = await fetch(`${API_URL}/users?role=${encodeURIComponent(role)}`);
+                const res = await fetch(`${API_URL}/users?role=${encodeURIComponent(role)}`, { headers: getActorHeaders() });
                 if (!res.ok) return [];
                 const data = await res.json();
                 return Array.isArray(data) ? data : [];
@@ -9516,10 +9516,15 @@
             if (pwdInputWrap) pwdInputWrap.style.display = meta.needsLogin ? '' : 'none';
             const userInputWrap = document.getElementById('catalog-new-username-wrap');
             if (userInputWrap) userInputWrap.style.display = meta.needsLogin ? '' : 'none';
-            const importBtn = document.getElementById('catalog-import-january');
-            if (importBtn) importBtn.classList.toggle('hidden', meta.needsLogin);
             const createBtn = document.getElementById('catalog-create-repartos');
             if (createBtn) createBtn.classList.toggle('hidden', !meta.needsLogin);
+            // reset seleccion multiple al abrir el modal
+            const bar = document.getElementById('catalog-bulk-bar');
+            if (bar) bar.classList.add('hidden');
+            const count = document.getElementById('catalog-bulk-count');
+            if (count) count.innerText = '0';
+            const master = document.getElementById('catalog-check-all');
+            if (master) { master.checked = false; master.indeterminate = false; }
             document.getElementById('catalog-new-fullname').value = '';
             const pwd = document.getElementById('catalog-new-password');
             if (pwd) pwd.value = '';
@@ -9537,15 +9542,15 @@
         async function loadCatalogRows() {
             const tbody = document.getElementById('catalog-table-body');
             if (!tbody) return;
-            tbody.innerHTML = '<tr><td colspan="4" class="text-center py-8 text-[#A3AED0] text-xs font-bold">Cargando...</td></tr>';
+            tbody.innerHTML = '<tr><td colspan="5" class="text-center py-8 text-[#A3AED0] text-xs font-bold">Cargando...</td></tr>';
             try {
-                const res = await fetch(`${API_URL}/users?role=${encodeURIComponent(currentCatalogRole)}`);
+                const res = await fetch(`${API_URL}/users?role=${encodeURIComponent(currentCatalogRole)}`, { headers: getActorHeaders() });
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 const rows = await res.json();
                 renderCatalogRows(Array.isArray(rows) ? rows : []);
             } catch (e) {
                 console.error('Error cargando catálogo:', e);
-                tbody.innerHTML = `<tr><td colspan="4" class="text-center py-8 text-rose-500 text-xs font-bold">No se pudo cargar el catálogo</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-rose-500 text-xs font-bold">No se pudo cargar el catálogo</td></tr>`;
             }
         }
 
@@ -9554,7 +9559,8 @@
             const meta = catalogLabels[currentCatalogRole];
             if (!tbody) return;
             if (rows.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="4" class="text-center py-8 text-[#A3AED0] text-xs font-bold">Sin ${meta.title.toLowerCase()} cargados todavía. Agregá el primero abajo.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="5" class="text-center py-8 text-[#A3AED0] text-xs font-bold">Sin ${meta.title.toLowerCase()} cargados todavía. Agregá el primero abajo.</td></tr>`;
+                onCatalogRowCheckChange();
                 return;
             }
             tbody.innerHTML = rows.map(u => {
@@ -9567,6 +9573,7 @@
                     : '';
                 return `
                 <tr class="border-b border-[#F4F7FE]">
+                    <td class="py-3 w-8"><input type="checkbox" class="catalog-row-check w-4 h-4 accent-indigo-600 cursor-pointer" data-user-id="${u.id}" onchange="onCatalogRowCheckChange()"></td>
                     <td class="font-bold text-[#1B2559] py-3"><input type="text" value="${safeName}" data-user-id="${u.id}" class="catalog-name-input w-full bg-transparent border-0 outline-none font-bold text-[#1B2559]"></td>
                     ${loginCell}
                     <td class="text-[#A3AED0] text-xs">${u.createdAt ? new Date(u.createdAt).toLocaleDateString('es-AR') : '-'}</td>
@@ -9577,6 +9584,7 @@
                     </td>
                 </tr>`;
             }).join('');
+            onCatalogRowCheckChange();
         }
 
         async function addCatalogEntry() {
@@ -9596,7 +9604,7 @@
             try {
                 const res = await fetch(`${API_URL}/users`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getActorHeaders(),
                     body: JSON.stringify({
                         username,
                         fullName,
@@ -9619,48 +9627,6 @@
             }
         }
 
-        async function importCatalogFromJanuary() {
-            const role = currentCatalogRole;
-            if (role !== 'CHOFER' && role !== 'AUXILIAR') return;
-            const enero = (typeof salariesDatabase !== 'undefined' && salariesDatabase.enero) || [];
-            if (enero.length === 0) {
-                if (typeof addNotification === 'function') addNotification('warning', 'Sin datos', 'No hay datos de enero cargados todavía.');
-                return;
-            }
-            const tipo = role === 'CHOFER' ? 'Chofer' : 'Auxiliar';
-            const candidatos = enero.filter(e => String(e['Tipo Puesto'] || '').trim() === tipo);
-            if (candidatos.length === 0) {
-                if (typeof addNotification === 'function') addNotification('info', 'Sin coincidencias', `No hay ${tipo.toLowerCase()}es en la nómina de enero.`);
-                return;
-            }
-            if (!confirm(`¿Importar ${candidatos.length} ${tipo.toLowerCase()}es desde la nómina de enero? Los que ya existan no se duplican.`)) return;
-
-            let creados = 0, saltados = 0, errores = 0;
-            for (const e of candidatos) {
-                const fullName = `${e.Apellido || ''} ${e.Nombre || ''}`.trim();
-                if (!fullName) { saltados++; continue; }
-                const username = fullName
-                    .toUpperCase()
-                    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-                    .replace(/[^A-Z0-9]+/g, '.')
-                    .replace(/^\.+|\.+$/g, '');
-                try {
-                    const res = await fetch(`${API_URL}/users`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ username, fullName, role })
-                    });
-                    if (res.ok) creados++;
-                    else if (res.status === 409) saltados++;
-                    else errores++;
-                } catch (_) { errores++; }
-            }
-            if (typeof addNotification === 'function') {
-                addNotification('success', 'Importación terminada', `${creados} creados, ${saltados} ya existían, ${errores} errores.`);
-            }
-            await loadCatalogRows();
-        }
-
         async function createR1toR22() {
             const defaultPwd = prompt('Contraseña por defecto para R1..R22 (podés cambiarla luego por cada reparto):', 'a');
             if (!defaultPwd || defaultPwd.length < 1) {
@@ -9675,7 +9641,7 @@
                 try {
                     const res = await fetch(`${API_URL}/users`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: getActorHeaders(),
                         body: JSON.stringify({
                             username,
                             fullName: `Reparto ${i}`,
@@ -9702,7 +9668,7 @@
             try {
                 const res = await fetch(`${API_URL}/users/${userId}`, {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getActorHeaders(),
                     body: JSON.stringify({ fullName })
                 });
                 if (!res.ok) {
@@ -9719,7 +9685,7 @@
         async function deleteCatalogEntry(userId, name) {
             if (!confirm(`¿Eliminar a "${name}"? Esto no borra los viajes históricos que lo referencien.`)) return;
             try {
-                const res = await fetch(`${API_URL}/users/${userId}`, { method: 'DELETE' });
+                const res = await fetch(`${API_URL}/users/${userId}`, { method: 'DELETE', headers: getActorHeaders() });
                 if (!res.ok) {
                     const data = await res.json().catch(() => ({}));
                     throw new Error(data?.error || `HTTP ${res.status}`);
@@ -9732,13 +9698,53 @@
             }
         }
 
+        async function deleteSelectedCatalogEntries() {
+            const checks = Array.from(document.querySelectorAll('.catalog-row-check:checked'));
+            if (checks.length === 0) return;
+            if (!confirm(`¿Eliminar ${checks.length} registro(s)? Esto no borra los viajes históricos que los referencien.`)) return;
+
+            let borrados = 0, errores = 0;
+            for (const chk of checks) {
+                const userId = chk.getAttribute('data-user-id');
+                if (!userId) { errores++; continue; }
+                try {
+                    const res = await fetch(`${API_URL}/users/${userId}`, { method: 'DELETE', headers: getActorHeaders() });
+                    if (res.ok) borrados++;
+                    else errores++;
+                } catch (_) { errores++; }
+            }
+            if (typeof addNotification === 'function') {
+                addNotification(errores > 0 ? 'warning' : 'info', 'Eliminación en lote', `${borrados} eliminado(s), ${errores} error(es).`);
+            }
+            await loadCatalogRows();
+        }
+
+        function onCatalogRowCheckChange() {
+            const total  = document.querySelectorAll('.catalog-row-check').length;
+            const marked = document.querySelectorAll('.catalog-row-check:checked').length;
+            const bar    = document.getElementById('catalog-bulk-bar');
+            const count  = document.getElementById('catalog-bulk-count');
+            if (bar)   bar.classList.toggle('hidden', marked === 0);
+            if (count) count.innerText = String(marked);
+            const master = document.getElementById('catalog-check-all');
+            if (master) {
+                master.checked = marked > 0 && marked === total;
+                master.indeterminate = marked > 0 && marked < total;
+            }
+        }
+
+        function toggleAllCatalogRows(checked) {
+            document.querySelectorAll('.catalog-row-check').forEach(c => { c.checked = checked; });
+            onCatalogRowCheckChange();
+        }
+
         async function promptCatalogResetPassword(userId, name) {
             const pwd = prompt(`Nueva contraseña para ${name}:`);
             if (!pwd || !pwd.trim()) return;
             try {
                 const res = await fetch(`${API_URL}/users/${userId}/password`, {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getActorHeaders(),
                     body: JSON.stringify({ password: pwd.trim() })
                 });
                 if (!res.ok) {
@@ -9912,9 +9918,6 @@
                     <p id="catalog-modal-hint" class="text-xs text-[#A3AED0] font-medium mt-1">Catálogo de choferes (personas).</p>
                 </div>
                 <div class="flex gap-2">
-                    <button id="catalog-import-january" onclick="importCatalogFromJanuary()" class="hidden px-4 py-2 rounded-xl bg-emerald-50 text-emerald-700 text-[11px] font-bold hover:bg-emerald-100 transition-all whitespace-nowrap">
-                        <i data-lucide="download" class="w-3.5 h-3.5 inline-block mr-1"></i>Importar de Enero
-                    </button>
                     <button id="catalog-create-repartos" onclick="createR1toR22()" class="hidden px-4 py-2 rounded-xl bg-indigo-50 text-indigo-700 text-[11px] font-bold hover:bg-indigo-100 transition-all whitespace-nowrap">
                         <i data-lucide="zap" class="w-3.5 h-3.5 inline-block mr-1"></i>Crear R1..R22
                     </button>
@@ -9942,9 +9945,18 @@
                         </button>
                     </div>
                 </div>
+                <div id="catalog-bulk-bar" class="hidden mb-3 flex items-center justify-between gap-3 p-3 rounded-xl bg-rose-50 border border-rose-200">
+                    <div class="text-[11px] font-black text-rose-700 uppercase tracking-widest">
+                        <span id="catalog-bulk-count">0</span> seleccionado(s)
+                    </div>
+                    <button onclick="deleteSelectedCatalogEntries()" class="px-4 py-2 rounded-xl bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-700 transition-all whitespace-nowrap">
+                        <i data-lucide="trash-2" class="w-3.5 h-3.5 inline-block mr-1"></i>Eliminar seleccionados
+                    </button>
+                </div>
                 <table class="w-full text-left text-sm">
                     <thead>
                         <tr class="border-b-2 border-[#F4F7FE]">
+                            <th class="py-3 w-8"><input type="checkbox" id="catalog-check-all" class="w-4 h-4 accent-indigo-600 cursor-pointer" onchange="toggleAllCatalogRows(this.checked)"></th>
                             <th class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest py-3">Nombre</th>
                             <th id="catalog-login-col" class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest py-3" style="display:none;">Usuario</th>
                             <th class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest py-3">Alta</th>

@@ -3928,10 +3928,84 @@ function startCleanupJob() {
     console.log('[cleanup] Job iniciado — limpia GPS/Audit/Alerts/Fotos cada 24h');
 }
 
+// Datos de enero 2026: plantel real de choferes y auxiliares. Si no hay
+// ninguno cargado todavia en la base, se insertan automaticamente al arranque.
+// No tocan los viajes historicos. Son catalogos (sin login en la app movil).
+const EMPLOYEES_JANUARY_2026: Array<{ apellido: string; nombre: string; role: 'CHOFER' | 'AUXILIAR' }> = [
+    { apellido: 'AVILA',      nombre: 'EMANUEL GUSTAVO',  role: 'CHOFER'   },
+    { apellido: 'BASTIDA',    nombre: 'MARCELO ANGEL',    role: 'CHOFER'   },
+    { apellido: 'BUNGS',      nombre: 'JAVIER',           role: 'CHOFER'   },
+    { apellido: "D'AMICO",    nombre: 'GERMAN',           role: 'CHOFER'   },
+    { apellido: 'GALARZA',    nombre: 'DAMIAN',           role: 'CHOFER'   },
+    { apellido: 'VERBES',     nombre: 'RUBEN ESTEBAN',    role: 'CHOFER'   },
+    { apellido: 'SILVA',      nombre: 'EZEQUIEL',             role: 'AUXILIAR' },
+    { apellido: 'SUAREZ',     nombre: 'MAXIMILIANO',          role: 'AUXILIAR' },
+    { apellido: 'ALVIÑA',     nombre: 'NAHUEL',               role: 'AUXILIAR' },
+    { apellido: 'ARISMENDI',  nombre: 'GERMAN EZEQUIEL',      role: 'AUXILIAR' },
+    { apellido: 'BERNACHEA',  nombre: 'CARLOS ALBERTO',       role: 'AUXILIAR' },
+    { apellido: 'BRITOS',     nombre: 'EZEQUIEL ALEXIS',      role: 'AUXILIAR' },
+    { apellido: 'BRITOS',     nombre: 'FEDERICO NAHUEL',      role: 'AUXILIAR' },
+    { apellido: 'CARVAJAL',   nombre: 'JONATHAN',             role: 'AUXILIAR' },
+    { apellido: 'CUEVA',      nombre: 'ARIEL HERNAN',         role: 'AUXILIAR' },
+    { apellido: "D'AMICO",    nombre: 'AXEL',                 role: 'AUXILIAR' },
+    { apellido: 'DONATI',     nombre: 'SANTIAGO',             role: 'AUXILIAR' },
+    { apellido: 'FERNANDEZ',  nombre: 'BENJAMIN',             role: 'AUXILIAR' },
+    { apellido: 'GOMEZ',      nombre: 'LAUTARO LEONEL',       role: 'AUXILIAR' },
+    { apellido: 'LENCINA',    nombre: 'ARIEL',                role: 'AUXILIAR' },
+    { apellido: 'MARINGOLO',  nombre: 'MILTON',               role: 'AUXILIAR' },
+    { apellido: 'MARTINEZ',   nombre: 'LAUTARO',              role: 'AUXILIAR' },
+    { apellido: 'MONTIEL',    nombre: 'JOAQUIN',              role: 'AUXILIAR' },
+    { apellido: 'RIVAROLA',   nombre: 'MARIO ANDRES',         role: 'AUXILIAR' },
+    { apellido: 'RODRIGUEZ',  nombre: 'TOBIAS JESUS',         role: 'AUXILIAR' },
+    { apellido: 'RODRIGUEZ',  nombre: 'DENIS',                role: 'AUXILIAR' },
+    { apellido: 'ROMERO',     nombre: 'WALTER',               role: 'AUXILIAR' },
+    { apellido: 'SALAZAR',    nombre: 'EZEQUIEL',             role: 'AUXILIAR' },
+    { apellido: 'TABOADA',    nombre: 'MAURICIO',             role: 'AUXILIAR' },
+    { apellido: 'ZURITA',     nombre: 'ELIAS',                role: 'AUXILIAR' },
+];
+
+async function seedEmployeesIfEmpty() {
+    try {
+        // Contamos cuantos CHOFER + AUXILIAR ya existen. Si hay al menos uno,
+        // no hacemos nada (respetamos lo que el usuario haya cargado o borrado).
+        const existing = await prisma.user.count({
+            where: { role: { in: ['CHOFER', 'AUXILIAR'] } }
+        });
+        if (existing > 0) {
+            console.log(`[seed] CHOFER/AUXILIAR ya cargados (${existing}), se omite seed.`);
+            return;
+        }
+        let creados = 0, saltados = 0, errores = 0;
+        for (const e of EMPLOYEES_JANUARY_2026) {
+            const fullName = `${e.apellido} ${e.nombre}`;
+            const username = fullName.toUpperCase();
+            try {
+                await prisma.user.create({
+                    data: {
+                        username,
+                        password: '-', // CHOFER/AUXILIAR no loguean en la app
+                        fullName,
+                        role: e.role,
+                        tenantId: 'default-tenant'
+                    }
+                });
+                creados++;
+            } catch (err: any) {
+                if (err?.code === 'P2002') saltados++;
+                else { errores++; console.error(`[seed] Error creando ${username}:`, err?.message || err); }
+            }
+        }
+        console.log(`[seed] Empleados enero 2026: ${creados} creados, ${saltados} ya existian, ${errores} errores.`);
+    } catch (err) {
+        console.error('[seed] Fallo en seedEmployeesIfEmpty:', err);
+    }
+}
+
 async function bootstrapData() {
     try {
         await ensureSchemaReady();
         await initTenant();
+        await seedEmployeesIfEmpty();
         startupReady = true;
         startupError = null;
         console.log('[startup] Data initialization complete.');
