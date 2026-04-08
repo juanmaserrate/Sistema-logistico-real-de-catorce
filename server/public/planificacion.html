@@ -7461,21 +7461,6 @@
                     if (currentVal) vrpFleetSelect.value = currentVal;
                 }
 
-                // NUEVO: Sincronización Silenciosa de Choferes de Flota Propia (Paso 1 automático)
-                const propioDrivers = [...new Set(allVehicles
-                    .filter(v => (v.contractType || v.contract || '').toLowerCase() === 'propio')
-                    .map(v => v.driver)
-                    .filter(d => d && d !== 'SIN CHOFER')
-                )];
-
-                if (propioDrivers.length > 0) {
-                    fetch(`${API_URL}/sync-fleet-auth`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ drivers: propioDrivers })
-                    }).catch(e => console.warn("Silent sync failed:", e));
-                }
-
                 lucide.createIcons();
             } catch (e) { console.error("Error loading fleet:", e); }
         }

@@ -588,16 +588,74 @@ app.get('/api/v1/vehicles', async (req, res) => {
 
 app.post('/api/v1/vehicles', async (req, res) => {
     try {
-        const { plate, ...data } = req.body;
+        const body = req.body || {};
+        const plate = String(body.plate || '').trim();
+        if (!plate) return res.status(400).json({ error: 'plate es obligatorio' });
+
+        // Whitelist de campos del schema Vehicle. Cualquier otro campo se descarta
+        // silenciosamente para no romper con "Unknown argument" de Prisma.
+        const ALLOWED = [
+            'model', 'capacityWeight', 'capacityVolume', 'isRefrigerated',
+            'status', 'contractType', 'driverName', 'fuelType', 'insurance',
+            'usefulLife', 'vehicleType', 'currentKm'
+        ] as const;
+
+        const toNum = (v: any): number | null => {
+            if (v === null || v === undefined || v === '') return null;
+            const n = Number(String(v).replace(/[^\d.-]/g, ''));
+            return Number.isFinite(n) ? n : null;
+        };
+
+        const data: any = {};
+        for (const key of ALLOWED) {
+            if (body[key] === undefined) continue;
+            if (key === 'capacityWeight' || key === 'capacityVolume' || key === 'currentKm') {
+                data[key] = toNum(body[key]);
+            } else if (key === 'isRefrigerated') {
+                data[key] = !!body[key];
+            } else {
+                const s = String(body[key] ?? '').trim();
+                data[key] = s === '' ? null : s;
+            }
+        }
+
+        const tenantId = 'default-tenant';
         const vehicle = await prisma.vehicle.upsert({
             where: { plate },
-            update: { ...data },
-            create: { plate, ...data }
+            update: data,
+            create: { plate, tenantId, ...data }
         });
-        res.json(vehicle);
-    } catch (e) {
+
+        // Auto-crear usuario login para el chofer si el vehiculo es Propio.
+        // Esto ocurre SOLO cuando el operador da de alta o actualiza un vehiculo
+        // (no en cada lectura del modulo de flota).
+        let driverUserCreated = false;
+        if (data.contractType && String(data.contractType).toLowerCase() === 'propio'
+            && data.driverName && String(data.driverName).trim() !== ''
+            && String(data.driverName).trim().toUpperCase() !== 'SIN CHOFER') {
+            const username = String(data.driverName).trim().toUpperCase();
+            const before = await prisma.user.findUnique({ where: { username } });
+            await prisma.user.upsert({
+                where: { username },
+                update: { fullName: username },
+                create: {
+                    username,
+                    password: 'r14',
+                    fullName: username,
+                    role: 'DRIVER',
+                    tenantId
+                }
+            });
+            driverUserCreated = !before;
+        }
+
+        res.json({ ...vehicle, _meta: { driverUserCreated } });
+    } catch (e: any) {
         console.error("Error saving vehicle:", e);
-        res.status(500).json({ error: "Failed to save vehicle" });
+        const msg = e?.message || 'Error al guardar vehiculo';
+        // P2002 = unique constraint, P2025 = not found
+        if (e?.code === 'P2002') return res.status(409).json({ error: 'Patente duplicada' });
+        res.status(500).json({ error: msg });
     }
 });
 
@@ -799,32 +857,41 @@ app.get('/api/v1/salaries', async (req, res) => {
 
 app.post('/api/v1/salaries', async (req, res) => {
     try {
-        const { month, Nombre, Apellido, "Tipo Puesto": role, Bruto, Jornal, Antigüedad, "Escala Base": baseScale } = req.body;
+        const body = req.body || {};
+        const month = String(body.month || '').trim();
+        const lastName = String(body.Apellido || '').trim().toUpperCase();
+        if (!month) return res.status(400).json({ error: 'month es obligatorio' });
+        if (!lastName) return res.status(400).json({ error: 'Apellido es obligatorio' });
+
+        const toFloat = (v: any): number | null => {
+            if (v === null || v === undefined || v === '') return null;
+            const n = parseFloat(String(v).replace(/[^\d.-]/g, ''));
+            return Number.isFinite(n) ? n : null;
+        };
+        const toInt = (v: any): number | null => {
+            if (v === null || v === undefined || v === '') return null;
+            const n = parseInt(String(v).replace(/[^\d-]/g, ''), 10);
+            return Number.isFinite(n) ? n : null;
+        };
+
+        const firstName = String(body.Nombre || '').trim() || null;
+        const role = String(body['Tipo Puesto'] || '').trim() || null;
+        const grossSalary = toFloat(body.Bruto);
+        const dailyWage = toFloat(body.Jornal);
+        const seniority = toInt(body['Antigüedad']);
+        const baseScale = toFloat(body['Escala Base']);
+
         const salary = await prisma.employeeSalary.upsert({
-            where: { month_lastName: { month, lastName: Apellido } },
-            update: { 
-                firstName: Nombre, 
-                role, 
-                grossSalary: Bruto, 
-                dailyWage: Jornal, 
-                seniority: Antigüedad, 
-                baseScale 
-            },
-            create: { 
-                month, 
-                lastName: Apellido, 
-                firstName: Nombre, 
-                role, 
-                grossSalary: Bruto, 
-                dailyWage: Jornal, 
-                seniority: Antigüedad, 
-                baseScale 
-            }
+            where: { month_lastName: { month, lastName } },
+            update: { firstName, role, grossSalary, dailyWage, seniority, baseScale },
+            create: { month, lastName, firstName, role, grossSalary, dailyWage, seniority, baseScale }
         });
         res.json(salary);
-    } catch (e) {
+    } catch (e: any) {
         console.error("Error saving salary:", e);
-        res.status(500).json({ error: "Failed to save salary" });
+        const msg = e?.message || 'Error al guardar salario';
+        if (e?.code === 'P2002') return res.status(409).json({ error: 'Salario duplicado (mes + apellido)' });
+        res.status(500).json({ error: msg });
     }
 });
 
