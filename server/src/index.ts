@@ -247,7 +247,9 @@ async function initTenant() {
 function runPrismaDbPush(): Promise<void> {
     return new Promise((resolve, reject) => {
         const npxCmd = process.platform === 'win32' ? 'npx.cmd' : 'npx';
-        const child = spawn(npxCmd, ['prisma', 'db', 'push', '--accept-data-loss'], {
+        // SIN --accept-data-loss: si Prisma detecta que va a borrar columnas/tablas, falla.
+        // Esto protege los datos del operador en producción.
+        const child = spawn(npxCmd, ['prisma', 'db', 'push'], {
             cwd: path.join(__dirname, '..'),
             stdio: 'inherit'
         });
@@ -261,11 +263,35 @@ function runPrismaDbPush(): Promise<void> {
 }
 
 async function ensureSchemaReady() {
-    // Siempre correr db push al arranque: es idempotente y se asegura de que
-    // TODAS las tablas del schema existan, no solo Tenant.
-    console.log('[startup] Running prisma db push to ensure schema is up to date...');
-    await runPrismaDbPush();
-    console.log('[startup] Prisma schema ready.');
+    // SOLO correr db push si las tablas core no existen (DB recién creada).
+    // NUNCA correr en cada arranque: aunque db push sin --accept-data-loss falla
+    // ante data-loss, igual puede modificar índices o columnas opcionales.
+    // Si falta una tabla, lo detectamos por el query de Tenant.
+    try {
+        await prisma.$queryRawUnsafe('SELECT 1 FROM "Tenant" LIMIT 1');
+        // Si Tenant existe, asumimos que el schema ya fue aplicado por una migración previa.
+        // Cualquier cambio de schema debe hacerse manualmente con `prisma migrate` o `prisma db push`
+        // ejecutado deliberadamente por el operador, NO automáticamente al arranque.
+        console.log('[startup] Schema check OK (Tenant table exists). Skipping db push.');
+    } catch (err: any) {
+        const code = err?.code;
+        const msg = String(err?.message || '');
+        const missingTable =
+            code === 'P2021' ||
+            (code === 'P2010' && (
+                /no such table:\s*tenant/i.test(msg) ||
+                /relation "Tenant" does not exist/i.test(msg) ||
+                /relation "tenant" does not exist/i.test(msg)
+            ));
+        if (!missingTable) {
+            console.error('[startup] Unexpected DB error during schema check:', msg);
+            throw err;
+        }
+        console.warn('[startup] Tenant table missing, running `prisma db push` (sin --accept-data-loss)...');
+        await runPrismaDbPush();
+        await prisma.$queryRawUnsafe('SELECT 1 FROM "Tenant" LIMIT 1');
+        console.log('[startup] Prisma schema applied successfully.');
+    }
 }
 
 /** Usuario chofer para rutas vinculadas a viajes semanales (username = nombre en mayúsculas). */
