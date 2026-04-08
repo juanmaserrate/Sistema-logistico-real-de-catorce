@@ -7,6 +7,8 @@ import type { SessionUser } from './src/types';
 import { loadSession, clearSession } from './src/sessionStorage';
 import LoginScreen from './src/screens/LoginScreen';
 import TrackScreen from './src/screens/TrackScreen';
+import HistoryScreen from './src/screens/HistoryScreen';
+import ProfileScreen from './src/screens/ProfileScreen';
 import {
   NavProviderGate,
   isGoogleNavigationNativeAvailable,
@@ -105,6 +107,28 @@ export default function App() {
                 )}
               </Stack.Screen>
             ) : null}
+            <Stack.Screen name="History" options={{ headerShown: false, animation: 'slide_from_right' }}>
+              {({ navigation }) => (
+                session ? (
+                  <HistoryScreen session={session} navigation={navigation} />
+                ) : null
+              )}
+            </Stack.Screen>
+            <Stack.Screen name="Profile" options={{ headerShown: false, animation: 'slide_from_right' }}>
+              {({ navigation }) => (
+                session ? (
+                  <ProfileScreen
+                    session={session}
+                    navigation={navigation}
+                    onLogout={async () => {
+                      await clearSession();
+                      setSession(null);
+                      navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
+                    }}
+                  />
+                ) : null
+              )}
+            </Stack.Screen>
           </Stack.Navigator>
         </NavigationContainer>
       </SafeAreaProvider>

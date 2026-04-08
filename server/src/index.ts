@@ -1644,7 +1644,7 @@ app.post('/api/v1/sync-fleet-auth', async (req, res) => {
 
 // Route & Execution (planificación: rutas asignadas a choferes con paradas)
 app.get('/api/v1/routes', async (req, res) => {
-    const { driverId, date } = req.query;
+    const { driverId, date, fromDate, toDate, days } = req.query;
     const where: any = {};
     if (driverId) where.driverId = String(driverId);
     if (date && typeof date === 'string') {
@@ -1659,6 +1659,25 @@ app.get('/api/v1/routes', async (req, res) => {
         const end = new Date(base);
         end.setHours(23, 59, 59, 999);
         where.date = { gte: start, lte: end };
+    }
+    // Rango de fechas para historial de la app móvil
+    if (!date) {
+        const dateRange: any = {};
+        if (fromDate && typeof fromDate === 'string') {
+            const d = new Date(fromDate); d.setHours(0, 0, 0, 0);
+            dateRange.gte = d;
+        } else if (days && typeof days === 'string') {
+            const n = parseInt(days, 10);
+            if (n > 0 && n <= 365) {
+                const d = new Date(); d.setDate(d.getDate() - n); d.setHours(0, 0, 0, 0);
+                dateRange.gte = d;
+            }
+        }
+        if (toDate && typeof toDate === 'string') {
+            const d = new Date(toDate); d.setHours(23, 59, 59, 999);
+            dateRange.lte = d;
+        }
+        if (Object.keys(dateRange).length > 0) where.date = dateRange;
     }
     const routes = await prisma.route.findMany({
         where,

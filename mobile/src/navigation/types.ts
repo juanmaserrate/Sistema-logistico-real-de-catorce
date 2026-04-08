@@ -8,4 +8,6 @@ export type RootStackParamList = {
     destLng: number;
     title: string;
   };
+  History: undefined;
+  Profile: undefined;
 };

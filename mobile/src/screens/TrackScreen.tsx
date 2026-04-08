@@ -86,6 +86,8 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   const [reorderModalOpen, setReorderModalOpen] = useState(false);
   // Toast de ruta actualizada
   const [routeChangedToast, setRouteChangedToast] = useState(false);
+  // Búsqueda de paradas
+  const [stopSearch, setStopSearch] = useState('');
 
   const selected = useMemo(
     () => (selId != null ? routes.find((r) => r.id === selId) ?? null : null),
@@ -183,6 +185,35 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   const routeStopsSorted = useMemo(() => {
     if (!selected?.stops?.length) return [];
     return [...selected.stops].sort((a, b) => a.sequence - b.sequence);
+  }, [selected]);
+
+  /** Paradas filtradas por búsqueda */
+  const filteredStops = useMemo(() => {
+    const q = stopSearch.trim().toLowerCase();
+    if (!q) return routeStopsSorted;
+    return routeStopsSorted.filter((s) => {
+      const name = (s.client?.name ?? '').toLowerCase();
+      const addr = (s.client?.address ?? '').toLowerCase();
+      const barrio = (s.client?.barrio ?? '').toLowerCase();
+      return name.includes(q) || addr.includes(q) || barrio.includes(q);
+    });
+  }, [routeStopsSorted, stopSearch]);
+
+  /** Stats del recorrido de hoy */
+  const todayStats = useMemo(() => {
+    if (!selected) return null;
+    const stops = selected.stops;
+    const total = stops.length;
+    const completed = stops.filter((s) => s.status === 'COMPLETED').length;
+    const undeliverable = stops.filter((s) => s.status === 'UNDELIVERABLE').length;
+    const pending = stops.filter((s) => s.status === 'PENDING' || s.status === 'ARRIVED').length;
+    const times = stops
+      .filter((s) => s.actualArrival && s.actualDeparture)
+      .map((s) => (new Date(s.actualDeparture!).getTime() - new Date(s.actualArrival!).getTime()) / 60000);
+    const avgMin = times.length > 0
+      ? Math.round(times.reduce((a, b) => a + b, 0) / times.length)
+      : null;
+    return { total, completed, undeliverable, pending, avgMin };
   }, [selected]);
 
   const fmtStopTime = (iso: string | null | undefined) => {
@@ -403,6 +434,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   useEffect(() => {
     setNav(null);
     setNavErr('');
+    setStopSearch('');
   }, [selId]);
 
   useEffect(() => {
@@ -581,32 +613,15 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
 
       <View style={[styles.panel, { paddingTop: Math.max(12, insets.top) }]}>
         <View style={styles.panelHeader}>
-          <View>
+          <View style={{ flex: 1 }}>
             <Text style={styles.panelTitle}>Mi recorrido</Text>
             <Text style={styles.panelSub}>{session.fullName}</Text>
           </View>
-          <Pressable
-            onPress={() => {
-              Alert.alert(
-                'Cerrar sesión',
-                '¿Seguro que querés salir? Se detendrá el envío de ubicación.',
-                [
-                  { text: 'Cancelar', style: 'cancel' },
-                  {
-                    text: 'Sí, salir',
-                    style: 'destructive',
-                    onPress: async () => {
-                      await stopTracking();
-                      await clearSession();
-                      onLogout();
-                    },
-                  },
-                ]
-              );
-            }}
-            style={styles.outBtn}
-          >
-            <Text style={styles.outBtnTxt}>Salir</Text>
+          <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('History')}>
+            <Text style={styles.iconBtnTxt}>📋</Text>
+          </Pressable>
+          <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('Profile')}>
+            <Text style={styles.iconBtnTxt}>👤</Text>
           </Pressable>
         </View>
         <ScrollView
@@ -636,6 +651,45 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
               <Text style={styles.offlineTxt}>⚡ {pendingOffline} acción(es) pendiente(s) de sincronizar</Text>
             </View>
           )}
+
+          {/* Panel de estadísticas del día */}
+          {todayStats && todayStats.total > 0 ? (
+            <View style={styles.statsPanel}>
+              <View style={styles.statsPanelRow}>
+                <View style={styles.statsPanelItem}>
+                  <Text style={styles.statsPanelVal}>{todayStats.total}</Text>
+                  <Text style={styles.statsPanelLbl}>Total</Text>
+                </View>
+                <View style={[styles.statsPanelItem, styles.statsPanelItemGreen]}>
+                  <Text style={[styles.statsPanelVal, { color: '#16a34a' }]}>{todayStats.completed}</Text>
+                  <Text style={styles.statsPanelLbl}>✓ Entregadas</Text>
+                </View>
+                {todayStats.undeliverable > 0 ? (
+                  <View style={[styles.statsPanelItem, styles.statsPanelItemRed]}>
+                    <Text style={[styles.statsPanelVal, { color: '#e11d48' }]}>{todayStats.undeliverable}</Text>
+                    <Text style={styles.statsPanelLbl}>✗ No entregadas</Text>
+                  </View>
+                ) : null}
+                <View style={styles.statsPanelItem}>
+                  <Text style={[styles.statsPanelVal, { color: '#d97706' }]}>{todayStats.pending}</Text>
+                  <Text style={styles.statsPanelLbl}>Pendientes</Text>
+                </View>
+                {todayStats.avgMin !== null ? (
+                  <View style={styles.statsPanelItem}>
+                    <Text style={styles.statsPanelVal}>{todayStats.avgMin}m</Text>
+                    <Text style={styles.statsPanelLbl}>Prom</Text>
+                  </View>
+                ) : null}
+              </View>
+              {/* Barra de progreso */}
+              <View style={styles.statsPanelBar}>
+                <View style={[
+                  styles.statsPanelBarFill,
+                  { width: `${Math.round((todayStats.completed / todayStats.total) * 100)}%` as any }
+                ]} />
+              </View>
+            </View>
+          ) : null}
 
           {!tracking ? (
             <Pressable style={styles.ficharEntrada} onPress={startTracking}>
@@ -780,6 +834,13 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                   </Pressable>
                 ) : null}
               </View>
+              <TextInput
+                style={styles.stopSearchInput}
+                placeholder="Buscar parada por nombre o dirección..."
+                placeholderTextColor="#94a3b8"
+                value={stopSearch}
+                onChangeText={setStopSearch}
+              />
               <Text style={styles.stopsSectionHint}>
                 Llegada y salida con horario; al finalizar entrega podés cargar observaciones, foto y marcar si fue
                 sin inconvenientes.
@@ -791,7 +852,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                   </Text>
                 </View>
               ) : null}
-              {routeStopsSorted.map((st) => (
+              {filteredStops.map((st) => (
                 <View key={st.id} style={styles.stopCard}>
                   <Text style={styles.stopCardTitle}>
                     {st.sequence}. {st.client?.name || 'Cliente'}
@@ -1009,6 +1070,18 @@ const styles = StyleSheet.create({
   stopUndeliverableReason: { fontSize: 11, fontWeight: '800', color: '#e11d48' },
   toastBanner: { backgroundColor: '#dbeafe', borderRadius: 10, padding: 8, marginBottom: 8, borderWidth: 1, borderColor: '#93c5fd' },
   toastTxt: { fontSize: 12, color: '#1e40af', fontWeight: '800', textAlign: 'center' },
+  iconBtn: { padding: 8, marginLeft: 2 },
+  iconBtnTxt: { fontSize: 20 },
+  statsPanel: { backgroundColor: '#f8fafc', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', padding: 10, marginBottom: 10 },
+  statsPanelRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 8 },
+  statsPanelItem: { backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5, alignItems: 'center', minWidth: 50 },
+  statsPanelItemGreen: { backgroundColor: '#f0fdf4' },
+  statsPanelItemRed: { backgroundColor: '#fff1f2' },
+  statsPanelVal: { fontSize: 15, fontWeight: '900', color: '#0f172a' },
+  statsPanelLbl: { fontSize: 8, color: '#94a3b8', fontWeight: '700', marginTop: 1 },
+  statsPanelBar: { height: 5, backgroundColor: '#e2e8f0', borderRadius: 3, overflow: 'hidden' },
+  statsPanelBarFill: { height: 5, backgroundColor: '#4f46e5', borderRadius: 3 },
+  stopSearchInput: { backgroundColor: '#f1f5f9', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 12, color: '#0f172a', marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0' },
   stopCard: {
     backgroundColor: '#fff',
     borderRadius: 14,

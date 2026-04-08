@@ -264,6 +264,17 @@ export async function patchRouteRecorrido(
   }
 }
 
+// ── Historial de rutas ────────────────────────────────────────────────────────
+
+export async function fetchRouteHistory(driverId: string, days = 30): Promise<Route[]> {
+  const q = new URLSearchParams({ driverId, days: String(days), _ts: String(Date.now()) });
+  const res = await fetch(apiUrl(`/api/v1/routes?${q}`), {
+    headers: { 'Cache-Control': 'no-cache', ...(await authHeaders()) },
+  });
+  if (!res.ok) throw new Error('No se pudo cargar el historial');
+  return (await res.json()) as Route[];
+}
+
 // ── Reordenamiento de paradas ─────────────────────────────────────────────────
 
 export async function reorderRouteStops(
