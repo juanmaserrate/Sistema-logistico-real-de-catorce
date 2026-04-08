@@ -6642,6 +6642,25 @@
             return !!(el && el.checked && currentVrpSequence.length > 0);
         }
 
+        /** Viewport culling para modo sin clusterer: oculta marcadores fuera del área visible */
+        let _vrpViewportCullingAttached = false;
+        function vrpAttachViewportCulling() {
+            if (_vrpViewportCullingAttached || !vrpMap) return;
+            _vrpViewportCullingAttached = true;
+            const cull = debounce(() => {
+                if (vrpMarkerClusterer) return; // clusterer activo, no interferir
+                const bounds = vrpMap.getBounds();
+                if (!bounds) return;
+                for (const [, m] of vrpMarkersByClientId) {
+                    if (!m.__vrpMapShown) continue; // el filtro lo ocultó
+                    const inView = bounds.contains(m.getPosition());
+                    if (inView && m.getMap() !== vrpMap) m.setMap(vrpMap);
+                    else if (!inView && m.getMap()) m.setMap(null);
+                }
+            }, 180);
+            vrpMap.addListener('idle', cull);
+        }
+
         function vrpSyncMarkerMap(marker, visible) {
             if (!vrpMap || !window.google?.maps) return;
             if (marker.__vrpMapShown === visible) return;
@@ -7181,31 +7200,40 @@
 
             vrpRefreshClientDatalist();
 
+            // Crear marcadores en lotes de 60 para no bloquear el hilo principal
             const batch = [];
-            allSchools.forEach((c) => {
-                if (c.latitude == null || c.longitude == null) return;
-                const lat = Number(c.latitude);
-                const lng = Number(c.longitude);
-                const marker = new google.maps.Marker({
-                    position: { lat, lng },
-                    map: null,
-                    icon: vrpSchoolMarkerIcon(null, false),
-                    title: c.name || '',
-                    optimized: true
+            const CHUNK = 60;
+            const schoolsWithCoords = allSchools.filter(c => c.latitude != null && c.longitude != null);
+            for (let i = 0; i < schoolsWithCoords.length; i += CHUNK) {
+                const slice = schoolsWithCoords.slice(i, i + CHUNK);
+                slice.forEach((c) => {
+                    const lat = Number(c.latitude);
+                    const lng = Number(c.longitude);
+                    const marker = new google.maps.Marker({
+                        position: { lat, lng },
+                        map: null,
+                        icon: vrpSchoolMarkerIcon(null, false),
+                        title: c.name || '',
+                        optimized: true
+                    });
+                    marker.addListener('click', () => {
+                        vrpOpenInfoWindow(
+                            `<div class="p-2"><p class="font-bold text-[#1B2559] text-sm">${vrpEscapeHtml(c.name)}</p><p class="text-xs text-[#A3AED0]">${vrpEscapeHtml(c.address || '')}</p></div>`,
+                            marker
+                        );
+                        if (document.getElementById('vrp-zoom-on-select')?.checked) {
+                            vrpMap.panTo({ lat, lng });
+                            vrpMap.setZoom(VRP_MAP_FOCUS_ZOOM);
+                        }
+                    });
+                    vrpMarkersByClientId.set(c.id, marker);
+                    batch.push(marker);
                 });
-                marker.addListener('click', () => {
-                    vrpOpenInfoWindow(
-                        `<div class="p-2"><p class="font-bold text-[#1B2559] text-sm">${vrpEscapeHtml(c.name)}</p><p class="text-xs text-[#A3AED0]">${vrpEscapeHtml(c.address || '')}</p></div>`,
-                        marker
-                    );
-                    if (document.getElementById('vrp-zoom-on-select')?.checked) {
-                        vrpMap.panTo({ lat, lng });
-                        vrpMap.setZoom(VRP_MAP_FOCUS_ZOOM);
-                    }
-                });
-                vrpMarkersByClientId.set(c.id, marker);
-                batch.push(marker);
-            });
+                // Ceder al browser entre lotes para mantener el UI responsivo
+                if (i + CHUNK < schoolsWithCoords.length) {
+                    await new Promise(r => setTimeout(r, 0));
+                }
+            }
 
             const mod = await loadVrpClustererModule();
             if (mod && mod.MarkerClusterer) {
@@ -7215,11 +7243,15 @@
                 }
                 vrpMarkerClusterer = new mod.MarkerClusterer(clusterOpts);
             } else {
-                batch.forEach((m) => m.setMap(vrpMap));
+                // Sin clusterer: usar viewport culling para no renderizar todo a la vez
+                vrpAttachViewportCulling();
+                const bounds = vrpMap.getBounds();
+                batch.forEach((m) => {
+                    const inView = !bounds || bounds.contains(m.getPosition());
+                    m.setMap(inView ? vrpMap : null);
+                });
             }
-            batch.forEach((m) => {
-                m.__vrpMapShown = true;
-            });
+            batch.forEach((m) => { m.__vrpMapShown = true; });
             populateVrpMapFilters();
             updateVrpMarkersStatus();
         }
