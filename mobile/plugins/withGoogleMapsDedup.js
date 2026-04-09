@@ -1,25 +1,33 @@
 const { withAppBuildGradle } = require("expo/config-plugins");
 
-// Excluye el duplicado de play-services-maps SOLO de react-native-navigation-sdk
-// para evitar conflicto de versiones, pero sin eliminar la librería que usa react-native-maps.
+// El Navigation SDK (com.google.android.libraries.navigation:navigation) trae
+// las clases de com.google.android.gms.maps EMBEBIDAS dentro de su propio AAR.
+// Por eso colisiona con play-services-maps (que trae react-native-maps).
+// Solución: excluir play-services-maps globalmente. react-native-maps sigue
+// funcionando porque las mismas clases las aporta el Navigation SDK.
 const BLOCK = `
 configurations.configureEach {
-  if (name.contains("ReactNativeNavigationSdk") || name.contains("navsdk")) {
-    exclude group: "com.google.android.gms", module: "play-services-maps"
-  }
+  exclude group: "com.google.android.gms", module: "play-services-maps"
 }
 `.trim();
 
 module.exports = function withGoogleMapsDedup(config) {
   return withAppBuildGradle(config, (config) => {
-    const contents = config.modResults.contents;
-    // Remover el bloque problemático anterior si existe
-    const old = `configurations.configureEach {\n  exclude group: "com.google.android.gms", module: "play-services-maps"\n}`;
-    let updated = contents.replace(old, '');
-    if (!updated.includes('if (name.contains("ReactNativeNavigationSdk")')) {
-      updated = `${updated}\n\n${BLOCK}\n`;
-    }
-    config.modResults.contents = updated;
+    let contents = config.modResults.contents;
+
+    // Limpiar versiones previas del bloque (condicional navsdk)
+    contents = contents.replace(
+      /configurations\.configureEach\s*\{\s*if\s*\(name\.contains\("ReactNativeNavigationSdk"\)[\s\S]*?\}\s*\}/,
+      ''
+    );
+    // Limpiar el bloque global si ya existe para no duplicarlo
+    contents = contents.replace(
+      /configurations\.configureEach\s*\{\s*exclude group: "com\.google\.android\.gms", module: "play-services-maps"\s*\}/,
+      ''
+    );
+
+    contents = `${contents.trimEnd()}\n\n${BLOCK}\n`;
+    config.modResults.contents = contents;
     return config;
   });
 };
