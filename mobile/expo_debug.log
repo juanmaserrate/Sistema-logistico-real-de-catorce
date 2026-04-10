@@ -1,0 +1,36 @@
+=== Starting Expo Start ===
+Timestamp: Sat Apr  4 12:48:09     2026
+Working directory: /c/Users/Usuario/Desktop/Claude/Sistema-logistico-real-de-catorce/mobile
+Node version: v24.13.1
+NPM version: 11.8.0
+=== Environment ===
+EXPO_PUBLIC_API_URL=
+=== Running Expo ===
+env: load .env
+env: export EXPO_PUBLIC_API_URL GOOGLE_MAPS_ANDROID_KEY
+Starting project at C:\Users\Usuario\Desktop\Claude\Sistema-logistico-real-de-catorce\mobile
+Starting Metro Bundler
+Waiting on http://localhost:8089
+Logs for your project will appear below.
+C:\Users\Usuario\Desktop\Claude\Sistema-logistico-real-de-catorce\mobile\node_modules\expo\node_modules\@expo\cli\build\src\utils\errors.js:130
+    throw error;
+    ^
+
+Error: ENOENT: no such file or directory, watch 'C:\Users\Usuario\Desktop\Claude\Sistema-logistico-real-de-catorce\mobile\node_modules\.expo-structured-headers-YJkGec3U\android\src\main\java\expo'
+    at FSWatcher.<computed> (node:internal/fs/watchers:254:19)
+    at Object.watch (node:fs:2536:36)
+    at FallbackWatcher._watchdir (C:\Users\Usuario\Desktop\Claude\Sistema-logistico-real-de-catorce\mobile\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:119:33)
+    at C:\Users\Usuario\Desktop\Claude\Sistema-logistico-real-de-catorce\mobile\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:219:22
+    at Walker.<anonymous> (C:\Users\Usuario\Desktop\Claude\Sistema-logistico-real-de-catorce\mobile\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:358:5)
+    at Walker.emit (node:events:508:28)
+    at C:\Users\Usuario\Desktop\Claude\Sistema-logistico-real-de-catorce\mobile\node_modules\walker\lib\walker.js:69:16
+    at FSReqCallback.oncomplete (node:fs:184:23) {
+  errno: -4058,
+  syscall: 'watch',
+  code: 'ENOENT',
+  path: 'C:\\Users\\Usuario\\Desktop\\Claude\\Sistema-logistico-real-de-catorce\\mobile\\node_modules\\.expo-structured-headers-YJkGec3U\\android\\src\\main\\java\\expo',
+  filename: 'C:\\Users\\Usuario\\Desktop\\Claude\\Sistema-logistico-real-de-catorce\\mobile\\node_modules\\.expo-structured-headers-YJkGec3U\\android\\src\\main\\java\\expo'
+}
+
+Node.js v24.13.1
+=== Expo Finished ===

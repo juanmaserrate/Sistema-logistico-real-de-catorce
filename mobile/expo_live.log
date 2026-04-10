@@ -1,0 +1,8 @@
+env: load .env
+env: export EXPO_PUBLIC_API_URL GOOGLE_MAPS_ANDROID_KEY
+Starting project at C:\Users\Usuario\Desktop\Claude\Sistema-logistico-real-de-catorce\mobile
+› Port 8081 is being used by another process
+Input is required, but 'npx expo' is in non-interactive mode.
+Required input:
+> Use port 8084 instead?
+› Skipping dev server

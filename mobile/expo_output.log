@@ -1,0 +1,7 @@
+env: load .env
+env: export EXPO_PUBLIC_API_URL GOOGLE_MAPS_ANDROID_KEY
+Starting project at C:\Users\Usuario\Desktop\Claude\Sistema-logistico-real-de-catorce\mobile
+Starting Metro Bundler
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+Waiting on http://localhost:8084
+Logs for your project will appear below.

@@ -1,0 +1,36 @@
+env: load .env
+env: export EXPO_PUBLIC_API_URL GOOGLE_MAPS_ANDROID_KEY
+Starting project at C:\Users\Usuario\Desktop\Claude\Sistema-logistico-real-de-catorce\mobile
+Starting Metro Bundler
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+Waiting on http://localhost:19008
+Logs for your project will appear below.
+Android .\index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Android .\index.ts ▓░░░░░░░░░░░░░░░  9.0% (11/49)
+Android .\index.ts ▓░░░░░░░░░░░░░░░ 11.4% ( 77/228)
+Android .\index.ts ▓▓▓▓▓▓▓▓░░░░░░░░ 53.9% (422/575)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓░░░░░░ 67.9% (705/858)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 98.9% (970/999)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.8% (1014/1015)
+Android Bundled 22725ms index.ts (1025 modules)
+C:\Users\Usuario\Desktop\Claude\Sistema-logistico-real-de-catorce\mobile\node_modules\expo\node_modules\@expo\cli\build\src\utils\errors.js:130
+    throw error;
+    ^
+
+Error: ENOENT: no such file or directory, watch 'C:\Users\Usuario\Desktop\Claude\Sistema-logistico-real-de-catorce\mobile\node_modules\.expo-eas-client-oNh7LqXf\android\src\main\java\expo\modules'
+    at FSWatcher.<computed> (node:internal/fs/watchers:254:19)
+    at Object.watch (node:fs:2536:36)
+    at FallbackWatcher._watchdir (C:\Users\Usuario\Desktop\Claude\Sistema-logistico-real-de-catorce\mobile\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:119:33)
+    at C:\Users\Usuario\Desktop\Claude\Sistema-logistico-real-de-catorce\mobile\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:219:22
+    at Walker.<anonymous> (C:\Users\Usuario\Desktop\Claude\Sistema-logistico-real-de-catorce\mobile\node_modules\metro-file-map\src\watchers\FallbackWatcher.js:358:5)
+    at Walker.emit (node:events:508:28)
+    at C:\Users\Usuario\Desktop\Claude\Sistema-logistico-real-de-catorce\mobile\node_modules\walker\lib\walker.js:69:16
+    at FSReqCallback.oncomplete (node:fs:184:23) {
+  errno: -4058,
+  syscall: 'watch',
+  code: 'ENOENT',
+  path: 'C:\\Users\\Usuario\\Desktop\\Claude\\Sistema-logistico-real-de-catorce\\mobile\\node_modules\\.expo-eas-client-oNh7LqXf\\android\\src\\main\\java\\expo\\modules',
+  filename: 'C:\\Users\\Usuario\\Desktop\\Claude\\Sistema-logistico-real-de-catorce\\mobile\\node_modules\\.expo-eas-client-oNh7LqXf\\android\\src\\main\\java\\expo\\modules'
+}
+
+Node.js v24.13.1

@@ -1,0 +1,56 @@
+★ eas-cli@18.5.0 is now available.
+To upgrade, run:
+npm install -g eas-cli
+Proceeding with outdated version.
+
+(node:24020) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Resolved "preview" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+Environment variables with visibility "Plain text" and "Sensitive" loaded from the "preview" environment on EAS: GOOGLE_MAPS_ANDROID_KEY.
+Environment variables loaded from the "preview" build profile "env" configuration: EXPO_PUBLIC_API_URL, GOOGLE_MAPS_ANDROID_KEY, GOOGLE_MAPS_IOS_KEY.
+The following environment variables are defined in both the "preview" build profile "env" configuration and the "preview" environment on EAS: GOOGLE_MAPS_ANDROID_KEY. The values from the build profile configuration will be used.
+
+
+
+✔ Using remote Android credentials (Expo server)
+✔ Using Keystore from configuration: Build Credentials -NYHmchcXb (default)
+
+Compressing project files and uploading to EAS Build. Learn more: https://expo.fyi/eas-build-archive
+- Compressing project files
+- Uploading to EAS Build (0 / 2.0 MB)
+✔ Uploaded to EAS 1s
+- Computing project fingerprint
+✔ Computed project fingerprint
+
+See logs: https://expo.dev/accounts/juanmaserrate1/projects/r14-seguimiento/builds/efe8ede6-b3a4-4b9b-a6d7-f0ca66b9f649
+
+Waiting for build to complete. You can press Ctrl+C to exit.
+- Waiting for build to complete.
+✔ Build finished
+
+  ▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄▄
+  █ ▄▄▄▄▄ █▀ ▄█  ▀▀  █▄▄▄▀▄▀▀▀▀ █▄▄ █ ▄▄▄▄▄ █
+  █ █   █ █▀ ▀▄▀▄▀  ▄▄█ ▄██▀▀▄  ▀ █▀█ █   █ █
+  █ █▄▄▄█ █▀██▀▄▄█ ▀▀ █▀  ▄███▀█▀ ▄▀█ █▄▄▄█ █
+  █▄▄▄▄▄▄▄█▄█▄█ █ ▀▄█▄█▄▀ █ █ ▀ █▄█▄█▄▄▄▄▄▄▄█
+  █▄   ▄▀▄ ▄█▄ ▀▄▄▄ ▄ ▀ ▀▀ █ ▄▄  ▀▀▀▄▀ ▀ █ ▀█
+  █▀▄ ▀█▀▄  ▄▄▀██▀▄ █▄▀▄▀▄█▀█ ▄███▀ ███▄▀█▀██
+  █  ▀▀█ ▄▀▀▀█▄▄▀▀ ▀▀▄█▀▀▀▀▀ ▄█▀▄▄ ▀▀▀▀▀ ▄█ █
+  █▄██▀█▀▄▄▀ ▄ ▄█ █▀▄█ ▀ ▀▀ ▄▄▄▀▄▄▀▄ ██▄▀█▀██
+  ████▄▀█▄ ▀█  ▄ ▄█▀ █ ▀▀█▀▄▄▄▄▀▄▀▀█▀▀ ▀▄▄▀▀█
+  █ █████▄█▀▄▄▀█ ▄   ▀█  ▄▀ ▄▄▄ █▀▀▀▀█  ▀████
+  █ ▄▀▄▀ ▄█▄█▄▄▀▀▄ ▄█▀█▄█▀▀▄ ▀█▄ ▀▀▄▀▀▄▀▄▄▄ █
+  █ ▀▄█ ▄▄▄▄▀▄█▀█▀ ▄▄ █▄▀ ▀▄█  ▄▄█▀██   ▄▄▀██
+  █▄██▀▄ ▄ ▄▄▀▀ ▄▄▄▀▄▄▀▀█ ▀█▄▄▄█▄█▀  ▀▀▀█▄  █
+  █▄▄▄▀█▄▄  ██▀██▀▄▄█▄▀█ ▀▀ ██▄▄▄ █ ██ █▄▄███
+  █ ▄▄▀▄█▄▄ █▄▄▄█▀ ▀█▄▄▀ █▀▀▄▄▄▀▄▄▀▀▄▀▀▀  ▀▀█
+  █ █ ▄██▄▀█▄▄ ▄█ █▀█▄ ▀ █▀▄█▀  ███ ▀ ▀▀ ▄███
+  █▄█▄██▄▄▄▀   ▄ ▄█  ▄ ▀█ ▀█▄ █  ▀▄ ▄▄▄ █ █ █
+  █ ▄▄▄▄▄ █▄▀▄█▄ ▄   ▀▀ █▄██▄▀ ▀█▄  █▄█ █▄▀▀█
+  █ █   █ █ ███▀▀▄▀▄█▀▄▄ ▄▀▀▄▄▄█ ▀█▄▄▄▄▄▀▄ ▀█
+  █ █▄▄▄█ █  ██▀▄▄ ▄█▀█▄▀██▀▄▀▄█▄▀▄▀▄▄▀▄ █▀██
+  █▄▄▄▄▄▄▄█▄████▄▄▄█▄▄███▄█▄▄▄▄▄▄███▄▄▄██▄███
+
+
+🤖 Open this link on your Android devices (or scan the QR code) to install the app:
+https://expo.dev/accounts/juanmaserrate1/projects/r14-seguimiento/builds/efe8ede6-b3a4-4b9b-a6d7-f0ca66b9f649

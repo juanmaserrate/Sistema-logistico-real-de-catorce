@@ -1,0 +1,37 @@
+env: load .env
+env: export EXPO_PUBLIC_API_URL GOOGLE_MAPS_ANDROID_KEY
+Starting project at C:\Users\Usuario\Desktop\Claude\Sistema-logistico-real-de-catorce\mobile
+Starting Metro Bundler
+warning: Bundler cache is empty, rebuilding (this may take a minute)
+Waiting on http://localhost:19009
+Logs for your project will appear below.
+Android .\index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Android .\index.ts ▓▓▓░░░░░░░░░░░░░ 22.3% (26/55)
+Android .\index.ts ▓▓▓▓▓▓░░░░░░░░░░ 40.7% ( 88/218)
+Android .\index.ts ▓▓▓▓▓▓▓░░░░░░░░░ 47.1% (379/556)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 73.4% (694/810)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.8% (944/946)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 99.8% (1014/1015)
+Android Bundled 22831ms index.ts (1025 modules)
+Android .\index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Android .\index.ts ▓▓▓░░░░░░░░░░░░░ 22.7% (217/455)
+Android .\index.ts ▓▓▓▓▓▓▓░░░░░░░░░ 48.5% (481/691)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓░░░░░ 73.5% (715/834)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 94.6% (891/916)
+Android .\index.ts ▓▓▓▓▓▓▓▓▓▓▓▓▓▓▓░ 98.9% ( 997/1011)
+Android Bundled 20485ms index.ts (1012 modules)
+ WARN  🚨 React Native's New Architecture is always enabled in Expo Go, but it is explicitly disabled in your project's app config. This may lead to unexpected behavior when creating a production or development build. Remove "newArchEnabled": false from your app.json.
+Learn more: https://docs.expo.dev/guides/new-architecture/
+ WARN  Background location is limited in Expo Go:
+On Android, it is not available at all.
+On iOS, it works when running in the Simulator.
+You can use this API, and all others, in a development build. Learn more: https://expo.fyi/dev-client.
+Android .\index.ts ░░░░░░░░░░░░░░░░  0.0% (0/1)
+Android Bundled 188ms index.ts (1 module)
+ WARN  🚨 React Native's New Architecture is always enabled in Expo Go, but it is explicitly disabled in your project's app config. This may lead to unexpected behavior when creating a production or development build. Remove "newArchEnabled": false from your app.json.
+Learn more: https://docs.expo.dev/guides/new-architecture/
+ WARN  Background location is limited in Expo Go:
+On Android, it is not available at all.
+On iOS, it works when running in the Simulator.
+You can use this API, and all others, in a development build. Learn more: https://expo.fyi/dev-client.
+ INFO  Launching DevTools...

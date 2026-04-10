@@ -372,6 +372,16 @@
         .filter-tercerizado .col-estado {
             display: none !important;
         }
+
+        /* Dropdown personalizado de mes */
+        #planning-month-dropdown {
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+            z-index: 1000;
+        }
+
+        #planning-month-dropdown button:hover {
+            background-color: #F4F7FE !important;
+        }
     </style>
 </head>
 <body class="flex h-screen overflow-hidden flex-col">
@@ -742,21 +752,30 @@
                         <input type="text" id="planning-search" oninput="filterWeeklyData()" placeholder="Buscar por chofer, zona o unidad..." class="w-full bg-white border-0 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium text-[#1B2559] shadow-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all">
                     </div>
                     
-                    <div class="flex items-center gap-3">
-                        <select id="planning-month-select" onchange="syncPlanningMonth(this.value)" class="bg-white border-0 rounded-2xl px-5 py-4 text-xs font-bold text-[#1B2559] shadow-sm outline-none hover:bg-[#F4F7FE] transition-all cursor-pointer">
-                            <option value="enero">Enero 2026</option>
-                            <option value="febrero">Febrero 2026</option>
-                            <option value="marzo">Marzo 2026</option>
-                            <option value="abril">Abril 2026</option>
-                            <option value="mayo">Mayo 2026</option>
-                            <option value="junio">Junio 2026</option>
-                            <option value="julio">Julio 2026</option>
-                            <option value="agosto">Agosto 2026</option>
-                            <option value="septiembre">Septiembre 2026</option>
-                            <option value="octubre">Octubre 2026</option>
-                            <option value="noviembre">Noviembre 2026</option>
-                            <option value="diciembre">Diciembre 2026</option>
-                        </select>
+                    <div class="flex items-center gap-3 relative z-50">
+                        <!-- Custom Dropdown para Mes -->
+                        <div class="relative">
+                            <button id="planning-month-btn" onclick="toggleMonthDropdown()" class="bg-white border-0 rounded-2xl px-5 py-4 text-xs font-bold text-[#1B2559] shadow-sm outline-none hover:bg-[#F4F7FE] transition-all cursor-pointer flex items-center gap-2 min-w-[180px]">
+                                <span id="planning-month-label">Enero 2026</span>
+                                <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                            </button>
+                            <div id="planning-month-dropdown" class="hidden absolute top-full left-0 mt-2 w-48 bg-white border-0 rounded-2xl shadow-lg z-[100] overflow-hidden">
+                                <div class="max-h-64 overflow-y-auto">
+                                    <button onclick="selectMonth('enero', 'Enero 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Enero 2026</button>
+                                    <button onclick="selectMonth('febrero', 'Febrero 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Febrero 2026</button>
+                                    <button onclick="selectMonth('marzo', 'Marzo 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Marzo 2026</button>
+                                    <button onclick="selectMonth('abril', 'Abril 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Abril 2026</button>
+                                    <button onclick="selectMonth('mayo', 'Mayo 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Mayo 2026</button>
+                                    <button onclick="selectMonth('junio', 'Junio 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Junio 2026</button>
+                                    <button onclick="selectMonth('julio', 'Julio 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Julio 2026</button>
+                                    <button onclick="selectMonth('agosto', 'Agosto 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Agosto 2026</button>
+                                    <button onclick="selectMonth('septiembre', 'Septiembre 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Septiembre 2026</button>
+                                    <button onclick="selectMonth('octubre', 'Octubre 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Octubre 2026</button>
+                                    <button onclick="selectMonth('noviembre', 'Noviembre 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Noviembre 2026</button>
+                                    <button onclick="selectMonth('diciembre', 'Diciembre 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Diciembre 2026</button>
+                                </div>
+                            </div>
+                        </div>
                         <div class="flex bg-white rounded-2xl p-1 shadow-sm">
                             <button onclick="setGridFilter('ALL')" class="px-5 py-3 rounded-[12px] text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Todos</button>
                             <button onclick="setGridFilter('Propio')" class="px-5 py-3 rounded-[12px] text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Propio</button>
@@ -2763,7 +2782,10 @@
             document.getElementById('header-title').innerText = titles[id] || 'Sistema R14';
             document.getElementById('header-desc').innerText = descs[id] || '';
 
-            if(id === 'weekly') loadWeeklyData();
+            if(id === 'weekly') {
+                initCurrentMonth();
+                loadWeeklyData();
+            }
             if(id === 'schools') loadSchools();
             if(id === 'salaries') loadSalariesTable();
             if(id === 'vrp') setTimeout(initVrpMap, 100);
@@ -5894,6 +5916,65 @@
                 }
             });
             filterWeeklyData();
+        }
+
+        // Funciones para dropdown personalizado de mes
+        function initCurrentMonth() {
+            const now = new Date();
+            const currentMonth = now.getMonth(); // 0 = enero, 1 = febrero, etc.
+
+            const monthNames = [
+                'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+                'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
+            ];
+
+            const monthLabels = [
+                'Enero 2026', 'Febrero 2026', 'Marzo 2026', 'Abril 2026', 'Mayo 2026', 'Junio 2026',
+                'Julio 2026', 'Agosto 2026', 'Septiembre 2026', 'Octubre 2026', 'Noviembre 2026', 'Diciembre 2026'
+            ];
+
+            // Actualizar el label del botón con el mes actual
+            const currentMonthLabel = monthLabels[currentMonth];
+            const currentMonthVal = monthNames[currentMonth];
+
+            document.getElementById('planning-month-label').textContent = currentMonthLabel;
+
+            // Cerrar el dropdown si está abierto
+            const dropdown = document.getElementById('planning-month-dropdown');
+            if (dropdown) {
+                dropdown.classList.add('hidden');
+            }
+        }
+
+        function toggleMonthDropdown() {
+            const dropdown = document.getElementById('planning-month-dropdown');
+            dropdown.classList.toggle('hidden');
+
+            // Cerrar dropdown cuando se hace clic afuera
+            if (!dropdown.classList.contains('hidden')) {
+                document.addEventListener('click', closeMonthDropdownOnClickOutside);
+            } else {
+                document.removeEventListener('click', closeMonthDropdownOnClickOutside);
+            }
+        }
+
+        function closeMonthDropdownOnClickOutside(e) {
+            const dropdown = document.getElementById('planning-month-dropdown');
+            const btn = document.getElementById('planning-month-btn');
+
+            if (!dropdown.contains(e.target) && !btn.contains(e.target)) {
+                dropdown.classList.add('hidden');
+                document.removeEventListener('click', closeMonthDropdownOnClickOutside);
+            }
+        }
+
+        async function selectMonth(val, label) {
+            // Actualizar el label del botón
+            document.getElementById('planning-month-label').textContent = label;
+            // Cerrar dropdown
+            document.getElementById('planning-month-dropdown').classList.add('hidden');
+            // Sincronizar con la función existente
+            await syncPlanningMonth(val);
         }
 
         async function syncPlanningMonth(val) {
