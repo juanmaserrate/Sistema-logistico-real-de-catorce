@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 200" width="200" height="200">
+  <rect width="200" height="200" rx="20" fill="#000"/>
+  <!-- Dot before R -->
+  <circle cx="30" cy="130" r="6" fill="#fff"/>
+  <!-- R -->
+  <path d="M42 55 Q42 35 62 35 L72 35 Q92 35 92 55 L92 75 Q92 90 78 92 L95 130 L82 130 L66 94 L58 94 L58 130 L42 130 Z M58 50 L58 82 L72 82 Q78 82 78 75 L78 57 Q78 50 72 50 Z" fill="#fff"/>
+  <!-- 1 -->
+  <path d="M108 35 L122 35 L122 130 L108 130 Z" fill="#fff"/>
+  <!-- 4 -->
+  <path d="M135 35 L135 90 L170 90 L170 35 L184 35 L184 130 L170 130 L170 104 L135 104 L135 130 L121 130" fill="none" stroke="#fff" stroke-width="0"/>
+  <path d="M135 90 L135 35 L149 35 L149 90 Z" fill="#fff"/>
+  <path d="M135 90 L135 104 L184 104 L184 90 Z" fill="#fff"/>
+  <path d="M170 35 L184 35 L184 130 L170 130 Z" fill="#fff"/>
+  <!-- Dot after 4 -->
+  <circle cx="175" cy="130" r="6" fill="#fff"/>
+  <!-- Text -->
+  <text x="100" y="168" text-anchor="middle" fill="#fff" font-family="Arial,sans-serif" font-size="18" font-weight="300" letter-spacing="2">Real de Catorce</text>
+</svg>

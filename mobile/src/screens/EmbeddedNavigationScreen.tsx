@@ -13,12 +13,16 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
-import * as Location from 'expo-location';
-import * as ImagePicker from 'expo-image-picker';
 import type { RootStackParamList } from '../navigation/types';
 import { assertApiConfigured } from '../config';
 import { patchStop, uploadProofPhoto, fetchNavigationToNext, type NavigationToNext } from '../api';
+
+// Import react-native-maps only on native platforms
+const MapView = Platform.OS === 'web' ? null : require('react-native-maps').default;
+const { Marker, Polyline, PROVIDER_GOOGLE } = Platform.OS === 'web' ? {} : require('react-native-maps');
+
+import * as Location from 'expo-location';
+import * as ImagePicker from 'expo-image-picker';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EmbeddedNav'>;
 

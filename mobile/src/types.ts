@@ -41,6 +41,7 @@ export interface Route {
   actualEndTime?: string | null;
   stops: Stop[];
   vehicle?: { plate?: string } | null;
+  driver?: { id: string; username: string; fullName: string } | null;
   /** Justificación del chofer al reordenar paradas */
   reorderReason?: string | null;
   reorderedAt?: string | null;

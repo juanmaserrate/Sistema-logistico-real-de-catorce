@@ -19,9 +19,12 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
-// NavProviderGate ya no usa Navigation SDK
-import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { StatusBar } from 'expo-status-bar';
+
+// NavProviderGate ya no usa Navigation SDK
+// Import react-native-maps only on native platforms
+const MapView = Platform.OS === 'web' ? null : require('react-native-maps').default;
+const { Marker, Polyline, PROVIDER_GOOGLE } = Platform.OS === 'web' ? {} : require('react-native-maps');
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { SessionUser, Route, RouteGeometry, Stop } from '../types';
@@ -823,7 +826,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                   style={[styles.chip, selId === r.id && styles.chipOn]}
                 >
                   <Text style={[styles.chipTxt, selId === r.id && styles.chipTxtOn]}>
-                    Ruta #{r.id}
+                    {r.driver?.username || `Ruta #${r.id}`}
                     {r.vehicle?.plate ? ` · ${r.vehicle.plate}` : ''}
                   </Text>
                 </Pressable>
