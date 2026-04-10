@@ -16,7 +16,6 @@
     "update:production": "eas update --channel production"
   },
   "dependencies": {
-    "@googlemaps/react-native-navigation-sdk": "^0.14.2",
     "@react-native-async-storage/async-storage": "2.2.0",
     "@react-navigation/native": "^7.2.0",
     "@react-navigation/native-stack": "^7.14.8",
@@ -43,14 +42,6 @@
     "@types/react": "~19.1.10",
     "typescript": "~5.9.2"
   },
-  "expo": {
-    "doctor": {
-      "reactNativeDirectoryCheck": {
-        "exclude": [
-          "@googlemaps/react-native-navigation-sdk"
-        ]
-      }
-    }
-  },
+  "expo": {},
   "private": true
 }

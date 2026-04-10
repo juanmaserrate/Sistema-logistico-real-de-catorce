@@ -17,7 +17,7 @@ import {
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
-import { isGoogleNavigationNativeAvailable } from '../navigation/NavProviderGate';
+// NavProviderGate ya no usa Navigation SDK
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import { StatusBar } from 'expo-status-bar';
 import * as Location from 'expo-location';
@@ -616,7 +616,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           })}
       </MapView>
 
-      <View style={[styles.panel, { paddingTop: Math.max(12, insets.top) }]}>
+      <View style={[styles.panel, { paddingTop: 12, paddingBottom: Math.max(14, insets.bottom) }]}>
         <View style={styles.panelHeader}>
           <View style={{ flex: 1 }}>
             <Text style={styles.panelTitle}>Mi recorrido</Text>
@@ -731,7 +731,6 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
               </Pressable>
               {firstPendingStop &&
               selId != null &&
-              isGoogleNavigationNativeAvailable() &&
               firstPendingClient.latitude != null &&
               firstPendingClient.longitude != null ? (
                 <Pressable
@@ -746,9 +745,9 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                     })
                   }
                 >
-                  <Text style={styles.embedNavBtnTxt}>Navegar en la app (GPS + voz)</Text>
+                  <Text style={styles.embedNavBtnTxt}>Navegar en la app</Text>
                   <Text style={styles.embedNavBtnSub}>
-                    Llegada, foto y observaciones sin salir de R14. Navegación por voz integrada en la app.
+                    Mapa con ruta e instrucciones paso a paso hasta la parada.
                   </Text>
                 </Pressable>
               ) : null}
@@ -1020,17 +1019,17 @@ const styles = StyleSheet.create({
     position: 'absolute',
     left: 0,
     right: 0,
-    top: 0,
-    maxHeight: '58%',
-    backgroundColor: 'rgba(255,255,255,0.94)',
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+    bottom: 0,
+    maxHeight: '45%',
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
     paddingHorizontal: 16,
     paddingBottom: 14,
     shadowColor: '#000',
-    shadowOpacity: 0.12,
+    shadowOpacity: 0.18,
     shadowRadius: 12,
-    elevation: 6,
+    elevation: 8,
   },
   panelScrollContent: { paddingBottom: 8, flexGrow: 1 },
   panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },

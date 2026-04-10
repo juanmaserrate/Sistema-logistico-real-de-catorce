@@ -13,195 +13,119 @@ import {
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as ImagePicker from 'expo-image-picker';
-import {
-  NavigationView,
-  useNavigation as useGoogleNavigation,
-  TravelMode,
-  RouteStatus,
-  NavigationSessionStatus,
-} from '@googlemaps/react-native-navigation-sdk';
 import type { RootStackParamList } from '../navigation/types';
 import { assertApiConfigured } from '../config';
-import { patchStop, uploadProofPhoto } from '../api';
+import { patchStop, uploadProofPhoto, fetchNavigationToNext, type NavigationToNext } from '../api';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EmbeddedNav'>;
 
-type Phase = 'boot' | 'navigating' | 'at_stop' | 'saving' | 'error';
+type Phase = 'loading' | 'navigating' | 'at_stop' | 'saving' | 'error';
+
+/** Decodifica polyline de Google Directions API */
+function decodePolyline(encoded: string): { latitude: number; longitude: number }[] {
+  const points: { latitude: number; longitude: number }[] = [];
+  let index = 0;
+  let lat = 0;
+  let lng = 0;
+  while (index < encoded.length) {
+    let b: number;
+    let shift = 0;
+    let result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    lat += result & 1 ? ~(result >> 1) : result >> 1;
+    shift = 0;
+    result = 0;
+    do {
+      b = encoded.charCodeAt(index++) - 63;
+      result |= (b & 0x1f) << shift;
+      shift += 5;
+    } while (b >= 0x20);
+    lng += result & 1 ? ~(result >> 1) : result >> 1;
+    points.push({ latitude: lat / 1e5, longitude: lng / 1e5 });
+  }
+  return points;
+}
 
 export default function EmbeddedNavigationScreen({ route, navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const { stopId, destLat, destLng, title } = route.params;
-  const { navigationController, removeAllListeners, setOnArrival } = useGoogleNavigation();
+  const { routeId, stopId, destLat, destLng, title } = route.params;
+  const mapRef = useRef<MapView>(null);
 
-  const [phase, setPhase] = useState<Phase>('boot');
+  const [phase, setPhase] = useState<Phase>('loading');
   const [error, setError] = useState('');
+  const [nav, setNav] = useState<NavigationToNext | null>(null);
+  const [routeCoords, setRouteCoords] = useState<{ latitude: number; longitude: number }[]>([]);
+  const [userLoc, setUserLoc] = useState<{ latitude: number; longitude: number } | null>(null);
+  const [currentStepIdx, setCurrentStepIdx] = useState(0);
+
+  // Delivery state
   const [observations, setObservations] = useState('');
   const [photoUri, setPhotoUri] = useState<string | null>(null);
   const [deliveryOk, setDeliveryOk] = useState(false);
   const arrivalSentRef = useRef(false);
-  const mounted = useRef(true);
 
-  useEffect(() => {
-    mounted.current = true;
-    return () => {
-      mounted.current = false;
-    };
-  }, []);
+  const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const teardownNav = useCallback(async () => {
-    removeAllListeners();
+  /** Carga instrucciones de ruta desde el servidor */
+  const loadRoute = useCallback(async () => {
     try {
-      await navigationController.stopGuidance();
-    } catch {
-      /* */
-    }
-    try {
-      await navigationController.cleanup();
-    } catch {
-      /* */
-    }
-  }, [navigationController, removeAllListeners]);
-
-  /** Inicializar sesión, ruta y guía (una vez por destino). */
-  useEffect(() => {
-    let cancelled = false;
-
-    const cleanupSession = async () => {
-      removeAllListeners();
-      try {
-        await navigationController.stopGuidance();
-      } catch {
-        /* */
-      }
-      try {
-        await navigationController.cleanup();
-      } catch {
-        /* */
-      }
-    };
-
-    const run = async () => {
-      setError('');
-      setPhase('boot');
-
-      const fg = await Location.requestForegroundPermissionsAsync();
-      if (fg.status !== 'granted') {
-        setError('Se requiere ubicación para la navegación embebida.');
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        setError('Se necesita permiso de ubicación.');
         setPhase('error');
         return;
       }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      const loc = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+      setUserLoc(loc);
 
-      try {
-        await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-      } catch {
-        /* el SDK también espera fix */
+      const data = await fetchNavigationToNext(routeId, loc.latitude, loc.longitude);
+      setNav(data);
+
+      if (data.overviewPolyline) {
+        const coords = decodePolyline(data.overviewPolyline);
+        setRouteCoords(coords);
+      } else {
+        // Fallback: línea recta
+        setRouteCoords([loc, { latitude: destLat, longitude: destLng }]);
       }
 
-      const accepted = await navigationController.showTermsAndConditionsDialog();
-      if (cancelled || !accepted) {
-        if (!accepted) navigation.goBack();
-        return;
-      }
+      setPhase('navigating');
 
-      const initStatus = await navigationController.init();
-      if (cancelled) return;
-
-      if (initStatus !== NavigationSessionStatus.OK) {
-        const msg =
-          initStatus === NavigationSessionStatus.NOT_AUTHORIZED
-            ? 'API key no autorizada para Navigation SDK. Revisá Google Cloud Console.'
-            : initStatus === NavigationSessionStatus.LOCATION_PERMISSION_MISSING
-              ? 'Falta permiso de ubicación.'
-              : `No se pudo iniciar navegación (${initStatus}).`;
-        setError(msg);
-        setPhase('error');
-        return;
-      }
-
-      await new Promise((r) => setTimeout(r, 400));
-
-      const routeStatus = await navigationController.setDestinations(
-        [
-          {
-            title: title || 'Destino',
-            position: { lat: destLat, lng: destLng },
-          },
-        ],
-        {
-          routingOptions: {
-            travelMode: TravelMode.DRIVING,
-            avoidTolls: false,
-            avoidFerries: false,
-          },
-          displayOptions: {
-            showDestinationMarkers: true,
-          },
-        }
-      );
-
-      if (cancelled) return;
-
-      if (routeStatus !== RouteStatus.OK) {
-        setError(
-          routeStatus === RouteStatus.LOCATION_DISABLED
-            ? 'Esperando señal GPS. Probá de nuevo en unos segundos o movete al exterior.'
-            : `No se pudo calcular la ruta (${routeStatus}).`
+      // Ajustar mapa para mostrar la ruta
+      setTimeout(() => {
+        mapRef.current?.fitToCoordinates(
+          [loc, { latitude: destLat, longitude: destLng }],
+          { edgePadding: { top: 120, right: 60, bottom: 300, left: 60 }, animated: true }
         );
-        setPhase('error');
-        await cleanupSession();
-        return;
-      }
-
-      await navigationController.startGuidance();
-      if (!cancelled && mounted.current) setPhase('navigating');
-    };
-
-    run().catch((e) => {
-      if (!mounted.current) return;
-      setError(e instanceof Error ? e.message : 'Error al iniciar navegación');
+      }, 500);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Error cargando ruta');
       setPhase('error');
-    });
-
-    return () => {
-      cancelled = true;
-      void cleanupSession();
-    };
-  }, [destLat, destLng, title, navigation, navigationController, removeAllListeners]);
-
-  /** Llegada detectada por el SDK: detener guía y pasar a registro. */
-  useEffect(() => {
-    setOnArrival(() => {
-      void (async () => {
-        try {
-          await navigationController.stopGuidance();
-        } catch {
-          /* */
-        }
-        if (!mounted.current) return;
-        setPhase('at_stop');
-        if (arrivalSentRef.current) return;
-        arrivalSentRef.current = true;
-        try {
-          await patchStop(stopId, {
-            status: 'ARRIVED',
-            actualArrival: new Date().toISOString(),
-          });
-        } catch {
-          arrivalSentRef.current = false;
-        }
-      })();
-    });
-    return () => setOnArrival(null);
-  }, [navigationController, setOnArrival, stopId]);
-
-  const onArrivedManual = useCallback(async () => {
-    try {
-      await navigationController.stopGuidance();
-    } catch {
-      /* */
     }
+  }, [routeId, destLat, destLng]);
+
+  /** Carga inicial + actualización periódica cada 30s */
+  useEffect(() => {
+    void loadRoute();
+    refreshIntervalRef.current = setInterval(() => {
+      void loadRoute();
+    }, 30000);
+    return () => {
+      if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
+    };
+  }, [loadRoute]);
+
+  /** Marcar llegada */
+  const onArrived = useCallback(async () => {
+    if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
     setPhase('at_stop');
     if (arrivalSentRef.current) return;
     arrivalSentRef.current = true;
@@ -210,12 +134,12 @@ export default function EmbeddedNavigationScreen({ route, navigation }: Props) {
         status: 'ARRIVED',
         actualArrival: new Date().toISOString(),
       });
-    } catch (e) {
+    } catch {
       arrivalSentRef.current = false;
-      Alert.alert('Servidor', e instanceof Error ? e.message : 'No se pudo registrar la llegada');
     }
-  }, [navigationController, stopId]);
+  }, [stopId]);
 
+  /** Tomar foto */
   const pickPhoto = useCallback(async () => {
     const perm = await ImagePicker.requestCameraPermissionsAsync();
     if (perm.status !== 'granted') {
@@ -230,6 +154,7 @@ export default function EmbeddedNavigationScreen({ route, navigation }: Props) {
     if (!r.canceled && r.assets[0]?.uri) setPhotoUri(r.assets[0].uri);
   }, []);
 
+  /** Confirmar entrega */
   const confirmDelivery = useCallback(async () => {
     setPhase('saving');
     try {
@@ -245,13 +170,12 @@ export default function EmbeddedNavigationScreen({ route, navigation }: Props) {
         proofPhotoUrl: proofUrl ?? undefined,
         deliveryWithoutIssues: deliveryOk ? true : null,
       });
-      await teardownNav();
       navigation.goBack();
     } catch (e) {
       setPhase('at_stop');
       Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo guardar la entrega');
     }
-  }, [deliveryOk, navigation, observations, photoUri, stopId, teardownNav]);
+  }, [deliveryOk, navigation, observations, photoUri, stopId]);
 
   if (phase === 'error') {
     return (
@@ -265,64 +189,108 @@ export default function EmbeddedNavigationScreen({ route, navigation }: Props) {
     );
   }
 
+  const currentStep = nav?.steps?.[currentStepIdx];
+  const totalSteps = nav?.steps?.length ?? 0;
+
   return (
     <View style={styles.screen}>
-      <View style={styles.mapWrap}>
-        {phase === 'boot' ? (
-          <View style={styles.bootOverlay}>
-            <ActivityIndicator size="large" color="#4f46e5" />
-            <Text style={styles.bootTxt}>Preparando navegación…</Text>
-          </View>
-        ) : null}
-        <NavigationView
-          onMapReady={() => {}}
-          androidStylingOptions={{
-            primaryDayModeThemeColor: '#4f46e5',
-            headerDistanceValueTextColor: '#1e293b',
-          }}
-          iOSStylingOptions={{
-            navigationHeaderPrimaryBackgroundColor: '#4f46e5',
-            navigationHeaderDistanceValueTextColor: '#1e293b',
-          }}
+      {/* Mapa */}
+      <MapView
+        ref={mapRef}
+        style={StyleSheet.absoluteFill}
+        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+        initialRegion={{
+          latitude: destLat,
+          longitude: destLng,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        }}
+        showsUserLocation
+        showsMyLocationButton
+        followsUserLocation={phase === 'navigating'}
+      >
+        {routeCoords.length >= 2 && (
+          <Polyline coordinates={routeCoords} strokeColor="#4f46e5" strokeWidth={5} />
+        )}
+        <Marker
+          coordinate={{ latitude: destLat, longitude: destLng }}
+          title={title || 'Destino'}
+          pinColor="#e11d48"
         />
-      </View>
+      </MapView>
 
+      {/* Barra superior */}
       <View style={[styles.topBar, { top: Math.max(insets.top, 12) + 8 }]}>
         <Pressable
           style={styles.backBtn}
           onPress={() => {
-            Alert.alert('Salir', '¿Detener la navegación?', [
-              { text: 'Cancelar', style: 'cancel' },
-              {
-                text: 'Salir',
-                style: 'destructive',
-                onPress: () => {
-                  void teardownNav().finally(() => navigation.goBack());
-                },
-              },
-            ]);
+            if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
+            navigation.goBack();
           }}
         >
-          <Text style={styles.backBtnTxt}>‹ Volver</Text>
+          <Text style={styles.backBtnTxt}>{'<'} Volver</Text>
         </Pressable>
+        <View style={styles.destBadge}>
+          <Text style={styles.destBadgeTxt} numberOfLines={1}>{title}</Text>
+        </View>
       </View>
 
-      {phase === 'navigating' ? (
-        <View style={styles.actionBar}>
-          <Pressable style={styles.arrivedBtn} onPress={() => void onArrivedManual()}>
+      {/* Loading */}
+      {phase === 'loading' && (
+        <View style={styles.loadingOverlay}>
+          <ActivityIndicator size="large" color="#4f46e5" />
+          <Text style={styles.loadingTxt}>Calculando ruta...</Text>
+        </View>
+      )}
+
+      {/* Panel de instrucciones durante navegación */}
+      {phase === 'navigating' && nav && (
+        <View style={[styles.navPanel, { paddingBottom: Math.max(16, insets.bottom) }]}>
+          {nav.summary ? (
+            <Text style={styles.navSummary}>{nav.summary}</Text>
+          ) : null}
+
+          {currentStep ? (
+            <View style={styles.stepCard}>
+              <Text style={styles.stepNum}>Paso {currentStepIdx + 1} de {totalSteps}</Text>
+              <Text style={styles.stepInstr}>{currentStep.instruction}</Text>
+              <Text style={styles.stepMeta}>
+                {[currentStep.distanceText, currentStep.durationText].filter(Boolean).join(' · ')}
+              </Text>
+            </View>
+          ) : null}
+
+          <View style={styles.stepNavRow}>
+            <Pressable
+              style={[styles.stepNavBtn, currentStepIdx <= 0 && styles.stepNavBtnDisabled]}
+              disabled={currentStepIdx <= 0}
+              onPress={() => setCurrentStepIdx((i) => Math.max(0, i - 1))}
+            >
+              <Text style={styles.stepNavBtnTxt}>{'<'} Anterior</Text>
+            </Pressable>
+            <Pressable
+              style={[styles.stepNavBtn, currentStepIdx >= totalSteps - 1 && styles.stepNavBtnDisabled]}
+              disabled={currentStepIdx >= totalSteps - 1}
+              onPress={() => setCurrentStepIdx((i) => Math.min(totalSteps - 1, i + 1))}
+            >
+              <Text style={styles.stepNavBtnTxt}>Siguiente {'>'}</Text>
+            </Pressable>
+          </View>
+
+          <Pressable style={styles.arrivedBtn} onPress={() => void onArrived()}>
             <Text style={styles.arrivedBtnTxt}>Llegué al lugar</Text>
           </Pressable>
         </View>
-      ) : null}
+      )}
 
-      {phase === 'at_stop' || phase === 'saving' ? (
-        <View style={styles.sheet}>
+      {/* Panel de registro de entrega */}
+      {(phase === 'at_stop' || phase === 'saving') && (
+        <View style={[styles.deliveryPanel, { paddingBottom: Math.max(16, insets.bottom) }]}>
           <ScrollView keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
-            <Text style={styles.sheetTitle}>Entrega</Text>
-            <Text style={styles.sheetSub}>Observaciones y comprobante (opcional)</Text>
+            <Text style={styles.sheetTitle}>Entrega — {title}</Text>
             <TextInput
               style={styles.input}
-              placeholder="Observaciones…"
+              placeholder="Observaciones..."
               placeholderTextColor="#94a3b8"
               multiline
               value={observations}
@@ -331,13 +299,11 @@ export default function EmbeddedNavigationScreen({ route, navigation }: Props) {
             <Pressable
               style={styles.checkRow}
               onPress={() => setDeliveryOk((v) => !v)}
-              accessibilityRole="checkbox"
-              accessibilityState={{ checked: deliveryOk }}
             >
               <View style={[styles.checkBox, deliveryOk && styles.checkBoxOn]}>
-                {deliveryOk ? <Text style={styles.checkMark}>✓</Text> : null}
+                {deliveryOk ? <Text style={styles.checkMark}>{'✓'}</Text> : null}
               </View>
-              <Text style={styles.checkLabel}>Entrega sin problemas (opcional)</Text>
+              <Text style={styles.checkLabel}>Entrega sin problemas</Text>
             </Pressable>
             <Pressable style={styles.secondaryBtn} onPress={() => void pickPhoto()}>
               <Text style={styles.secondaryBtnTxt}>
@@ -360,49 +326,102 @@ export default function EmbeddedNavigationScreen({ route, navigation }: Props) {
             </Pressable>
           </ScrollView>
         </View>
-      ) : null}
-
-      <Text style={styles.attribution}>
-        Google Maps · Navigation SDK · {Platform.OS === 'android' ? 'Android' : 'iOS'}
-      </Text>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: '#0f172a' },
-  mapWrap: { flex: 1, position: 'relative' },
-  bootOverlay: {
-    ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(15,23,42,0.85)',
+  centered: {
+    flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    zIndex: 2,
+    padding: 24,
+    backgroundColor: '#0f172a',
   },
-  bootTxt: { marginTop: 12, color: '#e2e8f0', fontSize: 14, fontWeight: '600' },
+  errorTitle: { fontSize: 18, fontWeight: '900', color: '#fff', marginBottom: 8 },
+  errorText: { color: '#fca5a5', textAlign: 'center', marginBottom: 20 },
+
   topBar: {
     position: 'absolute',
     left: 12,
+    right: 12,
     zIndex: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
   },
   backBtn: {
     backgroundColor: 'rgba(255,255,255,0.95)',
     paddingVertical: 10,
     paddingHorizontal: 14,
     borderRadius: 12,
-    shadowColor: '#000',
-    shadowOpacity: 0.15,
-    shadowRadius: 8,
     elevation: 4,
   },
-  backBtnTxt: { fontSize: 16, fontWeight: '800', color: '#0f172a' },
-  actionBar: {
-    position: 'absolute',
-    bottom: 28,
-    left: 16,
-    right: 16,
-    zIndex: 8,
+  backBtnTxt: { fontSize: 15, fontWeight: '800', color: '#0f172a' },
+  destBadge: {
+    flex: 1,
+    backgroundColor: 'rgba(79,70,229,0.92)',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 12,
+    elevation: 4,
   },
+  destBadgeTxt: { color: '#fff', fontWeight: '800', fontSize: 13 },
+
+  loadingOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(15,23,42,0.7)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    zIndex: 5,
+  },
+  loadingTxt: { color: '#e2e8f0', marginTop: 12, fontSize: 14, fontWeight: '600' },
+
+  navPanel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    backgroundColor: 'rgba(255,255,255,0.97)',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    paddingHorizontal: 16,
+    paddingTop: 14,
+    elevation: 8,
+  },
+  navSummary: {
+    fontSize: 14,
+    fontWeight: '900',
+    color: '#4f46e5',
+    textAlign: 'center',
+    marginBottom: 10,
+  },
+  stepCard: {
+    backgroundColor: '#f1f5f9',
+    borderRadius: 14,
+    padding: 14,
+    marginBottom: 10,
+  },
+  stepNum: { fontSize: 10, fontWeight: '800', color: '#94a3b8', marginBottom: 4 },
+  stepInstr: { fontSize: 15, fontWeight: '700', color: '#0f172a', lineHeight: 22 },
+  stepMeta: { fontSize: 12, color: '#64748b', marginTop: 6 },
+  stepNavRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    gap: 10,
+  },
+  stepNavBtn: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 10,
+    backgroundColor: '#e2e8f0',
+    alignItems: 'center',
+  },
+  stepNavBtnDisabled: { opacity: 0.4 },
+  stepNavBtnTxt: { fontSize: 13, fontWeight: '700', color: '#334155' },
   arrivedBtn: {
     backgroundColor: '#059669',
     paddingVertical: 16,
@@ -410,17 +429,21 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   arrivedBtnTxt: { color: '#fff', fontSize: 16, fontWeight: '900' },
-  sheet: {
-    maxHeight: '46%',
+
+  deliveryPanel: {
+    position: 'absolute',
+    bottom: 0,
+    left: 0,
+    right: 0,
+    maxHeight: '55%',
     backgroundColor: '#f8fafc',
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     paddingHorizontal: 16,
     paddingTop: 16,
-    paddingBottom: 24,
+    elevation: 8,
   },
-  sheetTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
-  sheetSub: { fontSize: 12, color: '#64748b', marginTop: 4, marginBottom: 12 },
+  sheetTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a', marginBottom: 12 },
   input: {
     minHeight: 72,
     borderWidth: 1,
@@ -431,12 +454,7 @@ const styles = StyleSheet.create({
     color: '#0f172a',
     marginBottom: 10,
   },
-  checkRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-    gap: 10,
-  },
+  checkRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 10, gap: 10 },
   checkBox: {
     width: 22,
     height: 22,
@@ -450,11 +468,7 @@ const styles = StyleSheet.create({
   checkBoxOn: { borderColor: '#059669', backgroundColor: '#ecfdf5' },
   checkMark: { color: '#059669', fontWeight: '900', fontSize: 12 },
   checkLabel: { flex: 1, fontSize: 13, fontWeight: '600', color: '#334155' },
-  secondaryBtn: {
-    paddingVertical: 12,
-    alignItems: 'center',
-    marginBottom: 10,
-  },
+  secondaryBtn: { paddingVertical: 12, alignItems: 'center', marginBottom: 10 },
   secondaryBtnTxt: { color: '#4f46e5', fontWeight: '800', fontSize: 14 },
   primaryBtn: {
     backgroundColor: '#4f46e5',
@@ -472,22 +486,4 @@ const styles = StyleSheet.create({
     marginBottom: 8,
     backgroundColor: '#e2e8f0',
   },
-  attribution: {
-    position: 'absolute',
-    bottom: 4,
-    right: 8,
-    left: 8,
-    fontSize: 9,
-    color: 'rgba(255,255,255,0.45)',
-    textAlign: 'center',
-  },
-  centered: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 24,
-    backgroundColor: '#0f172a',
-  },
-  errorTitle: { fontSize: 18, fontWeight: '900', color: '#fff', marginBottom: 8 },
-  errorText: { color: '#fca5a5', textAlign: 'center', marginBottom: 20 },
 });

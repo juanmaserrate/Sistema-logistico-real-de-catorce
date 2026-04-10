@@ -127,6 +127,7 @@ export type NavigationToNext = {
   targetStop: { sequence: number; name: string; lat: number; lng: number } | null;
   summary?: string | null;
   steps: NavStep[];
+  overviewPolyline?: string | null;
   error?: string;
 };
 
@@ -153,6 +154,7 @@ export async function fetchNavigationToNext(
     targetStop: data.targetStop ?? null,
     summary: data.summary ?? null,
     steps: Array.isArray(data.steps) ? data.steps : [],
+    overviewPolyline: (data as any).overviewPolyline ?? null,
     error: data.error,
   };
 }

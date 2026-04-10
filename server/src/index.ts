@@ -2475,6 +2475,7 @@ app.get('/api/v1/routes/:id/navigation-to-next', async (req, res) => {
             durationText: st.duration?.text || '',
             maneuver: st.maneuver || null
         }));
+        const overviewPolyline = data.routes[0].overview_polyline?.points || null;
         res.json({
             done: false,
             targetStop: {
@@ -2487,7 +2488,8 @@ app.get('/api/v1/routes/:id/navigation-to-next', async (req, res) => {
                 leg.distance?.text && leg.duration?.text
                     ? `${leg.distance.text} · ${leg.duration.text}`
                     : null,
-            steps
+            steps,
+            overviewPolyline
         });
     } catch (e: any) {
         console.error('GET /routes/:id/navigation-to-next:', e);
