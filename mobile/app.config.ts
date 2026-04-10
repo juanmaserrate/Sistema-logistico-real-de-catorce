@@ -87,7 +87,6 @@ const config: ExpoConfig = {
         isAndroidForegroundServiceEnabled: true,
       },
     ],
-    './plugins/withGoogleMapsDedup',
     './plugins/withNavigationDesugaring',
   ],
   owner: 'juanmaserrate1',
