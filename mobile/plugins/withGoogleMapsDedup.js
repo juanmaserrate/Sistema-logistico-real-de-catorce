@@ -4,20 +4,20 @@ module.exports = function withGoogleMapsDedup(config) {
   return withAppBuildGradle(config, (config) => {
     let contents = config.modResults.contents;
 
-    // Remover cualquier bloque de exclusión anterior
-    contents = contents.replace(
-      /configurations\.configureEach\s*\{\s*exclude group:[^}]*play-services-maps[^}]*\}/g,
-      ''
-    );
+    // Remover cualquier bloque anterior
+    contents = contents.replace(/configurations\.configureEach\s*\{[\s\S]*?\}/g, '');
 
-    // Agregar exclusión si no existe
-    if (!contents.includes('exclude group: "com.google.android.gms", module: "play-services-maps"')) {
-      const exclusionBlock = `
-configurations.configureEach {
-  exclude group: "com.google.android.gms", module: "play-services-maps"
+    // NO excluir play-services-maps. En lugar de eso, forzar que ambas
+    // librerías usen la MISMA versión para evitar conflictos.
+    // Navigation SDK + react-native-maps ambas pueden compartir play-services-maps 18.2.0
+    if (!contents.includes('force ')) {
+      const block = `
+configurations.all {
+  resolutionStrategy {
+    force 'com.google.android.gms:play-services-maps:18.2.0'
+  }
 }`;
-      // Insertar al final del archivo
-      contents = contents.trimEnd() + '\n' + exclusionBlock + '\n';
+      contents = contents.trimEnd() + '\n' + block + '\n';
     }
 
     config.modResults.contents = contents;
