@@ -114,6 +114,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 14,
     fontSize: 16,
+    color: '#0f172a',
     marginBottom: 14,
   },
   err: { color: '#b91c1c', marginBottom: 12, fontSize: 14 },

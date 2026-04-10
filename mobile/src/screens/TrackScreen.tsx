@@ -13,6 +13,8 @@ import {
   type AppStateStatus,
   RefreshControl,
   TextInput,
+  Animated,
+  Dimensions,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
@@ -56,9 +58,25 @@ type Props = {
 
 const BA = { latitude: -34.65, longitude: -58.45, latitudeDelta: 0.35, longitudeDelta: 0.35 };
 
+const { width: SCREEN_W } = Dimensions.get('window');
+
+type ActiveTab = 'recorrido' | 'mapa';
+
 export default function TrackScreen({ session, onLogout, navigation }: Props) {
   const insets = useSafeAreaInsets();
   const mapRef = useRef<MapView>(null);
+  const [activeTab, setActiveTab] = useState<ActiveTab>('recorrido');
+  const slideAnim = useRef(new Animated.Value(0)).current;
+
+  const switchTab = useCallback((tab: ActiveTab) => {
+    setActiveTab(tab);
+    Animated.spring(slideAnim, {
+      toValue: tab === 'recorrido' ? 0 : 1,
+      useNativeDriver: true,
+      tension: 68,
+      friction: 12,
+    }).start();
+  }, [slideAnim]);
   const [routes, setRoutes] = useState<Route[]>([]);
   const [selId, setSelId] = useState<number | null>(null);
   const [geom, setGeom] = useState<RouteGeometry | null>(null);
@@ -575,48 +593,53 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     [geom]
   );
 
+  const recorridoTranslateX = slideAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [0, -SCREEN_W],
+  });
+  const mapaTranslateX = slideAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [SCREEN_W, 0],
+  });
+
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
-      <MapView
-        ref={mapRef}
-        style={StyleSheet.absoluteFill}
-        provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-        initialRegion={BA}
-        showsUserLocation
-        showsMyLocationButton={false}
-      >
-        {lineCoords.length >= 2 && (
-          <Polyline
-            coordinates={lineCoords}
-            strokeColor="#6366f1"
-            strokeWidth={5}
-          />
-        )}
-        {(geom?.stops || []).map((s) => (
-          <Marker
-            key={`${s.stopId ?? s.sequence}`}
-            coordinate={{ latitude: s.lat, longitude: s.lng }}
-            title={`${s.sequence}. ${s.name}`}
-            pinColor={s.sequence === 1 ? '#059669' : '#d97706'}
-          />
-        ))}
-        {!geom &&
-          selected?.stops?.map((st) => {
-            const la = st.client?.latitude;
-            const lo = st.client?.longitude;
-            if (la == null || lo == null) return null;
-            return (
-              <Marker
-                key={st.id}
-                coordinate={{ latitude: la, longitude: lo }}
-                title={`${st.sequence}. ${st.client.name}`}
-              />
-            );
-          })}
-      </MapView>
 
-      <View style={[styles.panel, { paddingTop: 12, paddingBottom: Math.max(14, insets.bottom) }]}>
+      {/* Tab bar */}
+      <View style={[styles.tabBar, { paddingTop: Math.max(insets.top, 12) + 4 }]}>
+        <Pressable
+          style={[styles.tab, activeTab === 'recorrido' && styles.tabActive]}
+          onPress={() => switchTab('recorrido')}
+        >
+          <Text style={[styles.tabTxt, activeTab === 'recorrido' && styles.tabTxtActive]}>Mi Recorrido</Text>
+        </Pressable>
+        <Pressable
+          style={[styles.tab, activeTab === 'mapa' && styles.tabActive]}
+          onPress={() => switchTab('mapa')}
+        >
+          <Text style={[styles.tabTxt, activeTab === 'mapa' && styles.tabTxtActive]}>Mapa</Text>
+        </Pressable>
+      </View>
+
+      {/* Contenedor animado de ambas vistas */}
+      <View style={styles.tabContent}>
+        {/* Vista: Mi Recorrido (pantalla completa) */}
+        <Animated.View style={[styles.tabPage, { transform: [{ translateX: recorridoTranslateX }] }]}>
+          <ScrollView
+            refreshControl={
+              <RefreshControl
+                refreshing={refreshing}
+                onRefresh={onPullRefresh}
+                colors={['#4f46e5']}
+                tintColor="#4f46e5"
+              />
+            }
+            keyboardShouldPersistTaps="handled"
+            showsVerticalScrollIndicator={false}
+            bounces
+            contentContainerStyle={[styles.recorridoContent, { paddingBottom: Math.max(20, insets.bottom) }]}
+          >
         <View style={styles.panelHeader}>
           <View style={{ flex: 1 }}>
             <Text style={styles.panelTitle}>Mi recorrido</Text>
@@ -949,13 +972,86 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
               </Text>
             </View>
           ) : null}
-        </ScrollView>
+          </ScrollView>
+        </Animated.View>
+
+        {/* Vista: Mapa (pantalla completa) */}
+        <Animated.View style={[styles.tabPage, styles.tabPageAbsolute, { transform: [{ translateX: mapaTranslateX }] }]}>
+          <MapView
+            ref={mapRef}
+            style={StyleSheet.absoluteFill}
+            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
+            initialRegion={BA}
+            showsUserLocation
+            showsMyLocationButton
+          >
+            {lineCoords.length >= 2 && (
+              <Polyline coordinates={lineCoords} strokeColor="#6366f1" strokeWidth={5} />
+            )}
+            {(geom?.stops || []).map((s) => (
+              <Marker
+                key={`${s.stopId ?? s.sequence}`}
+                coordinate={{ latitude: s.lat, longitude: s.lng }}
+                title={`${s.sequence}. ${s.name}`}
+                pinColor={s.sequence === 1 ? '#059669' : '#d97706'}
+              />
+            ))}
+            {!geom &&
+              selected?.stops?.map((st) => {
+                const la = st.client?.latitude;
+                const lo = st.client?.longitude;
+                if (la == null || lo == null) return null;
+                return (
+                  <Marker
+                    key={st.id}
+                    coordinate={{ latitude: la, longitude: lo }}
+                    title={`${st.sequence}. ${st.client.name}`}
+                  />
+                );
+              })}
+          </MapView>
+        </Animated.View>
       </View>
+
       <StopDeliveryModal
         visible={deliveryModalStop != null}
         stop={deliveryModalStop}
         onClose={() => setDeliveryModalStop(null)}
-        onSaved={() => loadRoutes({ silent: true })}
+        onSaved={() => {
+          const completedStop = deliveryModalStop;
+          setDeliveryModalStop(null);
+          loadRoutes({ silent: true }).then(() => {
+            // Buscar siguiente parada pendiente
+            if (!completedStop || !selected?.stops) return;
+            const nextPending = [...selected.stops]
+              .sort((a, b) => a.sequence - b.sequence)
+              .find((s) => s.status === 'PENDING' && s.id !== completedStop.id);
+            if (nextPending?.client) {
+              const name = nextPending.client.name || `Parada ${nextPending.sequence}`;
+              Alert.alert(
+                'Siguiente parada',
+                `${name}\n${nextPending.client.address || ''}`,
+                [
+                  { text: 'Ver lista', style: 'cancel' },
+                  {
+                    text: 'Navegar',
+                    onPress: () => {
+                      if (nextPending.client?.latitude != null && nextPending.client?.longitude != null && selId != null) {
+                        navigation.navigate('EmbeddedNav', {
+                          routeId: selId,
+                          stopId: nextPending.id,
+                          destLat: nextPending.client.latitude,
+                          destLng: nextPending.client.longitude,
+                          title: nextPending.client.name,
+                        });
+                      }
+                    },
+                  },
+                ]
+              );
+            }
+          });
+        }}
       />
 
       {/* Modal incidencias */}
@@ -1014,26 +1110,32 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#0f172a' },
-  panel: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    maxHeight: '45%',
-    backgroundColor: 'rgba(255,255,255,0.97)',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
+  screen: { flex: 1, backgroundColor: '#f8fafc' },
+  tabBar: {
+    flexDirection: 'row',
+    backgroundColor: '#0f172a',
     paddingHorizontal: 16,
-    paddingBottom: 14,
-    shadowColor: '#000',
-    shadowOpacity: 0.18,
-    shadowRadius: 12,
-    elevation: 8,
+    paddingBottom: 10,
+    gap: 8,
   },
-  panelScrollContent: { paddingBottom: 8, flexGrow: 1 },
-  panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
-  panelTitle: { fontSize: 18, fontWeight: '900', color: '#0f172a' },
+  tab: {
+    flex: 1,
+    paddingVertical: 10,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255,255,255,0.1)',
+    alignItems: 'center',
+  },
+  tabActive: {
+    backgroundColor: '#4f46e5',
+  },
+  tabTxt: { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.5)' },
+  tabTxtActive: { color: '#fff', fontWeight: '900' },
+  tabContent: { flex: 1, overflow: 'hidden' },
+  tabPage: { flex: 1, backgroundColor: '#f8fafc' },
+  tabPageAbsolute: { ...StyleSheet.absoluteFillObject },
+  recorridoContent: { paddingHorizontal: 16, paddingTop: 14 },
+  panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  panelTitle: { fontSize: 20, fontWeight: '900', color: '#0f172a' },
   panelSub: { fontSize: 12, color: '#64748b', marginTop: 2 },
   outBtn: { paddingVertical: 6, paddingHorizontal: 12 },
   outBtnTxt: { color: '#64748b', fontWeight: '700', fontSize: 14 },
