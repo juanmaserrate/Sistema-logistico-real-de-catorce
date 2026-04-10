@@ -652,20 +652,6 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
             <Text style={styles.iconBtnTxt}>👤</Text>
           </Pressable>
         </View>
-        <ScrollView
-          refreshControl={
-            <RefreshControl
-              refreshing={refreshing}
-              onRefresh={onPullRefresh}
-              colors={['#4f46e5']}
-              tintColor="#4f46e5"
-            />
-          }
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          bounces
-          contentContainerStyle={styles.panelScrollContent}
-        >
           {/* Toast: ruta actualizada por planificación */}
           {routeChangedToast ? (
             <View style={styles.toastBanner}>
@@ -972,7 +958,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
               </Text>
             </View>
           ) : null}
-          </ScrollView>
+        </ScrollView>
         </Animated.View>
 
         {/* Vista: Mapa (pantalla completa) */}
