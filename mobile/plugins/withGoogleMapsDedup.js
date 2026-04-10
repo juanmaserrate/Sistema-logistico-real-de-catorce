@@ -1,38 +1,25 @@
 const { withAppBuildGradle } = require("expo/config-plugins");
 
-// El Navigation SDK trae play-services-maps embebido.
-// react-native-maps también necesita play-services-maps.
-// Solución: usar resolutionStrategy para que ambas librerías usen la MISMA versión.
-// Esto evita conflictos de clases duplicadas sin romper react-native-maps.
-const BLOCK = `
-configurations.configureEach {
-  resolutionStrategy {
-    force 'com.google.android.gms:play-services-maps:18.2.0'
-  }
-}
-`.trim();
-
 module.exports = function withGoogleMapsDedup(config) {
   return withAppBuildGradle(config, (config) => {
     let contents = config.modResults.contents;
 
-    // Limpiar versiones previas (exclusión global)
+    // Remover cualquier bloque de exclusión anterior
     contents = contents.replace(
-      /configurations\.configureEach\s*\{\s*exclude group: "com\.google\.android\.gms", module: "play-services-maps"\s*\}/,
-      ''
-    );
-    // Limpiar condicionales viejos
-    contents = contents.replace(
-      /configurations\.configureEach\s*\{\s*if\s*\(name\.contains\("ReactNativeNavigationSdk"\)[\s\S]*?\}\s*\}/,
-      ''
-    );
-    // Limpiar resolutionStrategy anterior si existe
-    contents = contents.replace(
-      /configurations\.configureEach\s*\{\s*resolutionStrategy\s*\{[\s\S]*?\}\s*\}/,
+      /configurations\.configureEach\s*\{\s*exclude group:[^}]*play-services-maps[^}]*\}/g,
       ''
     );
 
-    contents = `${contents.trimEnd()}\n\n${BLOCK}\n`;
+    // Agregar exclusión si no existe
+    if (!contents.includes('exclude group: "com.google.android.gms", module: "play-services-maps"')) {
+      const exclusionBlock = `
+configurations.configureEach {
+  exclude group: "com.google.android.gms", module: "play-services-maps"
+}`;
+      // Insertar al final del archivo
+      contents = contents.trimEnd() + '\n' + exclusionBlock + '\n';
+    }
+
     config.modResults.contents = contents;
     return config;
   });
