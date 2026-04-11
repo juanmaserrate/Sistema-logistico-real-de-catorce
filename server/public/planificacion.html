@@ -998,6 +998,15 @@
                             <option value="enero">Enero 2026</option>
                             <option value="febrero">Febrero 2026</option>
                             <option value="marzo">Marzo 2026</option>
+                            <option value="abril">Abril 2026</option>
+                            <option value="mayo">Mayo 2026</option>
+                            <option value="junio">Junio 2026</option>
+                            <option value="julio">Julio 2026</option>
+                            <option value="agosto">Agosto 2026</option>
+                            <option value="septiembre">Septiembre 2026</option>
+                            <option value="octubre">Octubre 2026</option>
+                            <option value="noviembre">Noviembre 2026</option>
+                            <option value="diciembre">Diciembre 2026</option>
                         </select>
                         <button onclick="openSalaryModal()" class="px-8 py-4 bg-indigo-600 text-white rounded-2xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center gap-2 uppercase tracking-wide">
                             <i data-lucide="plus" class="w-4 h-4"></i> AGREGAR EMPLEADO
@@ -1544,6 +1553,15 @@
                             <option value="enero">Enero 2026</option>
                             <option value="febrero">Febrero 2026</option>
                             <option value="marzo">Marzo 2026</option>
+                            <option value="abril">Abril 2026</option>
+                            <option value="mayo">Mayo 2026</option>
+                            <option value="junio">Junio 2026</option>
+                            <option value="julio">Julio 2026</option>
+                            <option value="agosto">Agosto 2026</option>
+                            <option value="septiembre">Septiembre 2026</option>
+                            <option value="octubre">Octubre 2026</option>
+                            <option value="noviembre">Noviembre 2026</option>
+                            <option value="diciembre">Diciembre 2026</option>
                         </select>
                         <div class="flex items-center gap-3 bg-indigo-50 px-6 py-4 rounded-2xl">
                             <span class="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Horas Reales:</span>
@@ -2793,7 +2811,6 @@
             document.getElementById('header-desc').innerText = descs[id] || '';
 
             if(id === 'weekly') {
-                initCurrentMonth();
                 loadWeeklyData();
             }
             if(id === 'schools') loadSchools();
@@ -5931,29 +5948,33 @@
         // Funciones para dropdown personalizado de mes
         function initCurrentMonth() {
             const now = new Date();
-            const currentMonth = now.getMonth(); // 0 = enero, 1 = febrero, etc.
+            const currentMonth = now.getMonth();
+            const yr = now.getFullYear();
 
             const monthNames = [
                 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
                 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'
             ];
-
             const monthLabels = [
-                'Enero 2026', 'Febrero 2026', 'Marzo 2026', 'Abril 2026', 'Mayo 2026', 'Junio 2026',
-                'Julio 2026', 'Agosto 2026', 'Septiembre 2026', 'Octubre 2026', 'Noviembre 2026', 'Diciembre 2026'
+                'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'
             ];
 
-            // Actualizar el label del botón con el mes actual
-            const currentMonthLabel = monthLabels[currentMonth];
             const currentMonthVal = monthNames[currentMonth];
 
-            document.getElementById('planning-month-label').textContent = currentMonthLabel;
+            // Sincronizar label, hidden select y dashboard select
+            const label = document.getElementById('planning-month-label');
+            if (label) label.textContent = `${monthLabels[currentMonth]} ${yr}`;
+
+            const hiddenSel = document.getElementById('planning-month-select');
+            if (hiddenSel) hiddenSel.value = currentMonthVal;
+
+            const dashSel = document.getElementById('dashboard-month-select');
+            if (dashSel) dashSel.value = currentMonthVal;
 
             // Cerrar el dropdown si está abierto
             const dropdown = document.getElementById('planning-month-dropdown');
-            if (dropdown) {
-                dropdown.classList.add('hidden');
-            }
+            if (dropdown) dropdown.classList.add('hidden');
         }
 
         function toggleMonthDropdown() {
@@ -5993,11 +6014,23 @@
                 'planning-month-select',
                 'dashboard-month-select'
             ];
-            
+
             selectors.forEach(id => {
                 const el = document.getElementById(id);
                 if (el) el.value = val;
             });
+
+            // Sincronizar el label del dropdown custom con el mes seleccionado
+            const monthLabelsMap = {
+                enero: 'Enero', febrero: 'Febrero', marzo: 'Marzo', abril: 'Abril',
+                mayo: 'Mayo', junio: 'Junio', julio: 'Julio', agosto: 'Agosto',
+                septiembre: 'Septiembre', octubre: 'Octubre', noviembre: 'Noviembre', diciembre: 'Diciembre'
+            };
+            const label = document.getElementById('planning-month-label');
+            if (label && monthLabelsMap[val]) {
+                label.textContent = `${monthLabelsMap[val]} ${new Date().getFullYear()}`;
+            }
+
             await loadWeeklyData();
             const dash = document.getElementById('view-dashboard');
             if (dash && !dash.classList.contains('hidden') && typeof renderLogisticsDashboard === 'function') {
@@ -6017,42 +6050,7 @@
                 planningData = await res.json();
                 console.log(`Datos cargados: ${planningData.length} registros found.`);
 
-                // Auto-ajuste del filtro de mes: si el mes seleccionado no tiene viajes
-                // pero hay viajes en otros meses, saltamos al mes con MAS viajes.
-                // Esto evita que el operador vea "vacio" cuando los datos estan en otro mes.
-                try {
-                    const monthSelect = document.getElementById('planning-month-select');
-                    if (monthSelect && Array.isArray(planningData) && planningData.length > 0) {
-                        const monthMap = ["enero","febrero","marzo","abril","mayo","junio","julio","agosto","septiembre","octubre","noviembre","diciembre"];
-                        const tripsByMonth = {};
-                        planningData.forEach(t => {
-                            if (!t.date) return;
-                            const cleanDate = String(t.date).includes(' ') ? String(t.date).replace(/ /g, 'T') : String(t.date);
-                            const d = new Date(cleanDate);
-                            if (isNaN(d)) return;
-                            // Usamos UTC para evitar shifts por timezone
-                            const m = monthMap[d.getUTCMonth()];
-                            tripsByMonth[m] = (tripsByMonth[m] || 0) + 1;
-                        });
-                        const currentMonth = monthSelect.value;
-                        const currentCount = tripsByMonth[currentMonth] || 0;
-                        if (currentCount === 0) {
-                            // Buscar el mes con mas viajes
-                            const sorted = Object.entries(tripsByMonth).sort((a, b) => b[1] - a[1]);
-                            if (sorted.length > 0) {
-                                const targetMonth = sorted[0][0];
-                                console.log(`[loadWeeklyData] Mes "${currentMonth}" sin viajes. Saltando a "${targetMonth}" (${sorted[0][1]} viajes).`);
-                                monthSelect.value = targetMonth;
-                                const dashM = document.getElementById('dashboard-month-select');
-                                if (dashM) dashM.value = targetMonth;
-                            }
-                        }
-                    }
-                } catch (autoErr) {
-                    console.warn('[loadWeeklyData] Auto-ajuste de mes fallo:', autoErr);
-                }
-
-                // Sin viajes: el estado vacio ya es visible en la tabla
+                // Filtrar directamente por el mes seleccionado (sin auto-saltar a otro mes)
                 filterWeeklyData();
             } catch(e) {
                 console.error("Error loading weekly data:", e);
