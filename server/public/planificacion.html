@@ -2548,32 +2548,40 @@
             errorEl.classList.add('hidden');
 
             try {
-                const res = await fetch(getServerOrigin() + '/api/auth/login', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
-                });
-                const data = await res.json();
+                // Verificar primero contra usuarios web locales (localStorage)
+                const webUsers = getLocalWebUsers();
+                const localUser = webUsers[username.toLowerCase()];
 
-                if (!res.ok) {
-                    throw new Error(data.error || 'Credenciales incorrectas');
+                if (localUser) {
+                    if (localUser.password !== password) {
+                        throw new Error('Contraseña incorrecta');
+                    }
+                    localStorage.setItem('r14.loggedUser', localUser.fullName || localUser.username);
+                    localStorage.setItem('r14.loggedUsername', localUser.username);
+                    localStorage.setItem('r14.loggedUserId', localUser.username);
+                    localStorage.setItem('r14.loggedRole', 'ADMIN');
+                    const profile = getUserProfile(localUser.username);
+                    applyAccessControl(profile);
+                    document.getElementById('login-gate').style.display = 'none';
+                } else {
+                    // Fallback a API para usuarios DRIVER (app móvil)
+                    const res = await fetch(getServerOrigin() + '/api/auth/login', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ username, password })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || 'Usuario o contraseña incorrectos');
+                    const u = data.user || data;
+                    localStorage.setItem('r14.loggedUser', u.fullName || u.username || username);
+                    localStorage.setItem('r14.loggedUsername', u.username || username);
+                    localStorage.setItem('r14.loggedUserId', u.id || '');
+                    localStorage.setItem('r14.loggedRole', u.role || 'ADMIN');
+                    if (data.token) localStorage.setItem('r14.authToken', data.token);
+                    const profile = getUserProfile(u.username || username);
+                    applyAccessControl(profile);
+                    document.getElementById('login-gate').style.display = 'none';
                 }
-
-                // Store session — server returns { success, token, user: { id, fullName, role } }
-                const u = data.user || data;
-                localStorage.setItem('r14.loggedUser', u.fullName || u.username || username);
-                localStorage.setItem('r14.loggedUsername', u.username || username);
-                localStorage.setItem('r14.loggedUserId', u.id || '');
-                localStorage.setItem('r14.loggedRole', u.role || 'ADMIN');
-                if (data.token) localStorage.setItem('r14.authToken', data.token);
-
-                // Apply access control
-                const profile = getUserProfile(u.username || username);
-                applyAccessControl(profile);
-
-                // Hide login gate
-                document.getElementById('login-gate').style.display = 'none';
-
             } catch (e) {
                 errorEl.textContent = e.message || 'Error al iniciar sesión';
                 errorEl.classList.remove('hidden');
@@ -3081,17 +3089,30 @@
             });
         }
 
-        async function loadUsers() {
+        // ─── USUARIOS WEB (localStorage) ────────────────────────────────────
+        function getLocalWebUsers() {
             try {
-                const res = await fetch(`${API_URL}/users`);
-                if (!res.ok) throw new Error('No se pudo cargar usuarios');
-                const data = await res.json();
-                usersData = Array.isArray(data) ? data : [];
-                renderUsersTable();
-            } catch (e) {
-                console.error('Error loading users', e);
-                notifyUsers('No se pudieron cargar los usuarios.', 'warning');
-            }
+                const raw = localStorage.getItem('r14.web_users');
+                if (raw) return JSON.parse(raw);
+            } catch(_) {}
+            // Seed inicial: usuarios fijos con contraseñas por defecto
+            const seed = {
+                juanma:  { username: 'juanma',  fullName: 'Juanma',   password: 'r14', createdAt: new Date().toISOString() },
+                german:  { username: 'german',  fullName: 'German',   password: 'r14', createdAt: new Date().toISOString() },
+                gabriel: { username: 'gabriel', fullName: 'Gabriel',  password: 'r14', createdAt: new Date().toISOString() }
+            };
+            localStorage.setItem('r14.web_users', JSON.stringify(seed));
+            return seed;
+        }
+
+        function saveLocalWebUsers(users) {
+            localStorage.setItem('r14.web_users', JSON.stringify(users));
+        }
+
+        async function loadUsers() {
+            const users = getLocalWebUsers();
+            usersData = Object.values(users).map(u => ({ ...u, id: u.username, role: 'ADMIN' }));
+            renderUsersTable();
         }
 
         function renderUsersTable() {
@@ -3137,10 +3158,9 @@
             `).join('');
         }
 
-        async function createUserFromPlanning() {
-            const username = (document.getElementById('new-user-username')?.value || '').trim();
+        function createUserFromPlanning() {
+            const username = (document.getElementById('new-user-username')?.value || '').trim().toLowerCase();
             const fullName = (document.getElementById('new-user-fullname')?.value || '').trim();
-            const role = (document.getElementById('new-user-role')?.value || 'DRIVER').trim().toUpperCase();
             const password = (document.getElementById('new-user-password')?.value || '').trim();
 
             if (!username || !password) {
@@ -3148,45 +3168,43 @@
                 return;
             }
 
-            try {
-                const res = await fetch(`${API_URL}/users`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, fullName, role, password })
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok) throw new Error(data?.error || 'No se pudo crear el usuario');
-
-                notifyUsers(`Usuario ${username} creado correctamente.`, 'success');
-                document.getElementById('new-user-username').value = '';
-                document.getElementById('new-user-fullname').value = '';
-                document.getElementById('new-user-password').value = '';
-                await loadUsers();
-            } catch (e) {
-                notifyUsers(`Error al crear usuario: ${e?.message || e}`, 'warning');
+            const users = getLocalWebUsers();
+            if (users[username]) {
+                notifyUsers(`El usuario "${username}" ya existe.`, 'warning');
+                return;
             }
+
+            users[username] = { username, fullName: fullName || username, password, createdAt: new Date().toISOString() };
+            saveLocalWebUsers(users);
+
+            // También agregar a perfiles con acceso completo por defecto
+            const profiles = getStoredProfiles();
+            if (!profiles[username]) { profiles[username] = [...ALL_MODULES]; saveStoredProfiles(profiles); }
+
+            notifyUsers(`Usuario "${username}" creado correctamente.`, 'success');
+            document.getElementById('new-user-username').value = '';
+            document.getElementById('new-user-fullname').value = '';
+            document.getElementById('new-user-password').value = '';
+            loadUsers();
         }
 
-        async function resetUserPassword(userId, username) {
+        function resetUserPassword(userId, username) {
             const input = document.getElementById(`pwd-${userId}`);
             const password = (input?.value || '').trim();
             if (!password) {
                 notifyUsers('Ingresá una nueva contraseña.', 'warning');
                 return;
             }
-            try {
-                const res = await fetch(`${API_URL}/users/${userId}/password`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ password })
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok) throw new Error(data?.error || 'No se pudo cambiar la contraseña');
-                input.value = '';
-                notifyUsers(`Contraseña actualizada para ${username}.`, 'success');
-            } catch (e) {
-                notifyUsers(`Error al actualizar contraseña: ${e?.message || e}`, 'warning');
+            const users = getLocalWebUsers();
+            const key = username.toLowerCase();
+            if (!users[key]) {
+                notifyUsers(`No se encontró el usuario "${username}".`, 'warning');
+                return;
             }
+            users[key].password = password;
+            saveLocalWebUsers(users);
+            input.value = '';
+            notifyUsers(`Contraseña actualizada para "${username}".`, 'success');
         }
 
         async function toggleUserBlocked(userId, username, currentRole) {
@@ -3217,17 +3235,18 @@
             }
         }
 
-        async function deleteUserFromPlanning(userId, username) {
-            if (!confirm(`¿Eliminar usuario ${username}? Esta acción no se puede deshacer.`)) return;
-            try {
-                const res = await fetch(`${API_URL}/users/${userId}`, { method: 'DELETE' });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok) throw new Error(data?.error || 'No se pudo eliminar el usuario');
-                notifyUsers(`Usuario ${username} eliminado.`, 'success');
-                await loadUsers();
-            } catch (e) {
-                notifyUsers(`Error al eliminar usuario: ${e?.message || e}`, 'warning');
+        function deleteUserFromPlanning(userId, username) {
+            const fixed = ['juanma', 'german', 'gabriel'];
+            if (fixed.includes(username.toLowerCase())) {
+                notifyUsers(`El usuario "${username}" es fijo y no se puede eliminar.`, 'warning');
+                return;
             }
+            if (!confirm(`¿Eliminar usuario "${username}"? Esta acción no se puede deshacer.`)) return;
+            const users = getLocalWebUsers();
+            delete users[username.toLowerCase()];
+            saveLocalWebUsers(users);
+            notifyUsers(`Usuario "${username}" eliminado.`, 'success');
+            loadUsers();
         }
 
         // --- RUTAS MODULE ---
