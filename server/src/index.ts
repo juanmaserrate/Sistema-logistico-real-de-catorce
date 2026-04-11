@@ -396,6 +396,83 @@ app.get('/', (req, res) => {
 
 // --- NEW V1 API (SaaS / VRP) ---
 
+// ── MIGRACIÓN TEMPORAL: Reemplazo completo de clientes ──────────────────────
+app.post('/api/admin/migrate-clients', async (req, res) => {
+    try {
+        const fs = await import('fs');
+        const path = await import('path');
+        const dataPath = path.default.join(__dirname, '..', 'migration-clients.json');
+        if (!fs.default.existsSync(dataPath)) {
+            return res.status(400).json({ error: 'migration-clients.json no encontrado' });
+        }
+        const newClients = JSON.parse(fs.default.readFileSync(dataPath, 'utf8'));
+        if (!Array.isArray(newClients) || newClients.length === 0) {
+            return res.status(400).json({ error: 'JSON vacío o inválido' });
+        }
+
+        // Backup clientes actuales
+        const currentClients = await prisma.client.findMany({ where: { tenantId: 'default-tenant' } });
+        const currentMappings = await prisma.establishmentMapping.findMany();
+
+        // Contar dependencias
+        const stopCount = await prisma.stop.count();
+        const tripStopCount = await (prisma as any).tripStop.count({ where: { clientId: { not: null } } });
+        const mappingCount = currentMappings.length;
+
+        // Borrado en transacción
+        await prisma.$transaction(async (tx: any) => {
+            // 1. Borrar Stops (FK a Client sin cascade)
+            await tx.stop.deleteMany({});
+            // 2. Nullear TripStop.clientId
+            await tx.$executeRawUnsafe('UPDATE "TripStop" SET "clientId" = NULL WHERE "clientId" IS NOT NULL');
+            // 3. Borrar EstablishmentMappings
+            await tx.establishmentMapping.deleteMany({});
+            // 4. Borrar todos los Clients
+            await tx.client.deleteMany({ where: { tenantId: 'default-tenant' } });
+            // 5. Insertar nuevos
+            await tx.client.createMany({ data: newClients });
+        }, { timeout: 60000 });
+
+        // Verificar inserción
+        const inserted = await prisma.client.findMany({ where: { tenantId: 'default-tenant' }, select: { id: true, name: true, zone: true, barrio: true } });
+
+        // Verificar vinculación con RouteStopTemplates
+        const templates = await (prisma as any).routeStopTemplate.findMany({ select: { id: true, name: true, routeTemplateId: true } });
+        const norm = (s: string) => String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').trim().toUpperCase().replace(/\s+/g, ' ');
+        const clientByNorm = new Map<string, string>();
+        inserted.forEach((c: any) => { const n = norm(c.name); if (!clientByNorm.has(n)) clientByNorm.set(n, c.name); });
+
+        const matched: string[] = [];
+        const unmatched: string[] = [];
+        templates.forEach((t: any) => {
+            const n = norm(t.name);
+            if (clientByNorm.has(n)) matched.push(t.name);
+            else unmatched.push(t.name);
+        });
+
+        // Distribución
+        const byZone: Record<string, number> = {};
+        const byBarrio: Record<string, number> = {};
+        inserted.forEach((c: any) => {
+            byZone[c.zone] = (byZone[c.zone] || 0) + 1;
+            byBarrio[c.barrio] = (byBarrio[c.barrio] || 0) + 1;
+        });
+
+        res.json({
+            ok: true,
+            deleted: { clients: currentClients.length, stops: stopCount, tripStopsNulled: tripStopCount, mappings: mappingCount },
+            inserted: inserted.length,
+            byBarrio,
+            byZone,
+            routeTemplates: { matched: matched.length, unmatched: unmatched.length, unmatchedNames: unmatched },
+            backup: { clientCount: currentClients.length, clients: currentClients, mappings: currentMappings }
+        });
+    } catch (e: any) {
+        console.error('MIGRATE ERROR:', e);
+        res.status(500).json({ error: e?.message || 'Error en migración' });
+    }
+});
+
 // Health check (para que el cliente detecte si la API está online)
 app.get('/api/health', (req, res) => {
     res.json({
