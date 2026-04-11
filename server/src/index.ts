@@ -3929,8 +3929,8 @@ app.get('/api/v1/stats/week', async (_req, res) => {
     }
 });
 
-// ── TEMPORAL: renombrar templates batch 2 (jardines Rincón Feliz, JM, CE.7) ──
-app.post('/api/admin/rename-templates-2', async (req: any, res: any) => {
+// ── ELIMINADO: endpoint temporal rename-templates-2 (ya ejecutado) ──
+if (false) app.post('/api/admin/rename-templates-2', async (req: any, res: any) => {
     const { key } = req.body || {};
     if (key !== 'r14-rename-2026-b2') return res.status(403).json({ error: 'Forbidden' });
 
