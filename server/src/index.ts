@@ -4416,7 +4416,7 @@ async function bootstrapData() {
     }
 }
 
-app.post('/api/admin/create-admin-users', async (req: any, res: any) => {
+if (false) app.post('/api/admin/create-admin-users', async (req: any, res: any) => {
     const { key } = req.body || {};
     if (key !== 'r14-create-admins-2026') return res.status(403).json({ error: 'Forbidden' });
 
