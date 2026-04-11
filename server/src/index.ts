@@ -3929,8 +3929,8 @@ app.get('/api/v1/stats/week', async (_req, res) => {
     }
 });
 
-// ── TEMPORAL: renombrar templates batch 3 (ES.74, ES.76, ES.79, ES.80) ──
-app.post('/api/admin/rename-templates-3', async (req: any, res: any) => {
+// ── ELIMINADO: endpoint temporal rename-templates-3 (ya ejecutado) ──
+if (false) app.post('/api/admin/rename-templates-3', async (req: any, res: any) => {
     const { key } = req.body || {};
     if (key !== 'r14-rename-2026-b3') return res.status(403).json({ error: 'Forbidden' });
 
