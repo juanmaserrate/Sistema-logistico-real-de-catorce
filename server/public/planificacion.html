@@ -7457,20 +7457,19 @@
             await refreshApiStatusFromHealth();
             try {
                 // Set default month to current
-                const monthSelect = document.getElementById('planning-month-select');
-                if (monthSelect) {
-                    const monthNames = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
-                    const monthLabels = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-                    const idx = new Date().getMonth();
-                    const m = monthNames[idx];
-                    const yr = new Date().getFullYear();
-                    monthSelect.value = m;
-                    const dashM = document.getElementById('dashboard-month-select');
-                    if (dashM) dashM.value = m;
-                    // Sincronizar label del dropdown custom
-                    const label = document.getElementById('planning-month-label');
-                    if (label) label.textContent = `${monthLabels[idx]} ${yr}`;
-                }
+                // Setear TODOS los selectores de mes al mes actual
+                const monthNames = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
+                const monthLabels = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
+                const idx = new Date().getMonth();
+                const currentMonthVal = monthNames[idx];
+                const yr = new Date().getFullYear();
+
+                ['planning-month-select', 'dashboard-month-select', 'salary-month-select', 'costs-month-select'].forEach(id => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = currentMonthVal;
+                });
+                const label = document.getElementById('planning-month-label');
+                if (label) label.textContent = `${monthLabels[idx]} ${yr}`;
                 saveBusinessUnitsCatalog(getBusinessUnitsCatalog());
 
                 // Sequentially load critical data
