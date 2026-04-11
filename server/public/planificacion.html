@@ -1401,59 +1401,54 @@
                     </div>
                 </div>
 
-                <!-- Configuración de Perfiles -->
+                <!-- Configuración de Acceso por Usuario -->
                 <div class="card-dark p-8">
                     <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8">
                         <div>
-                            <h4 class="text-lg font-bold text-[#1B2559]">Configuración de Perfiles de Acceso</h4>
-                            <p class="text-sm text-[#A3AED0] font-medium">Asigná perfiles a cada usuario para controlar qué módulos pueden ver</p>
+                            <h4 class="text-lg font-bold text-[#1B2559]">Configuración de Acceso por Usuario</h4>
+                            <p class="text-sm text-[#A3AED0] font-medium">Seleccioná los módulos a los que puede acceder cada usuario</p>
                         </div>
                         <button onclick="saveProfileAssignments()" class="px-6 py-3 rounded-2xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center gap-2 uppercase tracking-widest">
-                            <i data-lucide="save" class="w-4 h-4"></i> Guardar Perfiles
+                            <i data-lucide="save" class="w-4 h-4"></i> Guardar Accesos
                         </button>
                     </div>
 
-                    <!-- Add assignment -->
+                    <!-- Add user access -->
                     <div class="flex flex-wrap items-end gap-4 mb-6 p-5 bg-[#F4F7FE] rounded-2xl">
                         <div class="flex-1 min-w-[180px]">
                             <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Nombre de usuario</label>
                             <input id="profile-new-username" type="text" placeholder="Ej: maria, carlos..." class="w-full bg-white border-0 rounded-2xl px-4 py-3 text-sm font-medium text-[#1B2559] outline-none">
                         </div>
-                        <div class="min-w-[180px]">
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Perfil</label>
-                            <select id="profile-new-role" class="w-full bg-white border-0 rounded-2xl px-4 py-3 text-sm font-bold text-[#1B2559] outline-none">
-                                <option value="TRAFICO">TRAFICO</option>
-                                <option value="RRHH">RRHH</option>
-                                <option value="ADMINISTRACION">ADMINISTRACION</option>
-                                <option value="SUPERADMIN">SUPERADMIN</option>
-                            </select>
-                        </div>
                         <button onclick="addProfileAssignment()" class="px-5 py-3 rounded-2xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100">
-                            Asignar
+                            Agregar usuario
                         </button>
                     </div>
 
-                    <!-- Assignments table -->
+                    <!-- Assignments table with module checkboxes -->
                     <div class="overflow-x-auto custom-scrollbar rounded-2xl border border-[#F4F7FE]">
-                        <table class="w-full text-left">
+                        <table class="w-full text-left" id="profile-access-table">
                             <thead>
                                 <tr>
-                                    <th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest bg-[#F8FAFF]">Usuario</th>
-                                    <th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest bg-[#F8FAFF]">Perfil Asignado</th>
-                                    <th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest bg-[#F8FAFF]">Módulos</th>
-                                    <th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest bg-[#F8FAFF] text-center">Acciones</th>
+                                    <th class="px-4 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest bg-[#F8FAFF] sticky left-0 z-10">Usuario</th>
+                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Torre Control</th>
+                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Logística</th>
+                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Dashboard</th>
+                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Mapa/Ruteo</th>
+                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Costos</th>
+                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Manten.</th>
+                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Rutas</th>
+                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Usuarios</th>
+                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Personal</th>
+                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Salarios</th>
+                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Escuelas</th>
+                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Reportes</th>
+                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Inciden.</th>
+                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Auditoría</th>
+                                    <th class="px-3 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Acciones</th>
                                 </tr>
                             </thead>
                             <tbody id="profile-assignments-body" class="divide-y divide-[#F4F7FE]"></tbody>
                         </table>
-                    </div>
-                </div>
-
-                <!-- Profiles reference card -->
-                <div class="card-dark p-8">
-                    <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-6">Referencia de Perfiles</h4>
-                    <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4" id="profiles-reference-grid">
-                        <!-- Filled by JS -->
                     </div>
                 </div>
             </div>
@@ -2493,7 +2488,6 @@
         function getUserProfile(username) {
             const lower = (username || '').toLowerCase().trim();
             if (USER_PROFILES[lower]) return USER_PROFILES[lower];
-            // Try loading from settings
             try {
                 const stored = localStorage.getItem('r14.user_profiles');
                 if (stored) {
@@ -2501,12 +2495,16 @@
                     if (parsed[lower]) return parsed[lower];
                 }
             } catch(_) {}
-            return 'SUPERADMIN'; // Default: full access for unknown admin users
+            return 'SUPERADMIN';
         }
 
         function applyAccessControl(profile) {
             currentUserProfile = profile;
-            currentUserModules = ACCESS_PROFILES[profile] || ACCESS_PROFILES.SUPERADMIN;
+            if (Array.isArray(profile)) {
+                currentUserModules = profile;
+            } else {
+                currentUserModules = ACCESS_PROFILES[profile] || ACCESS_PROFILES.SUPERADMIN;
+            }
 
             // Hide/show nav buttons based on access
             const allSections = ['control','weekly','dashboard','vrp','costs','maintenance','routes','users','employees','salaries','schools','reports'];
@@ -2633,41 +2631,41 @@
             return { ...stored, ...hardcoded };
         }
 
+        const ALL_MODULES = ['control','weekly','dashboard','vrp','costs','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'];
+
         function renderProfileAssignments() {
             const tbody = document.getElementById('profile-assignments-body');
             if (!tbody) return;
             const all = getAllProfileAssignments();
             const hardcoded = ['juanma', 'german', 'gabriel'];
-            const MODULE_LABELS = {
-                control: 'Torre de Control', weekly: 'Logística Semanal', dashboard: 'Dashboard',
-                vrp: 'Mapa y Ruteo', costs: 'Motor de Costos', maintenance: 'Mantenimiento',
-                routes: 'Rutas', users: 'Usuarios', employees: 'Personal',
-                salaries: 'Salarios', schools: 'Escuelas', reports: 'Reportes'
-            };
 
             const rows = Object.entries(all).sort((a, b) => a[0].localeCompare(b[0]));
             if (rows.length === 0) {
-                tbody.innerHTML = '<tr><td colspan="4" class="px-6 py-12 text-center text-[#A3AED0] italic">No hay perfiles asignados. Los usuarios sin asignación tendrán acceso completo.</td></tr>';
+                tbody.innerHTML = `<tr><td colspan="16" class="px-6 py-12 text-center text-[#A3AED0] italic">No hay usuarios configurados. Agregá un usuario arriba.</td></tr>`;
                 return;
             }
-            tbody.innerHTML = rows.map(([user, profile]) => {
+            tbody.innerHTML = rows.map(([user, data]) => {
                 const isHardcoded = hardcoded.includes(user.toLowerCase());
-                const modules = (ACCESS_PROFILES[profile] || []).map(m => MODULE_LABELS[m] || m);
+                const userModules = Array.isArray(data) ? data : (ACCESS_PROFILES[data] || ALL_MODULES);
                 return `<tr>
-                    <td class="px-6 py-4 text-sm font-bold text-[#1B2559]">${user}${isHardcoded ? ' <span class="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-lg ml-2">FIJO</span>' : ''}</td>
-                    <td class="px-6 py-4">
+                    <td class="px-4 py-3 text-sm font-bold text-[#1B2559] sticky left-0 bg-white z-10">${user}${isHardcoded ? ' <span class="text-[9px] font-black text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded-lg ml-1">FIJO</span>' : ''}</td>
+                    ${ALL_MODULES.map(m => {
+                        const checked = userModules.includes(m);
+                        const disabled = isHardcoded;
+                        return `<td class="px-2 py-3 text-center">
+                            <input type="checkbox" data-user="${user}" data-module="${m}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}
+                                onchange="toggleUserModule('${user}','${m}',this.checked)"
+                                class="rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500 cursor-pointer w-4 h-4">
+                        </td>`;
+                    }).join('')}
+                    <td class="px-3 py-3 text-center">
                         ${isHardcoded
-                            ? `<span class="text-sm font-bold text-indigo-600">${profile}</span>`
-                            : `<select onchange="updateProfileAssignment('${user}', this.value)" class="bg-[#F4F7FE] border-0 rounded-xl px-3 py-2 text-sm font-bold text-[#1B2559] outline-none">
-                                ${['SUPERADMIN','TRAFICO','RRHH','ADMINISTRACION'].map(p => `<option value="${p}" ${p === profile ? 'selected' : ''}>${p}</option>`).join('')}
-                            </select>`
-                        }
-                    </td>
-                    <td class="px-6 py-4 text-[11px] text-[#A3AED0] font-medium max-w-xs">${modules.join(', ')}</td>
-                    <td class="px-6 py-4 text-center">
-                        ${isHardcoded
-                            ? '<span class="text-[10px] text-[#A3AED0]">Protegido</span>'
-                            : `<button onclick="removeProfileAssignment('${user}')" class="p-2 text-[#A3AED0] hover:text-rose-600 transition-all"><i data-lucide="trash-2" class="w-4 h-4"></i></button>`
+                            ? '<span class="text-[9px] text-[#A3AED0]">Protegido</span>'
+                            : `<div class="flex items-center justify-center gap-1">
+                                <button onclick="selectAllModules('${user}')" class="p-1 text-indigo-500 hover:text-indigo-700 transition-all" title="Todos"><i data-lucide="check-square" class="w-3.5 h-3.5"></i></button>
+                                <button onclick="deselectAllModules('${user}')" class="p-1 text-[#A3AED0] hover:text-amber-600 transition-all" title="Ninguno"><i data-lucide="square" class="w-3.5 h-3.5"></i></button>
+                                <button onclick="removeProfileAssignment('${user}')" class="p-1 text-[#A3AED0] hover:text-rose-600 transition-all" title="Eliminar"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                            </div>`
                         }
                     </td>
                 </tr>`;
@@ -2675,57 +2673,46 @@
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
-        function renderProfilesReference() {
-            const grid = document.getElementById('profiles-reference-grid');
-            if (!grid) return;
-            const MODULE_LABELS = {
-                control: 'Torre de Control', weekly: 'Logística Semanal', dashboard: 'Dashboard',
-                vrp: 'Mapa y Ruteo', costs: 'Motor de Costos', maintenance: 'Mantenimiento',
-                routes: 'Rutas', users: 'Usuarios', employees: 'Personal',
-                salaries: 'Salarios', schools: 'Escuelas', reports: 'Reportes'
-            };
-            const colors = {
-                SUPERADMIN: { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-700', dot: 'bg-indigo-500' },
-                TRAFICO: { bg: 'bg-emerald-50', border: 'border-emerald-200', text: 'text-emerald-700', dot: 'bg-emerald-500' },
-                RRHH: { bg: 'bg-amber-50', border: 'border-amber-200', text: 'text-amber-700', dot: 'bg-amber-500' },
-                ADMINISTRACION: { bg: 'bg-indigo-50', border: 'border-indigo-200', text: 'text-indigo-700', dot: 'bg-indigo-500' }
-            };
-            grid.innerHTML = Object.entries(ACCESS_PROFILES).map(([profile, modules]) => {
-                const c = colors[profile] || colors.SUPERADMIN;
-                return `<div class="rounded-2xl border ${c.border} ${c.bg} p-5">
-                    <div class="flex items-center gap-2 mb-3">
-                        <span class="w-2.5 h-2.5 rounded-full ${c.dot}"></span>
-                        <h5 class="text-xs font-black ${c.text} uppercase tracking-widest">${profile}</h5>
-                    </div>
-                    <div class="space-y-1.5">
-                        ${modules.map(m => `<div class="text-[11px] font-medium ${c.text} opacity-80">• ${MODULE_LABELS[m] || m}</div>`).join('')}
-                    </div>
-                </div>`;
-            }).join('');
+        function toggleUserModule(username, module, checked) {
+            const profiles = getStoredProfiles();
+            let userModules = Array.isArray(profiles[username]) ? profiles[username] : [...ALL_MODULES];
+            if (checked && !userModules.includes(module)) userModules.push(module);
+            if (!checked) userModules = userModules.filter(m => m !== module);
+            profiles[username] = userModules;
+            saveStoredProfiles(profiles);
+        }
+
+        function selectAllModules(username) {
+            const profiles = getStoredProfiles();
+            profiles[username] = [...ALL_MODULES];
+            saveStoredProfiles(profiles);
+            renderProfileAssignments();
+        }
+
+        function deselectAllModules(username) {
+            const profiles = getStoredProfiles();
+            profiles[username] = [];
+            saveStoredProfiles(profiles);
+            renderProfileAssignments();
         }
 
         function addProfileAssignment() {
             const usernameEl = document.getElementById('profile-new-username');
-            const roleEl = document.getElementById('profile-new-role');
             const username = (usernameEl.value || '').trim().toLowerCase();
-            const role = roleEl.value;
             if (!username) {
-                if (typeof addNotification === 'function') addNotification('warning', 'Perfiles', 'Escribí un nombre de usuario.');
+                if (typeof addNotification === 'function') addNotification('warning', 'Acceso', 'Escribí un nombre de usuario.');
                 return;
             }
             const profiles = getStoredProfiles();
-            profiles[username] = role;
+            if (profiles[username]) {
+                if (typeof addNotification === 'function') addNotification('warning', 'Acceso', `${username} ya está en la lista.`);
+                return;
+            }
+            profiles[username] = [...ALL_MODULES];
             saveStoredProfiles(profiles);
             usernameEl.value = '';
             renderProfileAssignments();
-            if (typeof addNotification === 'function') addNotification('success', 'Perfil asignado', `${username} → ${role}`);
-        }
-
-        function updateProfileAssignment(username, newRole) {
-            const profiles = getStoredProfiles();
-            profiles[username] = newRole;
-            saveStoredProfiles(profiles);
-            renderProfileAssignments();
+            if (typeof addNotification === 'function') addNotification('success', 'Usuario agregado', `${username} — todos los módulos habilitados`);
         }
 
         function removeProfileAssignment(username) {
@@ -2733,7 +2720,7 @@
             delete profiles[username];
             saveStoredProfiles(profiles);
             renderProfileAssignments();
-            if (typeof addNotification === 'function') addNotification('info', 'Perfil removido', `${username} fue eliminado de la lista de perfiles.`);
+            if (typeof addNotification === 'function') addNotification('info', 'Usuario removido', `${username} fue eliminado de la configuración de acceso.`);
         }
 
         function saveProfileAssignments() {
@@ -2817,7 +2804,7 @@
                 }, 100);
             }
             if(id === 'routes') loadRouteTemplates();
-            if(id === 'users') { loadUsers(); renderProfileAssignments(); renderProfilesReference(); }
+            if(id === 'users') { loadUsers(); renderProfileAssignments(); }
             if(id === 'reports') initReportFilters();
             if(id === 'incidents') loadIncidents();
             if(id === 'audit') loadAuditLog();
