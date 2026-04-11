@@ -4416,6 +4416,42 @@ async function bootstrapData() {
     }
 }
 
+app.post('/api/admin/create-admin-users', async (req: any, res: any) => {
+    const { key } = req.body || {};
+    if (key !== 'r14-create-admins-2026') return res.status(403).json({ error: 'Forbidden' });
+
+    const admins = [
+        { username: 'juanma',  fullName: 'Juanma',   password: 'r14' },
+        { username: 'german',  fullName: 'German',   password: 'r14' },
+        { username: 'gabriel', fullName: 'Gabriel',  password: 'r14' },
+    ];
+
+    await prisma.tenant.upsert({
+        where: { id: 'default-tenant' },
+        update: {},
+        create: { id: 'default-tenant', name: 'Real de Catorce' }
+    });
+
+    const results: any[] = [];
+    for (const a of admins) {
+        try {
+            const existing = await prisma.user.findFirst({ where: { username: a.username } });
+            if (existing) {
+                results.push({ username: a.username, status: 'ya existe', id: existing.id });
+                continue;
+            }
+            const hashed = await hashPassword(a.password);
+            const user = await prisma.user.create({
+                data: { username: a.username, password: hashed, fullName: a.fullName, role: 'ADMIN', tenantId: 'default-tenant' }
+            });
+            results.push({ username: a.username, status: 'creado', id: user.id });
+        } catch (e: any) {
+            results.push({ username: a.username, status: 'error', error: e.message });
+        }
+    }
+    return res.json({ results });
+});
+
 httpServer.listen(port, host, () => {
     console.log(`R14 server listening on ${host}:${port}`);
     // No bloquea el healthcheck de Railway.
