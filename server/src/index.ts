@@ -3929,6 +3929,193 @@ app.get('/api/v1/stats/week', async (_req, res) => {
     }
 });
 
+// ── TEMPORAL: renombrar RouteStopTemplate para vincular con nuevos clientes ──
+app.post('/api/admin/rename-templates', async (req: any, res: any) => {
+    const { key } = req.body || {};
+    if (key !== 'r14-rename-2026') return res.status(403).json({ error: 'Forbidden' });
+
+    try {
+        const mappings: { template: string; client: string }[] = [
+            { template: "EP.73", client: "E.P.B 73" },
+            { template: "J.932", client: "JARDÍN 932" },
+            { template: "ES.47", client: "E.E.S 47 (Ex SB 63)" },
+            { template: "EP.75", client: "E.P.B 75" },
+            { template: "ES.54", client: "E.E.S 54" },
+            { template: "EP.70", client: "E.P.B 70" },
+            { template: "J.915", client: "JARDÍN 915" },
+            { template: "J.930", client: "JARDIN 930" },
+            { template: "ES4", client: "E.E.S 4" },
+            { template: "EP.21", client: "E.P.B 21" },
+            { template: "EP.26", client: "E.P.B 26" },
+            { template: "TEC.1", client: "TEC. 1" },
+            { template: "J.903", client: "JARDIN 903" },
+            { template: "EP.9", client: "E.P.B 9" },
+            { template: "ES.70", client: "E.E.S 70" },
+            { template: "EP.79", client: "E.P.B 79" },
+            { template: "ES.36", client: "E.E.S 36 (Ex SB 67)" },
+            { template: "EP.941", client: "JARDIN 941" },
+            { template: "ES.10", client: "E.E.S 10" },
+            { template: "ANEXO10", client: "E.E.S 10 (anexo)" },
+            { template: "J.943", client: "JARDIN 943" },
+            { template: "ES.30", client: "E.E.S 30" },
+            { template: "SEC.44", client: "E.E.S 44" },
+            { template: "EEE510", client: "E.E.E 510" },
+            { template: "EP 31", client: "EP31" },
+            { template: "JI 936", client: "J936" },
+            { template: "JI 944", client: "J944" },
+            { template: "EP 41", client: "E.P.B 41" },
+            { template: "ES 44", client: "E.E.S 44" },
+            { template: "Ce 18", client: "CE18" },
+            { template: "EET 4", client: "TECNICA 4" },
+            { template: "JI 932", client: "JARDÍN 932" },
+            { template: "EP.42", client: "E.P.B 42" },
+            { template: "ES.45", client: "E.E.S 45" },
+            { template: "J.908", client: "Jardin de Infantes 908" },
+            { template: "ES.17", client: "Secundaria 17" },
+            { template: "TEC.3", client: "TEC. 3" },
+            { template: "EP.24", client: "Primaria 24" },
+            { template: "CEP.801", client: "CEC 801" },
+            { template: "ES.5", client: "E.E.S 5" },
+            { template: "EP30", client: "E.P.B 30" },
+            { template: "J.917", client: "Jardin de Infantes 917" },
+            { template: "EP.66", client: "E.P.B 66" },
+            { template: "ES.26", client: "Secundaria 26" },
+            { template: "EP.14", client: "Primaria 14" },
+            { template: "J.912", client: "JARDIN 912" },
+            { template: "TEC.8", client: "Técnica 8" },
+            { template: "J.910", client: "Jardin de Infantes 910" },
+            { template: "EP.38", client: "Primaria 38" },
+            { template: "J.931", client: "JARDIN 931" },
+            { template: "EP.15", client: "Primaria 15" },
+            { template: "SEC.16", client: "Secundaria 16" },
+            { template: "CPI3", client: "CPII 3" },
+            { template: "CPI5", client: "CPII 5" },
+            { template: "CPI 1", client: "CPII 1" },
+            { template: "POLO ED", client: "Polo Educativo Malvinas Argentinas" },
+            { template: "EP.65", client: "E.P.B 65" },
+            { template: "EP.41", client: "E.P.B 41" },
+            { template: "J.928", client: "JARDIN 928" },
+            { template: "J.929", client: "JARDIN 929" },
+            { template: "EP.80", client: "E.P.B 80" },
+            { template: "J.942", client: "JARDÍN 942" },
+            { template: "ES.14", client: "E.E.S 14" },
+            { template: "J.911", client: "JARDÍN 911" },
+            { template: "ES.20", client: "E.E.S 20 ( ex 54)" },
+            { template: "CPI2", client: "CPII 2" },
+            { template: "CPI4", client: "CPII 4" },
+            { template: "J.953", client: "JARDIN 953" },
+            { template: "EPB.61", client: "E.P.B 61" },
+            { template: "EES.33", client: "E.E.S 33" },
+            { template: "J.966", client: "JARDIN 966" },
+            { template: "J.939", client: "JARDIN 939" },
+            { template: "CPI6", client: "CPII 6" },
+            { template: "EP.63", client: "E.P.B 63" },
+            { template: "ES.66", client: "E.E.S 66" },
+            { template: "EP.74", client: "E.P.B 74" },
+            { template: "J.927", client: "JARDÍN 927" },
+            { template: "J.913", client: "JARDÍN 913" },
+            { template: "EP.68", client: "E.P.B 68" },
+            { template: "ES.48", client: "E.E.S 48" },
+            { template: "J.937", client: "JARDIN 937" },
+            { template: "EPB.17", client: "E.P.B 17" },
+            { template: "EEE.509", client: "E.E.E 509" },
+            { template: "EES.6", client: "E.E.S 6" },
+            { template: "EPB.34", client: "E.P.B 34" },
+            { template: "J.934", client: "JARDIN 934" },
+            { template: "J. GRILLITO", client: "JARDIN GRILLITO" },
+            { template: "EP.10", client: "E.P.B 10" },
+            { template: "J.956", client: "JARDIN 956" },
+            { template: "SEC.8", client: "E.E.S 8" },
+            { template: "EP.67", client: "E.P.B 67" },
+            { template: "SEC.65", client: "E.E.S 65" },
+            { template: "J.957", client: "JARDIN 957" },
+            { template: "EP.44", client: "E.P.B 44" },
+            { template: "SEC.60", client: "E.E.S 60" },
+            { template: "J.2080", client: "JARDIN 2080" },
+            { template: "EP.22", client: "E.P.B 22" },
+            { template: "EP.40", client: "E.P.B 40" },
+            { template: "J.916", client: "JARDIN 916" },
+            { template: "ES.29", client: "E.E.S 29" },
+            { template: "ES.9", client: "E.E.S 9" },
+            { template: "J.922", client: "JARDIN 922" },
+            { template: "EP.72", client: "E.P.B 72" },
+            { template: "ES.34", client: "E.E.S 34" },
+            { template: "J.951", client: "JARDIN 951" },
+            { template: "EP.71", client: "E.P.B 71" },
+            { template: "ES.71", client: "E.E.S 71" },
+            { template: "J.921", client: "JARDIN 921" },
+            { template: "EP.46", client: "E.P.B 46" },
+            { template: "ES.62", client: "E.E.S 62" },
+            { template: "J.955", client: "JARDIN 955" },
+            { template: "J. LUCECITAS", client: "JARDIN LUCECITAS DE JESUS" },
+            { template: "J. OLA VERDE", client: "JARDIN LA OLA VERDE" },
+            { template: "ES.28", client: "E.E.S 28" },
+            { template: "EP.25", client: "E.P.B 25" },
+            { template: "EP.54", client: "E.P.B 54" },
+            { template: "EEE.505", client: "E.E.E 505" },
+            { template: "EP.32", client: "E.P.B 32" },
+            { template: "ES.61", client: "E.E.S 61" },
+            { template: "TEC.5", client: "TEC 5" },
+            { template: "J MUNDO FELIZ", client: "JARDIN MUNDO FELIZ" },
+            { template: "EP 74", client: "E.P.B 74" },
+            { template: "J.925", client: "Jardin de Infantes 925" },
+            { template: "ES.46", client: "E.E.S 46" },
+            { template: "ES.19", client: "ES 19" },
+            { template: "CET.1", client: "CEAT 1" },
+            { template: "ES.16", client: "Secundaria 16" },
+            { template: "EP.60", client: "E.P.B 60" },
+            { template: "ES.64", client: "E.E.S 64" },
+            { template: "J.938", client: "JARDIN 938" },
+            { template: "EP.33", client: "E.P.B 33" },
+            { template: "J.919", client: "JARDIN 919" },
+        ];
+
+        const results: { template: string; client: string; updated: number }[] = [];
+        let totalUpdated = 0;
+
+        for (const m of mappings) {
+            const updated = await prisma.routeStopTemplate.updateMany({
+                where: { name: m.template },
+                data: { name: m.client },
+            });
+            results.push({ template: m.template, client: m.client, updated: updated.count });
+            totalUpdated += updated.count;
+        }
+
+        // Verificar vinculación: cuántos templates ahora matchean un cliente
+        const allTemplates = await prisma.routeStopTemplate.findMany({ select: { name: true } });
+        const uniqueNames = [...new Set(allTemplates.map(t => t.name))];
+        const clients = await prisma.client.findMany({ select: { name: true } });
+        const clientNorms = new Map(clients.map(c => [normClientNameForMatch(c.name), c.name]));
+
+        const matched: string[] = [];
+        const unmatched: string[] = [];
+        for (const n of uniqueNames) {
+            if (clientNorms.has(normClientNameForMatch(n))) {
+                matched.push(n);
+            } else {
+                unmatched.push(n);
+            }
+        }
+
+        res.json({
+            totalMappings: mappings.length,
+            totalUpdated,
+            details: results.filter(r => r.updated > 0),
+            notFound: results.filter(r => r.updated === 0).map(r => r.template),
+            verification: {
+                totalUniqueTemplateNames: uniqueNames.length,
+                matched: matched.length,
+                unmatched: unmatched.length,
+                unmatchedNames: unmatched,
+            },
+        });
+    } catch (e: any) {
+        console.error('rename-templates error:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 // ── ELIMINADO: endpoint de migración SQLite→PostgreSQL (ya ejecutado) ────────
 if (false) app.post('/api/admin/migrate-sqlite', async (req: any, res: any) => {
     const { key } = req.body || {};
