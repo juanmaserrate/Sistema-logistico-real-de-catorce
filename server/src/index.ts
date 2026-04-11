@@ -3929,6 +3929,49 @@ app.get('/api/v1/stats/week', async (_req, res) => {
     }
 });
 
+// ── TEMPORAL: crear cliente Real de Catorce y renombrar template REAL 14 ──
+app.post('/api/admin/add-real14', async (req: any, res: any) => {
+    const { key } = req.body || {};
+    if (key !== 'r14-real14-2026') return res.status(403).json({ error: 'Forbidden' });
+
+    try {
+        const tenant = await prisma.tenant.findFirst();
+        if (!tenant) return res.status(500).json({ error: 'No tenant' });
+
+        // Crear cliente Real de Catorce
+        const existing = await prisma.client.findFirst({ where: { name: 'Real de Catorce', tenantId: tenant.id } });
+        let client;
+        if (existing) {
+            client = existing;
+        } else {
+            client = await prisma.client.create({
+                data: {
+                    tenantId: tenant.id,
+                    name: 'Real de Catorce',
+                    address: 'Ombú 1269, Burzaco, Almirante Brown',
+                    latitude: -34.8353338,
+                    longitude: -58.4233261,
+                    zone: 'Almirante Brown',
+                    barrio: 'BURZACO',
+                    serviceTime: 15,
+                    priority: 'medium',
+                },
+            });
+        }
+
+        // Renombrar template REAL 14 → Real de Catorce
+        const updated = await prisma.routeStopTemplate.updateMany({
+            where: { name: 'REAL 14' },
+            data: { name: 'Real de Catorce' },
+        });
+
+        res.json({ client: { id: client.id, name: client.name, created: !existing }, templateUpdated: updated.count });
+    } catch (e: any) {
+        console.error('add-real14 error:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 // ── ELIMINADO: endpoint temporal rename-templates-2 (ya ejecutado) ──
 if (false) app.post('/api/admin/rename-templates-2', async (req: any, res: any) => {
     const { key } = req.body || {};
