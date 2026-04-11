@@ -3954,7 +3954,7 @@ app.post('/api/admin/add-real14', async (req: any, res: any) => {
                     zone: 'Almirante Brown',
                     barrio: 'BURZACO',
                     serviceTime: 15,
-                    priority: 'medium',
+                    priority: 0,
                 },
             });
         }
