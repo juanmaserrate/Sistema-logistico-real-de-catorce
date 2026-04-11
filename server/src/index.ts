@@ -3929,8 +3929,8 @@ app.get('/api/v1/stats/week', async (_req, res) => {
     }
 });
 
-// ── TEMPORAL: crear cliente Real de Catorce y renombrar template REAL 14 ──
-app.post('/api/admin/add-real14', async (req: any, res: any) => {
+// ── ELIMINADO: endpoint temporal add-real14 (ya ejecutado) ──
+if (false) app.post('/api/admin/add-real14', async (req: any, res: any) => {
     const { key } = req.body || {};
     if (key !== 'r14-real14-2026') return res.status(403).json({ error: 'Forbidden' });
 
