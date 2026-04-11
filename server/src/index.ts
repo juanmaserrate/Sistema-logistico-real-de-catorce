@@ -396,6 +396,16 @@ app.get('/', (req, res) => {
 
 // --- NEW V1 API (SaaS / VRP) ---
 
+// ── Endpoint temporal de análisis (sin auth) ─────────────────────────────────
+app.get('/api/analysis/clients', async (_req, res) => {
+    const clients = await prisma.client.findMany({ where: { tenantId: 'default-tenant' } });
+    res.json(clients);
+});
+app.get('/api/analysis/trips', async (_req, res) => {
+    const trips = await prisma.trip.findMany();
+    res.json(trips);
+});
+
 // Health check (para que el cliente detecte si la API está online)
 app.get('/api/health', (req, res) => {
     res.json({
