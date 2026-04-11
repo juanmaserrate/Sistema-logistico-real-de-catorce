@@ -3929,6 +3929,37 @@ app.get('/api/v1/stats/week', async (_req, res) => {
     }
 });
 
+// ── TEMPORAL: renombrar templates batch 3 (ES.74, ES.76, ES.79, ES.80) ──
+app.post('/api/admin/rename-templates-3', async (req: any, res: any) => {
+    const { key } = req.body || {};
+    if (key !== 'r14-rename-2026-b3') return res.status(403).json({ error: 'Forbidden' });
+
+    try {
+        const mappings: { template: string; client: string }[] = [
+            { template: "ES.74", client: "E.S.B 74 (EX 72)" },
+            { template: "ES.76", client: "E.S.B 76" },
+            { template: "ES.79", client: "E.S.B 79 (EX SB N°10)" },
+            { template: "ES.80", client: "E.S.B 80" },
+        ];
+
+        const results: { template: string; client: string; updated: number }[] = [];
+        let totalUpdated = 0;
+        for (const m of mappings) {
+            const updated = await prisma.routeStopTemplate.updateMany({
+                where: { name: m.template },
+                data: { name: m.client },
+            });
+            results.push({ template: m.template, client: m.client, updated: updated.count });
+            totalUpdated += updated.count;
+        }
+
+        res.json({ totalMappings: mappings.length, totalUpdated, details: results });
+    } catch (e: any) {
+        console.error('rename-templates-3 error:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 // ── ELIMINADO: endpoint temporal add-real14 (ya ejecutado) ──
 if (false) app.post('/api/admin/add-real14', async (req: any, res: any) => {
     const { key } = req.body || {};
