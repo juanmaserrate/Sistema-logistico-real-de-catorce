@@ -3929,8 +3929,8 @@ app.get('/api/v1/stats/week', async (_req, res) => {
     }
 });
 
-// ── TEMPORAL: renombrar RouteStopTemplate para vincular con nuevos clientes ──
-app.post('/api/admin/rename-templates', async (req: any, res: any) => {
+// ── ELIMINADO: endpoint temporal renombrar RouteStopTemplate (ya ejecutado) ──
+if (false) app.post('/api/admin/rename-templates', async (req: any, res: any) => {
     const { key } = req.body || {};
     if (key !== 'r14-rename-2026') return res.status(403).json({ error: 'Forbidden' });
 
