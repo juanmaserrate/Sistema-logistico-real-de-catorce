@@ -3929,6 +3929,71 @@ app.get('/api/v1/stats/week', async (_req, res) => {
     }
 });
 
+// ── TEMPORAL: renombrar templates batch 2 (jardines Rincón Feliz, JM, CE.7) ──
+app.post('/api/admin/rename-templates-2', async (req: any, res: any) => {
+    const { key } = req.body || {};
+    if (key !== 'r14-rename-2026-b2') return res.status(403).json({ error: 'Forbidden' });
+
+    try {
+        const mappings: { template: string; client: string }[] = [
+            { template: "J.1", client: "Jardín Rincón Feliz N°1" },
+            { template: "J.2", client: "Jardín Rincón Feliz N°2" },
+            { template: "J.3", client: "Jardín Rincón Feliz N°3" },
+            { template: "J.5", client: "Jardín Rincón Feliz N°5" },
+            { template: "J.6", client: "Jardín Rincón Feliz N°6" },
+            { template: "J.7", client: "Jardín Rincón Feliz N°7" },
+            { template: "J.8", client: "Jardín Rincón Feliz N°8" },
+            { template: "J.10", client: "Jardín Rincón Feliz N°10" },
+            { template: "J.11", client: "Jardín Rincón Feliz N°11" },
+            { template: "J.12", client: "Jardín Rincón Feliz N°12" },
+            { template: "J.13", client: "Jardín Rincón Feliz N°13" },
+            { template: "J.14", client: "Jardín Rincón Feliz N°14" },
+            { template: "J.15", client: "Jardín Rincón Feliz N°15" },
+            { template: "J.16", client: "Jardín Rincón Feliz N°16" },
+            { template: "J.17", client: "Jardín Rincón Feliz N°17" },
+            { template: "J.18", client: "Jardín Rincón Feliz N°18" },
+            { template: "J.19", client: "Jardín Rincón Feliz N°19" },
+            { template: "JM", client: "Jardin maternal 1" },
+            { template: "CE.7", client: "JARDÍN DE INFANTES JUANA MANSO (MUNICIPAL N° 7)" },
+        ];
+
+        const results: { template: string; client: string; updated: number }[] = [];
+        let totalUpdated = 0;
+
+        for (const m of mappings) {
+            const updated = await prisma.routeStopTemplate.updateMany({
+                where: { name: m.template },
+                data: { name: m.client },
+            });
+            results.push({ template: m.template, client: m.client, updated: updated.count });
+            totalUpdated += updated.count;
+        }
+
+        const allTemplates = await prisma.routeStopTemplate.findMany({ select: { name: true } });
+        const uniqueNames = [...new Set(allTemplates.map(t => t.name))];
+        const clients = await prisma.client.findMany({ select: { name: true } });
+        const clientNorms = new Map(clients.map(c => [normClientNameForMatch(c.name), c.name]));
+
+        const matched: string[] = [];
+        const unmatched: string[] = [];
+        for (const n of uniqueNames) {
+            if (clientNorms.has(normClientNameForMatch(n))) matched.push(n);
+            else unmatched.push(n);
+        }
+
+        res.json({
+            totalMappings: mappings.length,
+            totalUpdated,
+            details: results.filter(r => r.updated > 0),
+            notFound: results.filter(r => r.updated === 0).map(r => r.template),
+            verification: { totalUniqueTemplateNames: uniqueNames.length, matched: matched.length, unmatched: unmatched.length, unmatchedNames: unmatched },
+        });
+    } catch (e: any) {
+        console.error('rename-templates-2 error:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 // ── ELIMINADO: endpoint temporal renombrar RouteStopTemplate (ya ejecutado) ──
 if (false) app.post('/api/admin/rename-templates', async (req: any, res: any) => {
     const { key } = req.body || {};
