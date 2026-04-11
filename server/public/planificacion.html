@@ -856,11 +856,8 @@
                                     <th>Unidad Negocio</th>
                                     <th>Contrato</th>
                                     <th>Vuelta</th>
-                                    <th>Parámetros</th>
                                     <th>Costo ($)</th>
                                     <th>Unidad</th>
-                                    <th>Proveedor</th>
-                                    <th>Tiempos (plan)</th>
                                     <th>Recorrido real (app)</th>
                                     <th>Estado</th>
                                     <th class="text-center">Acciones</th>
@@ -5768,21 +5765,10 @@
                                 ${formatVueltaLabel(t)}
                             </span>
                         </td>
-                        <td>
-                            <div class="text-[10px] text-[#A3AED0] font-bold uppercase">${t.vehicleType || 'VANS'}</div>
-                        </td>
                         <td class="text-xs font-black ${isPropio ? 'text-indigo-600' : 'text-indigo-600'}">
                             $ ${cost.toLocaleString('es-AR')}
                         </td>
                         <td class="font-bold text-indigo-600">${resolveTripPlate(t)}</td>
-                        <td class="text-xs font-medium text-[#A3AED0]">${t.provider || 'R14 LOG'}</td>
-                        <td>
-                            <div class="text-xs font-bold text-[#2B3674]">
-                                ${t.exitTime ? new Date(t.exitTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--'} a 
-                                ${t.returnTime ? new Date(t.returnTime).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : '--'}
-                            </div>
-                            <div class="text-[10px] text-[#A3AED0] font-black">Plan: ${formatTripDuration(t)}</div>
-                        </td>
                         <td class="align-top">${formatRouteRealCell(t)}</td>
                         <td>
                             <span class="status-badge ${t.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
@@ -5803,7 +5789,7 @@
                         </td>
                     </tr>
                     <tr id="weekly-detail-${t.id}" class="hidden bg-[#F8FAFF]/90">
-                        <td colspan="17" class="p-0 border-b border-[#E0E5F2] align-top">
+                        <td colspan="14" class="p-0 border-b border-[#E0E5F2] align-top">
                             <div id="weekly-stops-wrap-${t.id}" class="px-4 py-3 sm:px-6 sm:py-4">
                                 <p class="text-[11px] text-[#A3AED0]">Usá la flecha para cargar los puntos.</p>
                             </div>
@@ -5816,7 +5802,7 @@
             if (data.length === 0) {
                 body.innerHTML = `
                     <tr>
-                        <td colspan="17" class="py-20 text-center">
+                        <td colspan="14" class="py-20 text-center">
                             <div class="flex flex-col items-center opacity-30">
                                 <i data-lucide="package-search" class="w-12 h-12 mb-4"></i>
                                 <span class="text-sm font-bold uppercase tracking-widest">No se encontraron viajes para este período</span>
