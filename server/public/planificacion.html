@@ -802,38 +802,18 @@
                         <button onclick="openNewTripModal()" class="px-6 py-4 rounded-2xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center gap-2">
                             <i data-lucide="plus" class="w-4 h-4"></i> NUEVO VIAJE
                         </button>
-                    </div>
-                </div>
 
-                <!-- KPI Summary Bar -->
-                <div class="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
-                    <div class="card-dark p-6 flex items-center gap-5">
-                        <div class="w-14 h-14 rounded-full bg-[#F4F7FE] flex items-center justify-center text-indigo-600">
-                            <i data-lucide="bar-chart-2" class="w-6 h-6"></i>
-                        </div>
-                        <div>
-                            <p class="text-[12px] font-bold text-[#A3AED0] uppercase tracking-wide">Total Viajes</p>
-                            <h3 id="summary-total-trips" class="text-2xl font-extrabold text-[#1B2559]">0</h3>
-                        </div>
-                    </div>
-                    
-                    <div class="card-dark p-6 flex items-center gap-5">
-                        <div class="w-14 h-14 rounded-full bg-[#F4F7FE] flex items-center justify-center text-indigo-600">
-                            <i data-lucide="filter" class="w-6 h-6"></i>
-                        </div>
-                        <div>
-                            <p class="text-[12px] font-bold text-[#A3AED0] uppercase tracking-wide">En Vista</p>
-                            <h3 id="summary-filtered-count" class="text-2xl font-extrabold text-[#1B2559]">0</h3>
-                        </div>
-                    </div>
-
-                    <div class="card-dark p-6 flex items-center gap-5 border-2 border-indigo-100/50">
-                        <div class="w-14 h-14 rounded-full bg-indigo-50 flex items-center justify-center text-indigo-600">
-                            <i data-lucide="calendar-days" class="w-6 h-6"></i>
-                        </div>
-                        <div>
-                            <p class="text-[12px] font-bold text-[#A3AED0] uppercase tracking-wide">Próx. Vencimientos</p>
-                            <h3 class="text-2xl font-extrabold text-rose-500">4</h3>
+                        <div class="flex items-center gap-3 ml-2">
+                            <div class="flex items-center gap-2 bg-white rounded-2xl px-4 py-3 shadow-sm">
+                                <i data-lucide="bar-chart-2" class="w-4 h-4 text-indigo-500"></i>
+                                <span class="text-[10px] font-bold text-[#A3AED0] uppercase">Total</span>
+                                <span id="summary-total-trips" class="text-sm font-extrabold text-[#1B2559]">0</span>
+                            </div>
+                            <div class="flex items-center gap-2 bg-white rounded-2xl px-4 py-3 shadow-sm">
+                                <i data-lucide="filter" class="w-4 h-4 text-indigo-500"></i>
+                                <span class="text-[10px] font-bold text-[#A3AED0] uppercase">Vista</span>
+                                <span id="summary-filtered-count" class="text-sm font-extrabold text-[#1B2559]">0</span>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1745,23 +1725,6 @@
                     </div>
                 </div>
 
-                <!-- Alertas de Vencimientos -->
-                <div id="control-expiry-alerts" class="card-dark p-6 hidden">
-                    <div class="flex items-center justify-between mb-4">
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center">
-                                <i data-lucide="alert-triangle" class="w-5 h-5 text-rose-600"></i>
-                            </div>
-                            <div>
-                                <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest">Alertas de Vencimientos</h4>
-                                <p class="text-[11px] text-[#A3AED0] font-medium">Documentación próxima a vencer o ya vencida</p>
-                            </div>
-                        </div>
-                        <span id="control-expiry-count" class="text-xs font-black text-rose-600 bg-rose-50 px-3 py-1.5 rounded-xl">0</span>
-                    </div>
-                    <div id="control-expiry-list" class="space-y-2 max-h-[320px] overflow-y-auto custom-scrollbar"></div>
-                </div>
-
                 <div class="card-dark overflow-hidden">
                     <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col sm:flex-row sm:items-end gap-4">
                         <div class="flex-1">
@@ -2062,18 +2025,27 @@
                 // Viajes
                 _socket.on('trip:created', () => {
                     loadWeeklyData();
+                    const ctrl = document.getElementById('view-control');
+                    if (ctrl && !ctrl.classList.contains('hidden')) loadControlLiveData();
                 });
                 _socket.on('trip:updated', () => {
                     const weekly = document.getElementById('view-weekly');
                     if (weekly && !weekly.classList.contains('hidden')) loadWeeklyData();
+                    const ctrl = document.getElementById('view-control');
+                    if (ctrl && !ctrl.classList.contains('hidden')) loadControlLiveData();
                 });
                 _socket.on('trip:deleted', () => {
                     const weekly = document.getElementById('view-weekly');
                     if (weekly && !weekly.classList.contains('hidden')) loadWeeklyData();
+                    const ctrl = document.getElementById('view-control');
+                    if (ctrl && !ctrl.classList.contains('hidden')) loadControlLiveData();
                 });
 
-                // Paradas (mobile marca entrega) — sin popup para no saturar con cada entrega
-                _socket.on('stop:updated', () => {});
+                // Paradas (mobile marca entrega) — refresca Torre de Control
+                _socket.on('stop:updated', () => {
+                    const ctrl = document.getElementById('view-control');
+                    if (ctrl && !ctrl.classList.contains('hidden')) loadControlLiveData();
+                });
 
                 // Incidencias
                 _socket.on('incident:created', ({ incident }) => {
@@ -2101,8 +2073,21 @@
             }
         }
 
-        /** Placeholder que Torre de Control puede sobreescribir para recibir pings GPS en vivo */
-        function onLiveLocationUpdate(_record) {}
+        /** Recibe pings GPS en vivo vía socket y actualiza Torre de Control al instante */
+        function onLiveLocationUpdate(record) {
+            if (!record || !controlMap) return;
+            // Actualizar la posición del marker existente si tenemos ese trip
+            const tripId = String(record.tripId || '');
+            if (tripId && controlMarkersByTrip.has(tripId)) {
+                const marker = controlMarkersByTrip.get(tripId);
+                if (record.latitude != null && record.longitude != null) {
+                    marker.setPosition({ lat: Number(record.latitude), lng: Number(record.longitude) });
+                }
+            }
+            // Refrescar datos completos (debounced para no saturar con ráfagas de pings)
+            if (onLiveLocationUpdate._timer) clearTimeout(onLiveLocationUpdate._timer);
+            onLiveLocationUpdate._timer = setTimeout(() => loadControlLiveData(), 800);
+        }
 
         /** Headers estándar con identificación del usuario activo para el audit log */
         function getActorHeaders() {
@@ -3445,6 +3430,10 @@
                         mapTypeControl: false,
                         streetViewControl: false,
                         fullscreenControl: true,
+                        gestureHandling: 'greedy',
+                        tilt: 0,
+                        isFractionalZoomEnabled: true,
+                        clickableIcons: false,
                         restriction: {
                             latLngBounds: baBounds,
                             strictBounds: true
@@ -3849,10 +3838,13 @@
                     </tr>
                 `;
             }).join('');
-            lucide.createIcons();
         }
 
+        let _controlLoadInFlight = false;
+        let _controlLoadQueued = false;
         async function loadControlLiveData() {
+            if (_controlLoadInFlight) { _controlLoadQueued = true; return; }
+            _controlLoadInFlight = true;
             try {
                 const res = await fetch(`${API_URL}/fleet/locations`);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -3865,6 +3857,9 @@
                 console.error('Control live:', e);
                 controlLiveData = [];
                 renderControlFeed();
+            } finally {
+                _controlLoadInFlight = false;
+                if (_controlLoadQueued) { _controlLoadQueued = false; loadControlLiveData(); }
             }
         }
 
@@ -3930,9 +3925,8 @@
 
             const countLabel = alerts.length + ' alerta' + (alerts.length !== 1 ? 's' : '');
 
-            // Render in both Torre de Control and Mantenimiento
+            // Render only in Mantenimiento (removed from Torre de Control)
             [
-                { container: 'control-expiry-alerts', list: 'control-expiry-list', count: 'control-expiry-count' },
                 { container: 'maint-expiry-alerts', list: 'maint-expiry-list', count: 'maint-expiry-count' }
             ].forEach(({ container, list, count }) => {
                 const cEl = document.getElementById(container);
@@ -4015,7 +4009,7 @@
             await initControlMap();
             setupControlMapResizeObserver();
             loadControlLiveData();
-            controlAutoRefreshTimer = setInterval(loadControlLiveData, 20000);
+            controlAutoRefreshTimer = setInterval(loadControlLiveData, 10000);
         }
 
         function stopControlAutoRefresh() {
