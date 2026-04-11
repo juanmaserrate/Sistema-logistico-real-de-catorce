@@ -1918,6 +1918,16 @@
             ? 'http://localhost:3002/api/v1'
             : (window.location.origin + '/api/v1');
 
+        /** Fecha actual en zona horaria Argentina (Buenos Aires) */
+        function nowBuenosAires() {
+            const parts = new Intl.DateTimeFormat('en-US', {
+                timeZone: 'America/Argentina/Buenos_Aires',
+                year: 'numeric', month: 'numeric', day: 'numeric'
+            }).formatToParts(new Date());
+            const get = type => parseInt(parts.find(p => p.type === type).value, 10);
+            return { month: get('month') - 1, year: get('year'), day: get('day') };
+        }
+
         /** Origen del servidor (sin /api/v1) para /api/health y rutas fuera de v1 */
         function getServerOrigin() {
             return API_URL.replace(/\/$/, '').replace(/\/api\/v1$/, '');
@@ -2349,8 +2359,9 @@
             const monthInput = document.getElementById('new-trip-multi-month');
             const listWrap = document.getElementById('new-trip-days-list');
             if (!monthInput || !listWrap) return;
-            let y = new Date().getFullYear();
-            let m = new Date().getMonth();
+            const _ba = nowBuenosAires();
+            let y = _ba.year;
+            let m = _ba.month;
             if (monthInput.value && /^\d{4}-\d{2}$/.test(monthInput.value)) {
                 const [yy, mm] = monthInput.value.split('-');
                 y = parseInt(yy, 10);
@@ -5947,9 +5958,9 @@
 
         // Funciones para dropdown personalizado de mes
         function initCurrentMonth() {
-            const now = new Date();
-            const currentMonth = now.getMonth();
-            const yr = now.getFullYear();
+            const ba = nowBuenosAires();
+            const currentMonth = ba.month;
+            const yr = ba.year;
 
             const monthNames = [
                 'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -6028,7 +6039,7 @@
             };
             const label = document.getElementById('planning-month-label');
             if (label && monthLabelsMap[val]) {
-                label.textContent = `${monthLabelsMap[val]} ${new Date().getFullYear()}`;
+                label.textContent = `${monthLabelsMap[val]} ${nowBuenosAires().year}`;
             }
 
             await loadWeeklyData();
@@ -6303,7 +6314,7 @@
 
                     const MONTH_MAP = { enero:0, febrero:1, marzo:2, abril:3, mayo:4, junio:5, julio:6, agosto:7, septiembre:8, octubre:9, noviembre:10, diciembre:11 };
                     const curMonth = document.getElementById('planning-month-select')?.value || 'enero';
-                    const year = new Date().getFullYear();
+                    const year = nowBuenosAires().year;
 
                     const trips = rows.map(row => {
                         // Fecha: si viene en la columna, usarla; si no, usar el mes activo y el año actual
@@ -7460,9 +7471,10 @@
                 // Setear TODOS los selectores de mes al mes actual
                 const monthNames = ["enero", "febrero", "marzo", "abril", "mayo", "junio", "julio", "agosto", "septiembre", "octubre", "noviembre", "diciembre"];
                 const monthLabels = ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"];
-                const idx = new Date().getMonth();
+                const _ba = nowBuenosAires();
+                const idx = _ba.month;
                 const currentMonthVal = monthNames[idx];
-                const yr = new Date().getFullYear();
+                const yr = _ba.year;
 
                 ['planning-month-select', 'dashboard-month-select', 'salary-month-select', 'costs-month-select'].forEach(id => {
                     const el = document.getElementById(id);
