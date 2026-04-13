@@ -167,29 +167,15 @@ app.post('/api/setup/create-driver-users', async (req, res) => {
             await prisma.user.update({ where: { id: adminUser.id }, data: { password: hashedAdmin } });
             adminReset = true;
         }
-        // Get all CHOFER users and create DRIVER accounts for each
+        // Convertir choferes a DRIVER: cambia role + setea password "a"
         const choferes = await prisma.user.findMany({ where: { role: 'CHOFER' } });
         const hashedDriver = await hashPassword('a');
-        const created: string[] = [];
-        const skipped: string[] = [];
+        const updated: string[] = [];
         for (const c of choferes) {
-            const username = c.username.toUpperCase();
-            // Username is unique across all users - skip if any user with same name exists
-            const existing = await prisma.user.findUnique({ where: { username } });
-            if (existing) {
-                // If it's already DRIVER, just update password
-                if (existing.role === 'DRIVER') {
-                    await prisma.user.update({ where: { username }, data: { password: hashedDriver } });
-                    skipped.push(`${username}(pwd updated)`);
-                } else {
-                    skipped.push(`${username}(es ${existing.role})`);
-                }
-                continue;
-            }
-            await prisma.user.create({ data: { username, password: hashedDriver, fullName: c.fullName || username, role: 'DRIVER', tenantId } });
-            created.push(username);
+            await prisma.user.update({ where: { id: c.id }, data: { role: 'DRIVER', password: hashedDriver } });
+            updated.push(c.username);
         }
-        res.json({ ok: true, adminReset, tenantId, choferesCount: choferes.length, created, skipped });
+        res.json({ ok: true, adminReset, tenantId, choferesCount: choferes.length, updated });
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }

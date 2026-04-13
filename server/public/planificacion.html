@@ -9703,12 +9703,10 @@
             document.getElementById('new-trip-save-btn').innerText = 'CREAR VIAJE';
 
             // Traer choferes, auxiliares y repartos (usuarios móviles) desde sus
-            // catálogos respectivos en la tabla User.
-            //   - CHOFER   → personas que manejan (nómina)
-            //   - AUXILIAR → personas que acompañan (nómina)
-            //   - DRIVER   → repartos con login para la app móvil (R1, R8, etc.)
+            // DRIVER → choferes con login para la app móvil (antes CHOFER + DRIVER unificados)
+            // AUXILIAR → personas que acompañan (nómina)
             const [choferesFromDb, auxFromDb, repartoUsersFromDb] = await Promise.all([
-                fetchUsersByRole('CHOFER'),
+                fetchUsersByRole('DRIVER'),
                 fetchUsersByRole('AUXILIAR'),
                 fetchUsersByRole('DRIVER')
             ]);
