@@ -2907,6 +2907,144 @@ app.put('/api/v1/trips/:id', async (req, res) => {
     }
 });
 
+/**
+ * POST /api/v1/costs/calculate-month
+ * Calcula y guarda el costo de cada viaje propio del mes seleccionado.
+ * Body: { month: "enero", costsParams: { fijo: {...}, variable: {...}, horas_reales: N }, salariesData: [...] }
+ * - vehicleHourlyRate = (totalFijo + totalVar) / horas_reales
+ * - Para cada auxiliar en el mes: totalHorasAux = suma de duraciones de todos sus viajes
+ * - auxCostEnViaje = (bruto / totalHorasAux) * duracionViaje
+ * - Actualiza trip.value en DB para cada viaje propio del mes
+ */
+const MONTH_TO_NUM: Record<string, number> = {
+    enero:0, febrero:1, marzo:2, abril:3, mayo:4, junio:5,
+    julio:6, agosto:7, septiembre:8, octubre:9, noviembre:10, diciembre:11
+};
+
+function parseTripDurationHrs(t: any): number {
+    if (t.routeActualStart && t.routeActualEnd) {
+        const diff = (new Date(t.routeActualEnd).getTime() - new Date(t.routeActualStart).getTime()) / 3600000;
+        if (!isNaN(diff) && diff > 0 && diff < 24) return diff;
+    }
+    if (t.exitTime && t.returnTime) {
+        // try as datetime strings
+        const s = new Date(t.exitTime), e = new Date(t.returnTime);
+        if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
+            const diff = (e.getTime() - s.getTime()) / 3600000;
+            if (diff > 0 && diff < 24) return diff;
+        }
+        // try as HH:mm strings
+        const toMin = (v: string) => { const m = v.match(/(\d{1,2}):(\d{2})/); return m ? Number(m[1])*60+Number(m[2]) : NaN; };
+        const sm = toMin(t.exitTime), em = toMin(t.returnTime);
+        if (!isNaN(sm) && !isNaN(em)) {
+            let d = em - sm; if (d < 0) d += 1440;
+            if (d > 0 && d < 1440) return d / 60;
+        }
+    }
+    if (Number(t.tripDuration) > 0) return Number(t.tripDuration);
+    return 8;
+}
+
+app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
+    try {
+        const { month, costsParams, salariesData } = req.body || {};
+        if (!month || !costsParams) return res.status(400).json({ error: 'Faltan month o costsParams' });
+
+        const monthNum = MONTH_TO_NUM[month.toLowerCase()];
+        if (monthNum === undefined) return res.status(400).json({ error: 'Mes inválido' });
+
+        // 1. Guardar parámetros en settings
+        const existingSetting = await prisma.appSettings.findUnique({ where: { key: 'costs_data' } });
+        let allCosts: Record<string, any> = {};
+        if (existingSetting) { try { allCosts = JSON.parse(existingSetting.value); } catch {} }
+        allCosts[month] = costsParams;
+        await prisma.appSettings.upsert({
+            where: { key: 'costs_data' },
+            update: { value: JSON.stringify(allCosts) },
+            create: { key: 'costs_data', value: JSON.stringify(allCosts) }
+        });
+
+        // 2. Calcular tasa vehículo por hora
+        const horasReales = parseFloat(costsParams.horas_reales) || 1;
+        const totalFijo = Object.values(costsParams.fijo || {}).reduce((s: number, v: any) => s + Number(v), 0);
+        const totalVar = Object.values(costsParams.variable || {}).reduce((s: number, v: any) => s + Number(v), 0);
+        const vehicleHourlyRate = (totalFijo + totalVar) / horasReales;
+
+        // 3. Traer todos los viajes propios del mes
+        const year = new Date().getFullYear();
+        const startDate = new Date(year, monthNum, 1);
+        const endDate = new Date(year, monthNum + 1, 0, 23, 59, 59);
+
+        const trips = await prisma.trip.findMany({
+            where: {
+                contractType: 'Propio',
+                date: { gte: startDate, lte: endDate }
+            }
+        });
+
+        if (trips.length === 0) return res.json({ updated: 0, trips: [], message: 'No hay viajes propios en ese mes' });
+
+        // 4. Construir mapa auxiliar → bruto desde salariesData
+        const salariesMap: Record<string, number> = {};
+        if (Array.isArray(salariesData)) {
+            salariesData.forEach((e: any) => {
+                const name = `${e.Apellido || ''} ${e.Nombre || ''}`.trim().toLowerCase();
+                if (name) salariesMap[name] = Number(e.Bruto || 0);
+            });
+        }
+
+        // 5. Para cada auxiliar único en todos los viajes del mes, sumar horas totales
+        const auxNames = new Set<string>();
+        trips.forEach((t: any) => {
+            [t.auxiliar, t.auxiliar2, t.auxiliar3, t.assistant, t.assistant2, t.assistant3]
+                .filter(Boolean)
+                .flatMap((a: string) => a.toString().split(',').map((n: string) => n.trim()))
+                .filter((n: string) => n && n !== '--' && n !== 'N/A' && n !== 'SIN AUXILIAR')
+                .forEach((n: string) => auxNames.add(n));
+        });
+
+        const auxTotalHours: Record<string, number> = {};
+        auxNames.forEach(name => {
+            auxTotalHours[name] = trips.reduce((sum: number, t: any) => {
+                const auxList = [t.auxiliar, t.auxiliar2, t.auxiliar3, t.assistant, t.assistant2, t.assistant3]
+                    .filter(Boolean)
+                    .flatMap((a: string) => a.toString().split(',').map((n: string) => n.trim()));
+                if (auxList.includes(name)) {
+                    return sum + parseTripDurationHrs(t);
+                }
+                return sum;
+            }, 0);
+        });
+
+        // 6. Calcular y guardar costo de cada viaje
+        const updates: any[] = [];
+        for (const t of trips as any[]) {
+            const durHrs = parseTripDurationHrs(t);
+            let tripCost = durHrs * vehicleHourlyRate;
+
+            const auxList = [t.auxiliar, t.auxiliar2, t.auxiliar3, t.assistant, t.assistant2, t.assistant3]
+                .filter(Boolean)
+                .flatMap((a: string) => a.toString().split(',').map((n: string) => n.trim()))
+                .filter((n: string) => n && n !== '--' && n !== 'N/A' && n !== 'SIN AUXILIAR');
+
+            auxList.forEach((name: string) => {
+                const bruto = salariesMap[name.toLowerCase()] || 0;
+                const totalHrsAux = auxTotalHours[name] || 1;
+                tripCost += (bruto / totalHrsAux) * durHrs;
+            });
+
+            const value = Math.round(tripCost);
+            await prisma.trip.update({ where: { id: t.id }, data: { value: String(value) } });
+            updates.push({ id: t.id, value, durHrs: Math.round(durHrs * 100) / 100 });
+        }
+
+        res.json({ updated: updates.length, trips: updates, vehicleHourlyRate: Math.round(vehicleHourlyRate), auxTotalHours });
+    } catch (e: any) {
+        console.error('[calculate-month]', e);
+        res.status(500).json({ error: e?.message || 'Error calculando costos' });
+    }
+});
+
 /** Paradas de entrega (Route/Stop) vinculadas al viaje semanal, en orden. */
 app.get('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
     try {

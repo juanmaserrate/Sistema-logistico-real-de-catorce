@@ -1695,6 +1695,11 @@
                         <p class="text-[9px] font-bold text-indigo-300 uppercase tracking-widest mb-1">Costo por Hora Real</p>
                         <div id="total-final-hs" class="text-2xl font-extrabold text-indigo-100">$ 0</div>
                     </div>
+                    <button onclick="calcularCostosDelMes()" id="btn-calcular-mes"
+                        class="flex items-center gap-3 bg-white text-[#11047A] font-extrabold text-sm px-8 py-4 rounded-2xl shadow-lg hover:bg-indigo-50 transition-all active:scale-95 whitespace-nowrap">
+                        <i data-lucide="calculator" class="w-5 h-5"></i>
+                        CALCULAR COSTOS DEL MES
+                    </button>
                 </div>
             </div>
 
@@ -5777,7 +5782,9 @@
             
             body.innerHTML = data.map(t => {
                 const isPropio = t.contractType === 'Propio';
-                const cost = isPropio ? getTripCalculatedCost(t) : (Number(t.value) || 0);
+                // Para viajes propios: mostrar PENDIENTE si no tiene value guardado en DB
+                const hasStoredValue = isPropio && Number(t.value) > 0;
+                const cost = hasStoredValue ? Number(t.value) : (isPropio ? 0 : (Number(t.value) || 0));
                 
                 return `
                     <tr class="hover:bg-[#F4F7FE] transition-colors group" id="weekly-row-${t.id}">
@@ -5817,7 +5824,9 @@
                             </span>
                         </td>
                         <td class="text-xs font-black ${isPropio ? 'text-indigo-600' : 'text-indigo-600'}">
-                            $ ${cost.toLocaleString('es-AR')}
+                            ${isPropio && !hasStoredValue
+                                ? `<span class="status-badge bg-amber-100 text-amber-700 text-[9px]">PENDIENTE</span>`
+                                : `$ ${cost.toLocaleString('es-AR')}`}
                         </td>
                         <td class="font-bold text-indigo-600">${resolveTripPlate(t)}</td>
                         <td class="align-top">${formatRouteRealCell(t)}</td>
@@ -8732,8 +8741,56 @@
                 globalCostsDatabase[month][type][id] = parseFloat(input.value) || 0;
             });
             
-            // Optional: Save to API (autosave)
-            saveCostsToApi();
+            // No auto-save: los costos se guardan solo al presionar "CALCULAR COSTOS DEL MES"
+        }
+
+        async function calcularCostosDelMes() {
+            const btn = document.getElementById('btn-calcular-mes');
+            const month = document.getElementById('costs-month-select').value;
+            const horasReales = parseFloat(document.getElementById('cost-horas-reales').value) || 0;
+
+            if (!horasReales) {
+                alert('Ingresá las horas reales del mes antes de calcular.');
+                return;
+            }
+
+            // Recopilar parámetros del formulario
+            const costsParams = { fijo: {}, variable: {}, horas_reales: horasReales };
+            document.querySelectorAll('[data-cost-type="fijo"]').forEach(inp => {
+                costsParams.fijo[inp.getAttribute('data-id')] = parseFloat(inp.value) || 0;
+            });
+            document.querySelectorAll('[data-cost-type="variable"]').forEach(inp => {
+                costsParams.variable[inp.getAttribute('data-id')] = parseFloat(inp.value) || 0;
+            });
+
+            // Obtener salaries del mes desde la base en memoria
+            const salariesData = (salariesDatabase || []).filter(e => {
+                // Intentar filtrar por mes; si no tiene campo mes, incluir todos
+                if (!e._month) return true;
+                return e._month === month;
+            });
+
+            if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> Calculando...'; lucide.createIcons(); }
+
+            try {
+                const res = await fetch(`${API_URL}/costs/calculate-month`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
+                    body: JSON.stringify({ month, costsParams, salariesData })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error en servidor');
+
+                // Recargar tabla de planificación para mostrar nuevos precios
+                await loadWeeklyData();
+
+                const msg = `✅ Costos del mes calculados y guardados.\n${data.updated} viajes propios actualizados.\nTasa vehículo: $${(data.vehicleHourlyRate || 0).toLocaleString()}/h`;
+                alert(msg);
+            } catch (e) {
+                alert('Error al calcular costos: ' + e.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="calculator" class="w-5 h-5"></i> CALCULAR COSTOS DEL MES'; lucide.createIcons(); }
+            }
         }
 
         const DASH_MONTH_MAP = {
