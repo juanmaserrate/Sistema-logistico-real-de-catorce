@@ -343,31 +343,45 @@ async function upsertDriverUserForPlanning(driverName: string | null | undefined
  * Devuelve el User correspondiente o null si no se puede resolver.
  */
 async function resolveRepartoUserForTrip(trip: { reparto?: string | null; driver?: string | null; assignedMobileUser?: string | null }, tenantId: string) {
+    // Helper: busca DRIVER user probando con espacios y con guiones bajos
+    async function findDriverUser(name: string) {
+        const upper = name.toUpperCase();
+        // Probar tal cual viene
+        let user = await prisma.user.findFirst({ where: { username: upper, role: 'DRIVER' } });
+        if (user) return user;
+        // Probar reemplazando espacios por guión bajo (los usernames usan _)
+        const withUnderscore = upper.replace(/\s+/g, '_');
+        if (withUnderscore !== upper) {
+            user = await prisma.user.findFirst({ where: { username: withUnderscore, role: 'DRIVER' } });
+            if (user) return user;
+        }
+        // Probar reemplazando guiones bajos por espacios (por si viene al revés)
+        const withSpaces = upper.replace(/_/g, ' ');
+        if (withSpaces !== upper && withSpaces !== withUnderscore) {
+            user = await prisma.user.findFirst({ where: { username: withSpaces, role: 'DRIVER' } });
+            if (user) return user;
+        }
+        return null;
+    }
+
     // 1. Prioridad máxima: chofer asignado con nombre propio
     const mobileUser = String(trip.assignedMobileUser ?? '').trim();
     if (mobileUser) {
-        const user = await prisma.user.findFirst({
-            where: { username: mobileUser.toUpperCase(), role: 'DRIVER' }
-        });
+        const user = await findDriverUser(mobileUser);
         if (user) return user;
     }
     // 2. Reparto como usuario móvil (modelo anterior)
     const repartoName = String(trip.reparto ?? '').trim();
     if (repartoName) {
-        const user = await prisma.user.findFirst({
-            where: { username: repartoName.toUpperCase(), role: 'DRIVER' }
-        });
+        const user = await findDriverUser(repartoName);
         if (user) return user;
     }
     // 3. Fallback legacy: el campo driver es el username del usuario móvil
     const driverName = String(trip.driver ?? '').trim();
     if (driverName && driverName.toUpperCase() !== 'SIN CHOFER') {
-        // Solo hace upsert si parece un reparto-user (no una persona con role CHOFER)
-        const existing = await prisma.user.findFirst({
-            where: { username: driverName.toUpperCase() }
-        });
-        if (existing && existing.role === 'DRIVER') return existing;
-        // Si no existe o tiene otro rol, usamos upsert legacy para no romper viajes viejos
+        const existing = await findDriverUser(driverName);
+        if (existing) return existing;
+        // Si no existe, usamos upsert legacy para no romper viajes viejos
         return upsertDriverUserForPlanning(driverName, tenantId);
     }
     return null;
