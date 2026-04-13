@@ -174,8 +174,18 @@ app.post('/api/setup/create-driver-users', async (req, res) => {
         const skipped: string[] = [];
         for (const c of choferes) {
             const username = c.username.toUpperCase();
-            const existing = await prisma.user.findFirst({ where: { username, role: 'DRIVER' } });
-            if (existing) { skipped.push(username); continue; }
+            // Username is unique across all users - skip if any user with same name exists
+            const existing = await prisma.user.findUnique({ where: { username } });
+            if (existing) {
+                // If it's already DRIVER, just update password
+                if (existing.role === 'DRIVER') {
+                    await prisma.user.update({ where: { username }, data: { password: hashedDriver } });
+                    skipped.push(`${username}(pwd updated)`);
+                } else {
+                    skipped.push(`${username}(es ${existing.role})`);
+                }
+                continue;
+            }
             await prisma.user.create({ data: { username, password: hashedDriver, fullName: c.fullName || username, role: 'DRIVER', tenantId } });
             created.push(username);
         }
