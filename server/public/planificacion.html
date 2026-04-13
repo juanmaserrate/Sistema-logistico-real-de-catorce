@@ -4188,15 +4188,25 @@
             const sel = document.getElementById('control-trail-route');
             if (!sel) return;
             const prev = sel.value;
-            const ids = [...new Set(
-                (controlLiveData || [])
-                    .map((i) => i.plannedRouteId || i.routeId)
-                    .filter((id) => id != null && id !== '' && Number.isFinite(Number(id)))
-                    .map((id) => Number(id))
-            )].sort((a, b) => a - b);
+            // Build map: routeId -> reparto/driver label
+            const routeLabels = {};
+            (controlLiveData || []).forEach((i) => {
+                const rid = Number(i.plannedRouteId || i.routeId);
+                if (!Number.isFinite(rid)) return;
+                const reparto = (i.reparto || '').trim();
+                const driver = (i.driver || '').trim();
+                routeLabels[rid] = reparto && reparto !== driver
+                    ? `${reparto} — ${driver}`
+                    : reparto || driver || `Ruta #${rid}`;
+            });
+            const ids = Object.keys(routeLabels).map(Number).sort((a, b) => {
+                // Sort by reparto name naturally (R1, R2, ... R10, R11)
+                const la = routeLabels[a], lb = routeLabels[b];
+                return la.localeCompare(lb, undefined, { numeric: true });
+            });
             sel.innerHTML =
-                '<option value="">— Elegir ruta # —</option>' +
-                ids.map((id) => `<option value="${id}">Ruta #${id}</option>`).join('');
+                '<option value="">— Elegir reparto —</option>' +
+                ids.map((id) => `<option value="${id}">${routeLabels[id]}</option>`).join('');
             if (ids.includes(Number(prev))) sel.value = String(prev);
         }
 
