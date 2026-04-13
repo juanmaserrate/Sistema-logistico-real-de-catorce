@@ -5303,7 +5303,9 @@
             const totalMinutes = Math.round(diffMs / (1000 * 60));
             const hh = Math.floor(totalMinutes / 60);
             const mm = totalMinutes % 60;
-            return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}`;
+            if (hh === 0) return `${mm} min`;
+            if (mm === 0) return `${hh} hs`;
+            return `${hh} h ${mm} min`;
         }
 
         /** Duración planificada (exit→return) */
@@ -5831,9 +5833,13 @@
                         <td class="font-bold text-indigo-600">${resolveTripPlate(t)}</td>
                         <td class="align-top">${formatRouteRealCell(t)}</td>
                         <td>
-                            <span class="status-badge ${t.status === 'COMPLETED' ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
-                                ${t.status}
-                            </span>
+                            ${(() => {
+                                const started = !!(t.routeActualStart);
+                                const ended = !!(t.routeActualEnd);
+                                if (ended) return `<span class="status-badge bg-emerald-100 text-emerald-700">Finalizado</span>`;
+                                if (started) return `<span class="status-badge bg-blue-100 text-blue-700">En camino</span>`;
+                                return `<span class="status-badge bg-amber-100 text-amber-700">Pendiente</span>`;
+                            })()}
                         </td>
                         <td class="px-3 text-center align-middle">
                             <div class="flex flex-col items-center gap-1.5">
