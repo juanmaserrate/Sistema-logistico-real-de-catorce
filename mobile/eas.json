@@ -9,7 +9,7 @@
       "distribution": "internal",
       "channel": "development",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://sistema-logistico-real-de-catorce-production.up.railway.app",
+        "EXPO_PUBLIC_API_URL": "https://r14trafico.com",
         "GOOGLE_MAPS_ANDROID_KEY": "AIzaSyAHCyFW-dbVeqbuYjzNPB0F7Botsr4nIEs",
         "GOOGLE_MAPS_IOS_KEY": "AIzaSyAHCyFW-dbVeqbuYjzNPB0F7Botsr4nIEs"
       },
@@ -21,7 +21,7 @@
       "distribution": "internal",
       "channel": "preview",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://sistema-logistico-real-de-catorce-production.up.railway.app",
+        "EXPO_PUBLIC_API_URL": "https://r14trafico.com",
         "GOOGLE_MAPS_ANDROID_KEY": "AIzaSyAHCyFW-dbVeqbuYjzNPB0F7Botsr4nIEs",
         "GOOGLE_MAPS_IOS_KEY": "AIzaSyAHCyFW-dbVeqbuYjzNPB0F7Botsr4nIEs"
       },
@@ -32,7 +32,7 @@
     "production": {
       "channel": "production",
       "env": {
-        "EXPO_PUBLIC_API_URL": "https://sistema-logistico-real-de-catorce-production.up.railway.app",
+        "EXPO_PUBLIC_API_URL": "https://r14trafico.com",
         "GOOGLE_MAPS_ANDROID_KEY": "AIzaSyAHCyFW-dbVeqbuYjzNPB0F7Botsr4nIEs",
         "GOOGLE_MAPS_IOS_KEY": "AIzaSyAHCyFW-dbVeqbuYjzNPB0F7Botsr4nIEs"
       },
