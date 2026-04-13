@@ -9761,31 +9761,32 @@
             document.getElementById('new-trip-vehicle').innerHTML = '<option value="">Seleccionar Vehículo</option>' + uniqueVehicles.map(v => `<option value="${v}">${v}</option>`).join('');
             populateBusinessUnitSelect('DMC');
 
-            // Reparto (usuario móvil): combinamos los repartos del catálogo DRIVER
-            // con los nombres de plantillas de ruta (RouteTemplate) que pueda tener
-            // el sistema, para que funcione aunque no se haya creado el user todavía.
-            // El nombre elegido se guarda en trip.reparto (y trip.tripType) para que
-            // (a) la app móvil lo filtre por User.username y
-            // (b) las paradas se puedan cargar desde la plantilla del mismo nombre.
+            // Reparto / Ruta: combinamos plantillas de ruta y usuarios DRIVER.
+            // Solo sirve para cargar paradas predefinidas, no para asignar el chofer.
             const repartoSelect = document.getElementById('new-trip-reparto');
             if (repartoSelect) {
                 const templateNames = (routeTemplates || [])
                     .map(rt => String(rt.name || '').trim().toUpperCase())
                     .filter(Boolean);
                 const allRepartos = [...new Set([...repartoUserNames, ...templateNames])].sort();
-                const rtOptions = allRepartos.map(name => {
-                    const hasUser = repartoUserNames.includes(name);
-                    const hasTemplate = templateNames.includes(name);
-                    let suffix = '';
-                    if (hasUser && hasTemplate) suffix = ''; // perfecto, sin marca
-                    else if (hasUser) suffix = ' (sin plantilla de paradas)';
-                    else if (hasTemplate) suffix = ' ⚠ sin usuario móvil';
-                    return `<option value="${name}">${name}${suffix}</option>`;
-                }).join('');
+                const rtOptions = allRepartos.map(name => `<option value="${name}">${name}</option>`).join('');
                 const placeholder = allRepartos.length === 0
-                    ? '<option value="">⚠ No hay repartos — creá uno en el catálogo REPARTOS</option>'
-                    : '<option value="">Seleccionar Reparto (usuario móvil)</option>';
+                    ? '<option value="">⚠ No hay plantillas cargadas</option>'
+                    : '<option value="">Seleccionar Reparto / Ruta</option>';
                 repartoSelect.innerHTML = placeholder + rtOptions + '<option value="LIBRE">LIBRE / OTRO</option>';
+            }
+
+            // Chofer (App Móvil): los usuarios con rol DRIVER reciben el viaje en la app.
+            const mobileUserSelect = document.getElementById('new-trip-mobile-user');
+            if (mobileUserSelect) {
+                const mobileOptions = repartoUsersFromDb
+                    .sort((a, b) => (a.fullName || a.username).localeCompare(b.fullName || b.username))
+                    .map(u => `<option value="${u.username}">${u.fullName || u.username}</option>`)
+                    .join('');
+                const mobilePlaceholder = repartoUsersFromDb.length === 0
+                    ? '<option value="">⚠ No hay choferes con app — creá uno en REPARTOS</option>'
+                    : '<option value="">Sin asignar</option>';
+                mobileUserSelect.innerHTML = mobilePlaceholder + mobileOptions;
             }
 
             // Reset fields
@@ -9866,9 +9867,9 @@
             document.getElementById('new-trip-aux2').value = trip.auxiliar2 || '';
             document.getElementById('new-trip-aux3').value = trip.auxiliar3 || '';
             document.getElementById('new-trip-zone').value = trip.zone || '';
-            // El campo reparto ahora representa al usuario móvil. Priorizamos
-            // trip.reparto (nuevo modelo) y caemos a trip.tripType si no existe.
             document.getElementById('new-trip-reparto').value = (trip.reparto || trip.tripType || '').toUpperCase();
+            if (document.getElementById('new-trip-mobile-user'))
+                document.getElementById('new-trip-mobile-user').value = (trip.assignedMobileUser || '').toUpperCase();
             
             if (trip.exitTime) {
                 const exitD = new Date(trip.exitTime);
@@ -9938,10 +9939,8 @@
                 return alert('Para editar un viaje existente solo se permite una fecha.');
             }
 
-            // El campo new-trip-reparto ahora es el usuario móvil (rol DRIVER).
-            // Lo guardamos tanto en trip.reparto (nuevo) como en trip.tripType
-            // (legacy, para no romper reportes/filtros que lo usaban).
             const repartoValue = document.getElementById('new-trip-reparto').value || null;
+            const mobileUserValue = document.getElementById('new-trip-mobile-user').value || null;
             const baseTripData = {
                 businessUnit: document.getElementById('new-trip-bu').value,
                 driver: document.getElementById('new-trip-driver').value,
@@ -9952,6 +9951,7 @@
                 zone: document.getElementById('new-trip-zone').value,
                 reparto: repartoValue,
                 tripType: repartoValue,
+                assignedMobileUser: mobileUserValue,
                 contractType: document.getElementById('new-trip-contract').value,
                 provider: document.getElementById('new-trip-contract').value === 'Propio' ? 'R14 LOG' : 'EXTERNO',
                 status: 'PENDING',
@@ -10851,12 +10851,21 @@
                     </div>
                 </div>
                 
-                 <div>
-                      <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Reparto (usuario móvil)</label>
-                      <select id="new-trip-reparto" onchange="onNewTripRepartoChange()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                           <!-- Injected by JS -->
-                      </select>
-                      <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">El reparto elegido es quien verá este viaje en la app móvil. Si además existe una plantilla de ruta con el mismo nombre, las paradas se cargan automáticamente.</p>
+                 <div class="grid grid-cols-2 gap-4">
+                     <div>
+                          <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Reparto / Ruta</label>
+                          <select id="new-trip-reparto" onchange="onNewTripRepartoChange()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                               <!-- Injected by JS -->
+                          </select>
+                          <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Elige la ruta para cargar paradas predefinidas.</p>
+                     </div>
+                     <div>
+                          <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Chofer (App Móvil)</label>
+                          <select id="new-trip-mobile-user" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                               <!-- Injected by JS -->
+                          </select>
+                          <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Quién verá este viaje en la app móvil.</p>
+                     </div>
                  </div>
 
                  <div class="grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">

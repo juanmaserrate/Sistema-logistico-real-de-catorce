@@ -338,12 +338,19 @@ async function upsertDriverUserForPlanning(driverName: string | null | undefined
 
 /**
  * Dado un Trip, resuelve QUÉ usuario de la app móvil debe recibir la ruta.
- * Prioriza trip.reparto (el username del reparto-user, nuevo modelo) sobre
- * trip.driver (legacy, nombre del chofer persona).
+ * Prioriza trip.assignedMobileUser (chofer nombrado) > trip.reparto > trip.driver (legacy).
  * Devuelve el User correspondiente o null si no se puede resolver.
  */
-async function resolveRepartoUserForTrip(trip: { reparto?: string | null; driver?: string | null }, tenantId: string) {
-    // 1. Prioridad: reparto explícito (nuevo modelo)
+async function resolveRepartoUserForTrip(trip: { reparto?: string | null; driver?: string | null; assignedMobileUser?: string | null }, tenantId: string) {
+    // 1. Prioridad máxima: chofer asignado con nombre propio
+    const mobileUser = String(trip.assignedMobileUser ?? '').trim();
+    if (mobileUser) {
+        const user = await prisma.user.findFirst({
+            where: { username: mobileUser.toUpperCase(), role: 'DRIVER' }
+        });
+        if (user) return user;
+    }
+    // 2. Reparto como usuario móvil (modelo anterior)
     const repartoName = String(trip.reparto ?? '').trim();
     if (repartoName) {
         const user = await prisma.user.findFirst({
@@ -351,7 +358,7 @@ async function resolveRepartoUserForTrip(trip: { reparto?: string | null; driver
         });
         if (user) return user;
     }
-    // 2. Fallback legacy: el campo driver es el username del usuario móvil
+    // 3. Fallback legacy: el campo driver es el username del usuario móvil
     const driverName = String(trip.driver ?? '').trim();
     if (driverName && driverName.toUpperCase() !== 'SIN CHOFER') {
         // Solo hace upsert si parece un reparto-user (no una persona con role CHOFER)
@@ -2883,8 +2890,8 @@ app.post('/api/v1/trips', async (req, res) => {
         const trip = await prisma.trip.create({ data: req.body });
         await logAction(req, 'CREATE', 'trip', trip.id, trip.driver || String(trip.id), null, trip);
         io.emit('trip:created', { trip });
-        // Notificar al usuario del reparto (nuevo modelo) o al chofer legacy
-        const notifyTarget = String(trip.reparto || trip.driver || '').trim();
+        // Notificar al chofer asignado (nuevo modelo) > reparto > driver legacy
+        const notifyTarget = String(trip.assignedMobileUser || trip.reparto || trip.driver || '').trim();
         if (notifyTarget) notifyDriver(notifyTarget, 'Nuevo viaje asignado', `Tenés un viaje asignado para ${trip.zone || 'hoy'}`, { tripId: trip.id });
         res.json(trip);
     } catch (e: any) {

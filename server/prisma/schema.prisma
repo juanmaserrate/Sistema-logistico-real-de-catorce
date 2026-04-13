@@ -162,6 +162,7 @@ model Trip {
   reason           String?
   temperature      String?
   reparto          String?
+  assignedMobileUser String?
   locality         String?
   /// 1 = primera vuelta del día (costo auxiliar jornal completo); 2 o 3 = siguientes (misma regla de costo). null = calcular por hora/patente (legacy).
   vuelta           Int?
