@@ -67,7 +67,7 @@ type ActiveTab = 'recorrido' | 'mapa';
 
 export default function TrackScreen({ session, onLogout, navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<InstanceType<typeof MapView>>(null);
   const [activeTab, setActiveTab] = useState<ActiveTab>('recorrido');
   const slideAnim = useRef(new Animated.Value(0)).current;
 

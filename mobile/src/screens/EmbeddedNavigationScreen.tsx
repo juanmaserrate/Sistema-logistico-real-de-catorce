@@ -60,7 +60,7 @@ function decodePolyline(encoded: string): { latitude: number; longitude: number 
 export default function EmbeddedNavigationScreen({ route, navigation }: Props) {
   const insets = useSafeAreaInsets();
   const { routeId, stopId, destLat, destLng, title } = route.params;
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<InstanceType<typeof MapView>>(null);
 
   const [phase, setPhase] = useState<Phase>('loading');
   const [error, setError] = useState('');
