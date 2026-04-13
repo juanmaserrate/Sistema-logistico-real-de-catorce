@@ -814,7 +814,7 @@
                         <input type="text" id="planning-search" oninput="filterWeeklyData()" placeholder="Buscar por chofer, zona o unidad..." class="w-full bg-white border-0 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium text-[#1B2559] shadow-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all">
                     </div>
                     
-                    <div class="flex items-center gap-3 relative z-50">
+                    <div class="flex items-center gap-3 relative z-50 flex-wrap">
                         <!-- Hidden select que el JS necesita para filtrar por mes -->
                         <select id="planning-month-select" class="hidden">
                             <option value="enero">Enero</option><option value="febrero">Febrero</option>
@@ -824,28 +824,53 @@
                             <option value="septiembre">Septiembre</option><option value="octubre">Octubre</option>
                             <option value="noviembre">Noviembre</option><option value="diciembre">Diciembre</option>
                         </select>
-                        <!-- Custom Dropdown para Mes -->
-                        <div class="relative">
-                            <button id="planning-month-btn" onclick="toggleMonthDropdown()" class="bg-white border-0 rounded-2xl px-5 py-4 text-xs font-bold text-[#1B2559] shadow-sm outline-none hover:bg-[#F4F7FE] transition-all cursor-pointer flex items-center gap-2 min-w-[180px]">
-                                <span id="planning-month-label">Enero 2026</span>
-                                <i data-lucide="chevron-down" class="w-4 h-4"></i>
-                            </button>
-                            <div id="planning-month-dropdown" class="hidden absolute top-full left-0 mt-2 w-48 bg-white border-0 rounded-2xl shadow-lg z-[100] overflow-hidden">
-                                <div class="max-h-64 overflow-y-auto">
-                                    <button onclick="selectMonth('enero', 'Enero 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Enero 2026</button>
-                                    <button onclick="selectMonth('febrero', 'Febrero 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Febrero 2026</button>
-                                    <button onclick="selectMonth('marzo', 'Marzo 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Marzo 2026</button>
-                                    <button onclick="selectMonth('abril', 'Abril 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Abril 2026</button>
-                                    <button onclick="selectMonth('mayo', 'Mayo 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Mayo 2026</button>
-                                    <button onclick="selectMonth('junio', 'Junio 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Junio 2026</button>
-                                    <button onclick="selectMonth('julio', 'Julio 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Julio 2026</button>
-                                    <button onclick="selectMonth('agosto', 'Agosto 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Agosto 2026</button>
-                                    <button onclick="selectMonth('septiembre', 'Septiembre 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Septiembre 2026</button>
-                                    <button onclick="selectMonth('octubre', 'Octubre 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Octubre 2026</button>
-                                    <button onclick="selectMonth('noviembre', 'Noviembre 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Noviembre 2026</button>
-                                    <button onclick="selectMonth('diciembre', 'Diciembre 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Diciembre 2026</button>
+
+                        <!-- Toggle modo de fecha -->
+                        <div class="flex bg-white rounded-2xl p-1 shadow-sm">
+                            <button id="date-mode-mes" onclick="setDateFilterMode('mes')" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold transition-all bg-indigo-600 text-white">Mes</button>
+                            <button id="date-mode-dia" onclick="setDateFilterMode('dia')" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold transition-all text-[#1B2559] hover:bg-[#F4F7FE]">Día</button>
+                            <button id="date-mode-rango" onclick="setDateFilterMode('rango')" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold transition-all text-[#1B2559] hover:bg-[#F4F7FE]">Rango</button>
+                        </div>
+
+                        <!-- Modo MES: dropdown mes + año -->
+                        <div id="date-filter-mes" class="flex items-center gap-2">
+                            <div class="relative">
+                                <button id="planning-month-btn" onclick="toggleMonthDropdown()" class="bg-white border-0 rounded-2xl px-5 py-4 text-xs font-bold text-[#1B2559] shadow-sm outline-none hover:bg-[#F4F7FE] transition-all cursor-pointer flex items-center gap-2 min-w-[160px]">
+                                    <span id="planning-month-label">Enero 2026</span>
+                                    <i data-lucide="chevron-down" class="w-4 h-4"></i>
+                                </button>
+                                <div id="planning-month-dropdown" class="hidden absolute top-full left-0 mt-2 w-52 bg-white border-0 rounded-2xl shadow-lg z-[100] overflow-hidden">
+                                    <div class="max-h-64 overflow-y-auto">
+                                        <button onclick="selectMonth('enero', 'Enero 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Enero 2026</button>
+                                        <button onclick="selectMonth('febrero', 'Febrero 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Febrero 2026</button>
+                                        <button onclick="selectMonth('marzo', 'Marzo 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Marzo 2026</button>
+                                        <button onclick="selectMonth('abril', 'Abril 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Abril 2026</button>
+                                        <button onclick="selectMonth('mayo', 'Mayo 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Mayo 2026</button>
+                                        <button onclick="selectMonth('junio', 'Junio 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Junio 2026</button>
+                                        <button onclick="selectMonth('julio', 'Julio 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Julio 2026</button>
+                                        <button onclick="selectMonth('agosto', 'Agosto 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Agosto 2026</button>
+                                        <button onclick="selectMonth('septiembre', 'Septiembre 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Septiembre 2026</button>
+                                        <button onclick="selectMonth('octubre', 'Octubre 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Octubre 2026</button>
+                                        <button onclick="selectMonth('noviembre', 'Noviembre 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Noviembre 2026</button>
+                                        <button onclick="selectMonth('diciembre', 'Diciembre 2026')" class="w-full px-5 py-3 text-left text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Diciembre 2026</button>
+                                    </div>
                                 </div>
                             </div>
+                        </div>
+
+                        <!-- Modo DÍA: date picker -->
+                        <div id="date-filter-dia" class="hidden">
+                            <input type="date" id="filter-single-date" oninput="filterWeeklyData()"
+                                class="bg-white border-0 rounded-2xl px-5 py-3.5 text-xs font-bold text-[#1B2559] shadow-sm outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer">
+                        </div>
+
+                        <!-- Modo RANGO: desde/hasta -->
+                        <div id="date-filter-rango" class="hidden flex items-center gap-2">
+                            <input type="date" id="filter-range-from" oninput="filterWeeklyData()"
+                                class="bg-white border-0 rounded-2xl px-4 py-3.5 text-xs font-bold text-[#1B2559] shadow-sm outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer">
+                            <span class="text-xs font-bold text-[#A3AED0]">→</span>
+                            <input type="date" id="filter-range-to" oninput="filterWeeklyData()"
+                                class="bg-white border-0 rounded-2xl px-4 py-3.5 text-xs font-bold text-[#1B2559] shadow-sm outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer">
                         </div>
                         <div class="flex bg-white rounded-2xl p-1 shadow-sm">
                             <button onclick="setGridFilter('ALL')" class="px-5 py-3 rounded-[12px] text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Todos</button>
@@ -6397,47 +6422,89 @@
             reader.readAsArrayBuffer(file);
         }
 
+        let activeDateFilterMode = 'mes'; // 'mes' | 'dia' | 'rango'
+
+        function setDateFilterMode(mode) {
+            activeDateFilterMode = mode;
+            // Toggle botones
+            ['mes','dia','rango'].forEach(m => {
+                const btn = document.getElementById(`date-mode-${m}`);
+                const panel = document.getElementById(`date-filter-${m}`);
+                if (!btn || !panel) return;
+                if (m === mode) {
+                    btn.classList.add('bg-indigo-600','text-white');
+                    btn.classList.remove('text-[#1B2559]','hover:bg-[#F4F7FE]');
+                    panel.classList.remove('hidden');
+                    if (m === 'rango') panel.classList.add('flex');
+                } else {
+                    btn.classList.remove('bg-indigo-600','text-white');
+                    btn.classList.add('text-[#1B2559]','hover:bg-[#F4F7FE]');
+                    panel.classList.add('hidden');
+                    if (m === 'rango') panel.classList.remove('flex');
+                }
+            });
+            filterWeeklyData();
+        }
+
+        function getTripDateOnly(t) {
+            if (!t.date) return null;
+            const clean = t.date.includes(' ') ? t.date.replace(/ /g, 'T') : t.date;
+            const d = new Date(clean);
+            if (isNaN(d.getTime())) return null;
+            return d;
+        }
+
         function filterWeeklyData() {
             const query = (document.getElementById('planning-search')?.value || '').toLowerCase();
-            const planningMonth = document.getElementById('planning-month-select');
-            const month = planningMonth ? planningMonth.value : 'enero';
-            const baseMatch = (t, includeMonth = true) => {
-                const matchesSearch = (t.driver || '').toLowerCase().includes(query) || 
-                                     (t.zone || '').toLowerCase().includes(query) || 
-                                     (getLocalidadFromZone(t.zone) || '').toLowerCase().includes(query) ||
-                                     (t.businessUnit || '').toLowerCase().includes(query) ||
-                                     (t.vehicle || '').toLowerCase().includes(query);
-                
-                let matchesContract = true;
-                if (activeFilter !== 'ALL') {
-                    const tType = (t.contractType || 'Externo').toLowerCase();
-                    const fType = activeFilter.toLowerCase();
-                    if (fType === 'tercerizado' || fType === 'externo') matchesContract = (tType === 'tercerizado' || tType === 'externo');
-                    else matchesContract = (tType === fType);
-                }
-                
-                if (!includeMonth) return matchesSearch && matchesContract;
-                if (!t.date) return false;
-                // Safer parsing for varied formats
-                const cleanDate = t.date.includes(' ') ? t.date.replace(/ /g, 'T') : t.date;
-                const tripDate = new Date(cleanDate);
-                if(isNaN(tripDate)) return false;
-                
-                // Lenient month match: check local AND UTC month to avoid timezone shifts hiding data
-                const localMonthNum = tripDate.getMonth();
-                const utcMonthNum = tripDate.getUTCMonth();
-                const monthMap = { 
-                    0: 'enero', 1: 'febrero', 2: 'marzo', 3: 'abril', 
-                    4: 'mayo', 5: 'junio', 6: 'julio', 7: 'agosto', 
-                    8: 'septiembre', 9: 'octubre', 10: 'noviembre', 11: 'diciembre' 
-                };
-                const matchesMonth = monthMap[localMonthNum] === month || monthMap[utcMonthNum] === month;
-                return matchesSearch && matchesContract && matchesMonth;
+            const mode = activeDateFilterMode || 'mes';
+
+            const matchesSearch = (t) =>
+                (t.driver || '').toLowerCase().includes(query) ||
+                (t.zone || '').toLowerCase().includes(query) ||
+                (getLocalidadFromZone(t.zone) || '').toLowerCase().includes(query) ||
+                (t.businessUnit || '').toLowerCase().includes(query) ||
+                (t.vehicle || '').toLowerCase().includes(query);
+
+            const matchesContract = (t) => {
+                if (activeFilter === 'ALL') return true;
+                const tType = (t.contractType || 'Externo').toLowerCase();
+                const fType = activeFilter.toLowerCase();
+                if (fType === 'tercerizado' || fType === 'externo') return (tType === 'tercerizado' || tType === 'externo');
+                return tType === fType;
             };
 
-            filteredPlanning = planningData.filter((t) => baseMatch(t, true));
-            // Sin resultados para el filtro: visible en la tabla vacía, sin popup
-            
+            const matchesDate = (t) => {
+                const d = getTripDateOnly(t);
+                if (!d) return false;
+
+                if (mode === 'mes') {
+                    const planningMonth = document.getElementById('planning-month-select');
+                    const month = planningMonth ? planningMonth.value : 'enero';
+                    const monthMap = {0:'enero',1:'febrero',2:'marzo',3:'abril',4:'mayo',5:'junio',6:'julio',7:'agosto',8:'septiembre',9:'octubre',10:'noviembre',11:'diciembre'};
+                    return monthMap[d.getMonth()] === month || monthMap[d.getUTCMonth()] === month;
+                }
+
+                if (mode === 'dia') {
+                    const val = document.getElementById('filter-single-date')?.value;
+                    if (!val) return true; // sin filtro aún
+                    const sel = new Date(val + 'T00:00:00');
+                    return d.getFullYear() === sel.getFullYear() && d.getMonth() === sel.getMonth() && d.getDate() === sel.getDate();
+                }
+
+                if (mode === 'rango') {
+                    const from = document.getElementById('filter-range-from')?.value;
+                    const to = document.getElementById('filter-range-to')?.value;
+                    if (!from && !to) return true;
+                    const dTime = d.setHours(0,0,0,0);
+                    if (from) { const f = new Date(from + 'T00:00:00'); if (dTime < f.getTime()) return false; }
+                    if (to)   { const t2 = new Date(to + 'T23:59:59'); if (dTime > t2.getTime()) return false; }
+                    return true;
+                }
+
+                return true;
+            };
+
+            filteredPlanning = planningData.filter(t => matchesSearch(t) && matchesContract(t) && matchesDate(t));
             renderPlanningTable(filteredPlanning);
         }
 
