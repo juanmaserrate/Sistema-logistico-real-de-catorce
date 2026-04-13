@@ -7654,7 +7654,8 @@
                     loadBusinessUnitsFromApi()
                 ]);
                 // Restaurar la última vista visitada (o ir a 'weekly' por defecto)
-                const lastView = localStorage.getItem('r14.lastView') || 'weekly';
+                let lastView = localStorage.getItem('r14.lastView') || 'weekly';
+                if (lastView === 'salaries') lastView = 'employees'; // Salarios ahora dentro de Personal
                 showSection(lastView);
             } catch (e) {
                 console.error("Init failed:", e);
@@ -8755,7 +8756,7 @@
 
 
         async function deleteEmployeeSalary(apellido) {
-            const month = document.getElementById('salary-month-select').value;
+            const month = (document.getElementById('salary-month-select-emp') || document.getElementById('salary-month-select'))?.value || 'enero';
             if(!confirm(`¿Seguro que desea eliminar a ${apellido} de este mes?`)) return;
             
             try {
