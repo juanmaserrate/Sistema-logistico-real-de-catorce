@@ -5794,6 +5794,23 @@
                         }
                     }
                 }
+                // Fallback: cargar TripStops del viaje (importados del Excel u otras fuentes)
+                if (rows.length === 0) {
+                    try {
+                        const tsr = await fetch(`${API_URL}/trips/${tripId}/stops`);
+                        if (tsr.ok) {
+                            const tsData = await tsr.json();
+                            const tripStops = Array.isArray(tsData) ? tsData : (tsData.stops || []);
+                            if (tripStops.length > 0) {
+                                rows = tripStops.map((s) => ({
+                                    clientId: s.clientId || null,
+                                    name: s.name || 'Parada',
+                                    address: s.address || ''
+                                }));
+                            }
+                        }
+                    } catch (_) {}
+                }
                 weeklyTripStopsBuffers[tripId] = rows;
                 weeklyTripStopsFetched[tripId] = true;
                 renderWeeklyTripStopsPanel(tripId);
@@ -9438,15 +9455,25 @@
             const hint = document.getElementById('trip-delivery-hint');
             const editor = document.getElementById('trip-delivery-editor');
             const ul = document.getElementById('trip-delivery-list');
-            const det = document.getElementById('trip-delivery-details');
-            if (hint) {
-                hint.classList.remove('hidden');
-                hint.textContent =
-                    'Después de crear el viaje, editá el registro para cargar el orden de entregas (escuelas/clientes).';
-            }
-            if (editor) editor.classList.add('hidden');
+            if (hint) hint.classList.add('hidden');
+            if (editor) editor.classList.remove('hidden');
             if (ul) ul.innerHTML = '';
-            if (det) det.open = false;
+        }
+
+        async function onNewTripRepartoChange() {
+            const reparto = (document.getElementById('new-trip-reparto')?.value || '').trim();
+            if (!reparto || /^libre$/i.test(reparto) || reparto === '') {
+                tripDeliveryRows = [];
+                renderTripDeliveryList();
+                return;
+            }
+            // Auto-load template stops silently, don't ask for confirmation
+            await fillTripDeliveryFromTemplate(reparto, { silentSuccess: true });
+            renderTripDeliveryList();
+            populateTripDeliveryAddSelect();
+            // Open the details panel so the user sees the stops
+            const det = document.getElementById('trip-delivery-details');
+            if (det && tripDeliveryRows.length > 0) det.open = true;
         }
 
         /**
@@ -10826,7 +10853,7 @@
                 
                  <div>
                       <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Reparto (usuario móvil)</label>
-                      <select id="new-trip-reparto" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                      <select id="new-trip-reparto" onchange="onNewTripRepartoChange()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                            <!-- Injected by JS -->
                       </select>
                       <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">El reparto elegido es quien verá este viaje en la app móvil. Si además existe una plantilla de ruta con el mismo nombre, las paradas se cargan automáticamente.</p>

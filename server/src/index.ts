@@ -3268,6 +3268,19 @@ app.delete('/api/v1/trips/:id', async (req, res) => {
 });
 
 // Trip Tracking & Stops — Paradas con lat/lng desde Client si no se envían
+app.get('/api/v1/trips/:id/stops', async (req, res) => {
+    try {
+        const tripId = parseInt(req.params.id);
+        const stops = await (prisma as any).tripStop.findMany({
+            where: { tripId },
+            orderBy: { sequence: 'asc' }
+        });
+        res.json(stops);
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
 app.post('/api/v1/trips/:id/stops', async (req, res) => {
     const tripId = parseInt(req.params.id);
     const { stops } = req.body; // Array of { name, clientId?, latitude?, longitude? }
