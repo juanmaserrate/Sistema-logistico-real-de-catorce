@@ -1872,7 +1872,7 @@ app.get('/api/v1/routes', async (req, res) => {
     }
     const routes = await prisma.route.findMany({
         where,
-        include: { stops: { orderBy: { sequence: 'asc' }, include: { client: true } }, vehicle: true, driver: true },
+        include: { stops: { orderBy: { sequence: 'asc' }, include: { client: true } }, vehicle: true, driver: true, trip: { select: { businessUnit: true, reparto: true, zone: true } } },
         orderBy: { date: 'desc' }
     });
     res.json(routes);

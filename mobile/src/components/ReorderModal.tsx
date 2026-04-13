@@ -6,12 +6,13 @@ import {
   Pressable,
   StyleSheet,
   ActivityIndicator,
-  ScrollView,
   Alert,
   TextInput,
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import type { Stop } from '../types';
 import { reorderRouteStops } from '../api';
 
@@ -38,7 +39,6 @@ export default function ReorderModal({ visible, routeId, stops, driverName, onCl
   const [customReason, setCustomReason] = useState('');
   const [saving, setSaving] = useState(false);
 
-  // Solo paradas PENDING
   const pendingStops = stops.filter((s) => s.status === 'PENDING');
 
   useEffect(() => {
@@ -51,31 +51,8 @@ export default function ReorderModal({ visible, routeId, stops, driverName, onCl
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible]);
 
-  const moveUp = useCallback((index: number) => {
-    if (index === 0) return;
-    setOrderedStops((prev) => {
-      const next = [...prev];
-      [next[index - 1], next[index]] = [next[index], next[index - 1]];
-      return next;
-    });
-  }, []);
-
-  const moveDown = useCallback((index: number) => {
-    setOrderedStops((prev) => {
-      if (index === prev.length - 1) return prev;
-      const next = [...prev];
-      [next[index], next[index + 1]] = [next[index + 1], next[index]];
-      return next;
-    });
-  }, []);
-
   const hasChanged = useCallback(() => {
-    return orderedStops.some((s, i) => {
-      const original = pendingStops.find((p) => p.id === s.id);
-      return original && original.sequence !== orderedStops[i]?.id
-        ? true
-        : orderedStops[i]?.id !== pendingStops[i]?.id;
-    });
+    return orderedStops.some((s, i) => orderedStops[i]?.id !== pendingStops[i]?.id);
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderedStops, pendingStops]);
 
@@ -99,7 +76,6 @@ export default function ReorderModal({ visible, routeId, stops, driverName, onCl
 
     setSaving(true);
     try {
-      // Reasignar secuencias según el nuevo orden (comenzando en el primer sequence existente)
       const minSeq = Math.min(...pendingStops.map((s) => s.sequence));
       const newOrder = orderedStops.map((s, i) => ({
         stopId: s.id,
@@ -116,6 +92,36 @@ export default function ReorderModal({ visible, routeId, stops, driverName, onCl
     }
   }, [customReason, driverName, justification, onClose, onSaved, orderedStops, pendingStops, routeId]);
 
+  const renderItem = useCallback(({ item, drag, isActive, getIndex }: RenderItemParams<Stop>) => {
+    const idx = getIndex() ?? 0;
+    return (
+      <ScaleDecorator>
+        <Pressable
+          onLongPress={drag}
+          disabled={isActive}
+          style={[styles.stopRow, isActive && styles.stopRowActive]}
+        >
+          <View style={styles.dragHandle}>
+            <Text style={styles.dragIcon}>☰</Text>
+          </View>
+          <View style={styles.seqBadge}>
+            <Text style={styles.seqTxt}>{idx + 1}</Text>
+          </View>
+          <View style={styles.stopInfo}>
+            <Text style={styles.stopName} numberOfLines={1}>
+              {item.client?.name || `Parada ${item.sequence}`}
+            </Text>
+            {item.client?.address ? (
+              <Text style={styles.stopAddr} numberOfLines={1}>
+                {item.client.address}
+              </Text>
+            ) : null}
+          </View>
+        </Pressable>
+      </ScaleDecorator>
+    );
+  }, []);
+
   if (!visible) return null;
 
   return (
@@ -130,56 +136,23 @@ export default function ReorderModal({ visible, routeId, stops, driverName, onCl
             <>
               <Text style={styles.title}>Reordenar paradas</Text>
               <Text style={styles.hint}>
-                Usá las flechas ↑↓ para cambiar el orden. Solo se pueden mover paradas pendientes.
+                Mantené presionado ☰ y arrastrá para cambiar el orden.
               </Text>
-              <ScrollView
-                showsVerticalScrollIndicator={false}
-                style={styles.list}
-                keyboardShouldPersistTaps="handled"
-              >
-                {orderedStops.map((s, i) => (
-                  <View key={s.id} style={styles.stopRow}>
-                    <View style={styles.seqBadge}>
-                      <Text style={styles.seqTxt}>{i + 1}</Text>
-                    </View>
-                    <View style={styles.stopInfo}>
-                      <Text style={styles.stopName} numberOfLines={1}>
-                        {s.client?.name || `Parada ${s.sequence}`}
-                      </Text>
-                      {s.client?.address ? (
-                        <Text style={styles.stopAddr} numberOfLines={1}>
-                          {s.client.address}
-                        </Text>
-                      ) : null}
-                      {s.plannedSequence != null && s.plannedSequence !== s.sequence ? (
-                        <Text style={styles.stopPlanned}>Original: #{s.plannedSequence}</Text>
-                      ) : null}
-                    </View>
-                    <View style={styles.arrows}>
-                      <Pressable
-                        style={[styles.arrowBtn, i === 0 && styles.arrowDisabled]}
-                        onPress={() => moveUp(i)}
-                        disabled={i === 0}
-                      >
-                        <Text style={styles.arrowTxt}>↑</Text>
-                      </Pressable>
-                      <Pressable
-                        style={[styles.arrowBtn, i === orderedStops.length - 1 && styles.arrowDisabled]}
-                        onPress={() => moveDown(i)}
-                        disabled={i === orderedStops.length - 1}
-                      >
-                        <Text style={styles.arrowTxt}>↓</Text>
-                      </Pressable>
-                    </View>
-                  </View>
-                ))}
-              </ScrollView>
+              <GestureHandlerRootView style={styles.list}>
+                <DraggableFlatList
+                  data={orderedStops}
+                  onDragEnd={({ data }) => setOrderedStops(data)}
+                  keyExtractor={(item) => String(item.id)}
+                  renderItem={renderItem}
+                  showsVerticalScrollIndicator={false}
+                />
+              </GestureHandlerRootView>
               <View style={styles.actions}>
                 <Pressable style={styles.cancelBtn} onPress={onClose}>
                   <Text style={styles.cancelTxt}>Cancelar</Text>
                 </Pressable>
                 <Pressable style={styles.nextBtn} onPress={goToJustify}>
-                  <Text style={styles.nextTxt}>Siguiente →</Text>
+                  <Text style={styles.nextTxt}>Siguiente</Text>
                 </Pressable>
               </View>
             </>
@@ -189,7 +162,7 @@ export default function ReorderModal({ visible, routeId, stops, driverName, onCl
               <Text style={styles.hint}>
                 Esta información ayuda al operador a entender tus decisiones de ruta.
               </Text>
-              <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+              <View>
                 {JUSTIFY_OPTIONS.map((opt) => (
                   <Pressable
                     key={opt.code}
@@ -226,10 +199,10 @@ export default function ReorderModal({ visible, routeId, stops, driverName, onCl
                     autoFocus
                   />
                 ) : null}
-              </ScrollView>
+              </View>
               <View style={styles.actions}>
                 <Pressable style={styles.cancelBtn} onPress={() => setStep('reorder')}>
-                  <Text style={styles.cancelTxt}>← Volver</Text>
+                  <Text style={styles.cancelTxt}>Volver</Text>
                 </Pressable>
                 <Pressable
                   style={[styles.confirmBtn, saving && styles.disabledBtn]}
@@ -256,57 +229,62 @@ const styles = StyleSheet.create({
   backdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.55)' },
   sheet: {
     backgroundColor: '#f8fafc',
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    paddingHorizontal: 18,
-    paddingTop: 20,
-    paddingBottom: 30,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    paddingHorizontal: 20,
+    paddingTop: 24,
+    paddingBottom: 32,
     maxHeight: '88%',
   },
-  title: { fontSize: 18, fontWeight: '900', color: '#0f172a', marginBottom: 4 },
-  hint: { fontSize: 11, color: '#64748b', lineHeight: 15, marginBottom: 14 },
-  list: { maxHeight: 380 },
+  title: { fontSize: 20, fontWeight: '900', color: '#0f172a', marginBottom: 4 },
+  hint: { fontSize: 13, color: '#64748b', lineHeight: 18, marginBottom: 16 },
+  list: { maxHeight: 400 },
   stopRow: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#fff',
-    borderRadius: 12,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    padding: 10,
+    padding: 12,
     marginBottom: 8,
   },
+  stopRowActive: {
+    backgroundColor: '#eef2ff',
+    borderColor: '#4f46e5',
+    elevation: 8,
+    shadowColor: '#4f46e5',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+  },
+  dragHandle: {
+    width: 28,
+    height: 28,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 8,
+  },
+  dragIcon: { fontSize: 18, color: '#94a3b8' },
   seqBadge: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: '#4f46e5',
     alignItems: 'center',
     justifyContent: 'center',
-    marginRight: 10,
+    marginRight: 12,
   },
-  seqTxt: { color: '#fff', fontWeight: '900', fontSize: 13 },
+  seqTxt: { color: '#fff', fontWeight: '900', fontSize: 14 },
   stopInfo: { flex: 1 },
-  stopName: { fontSize: 13, fontWeight: '800', color: '#0f172a' },
-  stopAddr: { fontSize: 11, color: '#64748b', marginTop: 2 },
-  stopPlanned: { fontSize: 10, color: '#94a3b8', marginTop: 2 },
-  arrows: { flexDirection: 'row', gap: 4 },
-  arrowBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 10,
-    backgroundColor: '#e2e8f0',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  arrowDisabled: { opacity: 0.3 },
-  arrowTxt: { fontSize: 18, color: '#334155', fontWeight: '900' },
+  stopName: { fontSize: 14, fontWeight: '800', color: '#0f172a' },
+  stopAddr: { fontSize: 12, color: '#64748b', marginTop: 2 },
   optRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    borderRadius: 14,
     borderWidth: 1,
     borderColor: '#e2e8f0',
     backgroundColor: '#fff',
@@ -314,54 +292,55 @@ const styles = StyleSheet.create({
   },
   optRowOn: { borderColor: '#4f46e5', backgroundColor: '#eef2ff' },
   radio: {
-    width: 20,
-    height: 20,
-    borderRadius: 10,
+    width: 22,
+    height: 22,
+    borderRadius: 11,
     borderWidth: 2,
     borderColor: '#cbd5e1',
-    marginRight: 10,
+    marginRight: 12,
     alignItems: 'center',
     justifyContent: 'center',
   },
   radioOn: { borderColor: '#4f46e5' },
-  radioFill: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#4f46e5' },
-  optTxt: { fontSize: 14, color: '#334155', fontWeight: '600' },
+  radioFill: { width: 12, height: 12, borderRadius: 6, backgroundColor: '#4f46e5' },
+  optTxt: { fontSize: 15, color: '#334155', fontWeight: '600' },
   optTxtOn: { color: '#3730a3', fontWeight: '800' },
   input: {
     borderWidth: 1,
     borderColor: '#e2e8f0',
-    borderRadius: 12,
-    padding: 12,
+    borderRadius: 14,
+    padding: 14,
     textAlignVertical: 'top',
     color: '#0f172a',
-    minHeight: 72,
+    fontSize: 14,
+    minHeight: 80,
     marginBottom: 10,
     backgroundColor: '#fff',
   },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 14 },
+  actions: { flexDirection: 'row', gap: 12, marginTop: 16 },
   cancelBtn: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 16,
+    borderRadius: 14,
     backgroundColor: '#e2e8f0',
     alignItems: 'center',
   },
-  cancelTxt: { fontWeight: '800', color: '#475569' },
+  cancelTxt: { fontWeight: '800', fontSize: 15, color: '#475569' },
   nextBtn: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 16,
+    borderRadius: 14,
     backgroundColor: '#0f172a',
     alignItems: 'center',
   },
-  nextTxt: { fontWeight: '900', color: '#fff' },
+  nextTxt: { fontWeight: '900', fontSize: 15, color: '#fff' },
   confirmBtn: {
     flex: 1,
-    paddingVertical: 14,
-    borderRadius: 12,
+    paddingVertical: 16,
+    borderRadius: 14,
     backgroundColor: '#4f46e5',
     alignItems: 'center',
   },
-  confirmTxt: { fontWeight: '900', color: '#fff' },
+  confirmTxt: { fontWeight: '900', fontSize: 15, color: '#fff' },
   disabledBtn: { opacity: 0.7 },
 });

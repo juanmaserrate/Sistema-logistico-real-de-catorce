@@ -646,7 +646,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         <View style={styles.panelHeader}>
           <View style={{ flex: 1 }}>
             <Text style={styles.panelTitle}>Mi recorrido</Text>
-            <Text style={styles.panelSub}>{session.fullName}</Text>
+            <Text style={styles.panelSub}>{selected?.trip?.businessUnit || selected?.trip?.reparto || session.fullName}</Text>
           </View>
           <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('History')}>
             <Text style={styles.iconBtnTxt}>📋</Text>
@@ -741,71 +741,6 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                   Te lleva desde donde estás al destino.
                 </Text>
               </Pressable>
-              {firstPendingStop &&
-              selId != null &&
-              firstPendingClient.latitude != null &&
-              firstPendingClient.longitude != null ? (
-                <Pressable
-                  style={styles.embedNavBtn}
-                  onPress={() =>
-                    navigation.navigate('EmbeddedNav', {
-                      routeId: selId,
-                      stopId: firstPendingStop.id,
-                      destLat: firstPendingClient.latitude as number,
-                      destLng: firstPendingClient.longitude as number,
-                      title: firstPendingClient.name,
-                    })
-                  }
-                >
-                  <Text style={styles.embedNavBtnTxt}>Navegar en la app</Text>
-                  <Text style={styles.embedNavBtnSub}>
-                    Mapa con ruta e instrucciones paso a paso hasta la parada.
-                  </Text>
-                </Pressable>
-              ) : null}
-            </View>
-          ) : null}
-          {selected && !selected.actualEndTime && hasPendingStops && selId != null ? (
-            <View style={styles.navBox}>
-              <Text style={styles.navTitle}>Indicaciones por calle</Text>
-              <Pressable
-                style={[styles.navBtn, navLoading && styles.navBtnDisabled]}
-                onPress={loadNavInstructions}
-                disabled={navLoading}
-              >
-                {navLoading ? (
-                  <ActivityIndicator color="#fff" />
-                ) : (
-                  <Text style={styles.navBtnTxt}>Actualizar indicaciones (desde mi ubicación)</Text>
-                )}
-              </Pressable>
-              {navErr ? <Text style={styles.navErr}>{navErr}</Text> : null}
-              {nav?.done ? (
-                <Text style={styles.navMini}>{nav.message || 'No hay paradas pendientes con coordenadas.'}</Text>
-              ) : null}
-              {nav && !nav.done && nav.summary ? (
-                <Text style={styles.navSummary}>{nav.summary}</Text>
-              ) : null}
-              {nav?.steps?.length ? (
-                <View style={styles.navSteps}>
-                  {nav.steps.map((s, i) => (
-                    <View key={`${i}-${s.instruction.slice(0, 24)}`} style={styles.navStep}>
-                      <Text style={styles.navStepNum}>{i + 1}</Text>
-                      <View style={styles.navStepBody}>
-                        <Text style={styles.navStepInstr}>{s.instruction}</Text>
-                        {s.distanceText || s.durationText ? (
-                          <Text style={styles.navStepMeta}>
-                            {[s.distanceText, s.durationText].filter(Boolean).join(' · ')}
-                          </Text>
-                        ) : null}
-                      </View>
-                    </View>
-                  ))}
-                </View>
-              ) : null}
-              <Text style={styles.navHint}>
-                Para voz y re-ruteo al volante, usá «Abrir en Maps» arriba.
-              </Text>
             </View>
           ) : null}
           {loading ? (
@@ -844,19 +779,12 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
             <View style={styles.stopsSection}>
               <View style={styles.stopsSectionHeader}>
                 <Text style={styles.stopsSectionTitle}>Paradas del recorrido</Text>
-                {hasPendingStops ? (
-                  <Pressable style={styles.reorderBtn} onPress={() => setReorderModalOpen(true)}>
-                    <Text style={styles.reorderBtnTxt}>↕ Reordenar</Text>
-                  </Pressable>
-                ) : null}
               </View>
-              <TextInput
-                style={styles.stopSearchInput}
-                placeholder="Buscar parada por nombre o dirección..."
-                placeholderTextColor="#94a3b8"
-                value={stopSearch}
-                onChangeText={setStopSearch}
-              />
+              {hasPendingStops ? (
+                <Pressable style={styles.reorderBtn} onPress={() => setReorderModalOpen(true)}>
+                  <Text style={styles.reorderBtnTxt}>↕ Reordenar paradas</Text>
+                </Pressable>
+              ) : null}
               <Text style={styles.stopsSectionHint}>
                 Llegada y salida con horario; al finalizar entrega podés cargar observaciones, foto y marcar si fue
                 sin inconvenientes.
@@ -974,17 +902,37 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
             showsUserLocation
             showsMyLocationButton
           >
+            {/* Polyline Google Directions (si hay geometría) */}
             {lineCoords.length >= 2 && (
-              <Polyline coordinates={lineCoords} strokeColor="#6366f1" strokeWidth={5} />
+              <Polyline coordinates={lineCoords} strokeColor="#4f46e5" strokeWidth={4} />
             )}
+            {/* Polyline directa entre paradas (si NO hay geometría) */}
+            {!geom && selected?.stops && (() => {
+              const sorted = [...selected.stops]
+                .sort((a, b) => a.sequence - b.sequence)
+                .filter(s => s.client?.latitude != null && s.client?.longitude != null);
+              return sorted.length >= 2 ? (
+                <Polyline
+                  coordinates={sorted.map(s => ({ latitude: s.client.latitude!, longitude: s.client.longitude! }))}
+                  strokeColor="#4f46e5"
+                  strokeWidth={3}
+                  lineDashPattern={[8, 4]}
+                />
+              ) : null;
+            })()}
+            {/* Marcadores numerados desde geometría */}
             {(geom?.stops || []).map((s) => (
               <Marker
-                key={`${s.stopId ?? s.sequence}`}
+                key={`g-${s.stopId ?? s.sequence}`}
                 coordinate={{ latitude: s.lat, longitude: s.lng }}
                 title={`${s.sequence}. ${s.name}`}
-                pinColor={s.sequence === 1 ? '#059669' : '#d97706'}
-              />
+              >
+                <View style={{ backgroundColor: s.sequence === 1 ? '#059669' : '#4f46e5', width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}>
+                  <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>{s.sequence}</Text>
+                </View>
+              </Marker>
             ))}
+            {/* Marcadores numerados fallback (sin geometría) */}
             {!geom &&
               selected?.stops?.map((st) => {
                 const la = st.client?.latitude;
@@ -995,7 +943,11 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                     key={st.id}
                     coordinate={{ latitude: la, longitude: lo }}
                     title={`${st.sequence}. ${st.client.name}`}
-                  />
+                  >
+                    <View style={{ backgroundColor: st.sequence === 1 ? '#059669' : '#4f46e5', width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}>
+                      <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>{st.sequence}</Text>
+                    </View>
+                  </Marker>
                 );
               })}
           </MapView>
@@ -1155,8 +1107,8 @@ const styles = StyleSheet.create({
   stopsSectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   stopsSectionTitle: { fontSize: 12, fontWeight: '900', color: '#0f172a', letterSpacing: 0.3 },
   stopsSectionHint: { fontSize: 10, color: '#64748b', marginTop: 4, lineHeight: 14, marginBottom: 8 },
-  reorderBtn: { backgroundColor: '#eef2ff', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10, borderWidth: 1, borderColor: '#c7d2fe' },
-  reorderBtnTxt: { fontSize: 11, fontWeight: '800', color: '#3730a3' },
+  reorderBtn: { backgroundColor: '#4f46e5', paddingVertical: 14, borderRadius: 14, alignItems: 'center' as const, marginBottom: 12 },
+  reorderBtnTxt: { fontSize: 15, fontWeight: '900', color: '#fff', letterSpacing: 0.3 },
   reorderBanner: { backgroundColor: '#eff6ff', borderRadius: 10, padding: 8, marginBottom: 8, borderWidth: 1, borderColor: '#bfdbfe' },
   reorderBannerTxt: { fontSize: 10, color: '#1d4ed8', fontWeight: '700', lineHeight: 14 },
   stopClientAddr: { fontSize: 11, color: '#475569', marginTop: 3, lineHeight: 15 },
