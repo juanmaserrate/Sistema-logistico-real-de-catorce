@@ -47,11 +47,18 @@ async function authHeaders(): Promise<Record<string, string>> {
 }
 
 export async function login(username: string, password: string): Promise<SessionUser> {
-  const res = await fetch(apiUrl('/api/auth/login'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
-  });
+  const url = apiUrl('/api/auth/login');
+  let res: Response;
+  try {
+    res = await fetchWithRetry(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
+      timeout: 15000,
+    }, 2);
+  } catch (e) {
+    throw new Error(`No se pudo conectar al servidor (${API_BASE}). Verificá tu conexión a internet.`);
+  }
   const data = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error((data as { error?: string }).error || 'Error de login');
   const token = (data as { token?: string }).token;
