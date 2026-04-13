@@ -149,6 +149,37 @@ async function verifyPassword(plain: string, stored: string): Promise<boolean> {
     return bcrypt.compare(plain, stored);
 }
 app.get('/health', (_req, res) => res.status(200).type('text/plain').send('ok'));
+
+// TEMPORAL: endpoint de setup para crear usuarios DRIVER desde choferes existentes
+// Se elimina después de usar
+app.post('/api/setup/create-driver-users', async (req, res) => {
+    const { setupKey } = req.body || {};
+    if (setupKey !== 'r14-setup-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const tenantId = 'default-tenant';
+        // Reset admin password
+        const adminUser = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
+        if (adminUser) {
+            const hashed = await hashPassword('Melteamo');
+            await prisma.user.update({ where: { id: adminUser.id }, data: { password: hashed } });
+        }
+        // Get all CHOFER users and create DRIVER accounts for each
+        const choferes = await prisma.user.findMany({ where: { role: 'CHOFER' } });
+        const hashed = await hashPassword('a');
+        const created: string[] = [];
+        const skipped: string[] = [];
+        for (const c of choferes) {
+            const username = c.username.toUpperCase();
+            const existing = await prisma.user.findFirst({ where: { username, role: 'DRIVER' } });
+            if (existing) { skipped.push(username); continue; }
+            await prisma.user.create({ data: { username, password: hashed, fullName: c.fullName || username, role: 'DRIVER', tenantId } });
+            created.push(username);
+        }
+        res.json({ ok: true, adminReset: !!adminUser, created, skipped });
+    } catch (e: any) {
+        res.status(500).json({ error: e.message });
+    }
+});
 app.use('/uploads', express.static(uploadsDir));
 app.use(express.static(path.join(__dirname, '../public')));
 const clientDistDir = path.join(__dirname, '../../client/dist');
