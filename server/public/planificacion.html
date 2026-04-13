@@ -9960,6 +9960,18 @@
                     blocked = await fetch(`${API_URL}/users?role=BLOCKED`, { headers: getActorHeaders() }).then(r => r.json());
                 } catch {}
 
+                // Limpiar usuarios basura creados por sync defectuoso
+                const isBadName = (n) => !n || n.length <= 2 || n === '-' || n === '--' || n.includes('/') || /^[^a-záéíóúñ]+$/i.test(n);
+                for (const list of [choferes, auxiliares]) {
+                    if (!Array.isArray(list)) continue;
+                    for (let i = list.length - 1; i >= 0; i--) {
+                        if (isBadName(list[i]?.fullName)) {
+                            try { await fetch(`${API_URL}/users/${list[i].id}`, { method: 'DELETE', headers: getActorHeaders() }); } catch {}
+                            list.splice(i, 1);
+                        }
+                    }
+                }
+
                 empChoferData = (Array.isArray(choferes) ? choferes : []).map(u => ({ ...u, _origin: 'Catálogo' }));
                 empAuxData = (Array.isArray(auxiliares) ? auxiliares : []).map(u => ({ ...u, _origin: 'Catálogo' }));
 
@@ -10002,7 +10014,7 @@
                 [t.auxiliar, t.auxiliar2, t.auxiliar3, t.assistant, t.assistant2, t.assistant3]
                     .filter(Boolean)
                     .flatMap(a => a.toString().split(',').map(n => n.trim()))
-                    .filter(n => n && n !== '--' && n !== 'N/A' && n !== 'SIN AUXILIAR')
+                    .filter(n => n && n !== '--' && n !== '-' && n !== 'N/A' && n !== 'SIN AUXILIAR' && n.length > 2 && !/^[^a-záéíóúñ]+$/i.test(n) && !n.includes('/'))
             );
             const tripAux = [...new Set(tripAuxRaw)];
 
