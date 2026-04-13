@@ -683,24 +683,58 @@
 
             <!-- VIEW: INCIDENCIAS -->
             <div id="view-incidents" class="hidden view-animate space-y-6">
-                <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 flex-wrap">
+                <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 flex-wrap">
                     <div>
                         <h3 class="text-2xl font-bold text-[#1B2559]">Incidencias</h3>
                         <p class="text-sm text-[#A3AED0] font-medium">Reportes enviados por los choferes desde la app</p>
                     </div>
-                    <div class="flex items-center gap-3">
-                        <select id="incident-filter-status" onchange="loadIncidents()" class="bg-white border border-[#E0E5F2] rounded-2xl px-4 py-3 text-xs font-bold text-[#1B2559] outline-none">
-                            <option value="">Todas</option>
-                            <option value="OPEN">Abiertas</option>
-                            <option value="CLOSED">Cerradas</option>
-                        </select>
-                        <button onclick="loadIncidents()" class="px-5 py-3 bg-white border border-[#E0E5F2] text-[#1B2559] rounded-2xl font-bold text-sm hover:bg-[#F4F7FE] transition-all flex items-center gap-2">
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <!-- Filtro de fecha -->
+                        <div class="flex bg-white rounded-2xl p-1 shadow-sm">
+                            <button id="inc-date-mode-mes" onclick="setIncDateMode('mes')" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold bg-indigo-600 text-white transition-all">Mes</button>
+                            <button id="inc-date-mode-dia" onclick="setIncDateMode('dia')" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Día</button>
+                            <button id="inc-date-mode-rango" onclick="setIncDateMode('rango')" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Rango</button>
+                        </div>
+                        <div id="inc-filter-mes">
+                            <select id="inc-month-select" onchange="loadIncidents()" class="bg-white border border-[#E0E5F2] rounded-2xl px-4 py-3 text-xs font-bold text-[#1B2559] outline-none">
+                                <option value="">Todos los meses</option>
+                                <option value="0">Enero</option><option value="1">Febrero</option><option value="2">Marzo</option>
+                                <option value="3">Abril</option><option value="4">Mayo</option><option value="5">Junio</option>
+                                <option value="6">Julio</option><option value="7">Agosto</option><option value="8">Septiembre</option>
+                                <option value="9">Octubre</option><option value="10">Noviembre</option><option value="11">Diciembre</option>
+                            </select>
+                        </div>
+                        <div id="inc-filter-dia" class="hidden">
+                            <input type="date" id="inc-single-date" onchange="loadIncidents()" class="bg-white border border-[#E0E5F2] rounded-2xl px-4 py-3 text-xs font-bold text-[#1B2559] outline-none">
+                        </div>
+                        <div id="inc-filter-rango" class="hidden flex items-center gap-2">
+                            <input type="date" id="inc-range-from" onchange="loadIncidents()" class="bg-white border border-[#E0E5F2] rounded-2xl px-4 py-3 text-xs font-bold text-[#1B2559] outline-none">
+                            <span class="text-xs font-bold text-[#A3AED0]">→</span>
+                            <input type="date" id="inc-range-to" onchange="loadIncidents()" class="bg-white border border-[#E0E5F2] rounded-2xl px-4 py-3 text-xs font-bold text-[#1B2559] outline-none">
+                        </div>
+                        <!-- Filtro contrato -->
+                        <div class="flex bg-white rounded-2xl p-1 shadow-sm">
+                            <button onclick="setIncContractFilter('')" id="inc-cf-all" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold bg-indigo-600 text-white transition-all">Todas</button>
+                            <button onclick="setIncContractFilter('Propio')" id="inc-cf-propio" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Propio</button>
+                            <button onclick="setIncContractFilter('Tercerizado')" id="inc-cf-terc" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Tercerizado</button>
+                        </div>
+                        <button onclick="loadIncidents()" class="px-4 py-3 bg-white border border-[#E0E5F2] text-[#1B2559] rounded-2xl font-bold text-sm hover:bg-[#F4F7FE] transition-all">
                             <i data-lucide="refresh-cw" class="w-4 h-4"></i>
                         </button>
                     </div>
                 </div>
                 <div id="incidents-list" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     <div class="col-span-full text-center py-16 text-[#A3AED0] text-sm font-bold">Cargando...</div>
+                </div>
+            </div>
+
+            <!-- MODAL: Foto incidencia ampliada -->
+            <div id="incident-photo-modal" class="hidden fixed inset-0 z-[110] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 cursor-pointer" onclick="this.classList.add('hidden')">
+                <div class="relative max-w-4xl max-h-[90vh]">
+                    <img id="incident-photo-full" src="" class="max-w-full max-h-[85vh] rounded-2xl shadow-2xl object-contain">
+                    <a id="incident-photo-download" href="" download class="absolute top-3 right-3 px-4 py-2 bg-white/90 rounded-xl text-xs font-bold text-[#1B2559] hover:bg-white transition-all flex items-center gap-2 shadow-lg" onclick="event.stopPropagation()">
+                        <i data-lucide="download" class="w-4 h-4"></i> Descargar
+                    </a>
                 </div>
             </div>
 
@@ -4786,52 +4820,136 @@
         let _closingIncidentId = null;
         const INCIDENT_TYPE_LABELS = { MECANICO: '🔧 Mecánico', TRANSITO: '🚧 Tránsito', ESCUELA: '🏫 Escuela', OTRO: '⚠️ Otro' };
 
+        let incDateMode = 'mes';
+        let incContractFilter = '';
+
+        function setIncDateMode(mode) {
+            incDateMode = mode;
+            ['mes','dia','rango'].forEach(m => {
+                const btn = document.getElementById(`inc-date-mode-${m}`);
+                const panel = document.getElementById(`inc-filter-${m}`);
+                if (!btn || !panel) return;
+                if (m === mode) {
+                    btn.classList.add('bg-indigo-600','text-white'); btn.classList.remove('text-[#1B2559]','hover:bg-[#F4F7FE]');
+                    panel.classList.remove('hidden'); if (m === 'rango') panel.classList.add('flex');
+                } else {
+                    btn.classList.remove('bg-indigo-600','text-white'); btn.classList.add('text-[#1B2559]','hover:bg-[#F4F7FE]');
+                    panel.classList.add('hidden'); if (m === 'rango') panel.classList.remove('flex');
+                }
+            });
+            loadIncidents();
+        }
+
+        function setIncContractFilter(val) {
+            incContractFilter = val;
+            [['', 'inc-cf-all'], ['Propio', 'inc-cf-propio'], ['Tercerizado', 'inc-cf-terc']].forEach(([v, id]) => {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+                if (v === val) { btn.classList.add('bg-indigo-600','text-white'); btn.classList.remove('text-[#1B2559]','hover:bg-[#F4F7FE]'); }
+                else { btn.classList.remove('bg-indigo-600','text-white'); btn.classList.add('text-[#1B2559]','hover:bg-[#F4F7FE]'); }
+            });
+            loadIncidents();
+        }
+
+        function openIncidentPhoto(url) {
+            const modal = document.getElementById('incident-photo-modal');
+            document.getElementById('incident-photo-full').src = url;
+            document.getElementById('incident-photo-download').href = url;
+            modal.classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function getIncidentContractType(inc) {
+            if (!inc.tripId) return 'Sin viaje';
+            const trip = (planningData || []).find(t => t.id === inc.tripId);
+            return trip ? (trip.contractType || 'Externo') : 'Sin viaje';
+        }
+
         async function loadIncidents() {
             const container = document.getElementById('incidents-list');
             if (!container) return;
-            const status = document.getElementById('incident-filter-status')?.value || '';
             container.innerHTML = '<div class="col-span-full text-center py-16"><div class="inline-block w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>';
             try {
-                const q = status ? `?status=${status}` : '';
-                const res = await fetch(`${API_URL}/incidents${q}`);
-                const incidents = await res.json();
+                const res = await fetch(`${API_URL}/incidents`);
+                let incidents = await res.json();
+                if (!Array.isArray(incidents)) incidents = [];
 
                 // Reset badge
                 const badge = document.getElementById('incidents-badge');
-                const openCount = (Array.isArray(incidents) ? incidents : []).filter(i => i.status === 'OPEN').length;
-                if (badge) {
-                    badge.innerText = String(openCount);
-                    badge.classList.toggle('hidden', openCount === 0);
+                const openCount = incidents.filter(i => i.status === 'OPEN').length;
+                if (badge) { badge.innerText = String(openCount); badge.classList.toggle('hidden', openCount === 0); }
+
+                // Filtro de fecha
+                incidents = incidents.filter(inc => {
+                    const d = new Date(inc.createdAt);
+                    if (isNaN(d.getTime())) return false;
+                    if (incDateMode === 'mes') {
+                        const sel = document.getElementById('inc-month-select')?.value;
+                        if (sel === '' || sel == null) return true;
+                        return d.getMonth() === parseInt(sel);
+                    }
+                    if (incDateMode === 'dia') {
+                        const val = document.getElementById('inc-single-date')?.value;
+                        if (!val) return true;
+                        const s = new Date(val + 'T00:00:00');
+                        return d.getFullYear() === s.getFullYear() && d.getMonth() === s.getMonth() && d.getDate() === s.getDate();
+                    }
+                    if (incDateMode === 'rango') {
+                        const from = document.getElementById('inc-range-from')?.value;
+                        const to = document.getElementById('inc-range-to')?.value;
+                        if (!from && !to) return true;
+                        const dTime = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+                        if (from && dTime < new Date(from + 'T00:00:00').getTime()) return false;
+                        if (to && dTime > new Date(to + 'T23:59:59').getTime()) return false;
+                        return true;
+                    }
+                    return true;
+                });
+
+                // Filtro contrato
+                if (incContractFilter) {
+                    incidents = incidents.filter(inc => {
+                        const ct = getIncidentContractType(inc);
+                        if (incContractFilter === 'Tercerizado') return ct === 'Tercerizado' || ct === 'Externo';
+                        return ct === incContractFilter;
+                    });
                 }
 
                 if (!incidents.length) {
-                    container.innerHTML = '<div class="col-span-full text-center py-16 text-[#A3AED0] text-sm font-bold opacity-60">No hay incidencias</div>';
+                    container.innerHTML = '<div class="col-span-full text-center py-16 text-[#A3AED0] text-sm font-bold opacity-60">No hay incidencias para los filtros seleccionados</div>';
                     return;
                 }
 
                 container.innerHTML = incidents.map(inc => {
                     const dt = new Date(inc.createdAt).toLocaleString('es-AR', { day:'2-digit', month:'2-digit', year:'2-digit', hour:'2-digit', minute:'2-digit' });
-                    const isOpen = inc.status === 'OPEN';
                     const typeLabel = INCIDENT_TYPE_LABELS[inc.type] || inc.type;
-                    const statusClass = isOpen ? 'bg-rose-50 text-rose-700 border-rose-200' : 'bg-emerald-50 text-emerald-700 border-emerald-200';
+                    const contractType = getIncidentContractType(inc);
+                    const isPropio = contractType === 'Propio';
+                    const contractBadge = contractType === 'Sin viaje'
+                        ? `<span class="status-badge bg-gray-100 text-gray-500 text-[10px]">Sin viaje</span>`
+                        : `<span class="status-badge ${isPropio ? 'bg-indigo-100 text-indigo-600' : 'bg-amber-100 text-amber-700'} text-[10px]">${contractType}</span>`;
+                    const photoHtml = inc.photoUrl
+                        ? `<img src="${inc.photoUrl}" onclick="openIncidentPhoto('${inc.photoUrl}')" class="w-full rounded-xl object-cover cursor-pointer hover:opacity-90 transition-opacity" style="max-height:180px" title="Click para ampliar">`
+                        : '';
                     return `
                     <div class="card-dark p-5 flex flex-col gap-3">
                         <div class="flex items-start justify-between gap-3">
                             <div>
-                                <span class="text-xs font-black text-[#A3AED0] uppercase tracking-widest">${typeLabel}</span>
-                                <p class="text-sm font-bold text-[#1B2559] mt-1 leading-snug">${inc.description}</p>
+                                <div class="flex items-center gap-2 mb-1">
+                                    <span class="text-xs font-black text-[#A3AED0] uppercase tracking-widest">⚠ ${typeLabel}</span>
+                                    ${contractBadge}
+                                </div>
+                                <p class="text-sm font-bold text-[#1B2559] leading-snug">${inc.description}</p>
                             </div>
-                            <span class="inline-flex items-center px-2 py-1 rounded-lg border text-[10px] font-black uppercase tracking-widest shrink-0 ${statusClass}">${isOpen ? 'Abierta' : 'Cerrada'}</span>
                         </div>
                         <div class="flex items-center justify-between text-[10px] text-[#A3AED0] font-bold uppercase">
                             <span>${inc.driver?.fullName || inc.driverId}</span>
                             <span>${dt}</span>
                         </div>
-                        ${inc.photoUrl ? `<img src="${inc.photoUrl}" class="w-full rounded-xl object-cover" style="max-height:120px">` : ''}
+                        ${photoHtml}
                         ${inc.resolution ? `<div class="bg-emerald-50 rounded-xl p-3 text-xs text-emerald-700 font-medium">✓ ${inc.resolution}</div>` : ''}
-                        ${isOpen ? `<button onclick="openCloseIncidentModal('${inc.id}')" class="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase hover:bg-indigo-700 transition-all">Cerrar incidencia</button>` : ''}
-                    </div>
-                    `;
+                        ${inc.status === 'OPEN' ? `<button onclick="openCloseIncidentModal('${inc.id}')" class="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase hover:bg-indigo-700 transition-all">Resolver incidencia</button>` : ''}
+                    </div>`;
                 }).join('');
             } catch(e) {
                 container.innerHTML = '<div class="col-span-full text-center py-16 text-rose-500 text-sm font-bold">Error cargando incidencias</div>';
