@@ -104,6 +104,8 @@ function showToastNotification(type, title, text) {
     const skipPatterns = [
         /\/api\/v1\/alerts\/cleanup$/i
     ];
+    // 409 Conflict es esperado en sync de empleados (usuario ya existe) — no mostrar toast
+    const silentStatusCodes = new Set([409]);
 
     function shouldSkipToast(url) {
         return skipPatterns.some((rx) => rx.test(url));
@@ -140,7 +142,7 @@ function showToastNotification(type, title, text) {
             if (isMutation && !skipToast) {
                 if (res.ok) {
                     showToastNotification('success', 'Operación guardada', `${method} completado correctamente.`);
-                } else {
+                } else if (!silentStatusCodes.has(res.status)) {
                     showToastNotification('warning', 'Operación con error', `${method} respondió ${res.status}.`);
                 }
             }
