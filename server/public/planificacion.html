@@ -561,6 +561,9 @@
                     </div>
                 </div>
 
+                <!-- Active Filters Bar -->
+                <div id="weekly-active-filters-bar" class="hidden flex flex-wrap items-center gap-2 px-4 py-3 mb-4 card-dark"></div>
+
                 <!-- Main Data Table Container -->
                 <div class="table-container">
                     <div class="overflow-x-auto custom-scrollbar" role="region" aria-label="Tabla de viajes — desplazamiento horizontal">
@@ -6752,42 +6755,96 @@
 
         // ─── INLINE HEADER FILTER DROPDOWN ────────────────────────────────
         let _activeHeaderFilter = null;
+        let _headerFilterValues = []; // store values array for current dropdown
 
         function toggleHeaderFilter(columnId, triggerEl) {
-            // Close any existing dropdown
+            // If same dropdown is open, close it
+            const existing = document.getElementById('header-filter-dropdown');
+            if (existing && existing.dataset.col === columnId) {
+                closeHeaderFilter();
+                return;
+            }
             closeHeaderFilter();
 
             const th = triggerEl.closest('th');
             const uniqueValues = getUniqueValuesForColumn(columnId);
+            _headerFilterValues = uniqueValues;
             const currentFilters = weeklyColumnFilters[columnId] || new Set();
+            const hasFilters = currentFilters.size > 0;
 
             const dropdown = document.createElement('div');
             dropdown.id = 'header-filter-dropdown';
-            dropdown.className = 'absolute left-0 top-full mt-1 z-50 bg-white rounded-xl shadow-2xl border border-[#E0E5F2] min-w-[200px] max-h-[280px] overflow-hidden';
-            dropdown.style.cssText = 'box-shadow: 0 12px 36px rgba(0,0,0,0.12);';
+            dropdown.dataset.col = columnId;
+            dropdown.className = 'absolute left-0 top-full mt-1 z-50 bg-white rounded-xl border border-[#E0E5F2] min-w-[220px] max-h-[320px] overflow-hidden';
+            dropdown.style.cssText = 'box-shadow: 0 12px 36px rgba(0,0,0,0.15);';
 
-            dropdown.innerHTML = `
-                <div class="p-3 border-b border-[#F4F7FE] flex justify-between items-center">
-                    <span class="text-[10px] font-black text-[#A3AED0] uppercase">Filtrar</span>
-                    <button onclick="clearColumnFilter('${columnId}')" class="text-[9px] font-bold text-indigo-600 hover:underline">Limpiar</button>
-                </div>
-                <div class="overflow-y-auto max-h-[220px] p-2 space-y-1">
-                    ${uniqueValues.map(val => `
-                        <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-[#F8FAFF] rounded-lg cursor-pointer">
-                            <input type="checkbox" class="rounded border-[#E0E5F2] text-indigo-600 w-3.5 h-3.5"
-                                   ${currentFilters.has(val) ? 'checked' : ''}
-                                   onchange="updateColumnFilterQuick('${columnId}', ${JSON.stringify(val)}, this.checked)" />
-                            <span class="text-[11px] font-bold text-[#2B3674] truncate">${escapeHtml(val)}</span>
-                        </label>
-                    `).join('')}
-                </div>
-            `;
+            // Header
+            const header = document.createElement('div');
+            header.className = 'p-3 border-b border-[#F4F7FE] flex justify-between items-center';
+            header.innerHTML = '<span class="text-[10px] font-black text-[#A3AED0] uppercase">Filtrar</span>';
+            const clearBtn = document.createElement('button');
+            clearBtn.className = 'text-[9px] font-bold text-indigo-600 hover:underline';
+            clearBtn.textContent = hasFilters ? 'Limpiar' : 'Seleccionar todo';
+            clearBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                if (hasFilters) {
+                    delete weeklyColumnFilters[columnId];
+                } else {
+                    weeklyColumnFilters[columnId] = new Set(uniqueValues);
+                }
+                closeHeaderFilter();
+                filterWeeklyData();
+            });
+            header.appendChild(clearBtn);
+            dropdown.appendChild(header);
 
+            // Values list
+            const listWrap = document.createElement('div');
+            listWrap.className = 'overflow-y-auto max-h-[260px] p-2 space-y-1';
+
+            uniqueValues.forEach(function(val, idx) {
+                const label = document.createElement('label');
+                label.className = 'flex items-center gap-2 px-2 py-1.5 hover:bg-[#F8FAFF] rounded-lg cursor-pointer';
+
+                const cb = document.createElement('input');
+                cb.type = 'checkbox';
+                cb.className = 'rounded border-[#E0E5F2] text-indigo-600 w-3.5 h-3.5';
+                cb.checked = currentFilters.has(val);
+                cb.dataset.idx = idx;
+
+                cb.addEventListener('change', function(e) {
+                    e.stopPropagation();
+                    const value = _headerFilterValues[this.dataset.idx];
+                    if (!weeklyColumnFilters[columnId]) {
+                        weeklyColumnFilters[columnId] = new Set();
+                    }
+                    if (this.checked) {
+                        weeklyColumnFilters[columnId].add(value);
+                    } else {
+                        weeklyColumnFilters[columnId].delete(value);
+                        if (weeklyColumnFilters[columnId].size === 0) {
+                            delete weeklyColumnFilters[columnId];
+                        }
+                    }
+                    filterWeeklyData();
+                    updateActiveFiltersBar();
+                });
+
+                const span = document.createElement('span');
+                span.className = 'text-[11px] font-bold text-[#2B3674] truncate';
+                span.textContent = val;
+
+                label.appendChild(cb);
+                label.appendChild(span);
+                listWrap.appendChild(label);
+            });
+
+            dropdown.appendChild(listWrap);
             th.appendChild(dropdown);
             _activeHeaderFilter = dropdown;
 
             // Close on outside click
-            setTimeout(() => {
+            setTimeout(function() {
                 document.addEventListener('click', _closeHeaderFilterOutside, true);
             }, 10);
         }
@@ -6803,6 +6860,7 @@
             const dd = document.getElementById('header-filter-dropdown');
             if (dd) dd.remove();
             _activeHeaderFilter = null;
+            _headerFilterValues = [];
             document.removeEventListener('click', _closeHeaderFilterOutside, true);
         }
 
@@ -6810,6 +6868,35 @@
             delete weeklyColumnFilters[columnId];
             closeHeaderFilter();
             filterWeeklyData();
+            updateActiveFiltersBar();
+        }
+
+        // ─── ACTIVE FILTERS BAR (shows what's filtered) ──────────────────
+        function updateActiveFiltersBar() {
+            const activeEntries = Object.entries(weeklyColumnFilters).filter(([, set]) => set.size > 0);
+            const bar = document.getElementById('weekly-active-filters-bar');
+            if (!bar) return;
+
+            if (activeEntries.length === 0) {
+                bar.classList.add('hidden');
+                return;
+            }
+
+            const colLabels = {};
+            weeklyColumns.forEach(c => colLabels[c.id] = c.label);
+
+            bar.classList.remove('hidden');
+            bar.innerHTML = activeEntries.map(([colId, vals]) => {
+                const names = [...vals].slice(0, 3).join(', ') + (vals.size > 3 ? ` +${vals.size - 3}` : '');
+                return `
+                    <span class="inline-flex items-center gap-1 bg-indigo-100 text-indigo-700 rounded-full px-3 py-1 text-[10px] font-bold">
+                        ${colLabels[colId] || colId}: ${escapeHtml(names)}
+                        <button onclick="clearColumnFilter('${colId}'); updateActiveFiltersBar()" class="ml-1 text-indigo-400 hover:text-indigo-700">&times;</button>
+                    </span>
+                `;
+            }).join('') + `
+                <button onclick="weeklyColumnFilters={}; filterWeeklyData(); updateActiveFiltersBar();" class="text-[10px] font-bold text-indigo-600 hover:underline ml-2">Limpiar todo</button>
+            `;
         }
 
         function resetColumnVisibility() {
