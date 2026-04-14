@@ -14,6 +14,7 @@ import { login } from '../api';
 import { persistSession } from '../sessionStorage';
 import type { SessionUser } from '../types';
 import { assertApiConfigured } from '../config';
+import { colors, font, radius, spacing } from '../theme';
 
 type Props = { onLoggedIn: (user: SessionUser) => void | Promise<void> };
 
@@ -22,6 +23,8 @@ export default function LoginScreen({ onLoggedIn }: Props) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [userFocused, setUserFocused] = useState(false);
+  const [passFocused, setPassFocused] = useState(false);
 
   const submit = async () => {
     setError('');
@@ -55,35 +58,61 @@ export default function LoginScreen({ onLoggedIn }: Props) {
     >
       <StatusBar style="light" />
       <View style={styles.hero}>
-        <Text style={styles.brand}>R14</Text>
+        <View style={styles.brandRow}>
+          <View style={styles.brandBadge}>
+            <Text style={styles.brandBadgeTxt}>R14</Text>
+          </View>
+        </View>
+        <Text style={styles.brand}>Real de Catorce</Text>
         <Text style={styles.sub}>Seguimiento satelital</Text>
-        <Text style={styles.tag}>Recorrido en vivo · Planificación</Text>
+        <Text style={styles.tag}>Recorrido en vivo  ·  Planificación</Text>
       </View>
       <View style={styles.card}>
-        <Text style={styles.title}>Acceso chofer</Text>
-        <Text style={styles.label}>Usuario</Text>
+        <Text style={styles.title}>Ingreso chofer</Text>
+        <Text style={styles.subtitle}>Usá tu nombre y contraseña asignados</Text>
+
+        <Text style={styles.label}>USUARIO</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, userFocused && styles.inputFocused]}
           value={username}
           onChangeText={setUsername}
+          onFocus={() => setUserFocused(true)}
+          onBlur={() => setUserFocused(false)}
           autoCapitalize="none"
           autoCorrect={false}
+          placeholder="Ej: MARTINEZ"
+          placeholderTextColor={colors.textMuted}
         />
-        <Text style={styles.label}>Contraseña</Text>
+
+        <Text style={styles.label}>CONTRASE\u00d1A</Text>
         <TextInput
-          style={styles.input}
+          style={[styles.input, passFocused && styles.inputFocused]}
           value={password}
           onChangeText={setPassword}
+          onFocus={() => setPassFocused(true)}
+          onBlur={() => setPassFocused(false)}
           secureTextEntry
+          placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+          placeholderTextColor={colors.textMuted}
         />
-        {error ? <Text style={styles.err}>{error}</Text> : null}
+
+        {error ? (
+          <View style={styles.errBox}>
+            <Text style={styles.err}>{error}</Text>
+          </View>
+        ) : null}
+
         <Pressable
-          style={[styles.btn, loading && styles.btnDis]}
+          style={({ pressed }) => [
+            styles.btn,
+            loading && styles.btnDis,
+            pressed && !loading && styles.btnPressed,
+          ]}
           onPress={submit}
           disabled={loading || !username.trim() || !password}
         >
           {loading ? (
-            <ActivityIndicator color="#fff" />
+            <ActivityIndicator color={colors.textInverse} />
           ) : (
             <Text style={styles.btnTxt}>Ingresar</Text>
           )}
@@ -94,37 +123,71 @@ export default function LoginScreen({ onLoggedIn }: Props) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#0f172a' },
-  hero: { paddingTop: 72, paddingHorizontal: 28, paddingBottom: 24 },
-  brand: { fontSize: 42, fontWeight: '900', color: '#fff', letterSpacing: 2 },
-  sub: { fontSize: 18, color: '#94a3b8', marginTop: 4, fontWeight: '600' },
-  tag: { fontSize: 13, color: '#64748b', marginTop: 12 },
+  root: { flex: 1, backgroundColor: colors.heroBg },
+  hero: { paddingTop: 64, paddingHorizontal: spacing['2xl'], paddingBottom: spacing.xl },
+  brandRow: { marginBottom: spacing.lg },
+  brandBadge: {
+    width: 52,
+    height: 52,
+    borderRadius: radius.lg,
+    backgroundColor: 'rgba(79,70,229,0.2)',
+    borderWidth: 1,
+    borderColor: 'rgba(79,70,229,0.3)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  brandBadgeTxt: { fontSize: font.xl, fontWeight: font.black, color: '#a5b4fc', letterSpacing: 1 },
+  brand: { fontSize: font['3xl'], fontWeight: font.black, color: colors.heroText, letterSpacing: -0.5 },
+  sub: { fontSize: font.lg, color: colors.heroSub, marginTop: spacing.xs, fontWeight: font.semibold },
+  tag: { fontSize: font.base, color: colors.heroTag, marginTop: spacing.md },
   card: {
     flex: 1,
-    backgroundColor: '#fff',
-    borderTopLeftRadius: 28,
-    borderTopRightRadius: 28,
-    padding: 28,
+    backgroundColor: colors.card,
+    borderTopLeftRadius: radius['2xl'],
+    borderTopRightRadius: radius['2xl'],
+    padding: spacing['2xl'],
   },
-  title: { fontSize: 22, fontWeight: '800', color: '#0f172a', marginBottom: 20 },
-  label: { fontSize: 13, fontWeight: '600', color: '#64748b', marginBottom: 6 },
+  title: { fontSize: font['2xl'], fontWeight: font.black, color: colors.textPrimary, marginBottom: spacing.xs },
+  subtitle: { fontSize: font.md, color: colors.textMuted, marginBottom: spacing['2xl'] },
+  label: {
+    fontSize: font.xs,
+    fontWeight: font.extrabold,
+    color: colors.textMuted,
+    letterSpacing: 1.2,
+    marginBottom: spacing.sm,
+  },
   input: {
-    backgroundColor: '#f1f5f9',
-    borderRadius: 14,
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    fontSize: 16,
-    color: '#0f172a',
-    marginBottom: 14,
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 2,
+    borderColor: 'transparent',
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md + 2,
+    fontSize: font.lg,
+    color: colors.textPrimary,
+    marginBottom: spacing.lg,
   },
-  err: { color: '#b91c1c', marginBottom: 12, fontSize: 14 },
+  inputFocused: {
+    borderColor: colors.primary,
+    backgroundColor: colors.card,
+  },
+  errBox: {
+    backgroundColor: colors.errorBg,
+    borderWidth: 1,
+    borderColor: colors.errorBorder,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.md,
+  },
+  err: { color: colors.error, fontSize: font.md, fontWeight: font.semibold },
   btn: {
-    backgroundColor: '#4f46e5',
-    borderRadius: 16,
-    paddingVertical: 16,
+    backgroundColor: colors.primary,
+    borderRadius: radius.lg,
+    paddingVertical: spacing.lg,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: spacing.sm,
   },
-  btnDis: { opacity: 0.6 },
-  btnTxt: { color: '#fff', fontSize: 17, fontWeight: '800' },
+  btnDis: { opacity: 0.5 },
+  btnPressed: { backgroundColor: colors.primaryHover, transform: [{ scale: 0.98 }] },
+  btnTxt: { color: colors.textInverse, fontSize: font.lg + 1, fontWeight: font.extrabold },
 });

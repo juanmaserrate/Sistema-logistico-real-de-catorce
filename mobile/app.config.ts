@@ -10,7 +10,7 @@ const config: ExpoConfig = {
   name: 'R14 Seguimiento',
   slug: 'r14-seguimiento',
   version: '1.0.0',
-  newArchEnabled: false,
+  newArchEnabled: true,
   orientation: 'portrait',
   icon: './assets/icon.png',
   userInterfaceStyle: 'light',

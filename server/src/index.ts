@@ -160,7 +160,7 @@ app.get(/^\/app(?:\/.*)?$/, (_req, res) => {
 });
 
 app.get('/planificacion', (_req, res) => {
-    res.redirect(302, '/planificacion.html');
+    res.sendFile(path.join(__dirname, '..', 'public', 'planificacion.html'));
 });
 
 app.use((req, res, next) => {
@@ -387,33 +387,9 @@ async function resolveRepartoUserForTrip(trip: { reparto?: string | null; driver
     return null;
 }
 
-// --- Página del sistema (para abrir en el navegador) ---
-app.get('/', (req, res) => {
-    res.type('html').send(`
-<!DOCTYPE html>
-<html lang="es">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Sistema R14 - Real de Catorce Logística</title>
-  <style>
-    * { box-sizing: border-box; }
-    body { font-family: system-ui, -apple-system, sans-serif; margin: 0; padding: 2rem; background: #f8f9fb; color: #1c1c1e; min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; }
-    h1 { font-size: 1.75rem; margin-bottom: 0.5rem; }
-    p { color: #6b7280; margin-bottom: 1.5rem; }
-    a { color: #007AFF; font-weight: 600; }
-    .badge { display: inline-block; background: #dcfce7; color: #166534; padding: 0.25rem 0.75rem; border-radius: 9999px; font-size: 0.875rem; font-weight: 600; margin-top: 1rem; }
-  </style>
-</head>
-<body>
-  <h1>Sistema R14</h1>
-  <p>Real de Catorce Logística — API en ejecución</p>
-  <span class="badge">En línea</span>
-  <p style="margin-top: 1.5rem;"><a href="/planificacion.html" style="font-size:1.1rem">Abrir sistema de planificación (Sistema Integral R14)</a></p>
-  <p style="margin-top: 0.75rem;"><a href="/api/health">Ver estado de la API</a></p>
-</body>
-</html>
-    `);
+// --- Redirigir raíz directo al sistema de planificación ---
+app.get('/', (_req, res) => {
+    res.redirect(302, '/planificacion');
 });
 
 // --- NEW V1 API (SaaS / VRP) ---

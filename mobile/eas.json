@@ -37,7 +37,7 @@
         "GOOGLE_MAPS_IOS_KEY": "AIzaSyAHCyFW-dbVeqbuYjzNPB0F7Botsr4nIEs"
       },
       "android": {
-        "buildType": "app-bundle"
+        "buildType": "apk"
       }
     }
   },

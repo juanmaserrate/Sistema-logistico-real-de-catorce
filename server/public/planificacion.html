@@ -13,438 +13,9 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <script src="/vendor/markerclusterer.min.js"></script>
-    <style>
-        /* Mapa VRP: altura flexible + capa de composición (menos repaints al arrastrar) */
-        #map {
-            min-height: 420px;
-            height: 100%;
-            width: 100%;
-            border-radius: 24px;
-            z-index: 10;
-            background: #f8fafc;
-            contain: layout paint;
-            transform: translateZ(0);
-        }
-        .vrp-map-host {
-            contain: layout paint;
-            isolation: isolate;
-        }
-        .vrp-map-host.map-no-hover-lift:hover {
-            transform: none !important;
-            box-shadow: var(--card-shadow) !important;
-        }
-        :root {
-            --primary: #4318FF;
-            --primary-hover: #3311DB;
-            --secondary: #2B3674;
-            --text-main: #1B2559;
-            --text-sec: #A3AED0;
-            --bg-body: #F4F7FE;
-            --card-shadow: 0px 18px 40px rgba(112, 144, 176, 0.12);
-            --header-gradient: linear-gradient(135deg, #11047A 0%, #2B0880 100%);
-            --card-bg: #ffffff;
-            --border-color: #E0E5F2;
-            --input-bg: #F4F7FE;
-        }
-        [data-theme="dark"] {
-            --text-main: #e2e8f0;
-            --text-sec: #64748b;
-            --bg-body: #0f172a;
-            --card-shadow: 0px 18px 40px rgba(0, 0, 0, 0.35);
-            --card-bg: #1e293b;
-            --border-color: #334155;
-            --input-bg: #0f172a;
-        }
-        /* ── DARK MODE COMPLETO ─────────────────────────────────────────── */
-        [data-theme="dark"] body { background-color: var(--bg-body); color: var(--text-main); }
-
-        /* Cards y contenedores */
-        [data-theme="dark"] .card-dark { background: var(--card-bg) !important; color: var(--text-main); border-color: #334155 !important; }
-        [data-theme="dark"] .bg-white { background-color: var(--card-bg) !important; }
-        [data-theme="dark"] .bg-\[#F4F7FE\] { background-color: #1e293b !important; }
-        [data-theme="dark"] .bg-\[#F8FAFF\] { background-color: #1e293b !important; }
-        [data-theme="dark"] .bg-\[#F8FAFF\]\/90 { background-color: #1a2744 !important; }
-        [data-theme="dark"] .hover\:bg-\[#F4F7FE\]:hover { background-color: #1e293b !important; }
-        [data-theme="dark"] .hover\:bg-\[#E8ECF8\]:hover { background-color: #273549 !important; }
-
-        /* Textos */
-        [data-theme="dark"] .text-\[#1B2559\] { color: #e2e8f0 !important; }
-        [data-theme="dark"] .text-\[#2B3674\] { color: #cbd5e1 !important; }
-        [data-theme="dark"] .text-\[#A3AED0\] { color: #64748b !important; }
-        [data-theme="dark"] .text-\[#0f172a\] { color: #e2e8f0 !important; }
-
-        /* Bordes */
-        [data-theme="dark"] .border-\[#F4F7FE\] { border-color: #334155 !important; }
-        [data-theme="dark"] .border-\[#E0E5F2\] { border-color: #334155 !important; }
-        [data-theme="dark"] .divide-\[#F4F7FE\] > * + * { border-color: #334155 !important; }
-
-        /* Tablas */
-        [data-theme="dark"] .table-container { background: var(--card-bg) !important; }
-        [data-theme="dark"] thead tr { background: #273549 !important; }
-        [data-theme="dark"] thead tr th { background: #273549 !important; color: #94a3b8 !important; }
-        [data-theme="dark"] tbody tr { background: var(--card-bg) !important; color: #e2e8f0 !important; }
-        [data-theme="dark"] tbody tr:hover { background: #273549 !important; }
-        [data-theme="dark"] .hover\:bg-\[#F4F7FE\] { background-color: transparent !important; }
-
-        /* Inputs, selects, textareas */
-        [data-theme="dark"] input:not([type="checkbox"]):not([type="radio"]),
-        [data-theme="dark"] select,
-        [data-theme="dark"] textarea { background: #0f172a !important; color: #e2e8f0 !important; border-color: #334155 !important; }
-        [data-theme="dark"] input::placeholder,
-        [data-theme="dark"] textarea::placeholder { color: #475569 !important; }
-
-        /* Header de la app */
-        [data-theme="dark"] .app-header { background: #0a0f1e !important; border-color: #1e293b !important; }
-        [data-theme="dark"] .header-nav-item { color: #94a3b8 !important; }
-        [data-theme="dark"] .header-nav-item:hover { background: #1e293b !important; color: #e2e8f0 !important; }
-        [data-theme="dark"] .header-nav-item-active { background: rgba(99,102,241,0.2) !important; color: #818cf8 !important; }
-
-        /* Vista principal */
-        [data-theme="dark"] #main-view { background-color: var(--bg-body) !important; }
-        [data-theme="dark"] .view-animate { background-color: transparent !important; }
-
-        /* Banner/hero superior de cada sección */
-        [data-theme="dark"] .section-banner,
-        [data-theme="dark"] [class*="from-indigo"][class*="to-purple"],
-        [data-theme="dark"] [class*="bg-gradient"] { background: #1e1b4b !important; }
-
-        /* Scrollbar */
-        [data-theme="dark"] .custom-scrollbar::-webkit-scrollbar-track { background: #1e293b; }
-        [data-theme="dark"] .custom-scrollbar::-webkit-scrollbar-thumb { background: #334155; }
-
-        /* Status badges neutros */
-        [data-theme="dark"] .status-badge { border: 1px solid #334155; }
-
-        /* Modales */
-        [data-theme="dark"] .modal-content,
-        [data-theme="dark"] [class*="bg-white rounded-3xl"],
-        [data-theme="dark"] [class*="bg-white rounded-2xl"] { background: #1e293b !important; color: #e2e8f0 !important; }
-
-        /* Sombras */
-        [data-theme="dark"] .shadow-sm,
-        [data-theme="dark"] .shadow-lg { box-shadow: 0 4px 24px rgba(0,0,0,0.5) !important; }
-
-        /* Colores de fondo secundarios comunes */
-        [data-theme="dark"] .bg-indigo-50 { background-color: rgba(99,102,241,0.15) !important; }
-        [data-theme="dark"] .bg-emerald-50 { background-color: rgba(16,185,129,0.12) !important; }
-        [data-theme="dark"] .bg-amber-50 { background-color: rgba(245,158,11,0.12) !important; }
-        [data-theme="dark"] .bg-rose-50 { background-color: rgba(244,63,94,0.12) !important; }
-
-        body { font-family: 'Outfit', sans-serif; background-color: var(--bg-body); color: var(--text-main); }
-        
-        .card-dark { 
-            background: white; 
-            border: none; 
-            border-radius: 20px; 
-            transition: all 0.3s ease; 
-            box-shadow: var(--card-shadow); 
-        }
-        .card-dark:hover { transform: translateY(-5px); box-shadow: 0px 25px 50px rgba(112, 144, 176, 0.2); }
-        
-        .header-nav-item {
-            flex-shrink: 0;
-            display: inline-flex;
-            align-items: center;
-            gap: 0.4rem;
-            padding: 0.45rem 0.65rem;
-            border-radius: 12px; 
-            font-size: 11px;
-            font-weight: 700; 
-            color: rgba(255, 255, 255, 0.62);
-            transition: color 0.2s, background 0.2s, box-shadow 0.2s;
-            white-space: nowrap;
-            border: none;
-            background: transparent;
-            cursor: pointer;
-            font-family: inherit;
-        }
-        .header-nav-item:hover {
-            color: #fff;
-            background: rgba(255, 255, 255, 0.1);
-        }
-        .header-nav-item-active {
-            color: #fff !important;
-            background: rgba(255, 255, 255, 0.2);
-            box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.14);
-        }
-        .header-nav-item i, .header-nav-item svg { flex-shrink: 0; opacity: 0.9; }
-        @media (min-width: 1280px) {
-            .header-nav-item { font-size: 12px; padding: 0.5rem 0.75rem; }
-        }
-
-        .nav-section-label {
-            font-size: 10px;
-            font-weight: 800;
-            letter-spacing: 0.12em;
-            text-transform: uppercase;
-            color: rgba(255, 255, 255, 0.38);
-            padding: 0 0.35rem;
-            flex-shrink: 0;
-            align-self: center;
-        }
-        .nav-section-divider {
-            width: 1px;
-            height: 22px;
-            background: rgba(255, 255, 255, 0.18);
-            flex-shrink: 0;
-            margin: 0 0.25rem;
-        }
-        
-        .header-area {
-            background: var(--header-gradient);
-            height: 300px;
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 0;
-            border-bottom-left-radius: 40px;
-            border-bottom-right-radius: 40px;
-        }
-
-        .app-header {
-            position: relative;
-            z-index: 90;
-            display: flex;
-            flex-direction: column;
-            gap: 0;
-            padding: 0 24px 12px;
-            overflow: visible;
-        }
-        @media (min-width: 1024px) {
-            .app-header { padding: 0 40px 14px; }
-        }
-        .top-nav {
-            min-height: 72px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-            flex-wrap: wrap;
-            gap: 12px 20px;
-            padding-top: 8px;
-            overflow: visible;
-        }
-        .header-nav-row {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            align-content: flex-start;
-            gap: 0.35rem 0.35rem;
-            padding: 6px 0 10px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-            width: 100%;
-        }
-        .header-nav-scroll {
-            display: flex;
-            flex-wrap: wrap;
-            align-items: center;
-            align-content: center;
-            gap: 0.35rem 0.3rem;
-            flex: 1 1 auto;
-            min-width: 0;
-            padding: 2px 0;
-        }
-
-        .btn-icon-glass {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            color: white;
-            transition: all 0.3s;
-        }
-        .btn-icon-glass:hover { background: rgba(255, 255, 255, 0.2); }
-
-        .table-container { 
-            background: #FFFFFF; 
-            border-radius: 20px; 
-            border: none; 
-            overflow: hidden; 
-            box-shadow: var(--card-shadow); 
-            max-width: 100%;
-            min-width: 0;
-            box-sizing: border-box;
-        }
-        .table-container > .overflow-x-auto {
-            max-width: 100%;
-            min-width: 0;
-            box-sizing: border-box;
-            -webkit-overflow-scrolling: touch;
-            scrollbar-width: thin;
-            scrollbar-color: #94a3b8 #f1f5f9;
-        }
-        /* Barra de scroll horizontal más visible en tablas anchas */
-        .table-container > .overflow-x-auto.custom-scrollbar::-webkit-scrollbar {
-            height: 10px;
-        }
-        .table-container > .overflow-x-auto.custom-scrollbar::-webkit-scrollbar-thumb {
-            background: #94a3b8;
-            border-radius: 8px;
-        }
-        .table-container > .overflow-x-auto.custom-scrollbar::-webkit-scrollbar-track {
-            background: rgba(241, 245, 249, 0.9);
-            border-radius: 8px;
-        }
-        /* Filas expandibles (puntos de ruta): que no recorten la lista completa */
-        #view-weekly .table-container {
-            overflow: visible;
-        }
-        #view-weekly .table-container > div.overflow-x-auto {
-            overflow-x: auto;
-            overflow-y: visible;
-        }
-        /* Vistas con grillas/tablas: no desbordan el ancho del panel */
-        #main-view > [id^="view-"] {
-            min-width: 0;
-            max-width: 100%;
-            box-sizing: border-box;
-        }
-        th { 
-            font-size: 12px; 
-            font-weight: 700; 
-            color: var(--text-sec); 
-            padding: 20px 24px; 
-            background: white; 
-            border-bottom: 1px solid #F4F7FE; 
-        }
-        td { padding: 18px 24px; font-size: 14px; color: var(--text-main); border-bottom: 1px solid #F4F7FE; }
-        
-        .status-badge { 
-            padding: 6px 12px; 
-            border-radius: 10px; 
-            font-size: 11px; 
-            font-weight: 700; 
-        }
-
-        .cost-input {
-            background: #F4F7FE;
-            border: 2px solid transparent;
-            border-radius: 15px;
-            padding: 12px 16px;
-            font-weight: 700;
-            color: var(--text-main);
-            transition: all 0.3s;
-        }
-        .cost-input:focus { border-color: var(--primary); background: white; outline: none; }
-
-        .modal-content { border: none; border-radius: 30px; }
-        #school-modal {
-            background-color: rgba(15, 23, 42, 0.72) !important;
-            backdrop-filter: blur(8px);
-            -webkit-backdrop-filter: blur(8px);
-        }
-        #school-modal .modal-content {
-            background: #ffffff !important;
-            border-radius: 24px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.35);
-            max-height: calc(100vh - 3rem);
-            overflow: hidden;
-            display: flex;
-            flex-direction: column;
-        }
-        #school-modal #modal-body {
-            background: #f8fafc !important;
-            overflow-y: auto;
-            flex: 1;
-            min-height: 0;
-        }
-        #school-modal #school-edit-content {
-            background: #f8fafc;
-            padding: 0.5rem 0;
-        }
-        
-        .sticky-col { background: #FFFFFF; border-right: 1px solid #F4F7FE; }
-
-        /* Custom Scrollbar */
-        .custom-scrollbar::-webkit-scrollbar { width: 8px; }
-        .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
-        .custom-scrollbar::-webkit-scrollbar-thumb { background: #E0E5F2; border-radius: 10px; }
-        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #CBD5E1; }
-
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .view-animate { animation: fadeIn 0.4s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
-
-        .notification-panel { 
-            position: absolute;
-            top: calc(100% + 10px);
-            right: 0;
-            z-index: 9999;
-            border-radius: 20px; 
-            box-shadow: 0px 40px 60px rgba(112, 144, 176, 0.25);
-            background: #ffffff !important;
-            background-color: #ffffff !important;
-            isolation: isolate;
-            overflow: hidden;
-            border: 1px solid #e2e8f0;
-        }
-
-        #notif-list {
-            background: #ffffff;
-        }
-
-        .notification-item {
-            background-color: #f8fafc;
-            border-bottom: 1px solid #e2e8f0;
-        }
-        .notification-item:last-child {
-            border-bottom: none;
-        }
-
-        .notif-info {
-            background-color: #f1f5f9 !important;
-            border-left: 4px solid #6366f1;
-        }
-        .notif-success {
-            background-color: #ecfdf5 !important;
-            border-left: 4px solid #10b981;
-        }
-        .notif-warning {
-            background-color: #fffbeb !important;
-            border-left: 4px solid #f59e0b;
-        }
-        .notif-error {
-            background-color: #fef2f2 !important;
-            border-left: 4px solid #ef4444;
-        }
-        .notif-critical {
-            background-color: #fff1f2 !important;
-            border-left: 4px solid #e11d48;
-        }
-
-        .filter-propio .col-proveedor,
-        .filter-propio .col-contrato,
-        .filter-propio .col-tipo-vehiculo,
-        .filter-propio .col-tipo-viaje {
-            display: none !important;
-        }
-
-        .filter-tercerizado .col-tipo-vehiculo,
-        .filter-tercerizado .col-proveedor,
-        .filter-tercerizado .col-bu,
-        .filter-tercerizado .col-tipo-viaje,
-        .filter-tercerizado .col-duracion,
-        .filter-tercerizado .col-localidad,
-        .filter-tercerizado .col-salida,
-        .filter-tercerizado .col-llegada,
-        .filter-tercerizado .col-estado {
-            display: none !important;
-        }
-
-        /* Dropdown personalizado de mes */
-        #planning-month-dropdown {
-            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
-            z-index: 1000;
-        }
-
-        #planning-month-dropdown button:hover {
-            background-color: #F4F7FE !important;
-        }
-    </style>
+    <link rel="stylesheet" href="/css/planificacion.css">
+    <script src="/js/r14-utils.js"></script>
+    <script src="/js/r14-notifications.js"></script>
 </head>
 <body class="flex h-screen overflow-hidden flex-col">
 
@@ -501,9 +72,9 @@
                 </div>
                 
                 <div class="flex items-center gap-3 sm:gap-4 flex-1 justify-end min-w-0 flex-wrap">
-                    <div id="api-status-text" class="flex items-center gap-2 text-[10px] font-bold text-white/55 uppercase tracking-wide whitespace-nowrap">
-                        <div id="api-status-dot" class="w-2 h-2 rounded-full bg-white/35 shrink-0"></div>
-                        <span id="api-status-label">Server</span>
+                    <div id="api-status-text" class="hidden">
+                        <div id="api-status-dot"></div>
+                        <span id="api-status-label"></span>
                     </div>
                     <div class="flex items-center gap-3 shrink-0">
                     <div class="relative">
@@ -597,9 +168,9 @@
                 <datalist id="fuel-list"></datalist>
             </div>
             <!-- Personalized Greeting Section -->
-            <div class="mb-10 text-white animate-fade-in">
-                <h1 id="header-title" class="text-3xl font-extrabold tracking-tight mb-2">Hola, Juanma 👋</h1>
-                <p id="header-desc" class="text-white/70 font-medium">Bienvenido de nuevo al panel logístico de Real de Catorce.</p>
+            <div class="mb-6 text-white animate-fade-in">
+                <h1 id="header-title" class="text-2xl font-extrabold tracking-tight mb-1">Hola, Juanma</h1>
+                <p id="header-desc" class="text-white/50 text-sm font-medium">Panel logístico · Real de Catorce</p>
             </div>
 
             <!-- VIEW: RUTAS PREDEFINIDAS -->
@@ -724,7 +295,7 @@
                     </div>
                 </div>
                 <div id="incidents-list" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                    <div class="col-span-full text-center py-16 text-[#A3AED0] text-sm font-bold">Cargando...</div>
+                    <div class="col-span-full text-center py-16 text-[#A3AED0] text-sm font-bold">Cargando incidencias...</div>
                 </div>
             </div>
 
@@ -810,7 +381,7 @@
                                 </tr>
                             </thead>
                             <tbody id="audit-tbody">
-                                <tr><td colspan="7" class="text-center py-16 text-[#A3AED0] text-sm font-bold">Cargando...</td></tr>
+                                <tr><td colspan="7" class="text-center py-16 text-[#A3AED0] text-sm font-bold">Cargando registro de auditoría...</td></tr>
                             </tbody>
                         </table>
                     </div>
@@ -1855,7 +1426,17 @@
                             <span class="text-[10px] text-[#A3AED0] font-black uppercase">Live cada 20s</span>
                         </div>
                     </div>
-                    <div id="control-live-map" class="w-full" style="height: calc(100vh - 280px); min-height: 480px; max-height: 800px;"></div>
+                    <!-- Filtro de choferes: aislar viajes en el mapa -->
+                    <div id="control-driver-filter" class="px-5 py-3 border-b border-[#F4F7FE] bg-[#F8FAFF] flex items-center gap-3 flex-wrap">
+                        <span class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest shrink-0">Filtrar choferes:</span>
+                        <div id="control-driver-chips" class="flex items-center gap-2 flex-wrap">
+                            <span class="text-[10px] text-[#A3AED0] italic">Sin choferes activos</span>
+                        </div>
+                        <button onclick="controlToggleAllDrivers()" class="ml-auto px-3 py-1.5 rounded-lg bg-white border border-[#E0E5F2] text-[10px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all shrink-0">
+                            Mostrar/Ocultar todos
+                        </button>
+                    </div>
+                    <div id="control-live-map" class="w-full" style="height: calc(100vh - 320px); min-height: 480px; max-height: 800px;"></div>
                 </div>
 
                 <div class="grid grid-cols-1 md:grid-cols-3 gap-8">
@@ -2043,15 +1624,7 @@
             ? 'http://localhost:3002/api/v1'
             : (window.location.origin + '/api/v1');
 
-        /** Fecha actual en zona horaria Argentina (Buenos Aires) */
-        function nowBuenosAires() {
-            const parts = new Intl.DateTimeFormat('en-US', {
-                timeZone: 'America/Argentina/Buenos_Aires',
-                year: 'numeric', month: 'numeric', day: 'numeric'
-            }).formatToParts(new Date());
-            const get = type => parseInt(parts.find(p => p.type === type).value, 10);
-            return { month: get('month') - 1, year: get('year'), day: get('day') };
-        }
+        // nowBuenosAires() → js/r14-utils.js
 
         /** Origen del servidor (sin /api/v1) para /api/health y rutas fuera de v1 */
         function getServerOrigin() {
@@ -2320,10 +1893,7 @@
         }
 
         // --- PERFORMANCE UTILS ---
-        function debounce(fn, ms) {
-            let t;
-            return function(...args) { clearTimeout(t); t = setTimeout(() => fn.apply(this, args), ms); };
-        }
+        // debounce() → js/r14-utils.js
         // Wrappers debounced para interacciones del usuario (lazy init para que las funciones target ya estén definidas)
         let _filterSchoolsDebouncedFn = null;
         function filterSchoolsDebounced() {
@@ -2373,6 +1943,10 @@
         /** Si no cambia la “siguiente parada” por ruta, no se recrean pins numerados (ahorra mucho en cada poll) */
         let controlLastFleetNextStopsKey = '';
         let controlShowTraffic = false;
+        /** Filtro de choferes: Set de tripId visibles. null = mostrar todos (default) */
+        let controlVisibleTrips = null;
+        /** Mapeo tripId → { driver, vehicle, reparto, routeId, color } para los chips */
+        let controlTripMeta = new Map();
         /** Límites aproximados Provincia de Buenos Aires (relaja pan fuera de la zona) */
         // Zona operativa R14: sur GBA (Berazategui/F. Varela) → norte Capital (Belgrano/Núñez)
         const CONTROL_BA_BOUNDS = {
@@ -2401,16 +1975,7 @@
         let _buCache = null;
 
         /** Normaliza strings para comparaciones robustas (quita acentos, puntuación y espacios) **/
-        function norm(s) {
-            if (!s) return '';
-            return s.toString().toLowerCase()
-                   .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
-                   .replace(/[^a-z0-9]/g, "");
-        }
-
-        function normalizeBusinessUnit(value) {
-            return String(value || '').trim().toUpperCase().replace(/\s+/g, ' ');
-        }
+        // norm(), normalizeBusinessUnit() → js/r14-utils.js
 
         async function loadBusinessUnitsFromApi() {
             try {
@@ -2487,20 +2052,7 @@
             }
         }
 
-        function getMonthMeta(monthName) {
-            const names = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
-            const monthIndex = Math.max(0, names.indexOf(monthName));
-            const year = 2026;
-            const daysInMonth = new Date(year, monthIndex + 1, 0).getDate();
-            return { year, monthIndex, daysInMonth };
-        }
-
-        function toISODate(d) {
-            const y = d.getFullYear();
-            const m = String(d.getMonth() + 1).padStart(2, '0');
-            const day = String(d.getDate()).padStart(2, '0');
-            return `${y}-${m}-${day}`;
-        }
+        // getMonthMeta(), toISODate() → js/r14-utils.js
 
         function populateNewTripMultiDayOptions() {
             const monthInput = document.getElementById('new-trip-multi-month');
@@ -3177,13 +2729,7 @@
         let unblockRoleResolver = null;
         const UNBLOCK_ROLE_LAST_KEY = 'r14_last_unblock_role';
 
-        function notifyUsers(message, type = 'info') {
-            if (typeof addNotification === 'function') {
-                addNotification(type, 'Usuarios', message);
-                return;
-            }
-            alert(message);
-        }
+        // notifyUsers() → js/r14-notifications.js
 
         function roleBadgeClass(role) {
             const normalized = String(role || '').toUpperCase();
@@ -3525,6 +3071,8 @@
             if (!controlMap) return;
             const markerPts = [];
             (controlLiveData || []).forEach((it) => {
+                // Solo incluir choferes visibles en el encuadre
+                if (!controlIsTripVisible(String(it.tripId))) return;
                 const loc = it.lastLocation;
                 if (loc && loc.latitude != null && loc.longitude != null) {
                     markerPts.push({ lat: loc.latitude, lng: loc.longitude });
@@ -3535,11 +3083,9 @@
                 markerPts.forEach((p) => bounds.extend(p));
                 controlMap.fitBounds(bounds, { top: 60, right: 60, bottom: 60, left: 60 });
             } else {
-                const baBounds = new google.maps.LatLngBounds(
-                    { lat: CONTROL_BA_BOUNDS.south, lng: CONTROL_BA_BOUNDS.west },
-                    { lat: CONTROL_BA_BOUNDS.north, lng: CONTROL_BA_BOUNDS.east }
-                );
-                controlMap.fitBounds(baBounds, { top: 40, right: 40, bottom: 40, left: 40 });
+                // Sin choferes visibles: centrar en base R14 (Ombú 1260, Burzaco)
+                controlMap.setCenter({ lat: -34.8279, lng: -58.3930 });
+                controlMap.setZoom(13);
             }
         }
 
@@ -3581,8 +3127,8 @@
                     el.innerHTML = '';
                     const baBounds = getControlBaLatLngBoundsGoogle();
                     controlMap = new google.maps.Map(el, {
-                        center: { lat: -34.72, lng: -58.42 },
-                        zoom: 11,
+                        center: { lat: -34.8279, lng: -58.3930 }, // Ombú 1260, Burzaco
+                        zoom: 13,
                         minZoom: 10,
                         maxZoom: 18,
                         mapTypeControl: false,
@@ -3600,16 +3146,8 @@
                     controlGoogleTrafficLayer = new google.maps.TrafficLayer();
                     if (controlShowTraffic) controlGoogleTrafficLayer.setMap(controlMap);
 
-                    // Encuadre inicial a Buenos Aires
-                    setTimeout(() => {
-                        if (controlMap) {
-                            const baBounds = new google.maps.LatLngBounds(
-                                { lat: CONTROL_BA_BOUNDS.south, lng: CONTROL_BA_BOUNDS.west },
-                                { lat: CONTROL_BA_BOUNDS.north, lng: CONTROL_BA_BOUNDS.east }
-                            );
-                            controlMap.fitBounds(baBounds, { top: 40, right: 40, bottom: 40, left: 40 });
-                        }
-                    }, 150);
+                    // Encuadre inicial centrado en base R14 (Ombú 1260, Burzaco)
+                    // No hace fitBounds a toda Buenos Aires — queda en zoom 13 sobre la base
                 }
             } catch (e) {
                 console.error('Google Maps init error:', e);
@@ -3661,6 +3199,121 @@
             clearControlLiveMarkers();
         }
 
+        /* ── Filtro de choferes en mapa ──────────────────────────── */
+        function controlIsTripVisible(tripId) {
+            if (!controlVisibleTrips) return true; // null = mostrar todos
+            return controlVisibleTrips.has(String(tripId));
+        }
+
+        function controlBuildDriverChips(items) {
+            const container = document.getElementById('control-driver-chips');
+            if (!container) return;
+            if (!items || items.length === 0) {
+                container.innerHTML = '<span class="text-[10px] text-[#A3AED0] italic">Sin choferes activos</span>';
+                return;
+            }
+            const colors = ['#2563eb', '#dc2626', '#16a34a', '#ca8a04', '#7c3aed', '#db2777', '#0891b2', '#ea580c'];
+            // Construir meta para cada trip
+            items.forEach((it, idx) => {
+                const tid = String(it.tripId);
+                controlTripMeta.set(tid, {
+                    driver: it.driver || 'SIN CHOFER',
+                    vehicle: it.vehicle || 'S/D',
+                    reparto: it.reparto || '--',
+                    routeId: it.plannedRouteId,
+                    color: colors[idx % colors.length]
+                });
+            });
+
+            // Si visibleTrips es null (primera carga), inicializar con todos visibles
+            if (!controlVisibleTrips) {
+                controlVisibleTrips = new Set(items.map((it) => String(it.tripId)));
+            }
+
+            container.innerHTML = items.map((it, idx) => {
+                const tid = String(it.tripId);
+                const isVisible = controlVisibleTrips.has(tid);
+                const color = colors[idx % colors.length];
+                const driver = it.driver || 'SIN CHOFER';
+                const vehicle = it.vehicle || '';
+                return `
+                    <button type="button"
+                        onclick="controlToggleTrip('${tid}')"
+                        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all border ${
+                            isVisible
+                                ? 'bg-white border-[#E0E5F2] text-[#1B2559] shadow-sm'
+                                : 'bg-[#F4F7FE] border-transparent text-[#A3AED0] opacity-60'
+                        }"
+                        title="${isVisible ? 'Ocultar' : 'Mostrar'} ${driver}">
+                        <span class="w-2.5 h-2.5 rounded-full shrink-0 ${isVisible ? '' : 'opacity-30'}" style="background:${color}"></span>
+                        ${driver}${vehicle ? ' · ' + vehicle : ''}
+                        <span class="text-[9px] ${isVisible ? 'text-emerald-600' : 'text-[#A3AED0]'}">${isVisible ? '●' : '○'}</span>
+                    </button>`;
+            }).join('');
+        }
+
+        function controlToggleTrip(tripId) {
+            if (!controlVisibleTrips) return;
+            const tid = String(tripId);
+            if (controlVisibleTrips.has(tid)) {
+                controlVisibleTrips.delete(tid);
+            } else {
+                controlVisibleTrips.add(tid);
+            }
+            // Re-render chips
+            controlBuildDriverChips(controlLiveData);
+            // Actualizar visibilidad de markers GPS
+            controlMarkersByTrip.forEach((marker, id) => {
+                marker.setVisible(controlIsTripVisible(id));
+            });
+            // Actualizar polylines y stop markers de rutas planificadas
+            controlUpdatePlannedVisibility();
+        }
+
+        function controlToggleAllDrivers() {
+            if (!controlVisibleTrips || !controlLiveData.length) return;
+            const allVisible = controlLiveData.every((it) => controlVisibleTrips.has(String(it.tripId)));
+            if (allVisible) {
+                controlVisibleTrips.clear();
+            } else {
+                controlLiveData.forEach((it) => controlVisibleTrips.add(String(it.tripId)));
+            }
+            controlBuildDriverChips(controlLiveData);
+            controlMarkersByTrip.forEach((marker, id) => {
+                marker.setVisible(controlIsTripVisible(id));
+            });
+            controlUpdatePlannedVisibility();
+        }
+
+        /** Ocultar/mostrar polylines y stop markers según filtro */
+        function controlUpdatePlannedVisibility() {
+            // Polylines: cada polyline se creó en orden de routeId, mapeo a trip
+            const routeToTrip = new Map();
+            (controlLiveData || []).forEach((it) => {
+                if (it.plannedRouteId) routeToTrip.set(Number(it.plannedRouteId), String(it.tripId));
+            });
+
+            // Polylines
+            const routeIds = [...controlPlannedStopsMetaByRouteId.keys()];
+            controlPlannedPolylines.forEach((poly, idx) => {
+                const rid = routeIds[idx];
+                const tid = rid != null ? routeToTrip.get(Number(rid)) : null;
+                const visible = tid ? controlIsTripVisible(tid) : true;
+                poly.setVisible(visible);
+            });
+
+            // Stop markers
+            controlPlannedStopMarkers.forEach((m) => {
+                // El title tiene formato "N. Nombre" o "Siguiente · N. Nombre"
+                // Tenemos que checar por routeId del marker
+                // Workaround: guardar routeId en el marker
+                const rid = m.__routeId;
+                const tid = rid != null ? routeToTrip.get(Number(rid)) : null;
+                const visible = tid ? controlIsTripVisible(tid) : true;
+                m.setVisible(visible);
+            });
+        }
+
         function appendControlPlannedStopMarkers(routeId, color, stops, items) {
             const nextForRoute = (items || []).find((it) => Number(it.plannedRouteId) === routeId)?.nextPlannedStop;
             for (const st of stops) {
@@ -3690,6 +3343,7 @@
                     },
                     title
                 });
+                m.__routeId = routeId; // Para filtro de choferes
                 controlPlannedStopMarkers.push(m);
             }
         }
@@ -3757,6 +3411,7 @@
                     const stops = [...meta.stops].sort((a, b) => Number(a.sequence) - Number(b.sequence));
                     appendControlPlannedStopMarkers(routeId, color, stops, items);
                 }
+                controlUpdatePlannedVisibility();
                 return;
             }
 
@@ -3849,12 +3504,16 @@
                         if (controlMap.getZoom() > 13) controlMap.setZoom(13);
                     }, 100);
                 } catch (_) {}
+                // Aplicar filtro de choferes a polylines y stop markers recién creados
+                controlUpdatePlannedVisibility();
             }
         }
 
         /** Ubicaciones GPS: actualizar posición sin borrar markers ni fitBounds (evita trabarse cada poll) */
         function renderControlMap(items) {
             if (!controlMap) return;
+            // Actualizar chips de filtro con los datos actuales
+            controlBuildDriverChips(items);
             const seen = new Set();
             const leafPopHtml = (it, loc) => {
                 const dev =
@@ -3877,9 +3536,11 @@
                 seen.add(id);
                 const pos = { lat: Number(loc.latitude), lng: Number(loc.longitude) };
                 const fillColor = it.status === 'OUT_OF_PLANT' ? '#10B981' : '#4F46E5';
+                const isVisible = controlIsTripVisible(id);
                 let marker = controlMarkersByTrip.get(id);
                 if (marker) {
                     marker.setPosition(pos);
+                    marker.setVisible(isVisible);
                     marker.setTitle(`${it.driver || 'SIN CHOFER'} · ${it.vehicle || 'S/D'}`);
                     marker.setLabel({ text: String(it.driver || 'CH').slice(0, 2).toUpperCase(), color: '#ffffff', fontSize: '10px' });
                     marker.setIcon({
@@ -3902,6 +3563,7 @@
                     marker = new google.maps.Marker({
                         map: controlMap,
                         position: pos,
+                        visible: isVisible,
                         label: { text: String(it.driver || 'CH').slice(0, 2).toUpperCase(), color: '#ffffff', fontSize: '10px' },
                         title: `${it.driver || 'SIN CHOFER'} · ${it.vehicle || 'S/D'}`,
                         icon: {
@@ -5492,20 +5154,7 @@
         }
 
 
-        function formatBusinessUnit(value) {
-            const raw = (value || 'REPARTOS').toString().trim();
-            return /esc\s*verano/i.test(raw) ? 'SAE' : raw;
-        }
-
-        function formatDurationFromMs(diffMs) {
-            if (isNaN(diffMs) || diffMs <= 0) return null;
-            const totalMinutes = Math.round(diffMs / (1000 * 60));
-            const hh = Math.floor(totalMinutes / 60);
-            const mm = totalMinutes % 60;
-            if (hh === 0) return `${mm} min`;
-            if (mm === 0) return `${hh} hs`;
-            return `${hh} h ${mm} min`;
-        }
+        // formatBusinessUnit(), formatDurationFromMs() → js/r14-utils.js
 
         /** Duración planificada (exit→return) */
         function formatTripDuration(t) {
@@ -5738,14 +5387,7 @@
         let weeklyTripStopsBuffers = {};
         let weeklyTripStopsFetched = {};
 
-        function escapeHtmlWeekly(str) {
-            if (str == null) return '';
-            return String(str)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;');
-        }
+        // escapeHtmlWeekly() → js/r14-utils.js (alias de escapeHtml)
 
         function getWeeklyTripById(tripId) {
             const id = Number(tripId);
@@ -8600,170 +8242,7 @@
             }
         }
 
-        // --- NOTIFICATIONS LOGIC ---
-        let notifications = [];
-
-        function cleanupOldNotifications() {
-            const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
-            notifications = notifications.filter(n => n.id >= twentyFourHoursAgo);
-        }
-
-        function toggleNotifications() {
-            const panel = document.getElementById('notif-panel');
-            panel.style.display = panel.style.display === 'block' ? 'none' : 'block';
-            renderNotifications();
-        }
-
-        function renderNotifications() {
-            cleanupOldNotifications();
-            const list = document.getElementById('notif-list');
-            const total = document.getElementById('notif-total');
-            const badge = document.getElementById('notif-count');
-            
-            list.innerHTML = notifications.map(n => `
-                <div class="notification-item p-4 notif-${n.type} group relative">
-                    <div class="flex justify-between items-start">
-                        <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-tight">${n.title}</h5>
-                        <div class="flex items-center gap-2">
-                            <span class="text-[9px] font-bold text-[#A3AED0]">${n.time}</span>
-                            <button onclick="removeNotification(${n.id})" class="p-1 text-[#A3AED0] hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all">
-                                <i data-lucide="x" class="w-3 h-3"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <p class="text-[11px] text-[#A3AED0] mt-1 leading-relaxed pr-6">${n.text}</p>
-                </div>
-            `).join('');
-            
-            total.innerText = `${notifications.length} Nuevas`;
-            if (badge) {
-                if (notifications.length > 0) {
-                    badge.innerText = notifications.length;
-                    badge.classList.remove('hidden');
-                } else {
-                    badge.classList.add('hidden');
-                }
-            }
-            lucide.createIcons();
-        }
-
-        function addNotification(type, title, text) {
-            const normalizedType = ['info', 'warning', 'critical', 'success'].includes(type) ? type : 'info';
-            notifications.unshift({ id: Date.now(), type: normalizedType, title, text, time: 'Ahora' });
-            renderNotifications();
-            showToastNotification(normalizedType, title, text);
-        }
-
-        function getToastContainer() {
-            let el = document.getElementById('toast-container');
-            if (!el) {
-                el = document.createElement('div');
-                el.id = 'toast-container';
-                el.className = 'fixed top-6 right-6 z-[140] space-y-2 pointer-events-none';
-                document.body.appendChild(el);
-            }
-            return el;
-        }
-
-        function showToastNotification(type, title, text) {
-            const container = getToastContainer();
-            const toast = document.createElement('div');
-            const palette = {
-                info: 'bg-indigo-600 text-white',
-                success: 'bg-emerald-600 text-white',
-                warning: 'bg-amber-500 text-[#1B2559]',
-                critical: 'bg-rose-600 text-white'
-            };
-            const color = palette[type] || palette.info;
-            toast.className = `pointer-events-auto max-w-sm rounded-2xl shadow-xl px-4 py-3 text-sm font-medium transition-all duration-300 opacity-0 translate-y-2 ${color}`;
-            toast.innerHTML = `
-                <div class="font-black text-xs uppercase tracking-wide">${title || 'Notificación'}</div>
-                <div class="mt-1 text-xs leading-relaxed">${text || ''}</div>
-            `;
-            container.appendChild(toast);
-            requestAnimationFrame(() => {
-                toast.classList.remove('opacity-0', 'translate-y-2');
-            });
-            setTimeout(() => {
-                toast.classList.add('opacity-0', 'translate-y-2');
-                setTimeout(() => toast.remove(), 300);
-            }, 3200);
-        }
-
-        // Modo estricto: toast automático para TODA mutación HTTP + inyección de token en todas las llamadas a /api/.
-        (function enableGlobalMutationToasts() {
-            if (!window.fetch || window.__r14MutationToastsPatched) return;
-            window.__r14MutationToastsPatched = true;
-            const baseFetch = window.fetch.bind(window);
-            const mutationMethods = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-            const skipPatterns = [
-                /\/api\/v1\/alerts\/cleanup$/i // proceso de mantenimiento silencioso
-            ];
-
-            function shouldSkipToast(url) {
-                return skipPatterns.some((rx) => rx.test(url));
-            }
-
-            function extractUrl(input) {
-                if (typeof input === 'string') return input;
-                if (input && typeof input.url === 'string') return input.url;
-                return '';
-            }
-
-            window.fetch = async function patchedFetch(input, init) {
-                const method = String(init?.method || input?.method || 'GET').toUpperCase();
-                const url = extractUrl(input);
-                const isMutation = mutationMethods.has(method);
-                const skipToast = shouldSkipToast(url);
-
-                // Inyectar token en todas las llamadas a /api/ si hay sesión activa
-                const token = localStorage.getItem('r14.authToken');
-                if (token && url.includes('/api/')) {
-                    const existingHeaders = (init && init.headers) ? init.headers : {};
-                    const hasAuth = typeof existingHeaders === 'object'
-                        ? (existingHeaders['Authorization'] || existingHeaders['authorization'])
-                        : false;
-                    if (!hasAuth) {
-                        init = Object.assign({}, init, {
-                            headers: Object.assign({}, existingHeaders, { 'Authorization': `Bearer ${token}` })
-                        });
-                    }
-                }
-
-                try {
-                    const res = await baseFetch(input, init);
-                    if (isMutation && !skipToast) {
-                        if (res.ok) {
-                            showToastNotification('success', 'Operación guardada', `${method} completado correctamente.`);
-                        } else {
-                            showToastNotification('warning', 'Operación con error', `${method} respondió ${res.status}.`);
-                        }
-                    }
-                    return res;
-                } catch (e) {
-                    if (isMutation && !skipToast) {
-                        showToastNotification('critical', 'Error de red', `${method} no pudo completarse.`);
-                    }
-                    throw e;
-                }
-            };
-        })();
-
-        function removeNotification(id) {
-            notifications = notifications.filter(n => n.id !== id);
-            renderNotifications();
-        }
-
-        function clearNotifications() {
-            if (notifications.length === 0) return;
-            if (confirm('¿Desea eliminar todas las notificaciones?')) {
-                notifications = [];
-                renderNotifications();
-            }
-        }
-
-        // Auto-cleanup every minute in the background
-        setInterval(cleanupOldNotifications, 60000);
+        // --- NOTIFICATIONS → js/r14-notifications.js ---
 
         // --- AUTO-HIDE OLD ALERTS (24H) ---
         async function autoCleanupExpiredAlerts() {
@@ -9368,14 +8847,7 @@
         /** Filas locales del modal de viaje: { clientId, name, address } en orden de reparto */
         let tripDeliveryRows = [];
 
-        function escapeHtmlTrip(str) {
-            if (str == null) return '';
-            return String(str)
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/"/g, '&quot;');
-        }
+        // escapeHtmlTrip() → js/r14-utils.js (alias de escapeHtml)
 
         function tripDeliveryRemoveStop(index) {
             tripDeliveryRows.splice(index, 1);

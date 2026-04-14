@@ -52,6 +52,7 @@ import {
 } from '../sessionStorage';
 import { BACKGROUND_LOCATION_TASK } from '../locationTask';
 import { API_BASE } from '../config';
+import { colors, font, radius, spacing, shadow } from '../theme';
 
 type Props = {
   session: SessionUser;
@@ -634,8 +635,8 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
               <RefreshControl
                 refreshing={refreshing}
                 onRefresh={onPullRefresh}
-                colors={['#4f46e5']}
-                tintColor="#4f46e5"
+                colors={[colors.primary]}
+                tintColor={colors.primary}
               />
             }
             keyboardShouldPersistTaps="handled"
@@ -678,17 +679,17 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                   <Text style={styles.statsPanelLbl}>Total</Text>
                 </View>
                 <View style={[styles.statsPanelItem, styles.statsPanelItemGreen]}>
-                  <Text style={[styles.statsPanelVal, { color: '#16a34a' }]}>{todayStats.completed}</Text>
+                  <Text style={[styles.statsPanelVal, { color: colors.success }]}>{todayStats.completed}</Text>
                   <Text style={styles.statsPanelLbl}>✓ Entregadas</Text>
                 </View>
                 {todayStats.undeliverable > 0 ? (
                   <View style={[styles.statsPanelItem, styles.statsPanelItemRed]}>
-                    <Text style={[styles.statsPanelVal, { color: '#e11d48' }]}>{todayStats.undeliverable}</Text>
+                    <Text style={[styles.statsPanelVal, { color: colors.error }]}>{todayStats.undeliverable}</Text>
                     <Text style={styles.statsPanelLbl}>✗ No entregadas</Text>
                   </View>
                 ) : null}
                 <View style={styles.statsPanelItem}>
-                  <Text style={[styles.statsPanelVal, { color: '#d97706' }]}>{todayStats.pending}</Text>
+                  <Text style={[styles.statsPanelVal, { color: colors.accent }]}>{todayStats.pending}</Text>
                   <Text style={styles.statsPanelLbl}>Pendientes</Text>
                 </View>
                 {todayStats.avgMin !== null ? (
@@ -744,7 +745,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
             </View>
           ) : null}
           {loading ? (
-            <ActivityIndicator color="#4f46e5" style={{ marginVertical: 8 }} />
+            <ActivityIndicator color={colors.primary} style={{ marginVertical: 8 }} />
           ) : routes.length === 0 ? (
             <Text style={styles.hint}>No tenés rutas asignadas para hoy.</Text>
           ) : (
@@ -796,86 +797,112 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                   </Text>
                 </View>
               ) : null}
-              {filteredStops.map((st) => (
-                <View key={st.id} style={styles.stopCard}>
-                  <Text style={styles.stopCardTitle}>
-                    {st.sequence}. {st.client?.name || 'Cliente'}
-                  </Text>
-                  {st.client?.address ? (
-                    <Text style={styles.stopClientAddr}>{st.client.address}</Text>
-                  ) : null}
-                  {(st.client?.barrio || st.client?.zone) ? (
-                    <Text style={styles.stopClientZone}>
-                      {[st.client.barrio, st.client.zone].filter(Boolean).join(' · ')}
-                    </Text>
-                  ) : null}
-                  {(st.client?.timeWindowStart || st.client?.timeWindowEnd) ? (
-                    <Text style={styles.stopClientHorario}>
-                      🕐 {st.client.timeWindowStart ?? '--'} – {st.client.timeWindowEnd ?? '--'}
-                    </Text>
-                  ) : null}
-                  <View style={[
-                    styles.stopStatusBadge,
-                    st.status === 'PENDING' && styles.stopStatusPending,
-                    st.status === 'ARRIVED' && styles.stopStatusArrived,
-                    st.status === 'COMPLETED' && styles.stopStatusCompleted,
-                    st.status === 'UNDELIVERABLE' && styles.stopStatusUndeliverable,
-                  ]}>
-                    <Text style={[
-                      styles.stopStatusBadgeTxt,
-                      st.status === 'PENDING' && styles.stopStatusPendingTxt,
-                      st.status === 'ARRIVED' && styles.stopStatusArrivedTxt,
-                      st.status === 'COMPLETED' && styles.stopStatusCompletedTxt,
-                      st.status === 'UNDELIVERABLE' && styles.stopStatusUndeliverableTxt,
+              {filteredStops.map((st, idx) => {
+                const isLast = idx === filteredStops.length - 1;
+                const isActive = st.status === 'ARRIVED';
+                const isDone = st.status === 'COMPLETED';
+                const isFailed = st.status === 'UNDELIVERABLE';
+                return (
+                <View key={st.id} style={styles.tlRow}>
+                  {/* Timeline left: dot + line */}
+                  <View style={styles.tlLeft}>
+                    <View style={[
+                      styles.tlDot,
+                      isDone && styles.tlDotDone,
+                      isActive && styles.tlDotActive,
+                      isFailed && styles.tlDotFailed,
                     ]}>
-                      {st.status === 'PENDING' ? 'Pendiente'
-                        : st.status === 'ARRIVED' ? 'En destino'
-                        : st.status === 'COMPLETED' ? 'Entregado'
-                        : st.status === 'UNDELIVERABLE' ? 'No entregado'
-                        : st.status}
-                    </Text>
+                      {isDone ? <Text style={styles.tlDotIcon}>✓</Text>
+                        : isFailed ? <Text style={styles.tlDotIcon}>✗</Text>
+                        : <Text style={styles.tlDotNum}>{st.sequence}</Text>}
+                    </View>
+                    {!isLast && <View style={[
+                      styles.tlLine,
+                      isDone && styles.tlLineDone,
+                    ]} />}
                   </View>
-                  <Text style={styles.stopCardMeta}>
-                    Llegada: {fmtStopTime(st.actualArrival)} · Salida: {fmtStopTime(st.actualDeparture)}
-                  </Text>
-                  {st.status === 'COMPLETED' ? (
-                    <View style={styles.stopDoneBox}>
-                      {st.deliveryWithoutIssues ? (
-                        <Text style={styles.stopDoneOk}>✓ Entrega sin problemas</Text>
-                      ) : null}
-                      {st.observations ? (
-                        <Text style={styles.stopObs} numberOfLines={3}>
-                          Obs.: {st.observations}
+                  {/* Timeline right: content */}
+                  <View style={[styles.tlContent, isActive && styles.tlContentActive]}>
+                    <View style={styles.tlHeader}>
+                      <Text style={styles.tlName} numberOfLines={1}>
+                        {st.client?.name || 'Cliente'}
+                      </Text>
+                      <View style={[
+                        styles.tlBadge,
+                        st.status === 'PENDING' && styles.tlBadgePending,
+                        isActive && styles.tlBadgeActive,
+                        isDone && styles.tlBadgeDone,
+                        isFailed && styles.tlBadgeFailed,
+                      ]}>
+                        <Text style={[
+                          styles.tlBadgeTxt,
+                          st.status === 'PENDING' && styles.tlBadgePendingTxt,
+                          isActive && styles.tlBadgeActiveTxt,
+                          isDone && styles.tlBadgeDoneTxt,
+                          isFailed && styles.tlBadgeFailedTxt,
+                        ]}>
+                          {st.status === 'PENDING' ? 'Pendiente'
+                            : isActive ? 'En destino'
+                            : isDone ? 'Entregado'
+                            : isFailed ? 'No entregado'
+                            : st.status}
                         </Text>
-                      ) : null}
-                      {st.proofPhotoUrl ? (
-                        <Text style={styles.stopPhotoHint}>Foto de comprobante cargada</Text>
-                      ) : null}
+                      </View>
                     </View>
-                  ) : null}
-                  {st.status === 'UNDELIVERABLE' ? (
-                    <View style={styles.stopDoneBox}>
-                      {st.reasonCode ? (
-                        <Text style={styles.stopUndeliverableReason}>✗ {st.reasonCode.replace(/_/g, ' ')}</Text>
-                      ) : null}
-                      {st.observations ? (
-                        <Text style={styles.stopObs} numberOfLines={3}>Obs.: {st.observations}</Text>
-                      ) : null}
-                    </View>
-                  ) : null}
-                  {st.status === 'PENDING' ? (
-                    <Pressable style={styles.stopBtnArr} onPress={() => onMarkArrival(st)}>
-                      <Text style={styles.stopBtnArrTxt}>Registrar llegada</Text>
-                    </Pressable>
-                  ) : null}
-                  {st.status === 'ARRIVED' ? (
-                    <Pressable style={styles.stopBtnOut} onPress={() => setDeliveryModalStop(st)}>
-                      <Text style={styles.stopBtnOutTxt}>Finalizar entrega</Text>
-                      <Text style={styles.stopBtnOutSub}>Entregado · No entregado · Observaciones · Foto</Text>
-                    </Pressable>
-                  ) : null}
+                    {st.client?.address ? (
+                      <Text style={styles.tlAddr} numberOfLines={2}>{st.client.address}</Text>
+                    ) : null}
+                    {(st.client?.barrio || st.client?.zone) ? (
+                      <Text style={styles.tlZone}>
+                        {[st.client.barrio, st.client.zone].filter(Boolean).join(' · ')}
+                      </Text>
+                    ) : null}
+                    {(st.client?.timeWindowStart || st.client?.timeWindowEnd) ? (
+                      <Text style={styles.tlHorario}>
+                        🕐 {st.client.timeWindowStart ?? '--'} – {st.client.timeWindowEnd ?? '--'}
+                      </Text>
+                    ) : null}
+                    <Text style={styles.tlMeta}>
+                      {fmtStopTime(st.actualArrival)} → {fmtStopTime(st.actualDeparture)}
+                    </Text>
+                    {isDone ? (
+                      <View style={styles.tlDoneInfo}>
+                        {st.deliveryWithoutIssues ? (
+                          <Text style={styles.tlDoneOk}>✓ Sin problemas</Text>
+                        ) : null}
+                        {st.observations ? (
+                          <Text style={styles.tlObs} numberOfLines={2}>{st.observations}</Text>
+                        ) : null}
+                        {st.proofPhotoUrl ? (
+                          <Text style={styles.tlPhotoHint}>📷 Foto cargada</Text>
+                        ) : null}
+                      </View>
+                    ) : null}
+                    {isFailed ? (
+                      <View style={styles.tlDoneInfo}>
+                        {st.reasonCode ? (
+                          <Text style={styles.tlFailReason}>✗ {st.reasonCode.replace(/_/g, ' ')}</Text>
+                        ) : null}
+                        {st.observations ? (
+                          <Text style={styles.tlObs} numberOfLines={2}>{st.observations}</Text>
+                        ) : null}
+                      </View>
+                    ) : null}
+                    {st.status === 'PENDING' ? (
+                      <Pressable style={styles.tlBtnArr} onPress={() => onMarkArrival(st)}>
+                        <Text style={styles.tlBtnArrTxt}>Registrar llegada</Text>
+                      </Pressable>
+                    ) : null}
+                    {isActive ? (
+                      <Pressable style={styles.tlBtnOut} onPress={() => setDeliveryModalStop(st)}>
+                        <Text style={styles.tlBtnOutTxt}>Finalizar entrega</Text>
+                        <Text style={styles.tlBtnOutSub}>Entregado · No entregado · Obs · Foto</Text>
+                      </Pressable>
+                    ) : null}
+                  </View>
                 </View>
-              ))}
+                );
+              })}
             </View>
           ) : null}
           <Pressable style={styles.refreshFull} onPress={() => loadRoutes({ silent: false })}>
@@ -904,7 +931,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           >
             {/* Polyline Google Directions (si hay geometría) */}
             {lineCoords.length >= 2 && (
-              <Polyline coordinates={lineCoords} strokeColor="#4f46e5" strokeWidth={4} />
+              <Polyline coordinates={lineCoords} strokeColor={colors.primary} strokeWidth={4} />
             )}
             {/* Polyline directa entre paradas (si NO hay geometría) */}
             {!geom && selected?.stops && (() => {
@@ -914,7 +941,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
               return sorted.length >= 2 ? (
                 <Polyline
                   coordinates={sorted.map(s => ({ latitude: s.client.latitude!, longitude: s.client.longitude! }))}
-                  strokeColor="#4f46e5"
+                  strokeColor={colors.primary}
                   strokeWidth={3}
                   lineDashPattern={[8, 4]}
                 />
@@ -927,7 +954,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                 coordinate={{ latitude: s.lat, longitude: s.lng }}
                 title={`${s.sequence}. ${s.name}`}
               >
-                <View style={{ backgroundColor: s.sequence === 1 ? '#059669' : '#4f46e5', width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}>
+                <View style={{ backgroundColor: s.sequence === 1 ? colors.success : colors.primary, width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}>
                   <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>{s.sequence}</Text>
                 </View>
               </Marker>
@@ -944,7 +971,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                     coordinate={{ latitude: la, longitude: lo }}
                     title={`${st.sequence}. ${st.client.name}`}
                   >
-                    <View style={{ backgroundColor: st.sequence === 1 ? '#059669' : '#4f46e5', width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}>
+                    <View style={{ backgroundColor: st.sequence === 1 ? colors.success : colors.primary, width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}>
                       <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>{st.sequence}</Text>
                     </View>
                   </Marker>
@@ -1051,279 +1078,385 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
 }
 
 const styles = StyleSheet.create({
-  screen: { flex: 1, backgroundColor: '#f8fafc' },
+  screen: { flex: 1, backgroundColor: colors.bg },
+
+  /* ── Tab bar (dark header) ─────────────────────── */
   tabBar: {
     flexDirection: 'row',
-    backgroundColor: '#0f172a',
-    paddingHorizontal: 16,
-    paddingBottom: 10,
-    gap: 8,
+    backgroundColor: colors.heroBg,
+    paddingHorizontal: spacing.lg,
+    paddingBottom: spacing.sm + 2,
+    gap: spacing.sm,
   },
   tab: {
     flex: 1,
-    paddingVertical: 10,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255,255,255,0.1)',
+    paddingVertical: spacing.sm + 2,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(255,255,255,0.08)',
     alignItems: 'center',
   },
-  tabActive: {
-    backgroundColor: '#4f46e5',
-  },
-  tabTxt: { fontSize: 14, fontWeight: '700', color: 'rgba(255,255,255,0.5)' },
-  tabTxtActive: { color: '#fff', fontWeight: '900' },
+  tabActive: { backgroundColor: colors.primary },
+  tabTxt: { fontSize: font.md, fontWeight: font.bold, color: 'rgba(255,255,255,0.45)' },
+  tabTxtActive: { color: colors.textInverse, fontWeight: font.black },
   tabContent: { flex: 1, overflow: 'hidden' },
-  tabPage: { flex: 1, backgroundColor: '#f8fafc' },
+  tabPage: { flex: 1, backgroundColor: colors.bg },
   tabPageAbsolute: { ...StyleSheet.absoluteFillObject },
-  recorridoContent: { paddingHorizontal: 16, paddingTop: 14 },
-  panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
-  panelTitle: { fontSize: 20, fontWeight: '900', color: '#0f172a' },
-  panelSub: { fontSize: 12, color: '#64748b', marginTop: 2 },
+
+  /* ── Recorrido content ─────────────────────────── */
+  recorridoContent: { paddingHorizontal: spacing.lg, paddingTop: spacing.md + 2 },
+  panelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm + 2 },
+  panelTitle: { fontSize: font['2xl'], fontWeight: font.black, color: colors.textPrimary },
+  panelSub: { fontSize: font.sm, color: colors.textSecondary, marginTop: 2 },
   outBtn: { paddingVertical: 6, paddingHorizontal: 12 },
-  outBtnTxt: { color: '#64748b', fontWeight: '700', fontSize: 14 },
-  err: { color: '#b91c1c', fontSize: 12, marginTop: 6 },
+  outBtnTxt: { color: colors.textSecondary, fontWeight: font.bold, fontSize: font.md },
+  err: { color: colors.error, fontSize: font.sm, marginTop: 6 },
+
+  /* ── Next delivery card ────────────────────────── */
   nextBox: {
-    marginTop: 10,
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: '#ecfdf5',
+    marginTop: spacing.sm + 2,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.successBg,
     borderWidth: 1,
-    borderColor: '#a7f3d0',
+    borderColor: colors.successBorder,
   },
-  nextLabel: { fontSize: 10, fontWeight: '900', color: '#047857', letterSpacing: 0.5 },
-  nextAddr: { fontSize: 13, fontWeight: '700', color: '#064e3b', marginTop: 4 },
-  nextTap: { fontSize: 11, fontWeight: '800', color: '#059669', marginTop: 6 },
-  nextTapHint: { fontSize: 10, color: '#047857', marginTop: 4, lineHeight: 14, opacity: 0.9 },
+  nextLabel: { fontSize: font.xs, fontWeight: font.black, color: colors.success, letterSpacing: 0.5 },
+  nextAddr: { fontSize: font.base, fontWeight: font.bold, color: '#064e3b', marginTop: spacing.xs },
+  nextTap: { fontSize: font.sm, fontWeight: font.extrabold, color: colors.success, marginTop: spacing.sm },
+  nextTapHint: { fontSize: font.xs, color: '#047857', marginTop: spacing.xs, lineHeight: 14, opacity: 0.9 },
+
+  /* ── Embed nav ─────────────────────────────────── */
   embedNavBtn: {
-    marginTop: 10,
-    padding: 14,
-    borderRadius: 14,
-    backgroundColor: '#eef2ff',
+    marginTop: spacing.sm + 2,
+    padding: spacing.md + 2,
+    borderRadius: radius.md,
+    backgroundColor: colors.primaryLight,
     borderWidth: 1,
     borderColor: '#c7d2fe',
   },
-  embedNavBtnTxt: { fontSize: 14, fontWeight: '900', color: '#3730a3' },
-  embedNavBtnSub: { fontSize: 10, color: '#6366f1', marginTop: 6, lineHeight: 14 },
-  stopsSection: { marginTop: 14 },
+  embedNavBtnTxt: { fontSize: font.md, fontWeight: font.black, color: '#3730a3' },
+  embedNavBtnSub: { fontSize: font.xs, color: colors.primary, marginTop: spacing.sm, lineHeight: 14 },
+
+  /* ── Stops section ─────────────────────────────── */
+  stopsSection: { marginTop: spacing.md + 2 },
   stopsSectionHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  stopsSectionTitle: { fontSize: 12, fontWeight: '900', color: '#0f172a', letterSpacing: 0.3 },
-  stopsSectionHint: { fontSize: 10, color: '#64748b', marginTop: 4, lineHeight: 14, marginBottom: 8 },
-  reorderBtn: { backgroundColor: '#4f46e5', paddingVertical: 14, borderRadius: 14, alignItems: 'center' as const, marginBottom: 12 },
-  reorderBtnTxt: { fontSize: 15, fontWeight: '900', color: '#fff', letterSpacing: 0.3 },
-  reorderBanner: { backgroundColor: '#eff6ff', borderRadius: 10, padding: 8, marginBottom: 8, borderWidth: 1, borderColor: '#bfdbfe' },
-  reorderBannerTxt: { fontSize: 10, color: '#1d4ed8', fontWeight: '700', lineHeight: 14 },
-  stopClientAddr: { fontSize: 11, color: '#475569', marginTop: 3, lineHeight: 15 },
-  stopClientZone: { fontSize: 10, color: '#94a3b8', marginTop: 2 },
-  stopClientHorario: { fontSize: 10, color: '#7c3aed', fontWeight: '700', marginTop: 3 },
-  stopUndeliverableReason: { fontSize: 11, fontWeight: '800', color: '#e11d48' },
-  toastBanner: { backgroundColor: '#dbeafe', borderRadius: 10, padding: 8, marginBottom: 8, borderWidth: 1, borderColor: '#93c5fd' },
-  toastTxt: { fontSize: 12, color: '#1e40af', fontWeight: '800', textAlign: 'center' },
-  iconBtn: { padding: 8, marginLeft: 2 },
-  iconBtnTxt: { fontSize: 20 },
-  statsPanel: { backgroundColor: '#f8fafc', borderRadius: 12, borderWidth: 1, borderColor: '#e2e8f0', padding: 10, marginBottom: 10 },
-  statsPanelRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 8 },
-  statsPanelItem: { backgroundColor: '#fff', borderRadius: 8, paddingHorizontal: 8, paddingVertical: 5, alignItems: 'center', minWidth: 50 },
-  statsPanelItemGreen: { backgroundColor: '#f0fdf4' },
-  statsPanelItemRed: { backgroundColor: '#fff1f2' },
-  statsPanelVal: { fontSize: 15, fontWeight: '900', color: '#0f172a' },
-  statsPanelLbl: { fontSize: 8, color: '#94a3b8', fontWeight: '700', marginTop: 1 },
-  statsPanelBar: { height: 5, backgroundColor: '#e2e8f0', borderRadius: 3, overflow: 'hidden' },
-  statsPanelBarFill: { height: 5, backgroundColor: '#4f46e5', borderRadius: 3 },
-  stopSearchInput: { backgroundColor: '#f1f5f9', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8, fontSize: 12, color: '#0f172a', marginBottom: 8, borderWidth: 1, borderColor: '#e2e8f0' },
-  stopCard: {
-    backgroundColor: '#fff',
+  stopsSectionTitle: { fontSize: font.sm, fontWeight: font.black, color: colors.textPrimary, letterSpacing: 0.3 },
+  stopsSectionHint: { fontSize: font.xs, color: colors.textSecondary, marginTop: spacing.xs, lineHeight: 14, marginBottom: spacing.sm },
+  reorderBtn: {
+    backgroundColor: colors.accent,
+    paddingVertical: spacing.md + 2,
+    borderRadius: radius.md,
+    alignItems: 'center' as const,
+    marginBottom: spacing.md,
+  },
+  reorderBtnTxt: { fontSize: font.lg - 1, fontWeight: font.black, color: colors.textInverse, letterSpacing: 0.3 },
+  reorderBanner: { backgroundColor: colors.infoBg, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.sm, borderWidth: 1, borderColor: '#bfdbfe' },
+  reorderBannerTxt: { fontSize: font.xs, color: colors.primary, fontWeight: font.bold, lineHeight: 14 },
+
+  /* ── Timeline ──────────────────────────────────── */
+  tlRow: {
+    flexDirection: 'row',
+    marginBottom: 0,
+  },
+  tlLeft: {
+    width: 32,
+    alignItems: 'center',
+  },
+  tlDot: {
+    width: 28,
+    height: 28,
     borderRadius: 14,
+    backgroundColor: colors.timelineDotPending,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 2,
+    borderWidth: 3,
+    borderColor: colors.card,
+    ...shadow.sm,
+  },
+  tlDotDone: { backgroundColor: colors.timelineDotDone },
+  tlDotActive: { backgroundColor: colors.timelineDotActive },
+  tlDotFailed: { backgroundColor: colors.error },
+  tlDotNum: { color: colors.textInverse, fontSize: font.xs, fontWeight: font.black },
+  tlDotIcon: { color: colors.textInverse, fontSize: font.sm, fontWeight: font.black },
+  tlLine: {
+    width: 2.5,
+    flex: 1,
+    backgroundColor: colors.timelineLine,
+    marginVertical: -2,
+  },
+  tlLineDone: { backgroundColor: colors.timelineDotDone },
+  tlContent: {
+    flex: 1,
+    marginLeft: spacing.sm,
+    marginBottom: spacing.md,
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
-    padding: 12,
-    marginBottom: 10,
+    borderColor: colors.border,
+    padding: spacing.md,
   },
-  stopCardTitle: { fontSize: 14, fontWeight: '800', color: '#0f172a' },
-  stopCardMeta: { fontSize: 11, color: '#64748b', marginTop: 4 },
-  stopDoneBox: { marginTop: 8, paddingTop: 8, borderTopWidth: 1, borderTopColor: '#f1f5f9' },
-  stopDoneOk: { fontSize: 11, fontWeight: '800', color: '#059669' },
-  stopObs: { fontSize: 11, color: '#475569', marginTop: 4 },
-  stopPhotoHint: { fontSize: 10, color: '#6366f1', marginTop: 4, fontWeight: '700' },
-  stopBtnArr: {
-    marginTop: 10,
-    backgroundColor: '#059669',
-    paddingVertical: 16,
-    borderRadius: 12,
+  tlContentActive: {
+    borderColor: colors.primary,
+    borderWidth: 2,
+    backgroundColor: colors.primaryLight,
+  },
+  tlHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    minHeight: 52,
+    marginBottom: spacing.xs,
   },
-  stopBtnArrTxt: { color: '#fff', fontWeight: '900', fontSize: 15 },
-  stopBtnOut: {
-    marginTop: 10,
-    backgroundColor: '#4f46e5',
-    paddingVertical: 16,
-    paddingHorizontal: 8,
-    borderRadius: 12,
+  tlName: { flex: 1, fontSize: font.md, fontWeight: font.extrabold, color: colors.textPrimary },
+  tlBadge: {
+    paddingHorizontal: spacing.sm + 2,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    marginLeft: spacing.sm,
+  },
+  tlBadgePending: { backgroundColor: colors.warningBg },
+  tlBadgeActive: { backgroundColor: colors.infoBg },
+  tlBadgeDone: { backgroundColor: colors.successBg },
+  tlBadgeFailed: { backgroundColor: colors.errorBg },
+  tlBadgeTxt: { fontSize: font.xs, fontWeight: font.extrabold },
+  tlBadgePendingTxt: { color: '#92400e' },
+  tlBadgeActiveTxt: { color: colors.primary },
+  tlBadgeDoneTxt: { color: colors.success },
+  tlBadgeFailedTxt: { color: colors.error },
+  tlAddr: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 15 },
+  tlZone: { fontSize: font.xs, color: colors.textMuted, marginTop: 2 },
+  tlHorario: { fontSize: font.xs, color: '#7c3aed', fontWeight: font.bold, marginTop: 3 },
+  tlMeta: { fontSize: font.xs, color: colors.textMuted, marginTop: spacing.xs },
+  tlDoneInfo: { marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderLight },
+  tlDoneOk: { fontSize: font.sm, fontWeight: font.extrabold, color: colors.success },
+  tlObs: { fontSize: font.sm, color: colors.textSecondary, marginTop: 3 },
+  tlPhotoHint: { fontSize: font.xs, color: colors.primary, marginTop: 3, fontWeight: font.bold },
+  tlFailReason: { fontSize: font.sm, fontWeight: font.extrabold, color: colors.error },
+  tlBtnArr: {
+    marginTop: spacing.sm + 2,
+    backgroundColor: colors.success,
+    paddingVertical: spacing.md + 2,
+    borderRadius: radius.sm + 2,
     alignItems: 'center',
-    minHeight: 52,
   },
-  stopBtnOutTxt: { color: '#fff', fontWeight: '900', fontSize: 15 },
-  stopBtnOutSub: { color: 'rgba(255,255,255,0.85)', fontSize: 9, marginTop: 4, textAlign: 'center' },
-  hint: { color: '#64748b', fontSize: 13, marginVertical: 6 },
-  chips: { marginTop: 10, maxHeight: 44 },
+  tlBtnArrTxt: { color: colors.textInverse, fontWeight: font.black, fontSize: font.md },
+  tlBtnOut: {
+    marginTop: spacing.sm + 2,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md + 2,
+    paddingHorizontal: spacing.sm,
+    borderRadius: radius.sm + 2,
+    alignItems: 'center',
+  },
+  tlBtnOutTxt: { color: colors.textInverse, fontWeight: font.black, fontSize: font.md },
+  tlBtnOutSub: { color: 'rgba(255,255,255,0.8)', fontSize: 9, marginTop: 3, textAlign: 'center' },
+
+  /* ── Toast / offline / misc ────────────────────── */
+  toastBanner: { backgroundColor: colors.infoBg, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.sm, borderWidth: 1, borderColor: '#93c5fd' },
+  toastTxt: { fontSize: font.sm, color: colors.primary, fontWeight: font.extrabold, textAlign: 'center' },
+  iconBtn: { padding: spacing.sm, marginLeft: 2 },
+  iconBtnTxt: { fontSize: 20 },
+
+  /* ── Stats panel ───────────────────────────────── */
+  statsPanel: {
+    backgroundColor: colors.card,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: spacing.sm + 2,
+    marginBottom: spacing.sm + 2,
+    ...shadow.sm,
+  },
+  statsPanelRow: { flexDirection: 'row', gap: spacing.sm, flexWrap: 'wrap', marginBottom: spacing.sm },
+  statsPanelItem: { backgroundColor: colors.bg, borderRadius: radius.sm, paddingHorizontal: spacing.sm, paddingVertical: 5, alignItems: 'center', minWidth: 50 },
+  statsPanelItemGreen: { backgroundColor: colors.successBg },
+  statsPanelItemRed: { backgroundColor: colors.errorBg },
+  statsPanelVal: { fontSize: font.lg - 1, fontWeight: font.black, color: colors.textPrimary },
+  statsPanelLbl: { fontSize: 8, color: colors.textMuted, fontWeight: font.bold, marginTop: 1 },
+  statsPanelBar: { height: 5, backgroundColor: colors.border, borderRadius: 3, overflow: 'hidden' },
+  statsPanelBarFill: { height: 5, backgroundColor: colors.primary, borderRadius: 3 },
+  stopSearchInput: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.sm + 2,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    fontSize: font.sm,
+    color: colors.textPrimary,
+    marginBottom: spacing.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+
+  /* ── Misc controls ─────────────────────────────── */
+  hint: { color: colors.textSecondary, fontSize: font.base, marginVertical: 6 },
+  chips: { marginTop: spacing.sm + 2, maxHeight: 44 },
   chip: {
-    paddingHorizontal: 18,
-    paddingVertical: 12,
-    borderRadius: 20,
-    backgroundColor: '#e2e8f0',
-    marginRight: 8,
+    paddingHorizontal: spacing.lg + 2,
+    paddingVertical: spacing.md,
+    borderRadius: radius.xl,
+    backgroundColor: colors.border,
+    marginRight: spacing.sm,
     alignSelf: 'flex-start',
   },
-  chipOn: { backgroundColor: '#4f46e5' },
-  chipTxt: { fontWeight: '700', color: '#334155', fontSize: 13 },
-  chipTxtOn: { color: '#fff' },
-  mini: { fontSize: 11, color: '#94a3b8', marginTop: 6 },
+  chipOn: { backgroundColor: colors.primary },
+  chipTxt: { fontWeight: font.bold, color: colors.textSecondary, fontSize: font.base },
+  chipTxtOn: { color: colors.textInverse },
+  mini: { fontSize: font.sm, color: colors.textMuted, marginTop: 6 },
+
+  /* ── Fichar entrada/salida ─────────────────────── */
   ficharEntrada: {
-    marginTop: 12,
-    backgroundColor: '#059669',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderRadius: 16,
+    marginTop: spacing.md,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.lg,
     alignItems: 'center',
+    ...shadow.md,
   },
-  ficharEntradaTxt: { fontWeight: '900', color: '#fff', fontSize: 17, letterSpacing: 0.3 },
+  ficharEntradaTxt: { fontWeight: font.black, color: colors.textInverse, fontSize: font.xl - 1, letterSpacing: 0.3 },
   ficharEntradaSub: {
-    marginTop: 6,
-    fontSize: 11,
-    fontWeight: '600',
-    color: 'rgba(255,255,255,0.9)',
+    marginTop: spacing.sm,
+    fontSize: font.sm,
+    fontWeight: font.semibold,
+    color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
     lineHeight: 15,
   },
   ficharSalida: {
-    marginTop: 12,
+    marginTop: spacing.md,
     backgroundColor: '#7f1d1d',
-    paddingVertical: 16,
-    paddingHorizontal: 16,
-    borderRadius: 16,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.lg,
     alignItems: 'center',
+    ...shadow.md,
   },
-  ficharSalidaTxt: { fontWeight: '900', color: '#fff', fontSize: 17, letterSpacing: 0.3 },
+  ficharSalidaTxt: { fontWeight: font.black, color: colors.textInverse, fontSize: font.xl - 1, letterSpacing: 0.3 },
   ficharSalidaSub: {
-    marginTop: 6,
-    fontSize: 11,
-    fontWeight: '600',
+    marginTop: spacing.sm,
+    fontSize: font.sm,
+    fontWeight: font.semibold,
     color: 'rgba(255,255,255,0.85)',
     textAlign: 'center',
   },
+
+  /* ── Offline / incident ────────────────────────── */
   offlineBanner: {
-    backgroundColor: '#fef9c3',
-    borderRadius: 10,
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    marginBottom: 10,
+    backgroundColor: colors.warningBg,
+    borderRadius: radius.sm + 2,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm + 2,
     borderWidth: 1,
-    borderColor: '#fde047',
+    borderColor: colors.warningBorder,
   },
-  offlineTxt: { fontSize: 12, fontWeight: '700', color: '#854d0e', textAlign: 'center' },
+  offlineTxt: { fontSize: font.sm, fontWeight: font.bold, color: '#854d0e', textAlign: 'center' },
   incidentBtn: {
-    marginTop: 8,
-    backgroundColor: '#fff7ed',
+    marginTop: spacing.sm,
+    backgroundColor: colors.accentLight,
     borderWidth: 1.5,
-    borderColor: '#fed7aa',
-    borderRadius: 14,
-    paddingVertical: 12,
+    borderColor: colors.accent,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
     alignItems: 'center',
   },
-  incidentBtnTxt: { fontSize: 14, fontWeight: '800', color: '#c2410c' },
-  kmBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(15,23,42,0.55)' },
+  incidentBtnTxt: { fontSize: font.md, fontWeight: font.extrabold, color: colors.accentHover },
+
+  /* ── Odómetro modal ────────────────────────────── */
+  kmBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
   kmSheet: {
     position: 'absolute',
     bottom: 0,
     left: 0,
     right: 0,
-    backgroundColor: '#f8fafc',
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    padding: 24,
+    backgroundColor: colors.bg,
+    borderTopLeftRadius: radius['2xl'],
+    borderTopRightRadius: radius['2xl'],
+    padding: spacing['2xl'],
     paddingBottom: 36,
   },
-  kmTitle:   { fontSize: 17, fontWeight: '900', color: '#0f172a', marginBottom: 6 },
-  kmSub:     { fontSize: 12, color: '#64748b', marginBottom: 16 },
-  kmInput:   { borderWidth: 1, borderColor: '#e2e8f0', borderRadius: 12, padding: 14, fontSize: 20, fontWeight: '700', color: '#0f172a', marginBottom: 16, textAlign: 'center' },
-  kmActions: { flexDirection: 'row', gap: 10 },
-  kmSkipBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, backgroundColor: '#e2e8f0', alignItems: 'center' },
-  kmSkipTxt: { fontWeight: '800', color: '#475569' },
-  kmConfirmBtn: { flex: 2, paddingVertical: 14, borderRadius: 12, backgroundColor: '#4f46e5', alignItems: 'center' },
-  kmConfirmTxt: { fontWeight: '900', color: '#fff' },
+  kmTitle: { fontSize: font.xl - 1, fontWeight: font.black, color: colors.textPrimary, marginBottom: spacing.sm },
+  kmSub: { fontSize: font.sm, color: colors.textSecondary, marginBottom: spacing.lg },
+  kmInput: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    padding: spacing.md + 2,
+    fontSize: font['2xl'],
+    fontWeight: font.bold,
+    color: colors.textPrimary,
+    marginBottom: spacing.lg,
+    textAlign: 'center',
+  },
+  kmActions: { flexDirection: 'row', gap: spacing.sm + 2 },
+  kmSkipBtn: { flex: 1, paddingVertical: spacing.md + 2, borderRadius: radius.md, backgroundColor: colors.border, alignItems: 'center' },
+  kmSkipTxt: { fontWeight: font.extrabold, color: colors.textSecondary },
+  kmConfirmBtn: { flex: 2, paddingVertical: spacing.md + 2, borderRadius: radius.md, backgroundColor: colors.primary, alignItems: 'center' },
+  kmConfirmTxt: { fontWeight: font.black, color: colors.textInverse },
+
+  /* ── Refresh / live ────────────────────────────── */
   refreshFull: {
-    marginTop: 12,
-    backgroundColor: '#f1f5f9',
-    paddingVertical: 12,
-    borderRadius: 14,
+    marginTop: spacing.md,
+    backgroundColor: colors.surface,
+    paddingVertical: spacing.md,
+    borderRadius: radius.md,
     alignItems: 'center',
   },
-  refreshTxt: { fontWeight: '800', color: '#475569' },
+  refreshTxt: { fontWeight: font.extrabold, color: colors.textSecondary },
   live: {
-    fontSize: 11,
-    fontWeight: '700',
-    color: '#059669',
+    fontSize: font.sm,
+    fontWeight: font.bold,
+    color: colors.success,
     flex: 1,
   },
+
+  /* ── Navigation box ────────────────────────────── */
   navBox: {
-    marginTop: 12,
-    padding: 12,
-    borderRadius: 14,
-    backgroundColor: '#f8fafc',
+    marginTop: spacing.md,
+    padding: spacing.md,
+    borderRadius: radius.md,
+    backgroundColor: colors.bg,
     borderWidth: 1,
-    borderColor: '#e2e8f0',
+    borderColor: colors.border,
   },
-  navTitle: { fontSize: 11, fontWeight: '900', color: '#475569', letterSpacing: 0.4 },
+  navTitle: { fontSize: font.sm, fontWeight: font.black, color: colors.textSecondary, letterSpacing: 0.4 },
   navBtn: {
-    marginTop: 8,
-    backgroundColor: '#4f46e5',
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    borderRadius: 12,
+    marginTop: spacing.sm,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md + 2,
+    borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
     minHeight: 44,
   },
   navBtnDisabled: { opacity: 0.75 },
-  navBtnTxt: { fontWeight: '800', color: '#fff', fontSize: 13, textAlign: 'center' },
-  navErr: { color: '#b91c1c', fontSize: 12, marginTop: 8 },
-  navMini: { fontSize: 12, color: '#64748b', marginTop: 8 },
-  navSummary: { fontSize: 13, fontWeight: '800', color: '#0f172a', marginTop: 8 },
-  navSteps: { marginTop: 8 },
-  navStep: { flexDirection: 'row', alignItems: 'flex-start', marginTop: 10, gap: 10 },
+  navBtnTxt: { fontWeight: font.extrabold, color: colors.textInverse, fontSize: font.base, textAlign: 'center' },
+  navErr: { color: colors.error, fontSize: font.sm, marginTop: spacing.sm },
+  navMini: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.sm },
+  navSummary: { fontSize: font.base, fontWeight: font.extrabold, color: colors.textPrimary, marginTop: spacing.sm },
+  navSteps: { marginTop: spacing.sm },
+  navStep: { flexDirection: 'row', alignItems: 'flex-start', marginTop: spacing.sm + 2, gap: spacing.sm + 2 },
   navStepNum: {
     width: 22,
     height: 22,
     borderRadius: 11,
     overflow: 'hidden',
-    backgroundColor: '#e0e7ff',
+    backgroundColor: colors.primaryLight,
     color: '#3730a3',
-    fontSize: 11,
-    fontWeight: '900',
+    fontSize: font.sm,
+    fontWeight: font.black,
     textAlign: 'center',
     lineHeight: 22,
   },
   navStepBody: { flex: 1 },
-  navStepInstr: { fontSize: 13, fontWeight: '600', color: '#1e293b', lineHeight: 18 },
-  navStepMeta: { fontSize: 11, color: '#94a3b8', marginTop: 2 },
-  navHint: { fontSize: 10, color: '#94a3b8', marginTop: 10, lineHeight: 14 },
-  stopStatusBadge: {
-    alignSelf: 'flex-start',
-    paddingHorizontal: 10,
-    paddingVertical: 3,
-    borderRadius: 10,
-    marginTop: 4,
-  },
-  stopStatusPending: { backgroundColor: '#fef3c7' },
-  stopStatusArrived: { backgroundColor: '#dbeafe' },
-  stopStatusCompleted: { backgroundColor: '#d1fae5' },
-  stopStatusUndeliverable: { backgroundColor: '#ffe4e6' },
-  stopStatusBadgeTxt: { fontSize: 11, fontWeight: '800' },
-  stopStatusPendingTxt: { color: '#92400e' },
-  stopStatusArrivedTxt: { color: '#1e40af' },
-  stopStatusCompletedTxt: { color: '#065f46' },
-  stopStatusUndeliverableTxt: { color: '#9f1239' },
-  liveRow: { flexDirection: 'row', alignItems: 'center', marginTop: 10, gap: 6 },
+  navStepInstr: { fontSize: font.base, fontWeight: font.semibold, color: colors.textPrimary, lineHeight: 18 },
+  navStepMeta: { fontSize: font.sm, color: colors.textMuted, marginTop: 2 },
+  navHint: { fontSize: font.xs, color: colors.textMuted, marginTop: spacing.sm + 2, lineHeight: 14 },
+
+  /* ── Live row ──────────────────────────────────── */
+  liveRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm + 2, gap: 6 },
   connectionDot: { width: 10, height: 10, borderRadius: 5 },
-  connectionDotOk: { backgroundColor: '#22c55e' },
-  connectionDotErr: { backgroundColor: '#ef4444' },
+  connectionDotOk: { backgroundColor: colors.success },
+  connectionDotErr: { backgroundColor: colors.error },
 });
