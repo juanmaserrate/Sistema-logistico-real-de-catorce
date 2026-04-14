@@ -8007,6 +8007,7 @@
 
         // Initial Load Sequence
         async function initApp() {
+            window.__r14Initializing = true;
             await ensureGoogleMapsKeyFromServer();
             await refreshApiStatusFromHealth();
             try {
@@ -8045,6 +8046,7 @@
                 console.error("Init failed:", e);
             } finally {
                 await refreshApiStatusFromHealth();
+                window.__r14Initializing = false;
             }
         }
         // Initialize the app when ready

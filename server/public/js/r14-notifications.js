@@ -139,7 +139,7 @@ function showToastNotification(type, title, text) {
 
         try {
             const res = await baseFetch(input, init);
-            if (isMutation && !skipToast) {
+            if (isMutation && !skipToast && !window.__r14Initializing) {
                 if (res.ok) {
                     showToastNotification('success', 'Operación guardada', `${method} completado correctamente.`);
                 } else if (!silentStatusCodes.has(res.status)) {
@@ -148,7 +148,7 @@ function showToastNotification(type, title, text) {
             }
             return res;
         } catch (e) {
-            if (isMutation && !skipToast) {
+            if (isMutation && !skipToast && !window.__r14Initializing) {
                 showToastNotification('critical', 'Error de red', `${method} no pudo completarse.`);
             }
             throw e;
