@@ -9629,11 +9629,22 @@
             }
         }
 
+        let _empSyncDone = false;
         async function syncEmployeesFromTrips(choferList, auxList) {
-            const existingChoferes = new Set(choferList.map(u => (u.fullName || '').toLowerCase()));
-            const existingAux = new Set(auxList.map(u => (u.fullName || '').toLowerCase()));
+            // Solo sincronizar una vez por sesión — evita POST 409 repetidos
+            if (_empSyncDone) return;
+            _empSyncDone = true;
 
-            // Unique driver names from all trips
+            // Comparar por fullName Y por username para evitar duplicados
+            const existingChoferes = new Set(choferList.flatMap(u => [
+                (u.fullName || '').toLowerCase(),
+                (u.username || '').toLowerCase()
+            ]).filter(Boolean));
+            const existingAux = new Set(auxList.flatMap(u => [
+                (u.fullName || '').toLowerCase(),
+                (u.username || '').toLowerCase()
+            ]).filter(Boolean));
+
             const tripDrivers = [...new Set((planningData || []).map(t => t.driver).filter(n => n && n !== 'N/A' && n !== '--' && n !== 'SIN CHOFER'))];
             const tripAuxRaw = (planningData || []).flatMap(t =>
                 [t.auxiliar, t.auxiliar2, t.auxiliar3, t.assistant, t.assistant2, t.assistant3]
@@ -9643,14 +9654,14 @@
             );
             const tripAux = [...new Set(tripAuxRaw)];
 
-            // Create missing choferes
             for (const name of tripDrivers) {
-                if (existingChoferes.has(name.toLowerCase())) continue;
+                const username = name.toUpperCase().replace(/\s+/g, '_');
+                if (existingChoferes.has(name.toLowerCase()) || existingChoferes.has(username.toLowerCase())) continue;
                 try {
                     const res = await fetch(`${API_URL}/users`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
-                        body: JSON.stringify({ fullName: name, username: name.toUpperCase().replace(/\s+/g,'_'), role: 'CHOFER', password: '-' })
+                        body: JSON.stringify({ fullName: name, username, role: 'CHOFER', password: '-' })
                     });
                     if (res.ok) {
                         const u = await res.json();
@@ -9660,14 +9671,14 @@
                 } catch {}
             }
 
-            // Create missing auxiliares
             for (const name of tripAux) {
-                if (existingAux.has(name.toLowerCase())) continue;
+                const username = 'AUX_' + name.toUpperCase().replace(/\s+/g, '_');
+                if (existingAux.has(name.toLowerCase()) || existingAux.has(username.toLowerCase())) continue;
                 try {
                     const res = await fetch(`${API_URL}/users`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
-                        body: JSON.stringify({ fullName: name, username: 'AUX_' + name.toUpperCase().replace(/\s+/g,'_'), role: 'AUXILIAR', password: '-' })
+                        body: JSON.stringify({ fullName: name, username, role: 'AUXILIAR', password: '-' })
                     });
                     if (res.ok) {
                         const u = await res.json();
