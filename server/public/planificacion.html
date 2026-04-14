@@ -7,7 +7,7 @@
     <link rel="icon" type="image/png" href="/logo-r14.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
-    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -97,7 +97,7 @@
                             <i data-lucide="log-out" class="w-5 h-5"></i>
                         </button>
                         <div class="w-10 h-10 rounded-full border-2 border-white/25 overflow-hidden shadow-lg shrink-0">
-                            <img src="https://ui-avatars.com/api/?name=Admin+R14&background=4318FF&color=fff" alt="Usuario">
+                            <img src="https://ui-avatars.com/api/?name=Admin+R14&background=451ebb&color=fff" alt="Usuario">
                     </div>
                     </div>
                 </div>
@@ -2240,7 +2240,7 @@
             // Update user avatar and name
             const username = localStorage.getItem('r14.loggedUser') || 'Admin';
             const avatarImg = document.querySelector('.app-header img[alt="Usuario"]');
-            if (avatarImg) avatarImg.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=4318FF&color=fff`;
+            if (avatarImg) avatarImg.src = `https://ui-avatars.com/api/?name=${encodeURIComponent(username)}&background=451ebb&color=fff`;
 
             // Update greeting
             const headerTitle = document.getElementById('header-title');
