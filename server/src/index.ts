@@ -3362,8 +3362,15 @@ app.get('/api/v1/trips/:id/monitoring', async (req, res) => {
 // + última posición por dispositivo desde la app chofer (DeviceLocation → POST /tracking/location)
 app.get('/api/v1/fleet/locations', async (req, res) => {
     try {
+        const dayNow = new Date();
+        const dayStart = new Date(dayNow.getFullYear(), dayNow.getMonth(), dayNow.getDate(), 0, 0, 0, 0);
+        const dayEnd = new Date(dayNow.getFullYear(), dayNow.getMonth(), dayNow.getDate(), 23, 59, 59, 999);
+
         const trips = await prisma.trip.findMany({
-            where: { status: { in: ['PENDING', 'OUT_OF_PLANT'] } },
+            where: {
+                status: { in: ['PENDING', 'OUT_OF_PLANT'] },
+                date: { gte: dayStart, lte: dayEnd }
+            },
             include: {
                 locations: { orderBy: { timestamp: 'desc' }, take: 1 }
             },
@@ -3382,9 +3389,9 @@ app.get('/api/v1/fleet/locations', async (req, res) => {
                 : null
         }));
 
-        const since24h = new Date(Date.now() - 24 * 3600000);
+        const since1h = new Date(Date.now() - 60 * 60000);
         const recentDev = await prisma.deviceLocation.findMany({
-            where: { isActive: true, timestamp: { gte: since24h } },
+            where: { isActive: true, timestamp: { gte: since1h } },
             orderBy: { timestamp: 'desc' }
         });
         const latestByDevice = new Map<string, (typeof recentDev)[0]>();
@@ -3392,9 +3399,6 @@ app.get('/api/v1/fleet/locations', async (req, res) => {
             if (!latestByDevice.has(r.deviceId)) latestByDevice.set(r.deviceId, r);
         }
 
-        const dayNow = new Date();
-        const dayStart = new Date(dayNow.getFullYear(), dayNow.getMonth(), dayNow.getDate(), 0, 0, 0, 0);
-        const dayEnd = new Date(dayNow.getFullYear(), dayNow.getMonth(), dayNow.getDate(), 23, 59, 59, 999);
         const driversForMap = await prisma.user.findMany({ where: { role: 'DRIVER' } });
         const driverIdByLabel = new Map<string, string>();
         for (const d of driversForMap) {

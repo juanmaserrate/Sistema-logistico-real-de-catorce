@@ -3191,11 +3191,17 @@
             const container = document.getElementById('control-driver-chips');
             const filterBar = document.getElementById('control-driver-filter');
             if (!container) return;
-            if (!items || items.length === 0) {
+            // Solo mostrar chips de repartos que tienen ubicación reciente (última hora)
+            const oneHourAgo = Date.now() - 60 * 60000;
+            const activeItems = (items || []).filter(it =>
+                it.lastLocation && new Date(it.lastLocation.timestamp).getTime() >= oneHourAgo
+            );
+            if (activeItems.length === 0) {
                 if (filterBar) filterBar.classList.add('hidden');
                 return;
             }
             if (filterBar) filterBar.classList.remove('hidden');
+            items = activeItems;
             const colors = ['#2563eb', '#dc2626', '#16a34a', '#ca8a04', '#7c3aed', '#db2777', '#0891b2', '#ea580c'];
             // Construir meta para cada trip
             items.forEach((it, idx) => {
