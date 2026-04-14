@@ -106,51 +106,51 @@
             <div class="header-nav-row">
                 <div class="header-nav-scroll custom-scrollbar">
                     <span class="nav-section-label">Admin</span>
-                    <button type="button" onclick="showSection('control')" id="btn-control" class="header-nav-item">
+                    <a href="#control" id="btn-control" class="header-nav-item">
                         <i data-lucide="monitor-play" class="w-4 h-4"></i> Torre de Control
-                    </button>
-                    <button type="button" onclick="showSection('weekly')" id="btn-weekly" class="header-nav-item header-nav-item-active">
+                    </a>
+                    <a href="#weekly" id="btn-weekly" class="header-nav-item header-nav-item-active">
                         <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Logística Semanal
-                    </button>
-                    <button type="button" onclick="showSection('dashboard')" id="btn-dashboard" class="header-nav-item">
+                    </a>
+                    <a href="#dashboard" id="btn-dashboard" class="header-nav-item">
                         <i data-lucide="line-chart" class="w-4 h-4"></i> Dashboard logístico
-                    </button>
-                    <button type="button" onclick="showSection('vrp')" id="btn-vrp" class="header-nav-item">
+                    </a>
+                    <a href="#vrp" id="btn-vrp" class="header-nav-item">
                         <i data-lucide="map-pinned" class="w-4 h-4"></i> Mapa y Ruteo
-                    </button>
-                    <button type="button" onclick="showSection('costs')" id="btn-costs" class="header-nav-item">
+                    </a>
+                    <a href="#costs" id="btn-costs" class="header-nav-item">
                         <i data-lucide="bar-chart-3" class="w-4 h-4"></i> Motor de Costos
-                    </button>
-                    <button type="button" onclick="showSection('maintenance')" id="btn-maintenance" class="header-nav-item">
+                    </a>
+                    <a href="#maintenance" id="btn-maintenance" class="header-nav-item">
                         <i data-lucide="settings" class="w-4 h-4"></i> Mantenimiento
-                    </button>
-                    <button type="button" onclick="showSection('routes')" id="btn-routes" class="header-nav-item">
+                    </a>
+                    <a href="#routes" id="btn-routes" class="header-nav-item">
                         <i data-lucide="route" class="w-4 h-4"></i> Rutas Predefinidas
-                    </button>
-                    <button type="button" onclick="showSection('users')" id="btn-users" class="header-nav-item">
+                    </a>
+                    <a href="#users" id="btn-users" class="header-nav-item">
                         <i data-lucide="key-round" class="w-4 h-4"></i> Usuarios
-                    </button>
+                    </a>
                     <span class="nav-section-divider" aria-hidden="true"></span>
                     <span class="nav-section-label">Datos</span>
-                    <button type="button" onclick="showSection('employees')" id="btn-employees" class="header-nav-item">
+                    <a href="#employees" id="btn-employees" class="header-nav-item">
                         <i data-lucide="users-2" class="w-4 h-4"></i> Personal
-                    </button>
+                    </a>
                     <!-- Salarios ahora integrado dentro de Personal -->
-                    <button type="button" onclick="showSection('schools')" id="btn-schools" class="header-nav-item">
+                    <a href="#schools" id="btn-schools" class="header-nav-item">
                         <i data-lucide="graduation-cap" class="w-4 h-4"></i> Escuelas
-                    </button>
+                    </a>
                     <span class="nav-section-divider" aria-hidden="true"></span>
                     <span class="nav-section-label">Reportes</span>
-                    <button type="button" onclick="showSection('reports')" id="btn-reports" class="header-nav-item">
+                    <a href="#reports" id="btn-reports" class="header-nav-item">
                         <i data-lucide="file-bar-chart" class="w-4 h-4"></i> Reportes
-                    </button>
-                    <button type="button" onclick="showSection('incidents')" id="btn-incidents" class="header-nav-item relative">
+                    </a>
+                    <a href="#incidents" id="btn-incidents" class="header-nav-item relative">
                         <i data-lucide="alert-triangle" class="w-4 h-4"></i> Incidencias
                         <span id="incidents-badge" class="hidden absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-[9px] font-black rounded-full flex items-center justify-center">0</span>
-                    </button>
-                    <button type="button" onclick="showSection('audit')" id="btn-audit" class="header-nav-item">
+                    </a>
+                    <a href="#audit" id="btn-audit" class="header-nav-item">
                         <i data-lucide="shield-check" class="w-4 h-4"></i> Auditoría
-                    </button>
+                    </a>
                     <button type="button" onclick="openGlobalSearch()" title="Buscar (Ctrl+K)" class="header-nav-item flex items-center gap-1.5">
                         <i data-lucide="search" class="w-4 h-4"></i>
                         <kbd class="hidden sm:inline text-[9px] font-bold bg-white/20 px-1.5 py-0.5 rounded">Ctrl+K</kbd>
@@ -2282,9 +2282,13 @@
                 headerTitle.innerText = `Hola, ${username} 👋`;
             }
 
-            // Navigate to first allowed section
-            const firstAllowed = currentUserModules[0] || 'weekly';
-            showSection(firstAllowed);
+            // Navigate to hash, saved view, or first allowed section
+            const hash = window.location.hash.replace('#', '');
+            const saved = localStorage.getItem('r14.lastView');
+            const target = (hash && currentUserModules.includes(hash)) ? hash
+                         : (saved && currentUserModules.includes(saved)) ? saved
+                         : (currentUserModules[0] || 'weekly');
+            showSection(target);
         }
 
         async function handleLogin() {
@@ -2503,8 +2507,11 @@
             const view = document.getElementById('view-' + id);
             if(view) view.classList.remove('hidden');
 
-            // Recordar última vista
+            // Recordar última vista en localStorage y URL hash
             localStorage.setItem('r14.lastView', id);
+            if (window.location.hash !== '#' + id) {
+                history.replaceState(null, '', '#' + id);
+            }
 
             const titles = {
                 control: 'Torre de Control / En Vivo',
@@ -8078,6 +8085,22 @@
                 vrpRouteTourAdvance(-1);
             }
         }
+
+        // ─── HASH NAVIGATION ─────────────────────────────────────────────
+        window.addEventListener('hashchange', () => {
+            const id = window.location.hash.replace('#', '');
+            if (id) showSection(id);
+        });
+
+        // Intercept nav link clicks to prevent scroll jump
+        document.addEventListener('click', (e) => {
+            const link = e.target.closest('.header-nav-item[href^="#"]');
+            if (link) {
+                e.preventDefault();
+                const id = link.getAttribute('href').replace('#', '');
+                showSection(id);
+            }
+        });
 
         window.addEventListener('load', () => {
             initApp();

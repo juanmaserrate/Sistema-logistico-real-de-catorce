@@ -337,6 +337,7 @@ tbody tr:hover { background: var(--surface-container-low) !important; }
     flex-shrink: 0;
     display: inline-flex;
     align-items: center;
+    text-decoration: none;
     gap: 0.35rem;
     padding: 0.45rem 0.65rem;
     border-radius: 0.75rem;
