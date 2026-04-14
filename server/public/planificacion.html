@@ -191,19 +191,19 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-12 gap-8 h-[calc(100vh-350px)] min-w-0 max-w-full">
+                <div class="grid grid-cols-12 gap-8 min-w-0 max-w-full items-start">
                     <!-- Templates List -->
-                    <div class="col-span-4 card-dark overflow-hidden flex flex-col min-w-0">
+                    <div class="col-span-4 card-dark min-w-0">
                         <div class="p-5 border-b border-[#F4F7FE]">
                             <input id="routes-templates-filter" type="text" placeholder="Filtrar repartos..." oninput="renderRouteTemplatesList()" class="w-full bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm text-[#1B2559] focus:ring-2 focus:ring-indigo-500/20 outline-none">
                         </div>
-                        <div id="routes-templates-list" class="flex-1 overflow-y-auto p-4 space-y-1 custom-scrollbar">
+                        <div id="routes-templates-list" class="p-4 space-y-1">
                             <!-- Injected -->
                         </div>
                     </div>
 
                     <!-- Stops Editor -->
-                    <div class="col-span-8 card-dark flex flex-col overflow-hidden min-w-0">
+                    <div class="col-span-8 card-dark min-w-0">
                         <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center gap-4 flex-wrap">
                             <h4 id="editing-route-name" class="font-bold text-[#1B2559] uppercase tracking-widest text-sm">Seleccione un reparto</h4>
                             <div class="flex items-center gap-3">
@@ -214,8 +214,8 @@
                                 <span class="text-[10px] text-[#A3AED0] font-bold uppercase">Arrastre para reordenar</span>
                             </div>
                         </div>
-                        <div id="routes-stops-editor" class="flex-1 overflow-y-auto p-8 space-y-4 custom-scrollbar">
-                            <div class="flex flex-col items-center justify-center h-full opacity-30 py-20">
+                        <div id="routes-stops-editor" class="p-8 space-y-4">
+                            <div class="flex flex-col items-center justify-center opacity-30 py-20">
                                 <i data-lucide="route" class="w-16 h-16 mb-4 text-[#A3AED0]"></i>
                                 <span class="text-sm font-bold uppercase tracking-widest">Editor de secuencias</span>
                             </div>
