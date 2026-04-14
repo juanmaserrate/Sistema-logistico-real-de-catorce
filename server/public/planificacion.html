@@ -1409,7 +1409,7 @@
                         </div>
                     </div>
                     <!-- Filtro por reparto: aislar viajes en el mapa -->
-                    <div id="control-driver-filter" class="px-5 py-3 border-b border-[#F4F7FE] bg-[#F8FAFF] flex items-center gap-3 flex-wrap">
+                    <div id="control-driver-filter" class="hidden px-5 py-3 border-b border-[#F4F7FE] bg-[#F8FAFF] flex items-center gap-3 flex-wrap">
                         <span class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest shrink-0">Filtrar por reparto:</span>
                         <div id="control-driver-chips" class="flex items-center gap-2 flex-wrap">
                             <span class="text-[10px] text-[#A3AED0] italic">Sin repartos activos</span>
@@ -3189,11 +3189,13 @@
 
         function controlBuildDriverChips(items) {
             const container = document.getElementById('control-driver-chips');
+            const filterBar = document.getElementById('control-driver-filter');
             if (!container) return;
             if (!items || items.length === 0) {
-                container.innerHTML = '<span class="text-[10px] text-[#A3AED0] italic">Sin repartos activos</span>';
+                if (filterBar) filterBar.classList.add('hidden');
                 return;
             }
+            if (filterBar) filterBar.classList.remove('hidden');
             const colors = ['#2563eb', '#dc2626', '#16a34a', '#ca8a04', '#7c3aed', '#db2777', '#0891b2', '#ea580c'];
             // Construir meta para cada trip
             items.forEach((it, idx) => {
