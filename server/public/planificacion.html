@@ -6507,7 +6507,7 @@
                             matches = selectedValues.has(tripValue);
                             break;
                         case 'contrato':
-                            tripValue = t.contractType || 'Externo';
+                            tripValue = _normalizeFilterVal(t.contractType || 'Externo');
                             matches = selectedValues.has(tripValue);
                             break;
                         case 'estado':
@@ -6594,30 +6594,36 @@
             filterWeeklyData();
         }
 
+        function _normalizeFilterVal(val) {
+            val = (val || '').trim();
+            if (!val) return '';
+            return val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
+        }
+
         function getUniqueValuesForColumn(columnId) {
             const values = new Set();
             planningData.forEach(trip => {
                 let val = '';
                 switch(columnId) {
                     case 'chofer':
-                        val = trip.driver || 'N/A';
+                        val = (trip.driver || 'N/A').trim();
                         break;
                     case 'zona-localidad':
-                        val = trip.zone || 'BS AS';
+                        val = (trip.zone || 'BS AS').trim();
                         break;
                     case 'auxiliares':
-                        if (trip.auxiliar) values.add(trip.auxiliar);
-                        if (trip.auxiliar2) values.add(trip.auxiliar2);
-                        if (trip.auxiliar3) values.add(trip.auxiliar3);
-                        return; // Skip the normal value assignment
+                        if (trip.auxiliar) values.add(trip.auxiliar.trim());
+                        if (trip.auxiliar2) values.add(trip.auxiliar2.trim());
+                        if (trip.auxiliar3) values.add(trip.auxiliar3.trim());
+                        return;
                     case 'reparto':
-                        val = trip.tripType || trip.reparto || '--';
+                        val = (trip.tripType || trip.reparto || '--').trim();
                         break;
                     case 'bu':
                         val = formatBusinessUnit(trip.businessUnit);
                         break;
                     case 'contrato':
-                        val = trip.contractType || 'Externo';
+                        val = _normalizeFilterVal(trip.contractType || 'Externo');
                         break;
                     case 'estado':
                         const started = !!trip.routeActualStart;
