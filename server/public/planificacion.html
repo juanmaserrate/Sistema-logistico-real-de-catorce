@@ -1092,38 +1092,6 @@
 
             <!-- VIEW: USUARIOS / CREDENCIALES -->
             <div id="view-users" class="hidden view-animate space-y-8">
-                <button onclick="openCatalogModal('DRIVER')" class="card-dark p-8 text-left hover:border-indigo-200 transition-all group w-full">
-                    <div class="flex items-center gap-5">
-                        <div class="w-16 h-16 rounded-2xl bg-indigo-50 flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
-                            <i data-lucide="smartphone" class="w-7 h-7 text-indigo-600"></i>
-                        </div>
-                        <div class="flex-1">
-                            <h4 class="font-black text-[#1B2559] text-lg">Usuarios app móvil</h4>
-                            <p class="text-sm text-[#A3AED0] font-medium mt-1">Repartos (R1 a R22) que se loguean desde el celular del vehículo. Cada reparto tiene su propia contraseña.</p>
-                        </div>
-                        <i data-lucide="arrow-right" class="w-5 h-5 text-[#A3AED0] group-hover:text-indigo-600 group-hover:translate-x-1 transition-all"></i>
-                    </div>
-                </button>
-
-                <div class="card-dark p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div>
-                        <h3 class="text-2xl font-bold text-[#1B2559]">Gestión de Usuarios</h3>
-                        <p class="text-sm text-[#A3AED0] font-medium">Alta y administración de credenciales para choferes y administradores</p>
-                    </div>
-                    <div class="flex items-center gap-3">
-                        <input
-                            type="text"
-                            id="users-search"
-                            oninput="renderUsersTable()"
-                            placeholder="Buscar por usuario o nombre..."
-                            class="w-72 bg-[#F4F7FE] border-0 rounded-2xl px-4 py-3 text-sm font-medium text-[#1B2559] outline-none"
-                        />
-                        <button onclick="loadUsers()" class="px-5 py-3 rounded-2xl bg-indigo-50 text-indigo-700 text-xs font-bold hover:bg-indigo-100 transition-all">
-                            Recargar
-                        </button>
-                    </div>
-                </div>
-
                 <div class="card-dark p-8">
                     <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-5">Crear usuario</h4>
                     <div class="grid grid-cols-1 md:grid-cols-5 gap-4">
