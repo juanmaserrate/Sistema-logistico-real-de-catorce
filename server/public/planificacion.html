@@ -1408,11 +1408,11 @@
                             <span class="text-[10px] text-[#A3AED0] font-black uppercase">Live cada 20s</span>
                         </div>
                     </div>
-                    <!-- Filtro de choferes: aislar viajes en el mapa -->
+                    <!-- Filtro por reparto: aislar viajes en el mapa -->
                     <div id="control-driver-filter" class="px-5 py-3 border-b border-[#F4F7FE] bg-[#F8FAFF] flex items-center gap-3 flex-wrap">
-                        <span class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest shrink-0">Filtrar choferes:</span>
+                        <span class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest shrink-0">Filtrar por reparto:</span>
                         <div id="control-driver-chips" class="flex items-center gap-2 flex-wrap">
-                            <span class="text-[10px] text-[#A3AED0] italic">Sin choferes activos</span>
+                            <span class="text-[10px] text-[#A3AED0] italic">Sin repartos activos</span>
                         </div>
                         <button onclick="controlToggleAllDrivers()" class="ml-auto px-3 py-1.5 rounded-lg bg-white border border-[#E0E5F2] text-[10px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all shrink-0">
                             Mostrar/Ocultar todos
@@ -3191,7 +3191,7 @@
             const container = document.getElementById('control-driver-chips');
             if (!container) return;
             if (!items || items.length === 0) {
-                container.innerHTML = '<span class="text-[10px] text-[#A3AED0] italic">Sin choferes activos</span>';
+                container.innerHTML = '<span class="text-[10px] text-[#A3AED0] italic">Sin repartos activos</span>';
                 return;
             }
             const colors = ['#2563eb', '#dc2626', '#16a34a', '#ca8a04', '#7c3aed', '#db2777', '#0891b2', '#ea580c'];
@@ -3216,8 +3216,7 @@
                 const tid = String(it.tripId);
                 const isVisible = controlVisibleTrips.has(tid);
                 const color = colors[idx % colors.length];
-                const driver = it.driver || 'SIN CHOFER';
-                const vehicle = it.vehicle || '';
+                const reparto = it.reparto || it.driver || 'SIN REPARTO';
                 return `
                     <button type="button"
                         onclick="controlToggleTrip('${tid}')"
@@ -3226,9 +3225,9 @@
                                 ? 'bg-white border-[#E0E5F2] text-[#1B2559] shadow-sm'
                                 : 'bg-[#F4F7FE] border-transparent text-[#A3AED0] opacity-60'
                         }"
-                        title="${isVisible ? 'Ocultar' : 'Mostrar'} ${driver}">
+                        title="${isVisible ? 'Ocultar' : 'Mostrar'} reparto ${reparto}">
                         <span class="w-2.5 h-2.5 rounded-full shrink-0 ${isVisible ? '' : 'opacity-30'}" style="background:${color}"></span>
-                        ${driver}${vehicle ? ' · ' + vehicle : ''}
+                        ${reparto}
                         <span class="text-[9px] ${isVisible ? 'text-emerald-600' : 'text-[#A3AED0]'}">${isVisible ? '●' : '○'}</span>
                     </button>`;
             }).join('');
