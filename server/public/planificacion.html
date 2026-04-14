@@ -294,6 +294,20 @@
                         </button>
                     </div>
                 </div>
+                <!-- Barra de selección masiva -->
+                <div id="inc-selection-bar" class="hidden card-dark px-6 py-4 flex items-center justify-between gap-4">
+                    <div class="flex items-center gap-3">
+                        <button onclick="toggleSelectAllIncidents()" class="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition-all" id="inc-select-all-btn">Seleccionar todo</button>
+                        <span class="text-xs text-[#A3AED0] font-medium" id="inc-selected-count">0 seleccionadas</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button onclick="cancelIncidentSelection()" class="px-4 py-2 rounded-2xl text-xs font-bold text-[#A3AED0] hover:bg-[#F4F7FE] transition-all">Cancelar</button>
+                        <button onclick="deleteSelectedIncidents()" id="inc-delete-btn" class="px-5 py-2 rounded-2xl bg-rose-600 text-white text-xs font-bold hover:bg-rose-700 transition-all flex items-center gap-2 disabled:opacity-40" disabled>
+                            <i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Eliminar seleccionadas
+                        </button>
+                    </div>
+                </div>
+
                 <div id="incidents-list" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     <div class="col-span-full text-center py-16 text-[#A3AED0] text-sm font-bold">Cargando incidencias...</div>
                 </div>
@@ -4505,9 +4519,94 @@
             return trip ? (trip.contractType || 'Externo') : 'Sin viaje';
         }
 
+        // ── Incidents selection state ──────────────────────────────────────────
+        let _incSelectionMode = false;
+        let _incSelectedIds = new Set();
+
+        function enterIncidentSelectionMode() {
+            _incSelectionMode = true;
+            _incSelectedIds.clear();
+            document.getElementById('inc-selection-bar').classList.remove('hidden');
+            document.querySelectorAll('.inc-checkbox-wrap').forEach(el => el.classList.remove('hidden'));
+            updateIncSelectionBar();
+        }
+
+        function cancelIncidentSelection() {
+            _incSelectionMode = false;
+            _incSelectedIds.clear();
+            document.getElementById('inc-selection-bar').classList.add('hidden');
+            document.querySelectorAll('.inc-checkbox-wrap').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.inc-card').forEach(el => el.classList.remove('ring-2', 'ring-rose-400'));
+        }
+
+        function toggleIncidentCard(id, el) {
+            if (!_incSelectionMode) enterIncidentSelectionMode();
+            const card = el.closest('.inc-card');
+            if (_incSelectedIds.has(id)) {
+                _incSelectedIds.delete(id);
+                card.classList.remove('ring-2', 'ring-rose-400');
+                el.checked = false;
+            } else {
+                _incSelectedIds.add(id);
+                card.classList.add('ring-2', 'ring-rose-400');
+                el.checked = true;
+            }
+            updateIncSelectionBar();
+        }
+
+        function toggleSelectAllIncidents() {
+            const checkboxes = document.querySelectorAll('.inc-card-checkbox');
+            const allSelected = _incSelectedIds.size === checkboxes.length;
+            _incSelectedIds.clear();
+            checkboxes.forEach(cb => {
+                const card = cb.closest('.inc-card');
+                if (allSelected) {
+                    cb.checked = false;
+                    card.classList.remove('ring-2', 'ring-rose-400');
+                } else {
+                    _incSelectedIds.add(cb.dataset.id);
+                    cb.checked = true;
+                    card.classList.add('ring-2', 'ring-rose-400');
+                }
+            });
+            updateIncSelectionBar();
+        }
+
+        function updateIncSelectionBar() {
+            const count = _incSelectedIds.size;
+            const total = document.querySelectorAll('.inc-card-checkbox').length;
+            document.getElementById('inc-selected-count').textContent = `${count} seleccionada${count !== 1 ? 's' : ''}`;
+            document.getElementById('inc-delete-btn').disabled = count === 0;
+            document.getElementById('inc-select-all-btn').textContent = count === total && total > 0 ? 'Deseleccionar todo' : 'Seleccionar todo';
+        }
+
+        async function deleteSelectedIncidents() {
+            if (_incSelectedIds.size === 0) return;
+            const ids = [..._incSelectedIds];
+            const plural = ids.length > 1 ? `estas ${ids.length} incidencias` : 'esta incidencia';
+            if (!confirm(`¿Eliminar ${plural}? Esta acción no se puede deshacer.`)) return;
+            try {
+                const res = await fetch(`${API_URL}/incidents`, {
+                    method: 'DELETE',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids })
+                });
+                if (res.ok) {
+                    addNotification('success', 'Incidencias eliminadas', `Se eliminaron ${ids.length} incidencia${ids.length !== 1 ? 's' : ''}`);
+                    cancelIncidentSelection();
+                    loadIncidents();
+                } else {
+                    addNotification('warning', 'Error', 'No se pudieron eliminar las incidencias');
+                }
+            } catch(e) {
+                addNotification('critical', 'Error de red', 'No se pudo completar la eliminación');
+            }
+        }
+
         async function loadIncidents() {
             const container = document.getElementById('incidents-list');
             if (!container) return;
+            cancelIncidentSelection();
             container.innerHTML = '<div class="col-span-full text-center py-16"><div class="inline-block w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>';
             try {
                 const res = await fetch(`${API_URL}/incidents`);
@@ -4572,14 +4671,17 @@
                         ? `<img src="${inc.photoUrl}" onclick="openIncidentPhoto('${inc.photoUrl}')" class="w-full rounded-xl object-cover cursor-pointer hover:opacity-90 transition-opacity" style="max-height:180px" title="Click para ampliar">`
                         : '';
                     return `
-                    <div class="card-dark p-5 flex flex-col gap-3">
+                    <div class="card-dark p-5 flex flex-col gap-3 inc-card cursor-pointer transition-all" onclick="toggleIncidentCard('${inc.id}', this.querySelector('.inc-card-checkbox'))">
                         <div class="flex items-start justify-between gap-3">
-                            <div>
+                            <div class="flex-1">
                                 <div class="flex items-center gap-2 mb-1">
                                     <span class="text-xs font-black text-[#A3AED0] uppercase tracking-widest">⚠ ${typeLabel}</span>
                                     ${contractBadge}
                                 </div>
                                 <p class="text-sm font-bold text-[#1B2559] leading-snug">${inc.description}</p>
+                            </div>
+                            <div class="inc-checkbox-wrap hidden shrink-0">
+                                <input type="checkbox" class="inc-card-checkbox w-4 h-4 accent-rose-500 cursor-pointer" data-id="${inc.id}" onclick="event.stopPropagation(); toggleIncidentCard('${inc.id}', this)">
                             </div>
                         </div>
                         <div class="flex items-center justify-between text-[10px] text-[#A3AED0] font-bold uppercase">
@@ -4588,7 +4690,7 @@
                         </div>
                         ${photoHtml}
                         ${inc.resolution ? `<div class="bg-emerald-50 rounded-xl p-3 text-xs text-emerald-700 font-medium">✓ ${inc.resolution}</div>` : ''}
-                        ${inc.status === 'OPEN' ? `<button onclick="openCloseIncidentModal('${inc.id}')" class="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase hover:bg-indigo-700 transition-all">Resolver incidencia</button>` : ''}
+                        ${inc.status === 'OPEN' ? `<button onclick="event.stopPropagation(); openCloseIncidentModal('${inc.id}')" class="w-full py-2.5 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase hover:bg-indigo-700 transition-all">Resolver incidencia</button>` : ''}
                     </div>`;
                 }).join('');
             } catch(e) {

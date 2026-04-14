@@ -3952,6 +3952,28 @@ app.patch('/api/v1/incidents/:id', async (req, res) => {
     }
 });
 
+app.delete('/api/v1/incidents/:id', async (req, res) => {
+    try {
+        const { id } = req.params;
+        await (prisma as any).incident.delete({ where: { id } });
+        res.json({ success: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message });
+    }
+});
+
+// bulk delete
+app.delete('/api/v1/incidents', async (req, res) => {
+    try {
+        const { ids } = req.body;
+        if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ error: 'ids requerido' });
+        await (prisma as any).incident.deleteMany({ where: { id: { in: ids } } });
+        res.json({ success: true, deleted: ids.length });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message });
+    }
+});
+
 // ── Vehicle KM update ─────────────────────────────────────────────────────────
 app.patch('/api/v1/vehicles/:plate/km', async (req, res) => {
     try {
