@@ -1,65 +1,79 @@
 /**
- * R14 Design System — Estilo TruckGO
- * Azul vibrante como primario, naranja como acento, cards limpias con timeline.
+ * R14 Design System — "The Kinetic Architect"
+ * Deep indigos + vibrant emeralds, tonal layering, no-line rule.
+ * Fonts: Manrope (headlines) + Inter (body) — System fallback on native.
  */
 
 export const colors = {
-  // Primary brand — azul vibrante (TruckGO style)
-  primary: '#2563eb',        // Blue 600
-  primaryHover: '#1d4ed8',   // Blue 700
-  primaryLight: '#eff6ff',   // Blue 50
-  primaryGlow: 'rgba(37,99,235,0.12)',
+  // Primary brand — deep indigo
+  primary: '#451ebb',
+  primaryContainer: '#5d3fd3',
+  primaryLight: '#ede9fe',
+  primaryGlow: 'rgba(69,30,187,0.12)',
+  onPrimary: '#ffffff',
 
-  // Accent — naranja/amber para CTAs secundarios y highlights
-  accent: '#f59e0b',         // Amber 500
-  accentHover: '#d97706',    // Amber 600
-  accentLight: '#fffbeb',    // Amber 50
-  accentGlow: 'rgba(245,158,11,0.15)',
+  // Secondary — vibrant emerald
+  secondary: '#006d43',
+  secondaryContainer: '#34d399',
+  secondaryLight: '#ecfdf5',
+  onSecondary: '#ffffff',
 
-  // Neutrals
-  bg: '#f8fafc',
+  // Surface hierarchy (tonal layering)
+  bg: '#f8f9fc',                          // Level 0 — base
+  surface: '#f8f9fc',                     // Level 0
+  surfaceContainerLow: '#f2f3f6',         // Level 1 — sections
+  surfaceContainer: '#e8eaed',            // Level 1.5
+  surfaceContainerHigh: '#dfe1e4',        // Level 2
+  surfaceContainerHighest: '#d5d7da',     // Level 3
+  surfaceContainerLowest: '#ffffff',      // Level 2 — active cards (lift)
   card: '#ffffff',
-  surface: '#f1f5f9',
-  border: '#e2e8f0',
-  borderLight: '#f1f5f9',
 
-  // Text
-  textPrimary: '#0f172a',
-  textSecondary: '#475569',
-  textMuted: '#94a3b8',
+  // Text — no pure black
+  textPrimary: '#191c1e',                 // on-surface
+  textSecondary: '#44474a',               // on-surface-variant
+  textMuted: '#74777b',                   // outline
   textInverse: '#ffffff',
 
-  // Hero/Header
-  heroBg: '#0f172a',
+  // Hero/Header — deep indigo gradient
+  heroBg: '#1a0a3e',
   heroText: '#ffffff',
-  heroSub: '#94a3b8',
-  heroTag: '#64748b',
+  heroSub: '#b8a5e0',
+  heroTag: '#8b7aac',
 
   // Status
-  success: '#16a34a',
-  successBg: '#f0fdf4',
-  successBorder: '#bbf7d0',
+  success: '#006d43',
+  successBg: '#ecfdf5',
+  successBorder: '#a7f3d0',
 
-  warning: '#f59e0b',
+  warning: '#b45309',
   warningBg: '#fffbeb',
   warningBorder: '#fde68a',
 
-  error: '#ef4444',
+  error: '#dc2626',
   errorBg: '#fef2f2',
   errorBorder: '#fecaca',
 
-  info: '#2563eb',
-  infoBg: '#eff6ff',
+  info: '#451ebb',
+  infoBg: '#ede9fe',
 
   // Timeline
-  timelineLine: '#e2e8f0',
-  timelineDotActive: '#2563eb',
-  timelineDotDone: '#16a34a',
-  timelineDotPending: '#cbd5e1',
+  timelineLine: '#e8eaed',
+  timelineDotActive: '#451ebb',
+  timelineDotDone: '#006d43',
+  timelineDotPending: '#dfe1e4',
 
   // Misc
-  overlay: 'rgba(15,23,42,0.55)',
-  shadow: '#000',
+  overlay: 'rgba(26,10,62,0.6)',
+  shadow: 'rgba(25,28,30,0.06)',
+  border: 'transparent',
+  borderLight: 'transparent',
+  borderFocus: 'rgba(69,30,187,0.2)',
+
+  // Accent (for highlights)
+  accent: '#5d3fd3',
+  accentHover: '#451ebb',
+  accentLight: '#ede9fe',
+  accentGlow: 'rgba(93,63,211,0.15)',
 } as const;
 
 export const spacing = {
@@ -74,12 +88,12 @@ export const spacing = {
 } as const;
 
 export const radius = {
-  sm: 8,
-  md: 12,
-  lg: 16,
-  xl: 20,
-  '2xl': 24,
-  full: 9999,
+  sm: 12,       // min 1rem feel
+  md: 16,       // 1.5rem for internal elements
+  lg: 20,       // outer containers
+  xl: 24,       // 2rem for outer containers
+  '2xl': 32,    // large containers
+  full: 9999,   // pills
 } as const;
 
 export const font = {
@@ -89,9 +103,9 @@ export const font = {
   md: 14,
   lg: 16,
   xl: 18,
-  '2xl': 20,
-  '3xl': 24,
-  '4xl': 32,
+  '2xl': 22,
+  '3xl': 28,
+  '4xl': 36,
   hero: 42,
 
   regular: '400' as const,
@@ -102,25 +116,26 @@ export const font = {
   black: '900' as const,
 } as const;
 
+// Whisper shadows — ambient glow, not statements
 export const shadow = {
   sm: {
-    shadowColor: colors.shadow,
+    shadowColor: '#191c1e',
     shadowOpacity: 0.04,
-    shadowRadius: 4,
+    shadowRadius: 8,
     shadowOffset: { width: 0, height: 2 },
     elevation: 2,
   },
   md: {
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.08,
-    shadowRadius: 8,
+    shadowColor: '#191c1e',
+    shadowOpacity: 0.06,
+    shadowRadius: 16,
     shadowOffset: { width: 0, height: 4 },
     elevation: 4,
   },
   lg: {
-    shadowColor: colors.shadow,
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
+    shadowColor: '#191c1e',
+    shadowOpacity: 0.06,
+    shadowRadius: 24,
     shadowOffset: { width: 0, height: 8 },
     elevation: 8,
   },

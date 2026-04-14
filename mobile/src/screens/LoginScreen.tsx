@@ -14,7 +14,7 @@ import { login } from '../api';
 import { persistSession } from '../sessionStorage';
 import type { SessionUser } from '../types';
 import { assertApiConfigured } from '../config';
-import { colors, font, radius, spacing } from '../theme';
+import { colors, font, radius, spacing, shadow } from '../theme';
 
 type Props = { onLoggedIn: (user: SessionUser) => void | Promise<void> };
 
@@ -130,22 +130,23 @@ const styles = StyleSheet.create({
     width: 52,
     height: 52,
     borderRadius: radius.lg,
-    backgroundColor: 'rgba(79,70,229,0.2)',
-    borderWidth: 1,
-    borderColor: 'rgba(79,70,229,0.3)',
+    backgroundColor: colors.primaryGlow,
+    borderWidth: 0,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  brandBadgeTxt: { fontSize: font.xl, fontWeight: font.black, color: '#a5b4fc', letterSpacing: 1 },
+  brandBadgeTxt: { fontSize: font.xl, fontWeight: font.black, color: colors.primaryLight, letterSpacing: 1 },
   brand: { fontSize: font['3xl'], fontWeight: font.black, color: colors.heroText, letterSpacing: -0.5 },
   sub: { fontSize: font.lg, color: colors.heroSub, marginTop: spacing.xs, fontWeight: font.semibold },
   tag: { fontSize: font.base, color: colors.heroTag, marginTop: spacing.md },
   card: {
     flex: 1,
-    backgroundColor: colors.card,
+    backgroundColor: colors.surfaceContainerLowest,
     borderTopLeftRadius: radius['2xl'],
     borderTopRightRadius: radius['2xl'],
+    borderWidth: 0,
     padding: spacing['2xl'],
+    ...shadow.md,
   },
   title: { fontSize: font['2xl'], fontWeight: font.black, color: colors.textPrimary, marginBottom: spacing.xs },
   subtitle: { fontSize: font.md, color: colors.textMuted, marginBottom: spacing['2xl'] },
@@ -157,10 +158,9 @@ const styles = StyleSheet.create({
     marginBottom: spacing.sm,
   },
   input: {
-    backgroundColor: colors.surface,
+    backgroundColor: colors.surfaceContainerLow,
     borderRadius: radius.md,
-    borderWidth: 2,
-    borderColor: 'transparent',
+    borderWidth: 0,
     paddingHorizontal: spacing.lg,
     paddingVertical: spacing.md + 2,
     fontSize: font.lg,
@@ -168,13 +168,14 @@ const styles = StyleSheet.create({
     marginBottom: spacing.lg,
   },
   inputFocused: {
-    borderColor: colors.primary,
-    backgroundColor: colors.card,
+    borderWidth: 2,
+    borderColor: colors.borderFocus,
+    paddingHorizontal: spacing.lg - 2,
+    paddingVertical: spacing.md,
   },
   errBox: {
     backgroundColor: colors.errorBg,
-    borderWidth: 1,
-    borderColor: colors.errorBorder,
+    borderWidth: 0,
     borderRadius: radius.md,
     padding: spacing.md,
     marginBottom: spacing.md,
@@ -182,12 +183,13 @@ const styles = StyleSheet.create({
   err: { color: colors.error, fontSize: font.md, fontWeight: font.semibold },
   btn: {
     backgroundColor: colors.primary,
-    borderRadius: radius.lg,
+    borderRadius: radius.full,
     paddingVertical: spacing.lg,
     alignItems: 'center',
     marginTop: spacing.sm,
+    ...shadow.sm,
   },
   btnDis: { opacity: 0.5 },
-  btnPressed: { backgroundColor: colors.primaryHover, transform: [{ scale: 0.98 }] },
+  btnPressed: { backgroundColor: colors.primaryContainer, transform: [{ scale: 0.98 }] },
   btnTxt: { color: colors.textInverse, fontSize: font.lg + 1, fontWeight: font.extrabold },
 });
