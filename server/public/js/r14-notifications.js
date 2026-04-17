@@ -70,29 +70,9 @@ function getToastContainer() {
     return el;
 }
 
-function showToastNotification(type, title, text) {
-    const container = getToastContainer();
-    const toast = document.createElement('div');
-    const palette = {
-        info: 'bg-indigo-600 text-white',
-        success: 'bg-emerald-600 text-white',
-        warning: 'bg-amber-500 text-[#1B2559]',
-        critical: 'bg-rose-600 text-white'
-    };
-    const color = palette[type] || palette.info;
-    toast.className = `pointer-events-auto max-w-sm rounded-2xl shadow-xl px-4 py-3 text-sm font-medium transition-all duration-300 opacity-0 translate-y-2 ${color}`;
-    toast.innerHTML = `
-        <div class="font-black text-xs uppercase tracking-wide">${title || 'Notificación'}</div>
-        <div class="mt-1 text-xs leading-relaxed">${text || ''}</div>
-    `;
-    container.appendChild(toast);
-    requestAnimationFrame(() => {
-        toast.classList.remove('opacity-0', 'translate-y-2');
-    });
-    setTimeout(() => {
-        toast.classList.add('opacity-0', 'translate-y-2');
-        setTimeout(() => toast.remove(), 300);
-    }, 3200);
+function showToastNotification(/* type, title, text */) {
+    // Desactivado a pedido: solo la campana de notificaciones, sin toast flotante.
+    return;
 }
 
 // Modo estricto: toast automático para TODA mutación HTTP + inyección de token.

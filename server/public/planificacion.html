@@ -818,110 +818,111 @@
                 </div>
             </div>
             <!-- VIEW: MAPA Y RUTEO (Google Maps) -->
-            <div id="view-vrp" class="hidden view-animate space-y-6">
-                <div class="grid grid-cols-1 xl:grid-cols-12 gap-6 min-h-[720px] xl:h-[calc(100vh-220px)] min-w-0 max-w-full">
-                    <div class="xl:col-span-4 card-dark flex flex-col overflow-hidden max-h-[640px] xl:max-h-none min-w-0">
-                        <div class="p-6 border-b border-[#F4F7FE] shrink-0">
-                            <h3 class="text-xl font-black text-[#1B2559] tracking-tight">Mapa y ruteo</h3>
-                        </div>
-                        <div class="p-6 space-y-5 flex-1 overflow-y-auto custom-scrollbar">
-                                <div>
-                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Buscar cliente / escuela</label>
-                                <div class="flex gap-2">
-                                    <input type="text" id="vrp-client-search" list="vrp-client-datalist" placeholder="Nombre, zona o dirección…" autocomplete="off" class="flex-1 bg-[#F4F7FE] border-0 rounded-2xl px-4 py-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500/25" onkeydown="if(event.key==='Enter'){event.preventDefault();vrpGoToSearchClient();}">
-                                    <button type="button" onclick="vrpGoToSearchClient()" class="shrink-0 px-4 py-3 rounded-2xl bg-indigo-600 text-white text-[11px] font-black uppercase hover:bg-indigo-700">Ir</button>
-                                </div>
-                                <datalist id="vrp-client-datalist"></datalist>
-                                <label class="mt-3 flex items-center gap-2 cursor-pointer select-none">
-                                    <input type="checkbox" id="vrp-zoom-on-select" class="rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500">
-                                    <span class="text-[11px] font-bold text-[#2B3674]">Acercar al elegir cliente en la lista</span>
-                                </label>
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Punto de partida</label>
-                                <select id="vrp-origin-select" onchange="updateOrigin()" class="w-full bg-[#F4F7FE] border-0 rounded-2xl p-4 text-sm font-bold text-[#1B2559] outline-none">
-                                    <option value="dep_1">Depósito Principal (Burzaco)</option>
-                                    <option value="dep_2">Segundo Depósito (Lomas)</option>
-                                    </select>
-                                </div>
-                                <div>
-                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Cargar reparto (plantilla)</label>
-                                <div class="flex gap-2">
-                                    <select id="vrp-template-select" class="flex-1 bg-[#F4F7FE] border-0 rounded-2xl p-4 text-sm font-bold text-[#1B2559] outline-none min-w-0">
-                                        <option value="">— Elegir reparto —</option>
-                                        </select>
-                                    <button type="button" onclick="loadVrpFromTemplate(document.getElementById('vrp-template-select').value)" class="shrink-0 px-4 py-3 rounded-2xl bg-indigo-50 text-indigo-700 text-[10px] font-black uppercase hover:bg-indigo-100 border border-indigo-100">Cargar</button>
-                                    </div>
-                                <label class="mt-3 flex items-start gap-2 cursor-pointer select-none">
-                                    <input type="checkbox" id="vrp-solo-reparto-mapa" class="mt-0.5 rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500" onchange="updateVrpMarkersStatusDebounced()">
-                                    <span class="text-[11px] font-bold text-[#2B3674] leading-snug">Solo mostrar en el mapa las escuelas del reparto (se activa al cargar una plantilla; podés desmarcar para ver el resto según filtros).</span>
-                                </label>
-                                </div>
-                            <div>
-                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Filtros del mapa y listado</label>
-                                <div class="grid grid-cols-1 gap-2">
-                                    <select id="vrp-map-filter-zone" onchange="onVrpMapFilterZoneChange()" class="w-full bg-[#F4F7FE] border-0 rounded-2xl p-3 text-sm font-bold text-[#1B2559] outline-none">
-                                        <option value="">Todas las zonas</option>
-                                    </select>
-                                    <select id="vrp-map-filter-locality" onchange="onVrpMapFiltersChange()" class="w-full bg-[#F4F7FE] border-0 rounded-2xl p-3 text-sm font-bold text-[#1B2559] outline-none">
-                                        <option value="">Todas las localidades</option>
-                                    </select>
-                                    <select id="vrp-map-filter-bu" onchange="onVrpMapFiltersChange()" class="w-full bg-[#F4F7FE] border-0 rounded-2xl p-3 text-sm font-bold text-[#1B2559] outline-none">
-                                        <option value="">Todas las U.N.</option>
-                                    </select>
-                                    <button type="button" onclick="clearVrpMapFilters()" class="text-[10px] font-black uppercase text-indigo-600 hover:text-indigo-800 py-1 text-left">Quitar filtros de zona / localidad / U.N.</button>
-                                        </div>
-                                    </div>
-                            <div>
-                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Filtrar listado</label>
-                                <input type="text" id="vrp-search-schools" oninput="filterVrpList()" placeholder="Filtrar escuelas…" class="w-full bg-[#F4F7FE] border-0 rounded-2xl px-4 py-3 text-sm font-bold text-[#1B2559] outline-none">
-                                    </div>
-                            <div>
-                                <div class="flex justify-between items-center mb-2">
-                                    <span class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Clientes (<span id="vrp-selected-count">0</span> en ruta)</span>
-                                    <button type="button" onclick="clearSelectedStops()" class="text-[10px] font-black text-rose-500 hover:text-rose-700 uppercase">Limpiar ruta</button>
-                                </div>
-                                <div id="vrp-schools-list" class="max-h-[200px] overflow-y-auto custom-scrollbar rounded-2xl border border-[#E8ECF8] bg-white/80 p-2 space-y-0.5"></div>
-                            </div>
-                            <div>
-                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Orden de paradas</label>
-                                <div class="flex flex-wrap items-center gap-2 mb-2">
-                                    <button type="button" id="vrp-tour-prev" onclick="vrpRouteTourAdvance(-1)" disabled class="flex items-center justify-center w-10 h-10 rounded-xl bg-white border border-[#E0E5F2] text-[#1B2559] hover:bg-indigo-50 hover:border-indigo-200 disabled:opacity-40 disabled:pointer-events-none shrink-0" title="Parada anterior (←)">
-                                        <i data-lucide="chevron-left" class="w-5 h-5"></i>
-                            </button>
-                                    <p id="vrp-route-tour-label" class="flex-1 min-w-[140px] text-center text-[11px] font-bold text-[#2B3674] leading-tight px-1">Sin paradas en la ruta</p>
-                                    <button type="button" id="vrp-tour-next" onclick="vrpRouteTourAdvance(1)" disabled class="flex items-center justify-center w-10 h-10 rounded-xl bg-white border border-[#E0E5F2] text-[#1B2559] hover:bg-indigo-50 hover:border-indigo-200 disabled:opacity-40 disabled:pointer-events-none shrink-0" title="Siguiente parada (→)">
-                                        <i data-lucide="chevron-right" class="w-5 h-5"></i>
-                            </button>
-                        </div>
-                                <p class="text-[9px] text-[#A3AED0] font-medium mb-2">Teclado: <kbd class="px-1 py-0.5 rounded bg-[#F4F7FE] text-[#2B3674] font-mono text-[8px]">←</kbd> <kbd class="px-1 py-0.5 rounded bg-[#F4F7FE] text-[#2B3674] font-mono text-[8px]">→</kbd> para ir parada a parada en orden.</p>
-                                <div id="vrp-selected-sequence" class="min-h-[100px] max-h-[180px] overflow-y-auto custom-scrollbar bg-[#F4F7FE]/60 rounded-2xl p-3 space-y-2 border border-dashed border-[#E0E5F2]">
-                                    <div class="text-center py-6 text-[#A3AED0] text-xs font-medium italic">Marcá escuelas arriba o cargá un reparto</div>
+            <div id="view-vrp" class="hidden view-animate space-y-4">
+                <!-- PANEL DE DATOS (ARRIBA, ancho completo) -->
+                <div class="card-dark p-5">
+                    <div class="flex items-center justify-between mb-4">
+                        <h3 class="text-lg font-black text-[#1B2559] tracking-tight">Mapa y ruteo</h3>
+                        <button type="button" onclick="clearSelectedStops()" class="text-[10px] font-black text-rose-500 hover:text-rose-700 uppercase">Limpiar ruta</button>
                     </div>
+                    <!-- 1. Cargar reparto (multi) -->
+                    <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
+                        <div class="md:col-span-5">
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">1. Cargar reparto (plantilla)</label>
+                            <div class="flex gap-2 mb-2">
+                                <select id="vrp-template-select" class="flex-1 bg-[#F4F7FE] border-0 rounded-2xl p-3 text-sm font-bold text-[#1B2559] outline-none min-w-0">
+                                    <option value="">— Elegir reparto —</option>
+                                </select>
+                                <button type="button" onclick="loadVrpFromTemplate(document.getElementById('vrp-template-select').value)" class="shrink-0 px-4 py-3 rounded-2xl bg-indigo-600 text-white text-[10px] font-black uppercase hover:bg-indigo-700">Cargar</button>
+                                <button type="button" onclick="vrpAddTemplateLayer(document.getElementById('vrp-template-select').value)" class="shrink-0 px-4 py-3 rounded-2xl bg-emerald-600 text-white text-[10px] font-black uppercase hover:bg-emerald-700" title="Agregar este reparto como capa al mapa (sin reemplazar la ruta actual)">+ Capa</button>
                             </div>
-                            <div id="vrp-route-summary" class="hidden rounded-2xl bg-[#1B2559] text-white p-4 space-y-1">
-                                <p class="text-[9px] font-black uppercase tracking-widest text-white/50">Último cálculo</p>
-                                <div class="flex flex-wrap gap-4">
-                                    <div><span class="text-[10px] text-white/60">Distancia</span><p id="vrp-sum-km" class="text-lg font-black text-emerald-300">—</p></div>
-                                    <div><span class="text-[10px] text-white/60">Tiempo (estim.)</span><p id="vrp-sum-time" class="text-lg font-black">—</p></div>
+                            <div id="vrp-layers-list" class="flex flex-wrap gap-1.5 mb-2"></div>
+                            <label class="flex items-start gap-2 cursor-pointer select-none">
+                                <input type="checkbox" id="vrp-solo-reparto-mapa" class="mt-0.5 rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500" onchange="updateVrpMarkersStatusDebounced()">
+                                <span class="text-[10px] font-bold text-[#2B3674] leading-snug">Solo escuelas del reparto</span>
+                            </label>
+                        </div>
+                        <!-- 2. Punto de partida -->
+                        <div class="md:col-span-3">
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">2. Punto de partida</label>
+                            <select id="vrp-origin-select" onchange="updateOrigin()" class="w-full bg-[#F4F7FE] border-0 rounded-2xl p-3 text-sm font-bold text-[#1B2559] outline-none">
+                                <option value="dep_1">Depósito Principal (Burzaco)</option>
+                                <option value="dep_2">Segundo Depósito (Lomas)</option>
+                            </select>
+                        </div>
+                        <!-- 3. Buscar escuela -->
+                        <div class="md:col-span-4">
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">3. Buscar escuela</label>
+                            <div class="flex gap-2">
+                                <input type="text" id="vrp-client-search" list="vrp-client-datalist" placeholder="Nombre, zona o dirección…" autocomplete="off" class="flex-1 bg-[#F4F7FE] border-0 rounded-2xl px-3 py-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500/25" onkeydown="if(event.key==='Enter'){event.preventDefault();vrpGoToSearchClient();}">
+                                <button type="button" onclick="vrpGoToSearchClient()" class="shrink-0 px-3 py-3 rounded-2xl bg-indigo-600 text-white text-[10px] font-black uppercase hover:bg-indigo-700">Ir</button>
+                            </div>
+                            <datalist id="vrp-client-datalist"></datalist>
+                            <label class="mt-2 flex items-center gap-2 cursor-pointer select-none">
+                                <input type="checkbox" id="vrp-zoom-on-select" class="rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500">
+                                <span class="text-[10px] font-bold text-[#2B3674]">Acercar al elegir</span>
+                            </label>
                         </div>
                     </div>
-                            <div class="grid grid-cols-2 gap-3 pt-1">
-                                <button type="button" onclick="runVrpOptimization()" id="vrp-btn-optimize" class="bg-indigo-600 py-3.5 rounded-2xl font-black text-[11px] text-white flex items-center justify-center gap-2 hover:bg-indigo-700 shadow-lg uppercase tracking-wide">
-                                    <i data-lucide="zap" class="w-4 h-4"></i> Optimizar
+                    <!-- 4. Filtros -->
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mt-4">
+                        <select id="vrp-map-filter-zone" onchange="onVrpMapFilterZoneChange()" class="bg-[#F4F7FE] border-0 rounded-2xl p-3 text-xs font-bold text-[#1B2559] outline-none">
+                            <option value="">Todas las zonas</option>
+                        </select>
+                        <select id="vrp-map-filter-locality" onchange="onVrpMapFiltersChange()" class="bg-[#F4F7FE] border-0 rounded-2xl p-3 text-xs font-bold text-[#1B2559] outline-none">
+                            <option value="">Todas las localidades</option>
+                        </select>
+                        <select id="vrp-map-filter-bu" onchange="onVrpMapFiltersChange()" class="bg-[#F4F7FE] border-0 rounded-2xl p-3 text-xs font-bold text-[#1B2559] outline-none">
+                            <option value="">Todas las U.N.</option>
+                        </select>
+                        <input type="text" id="vrp-search-schools" oninput="filterVrpList()" placeholder="Filtrar escuelas…" class="bg-[#F4F7FE] border-0 rounded-2xl px-4 py-3 text-xs font-bold text-[#1B2559] outline-none">
+                    </div>
+                    <!-- 5. Clientes en ruta + secuencia -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+                        <div>
+                            <div class="flex justify-between items-center mb-2">
+                                <span class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Clientes (<span id="vrp-selected-count">0</span> en ruta)</span>
+                            </div>
+                            <div id="vrp-schools-list" class="max-h-[170px] overflow-y-auto custom-scrollbar rounded-2xl border border-[#E8ECF8] bg-white/80 p-2 space-y-0.5"></div>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Orden de paradas</label>
+                            <div class="flex items-center gap-2 mb-2">
+                                <button type="button" id="vrp-tour-prev" onclick="vrpRouteTourAdvance(-1)" disabled class="flex items-center justify-center w-10 h-10 rounded-xl bg-white border border-[#E0E5F2] text-[#1B2559] hover:bg-indigo-50 hover:border-indigo-200 disabled:opacity-40 disabled:pointer-events-none shrink-0">
+                                    <i data-lucide="chevron-left" class="w-5 h-5"></i>
                                 </button>
-                                <button type="button" onclick="runVrpOptimization({fixed:true})" id="vrp-btn-fixed" class="bg-[#11047A] py-3.5 rounded-2xl font-black text-[11px] text-white flex items-center justify-center gap-2 hover:bg-[#1e0a9e] shadow-lg uppercase tracking-wide">
-                                    <i data-lucide="list-ordered" class="w-4 h-4"></i> Orden actual
+                                <p id="vrp-route-tour-label" class="flex-1 min-w-[140px] text-center text-[11px] font-bold text-[#2B3674] leading-tight px-1">Sin paradas en la ruta</p>
+                                <button type="button" id="vrp-tour-next" onclick="vrpRouteTourAdvance(1)" disabled class="flex items-center justify-center w-10 h-10 rounded-xl bg-white border border-[#E0E5F2] text-[#1B2559] hover:bg-indigo-50 hover:border-indigo-200 disabled:opacity-40 disabled:pointer-events-none shrink-0">
+                                    <i data-lucide="chevron-right" class="w-5 h-5"></i>
                                 </button>
+                            </div>
+                            <div id="vrp-selected-sequence" class="min-h-[100px] max-h-[170px] overflow-y-auto custom-scrollbar bg-[#F4F7FE]/60 rounded-2xl p-3 space-y-2 border border-dashed border-[#E0E5F2]">
+                                <div class="text-center py-6 text-[#A3AED0] text-xs font-medium italic">Cargá un reparto o seleccioná escuelas</div>
+                            </div>
+                        </div>
+                    </div>
+                    <!-- 6. Acciones + resumen -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4 items-stretch">
+                        <button type="button" onclick="runVrpOptimization()" id="vrp-btn-optimize" class="bg-indigo-600 py-3 rounded-2xl font-black text-[11px] text-white flex items-center justify-center gap-2 hover:bg-indigo-700 shadow-lg uppercase tracking-wide">
+                            <i data-lucide="zap" class="w-4 h-4"></i> Optimizar
+                        </button>
+                        <button type="button" onclick="runVrpOptimization({fixed:true})" id="vrp-btn-fixed" class="bg-[#11047A] py-3 rounded-2xl font-black text-[11px] text-white flex items-center justify-center gap-2 hover:bg-[#1e0a9e] shadow-lg uppercase tracking-wide">
+                            <i data-lucide="list-ordered" class="w-4 h-4"></i> Orden actual
+                        </button>
+                        <div id="vrp-route-summary" class="hidden rounded-2xl bg-[#1B2559] text-white p-3 flex items-center justify-around gap-3">
+                            <div><span class="text-[9px] text-white/60 uppercase">Distancia</span><p id="vrp-sum-km" class="text-sm font-black text-emerald-300">—</p></div>
+                            <div><span class="text-[9px] text-white/60 uppercase">Tiempo</span><p id="vrp-sum-time" class="text-sm font-black">—</p></div>
+                        </div>
+                    </div>
+                    <div id="vrp-results" class="hidden border-t border-[#F4F7FE] pt-3 mt-3">
+                        <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-2">Detalle del recorrido</p>
+                        <div id="vrp-steps-list" class="text-sm space-y-1.5 max-h-[200px] overflow-y-auto custom-scrollbar"></div>
+                    </div>
                 </div>
-                            <div id="vrp-results" class="hidden border-t border-[#F4F7FE] pt-4 space-y-3">
-                                <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Detalle del recorrido</p>
-                                <div id="vrp-steps-list" class="text-sm space-y-2 max-h-[280px] overflow-y-auto custom-scrollbar"></div>
-            </div>
-                        </div>
-                                </div>
-                    <div class="xl:col-span-8 relative card-dark vrp-map-host map-no-hover-lift overflow-hidden min-h-[420px] xl:min-h-0 min-w-0 rounded-3xl border border-[#E8ECF8]">
-                        <div id="map" class="h-full w-full min-h-[420px] xl:min-h-full bg-[#F4F7FE]"></div>
+
+                <!-- MAPA (ABAJO, ancho completo) -->
+                <div class="relative card-dark vrp-map-host map-no-hover-lift overflow-hidden min-h-[540px] rounded-3xl border border-[#E8ECF8]" style="height: calc(100vh - 260px); min-height: 540px;">
+                    <div id="map" class="h-full w-full bg-[#F4F7FE]"></div>
                         <div class="absolute top-4 right-4 z-[5] flex flex-col gap-2 items-end">
                             <button type="button" onclick="toggleTraffic()" id="traffic-btn" class="bg-white/95 px-4 py-3 rounded-2xl shadow-xl text-[#1B2559] text-[10px] font-black uppercase tracking-wider border border-[#F4F7FE] hover:bg-indigo-50 flex items-center gap-2">
                                 <i data-lucide="layers" class="w-4 h-4"></i> Tráfico
@@ -932,9 +933,8 @@
                                 <div class="mt-2 pt-2 border-t border-[#F4F7FE] flex items-center gap-2">
                                     <span id="traffic-indicator" class="w-2 h-2 rounded-full bg-[#E0E5F2] shrink-0"></span>
                                     <span class="text-[#A3AED0]">Tráfico: <span id="traffic-status" class="text-[#1B2559]">OFF</span></span>
-                    </div>
+                                </div>
                             </div>
-                        </div>
                         </div>
                     </div>
             </div>
@@ -1511,10 +1511,10 @@
                             <p class="text-[10px] text-[#A3AED0] mt-1">Trazado GPS de las últimas horas sobre el mapa de arriba. Tiempos entre paradas y desvío respecto del recorrido planificado (Google Directions).</p>
                         </div>
                         <div class="flex flex-wrap items-center gap-2">
-                            <select id="control-trail-route" class="bg-[#F4F7FE] border-0 rounded-xl px-4 py-2.5 text-xs font-bold text-[#1B2559] min-w-[200px] outline-none">
-                                <option value="">— Elegir ruta # —</option>
+                            <select id="control-trail-route" onchange="loadControlTrailAndSummary()" class="bg-[#F4F7FE] border-0 rounded-xl px-4 py-2.5 text-xs font-bold text-[#1B2559] min-w-[200px] outline-none">
+                                <option value="">— Elegir reparto —</option>
                             </select>
-                            <button type="button" onclick="loadControlTrailAndSummary()" class="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-xs font-black uppercase tracking-widest hover:bg-indigo-700">Cargar traza y detalle</button>
+                            <button type="button" onclick="loadControlTrailAllActive()" class="px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-black uppercase tracking-widest hover:bg-emerald-700" title="Ver todas las trazas activas">Todas</button>
                         </div>
                     </div>
                     <div id="control-preflight-summary" class="hidden"></div>
@@ -1814,6 +1814,20 @@
                 _socket.on('stop:updated', () => {
                     const ctrl = document.getElementById('view-control');
                     if (ctrl && !ctrl.classList.contains('hidden')) loadControlLiveData();
+                });
+
+                // Reordenamiento/carga de paradas desde el panel o la app: refresca semanal y control.
+                _socket.on('route:updated', (payload) => {
+                    const weekly = document.getElementById('view-weekly');
+                    if (weekly && !weekly.classList.contains('hidden')) loadWeeklyData();
+                    const ctrl = document.getElementById('view-control');
+                    if (ctrl && !ctrl.classList.contains('hidden')) loadControlLiveData();
+                    // Si el chofer reordenó, avisar al operador
+                    if (payload && payload.type === 'reorder' && typeof addNotification === 'function') {
+                        const who = payload.driverName ? ` (${payload.driverName})` : '';
+                        const why = payload.reason ? ` · Motivo: ${payload.reason}` : '';
+                        addNotification('warning', 'Chofer cambió el recorrido', `Ruta #${payload.routeId}${who}${why}`);
+                    }
                 });
 
                 // Incidencias
@@ -3657,6 +3671,28 @@
             }
         }
 
+        const TRIP_STATUS_ES = {
+            'PENDING': 'Pendiente',
+            'IN_PROGRESS': 'En curso',
+            'OUT_OF_PLANT': 'Fuera de planta',
+            'COMPLETED': 'Completado',
+            'CANCELLED': 'Cancelado',
+            'CANCELED': 'Cancelado',
+            'PAUSED': 'Pausado',
+            'STARTED': 'Iniciado',
+            'FINISHED': 'Finalizado',
+            'DELIVERED': 'Entregado',
+            'SKIPPED': 'Omitido',
+            'ON_ROUTE': 'En ruta',
+            'ARRIVED': 'En destino',
+            'DEPARTED': 'Salió'
+        };
+        function _translateTripStatus(s) {
+            if (!s) return '--';
+            const k = String(s).toUpperCase().trim();
+            return TRIP_STATUS_ES[k] || k.charAt(0) + k.slice(1).toLowerCase().replace(/_/g,' ');
+        }
+
         function renderControlFeed() {
             const body = document.getElementById('control-table-body');
             if (!body) return;
@@ -3699,7 +3735,7 @@
                         <td class="text-xs font-bold text-[#A3AED0]">${ts ? ts.toLocaleString('es-AR') : '--'}</td>
                         <td><div class="font-black text-[#1B2559]">${it.vehicle || 'S/D'}</div><div class="text-[10px] text-[#A3AED0] uppercase">${it.tripId ? `Viaje #${it.tripId}` : ''}</div></td>
                         <td><div class="font-bold text-[#1B2559]">${it.driver || 'SIN CHOFER'}</div><div class="text-[10px] text-indigo-600 font-black uppercase">${it.reparto || '--'}</div></td>
-                        <td><span class="status-badge ${it.status === 'OUT_OF_PLANT' ? 'bg-emerald-100 text-emerald-700' : (it.status === 'COMPLETED' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700')}">${it.status || '--'}</span></td>
+                        <td><span class="status-badge ${it.status === 'OUT_OF_PLANT' ? 'bg-emerald-100 text-emerald-700' : (it.status === 'COMPLETED' ? 'bg-indigo-100 text-indigo-700' : 'bg-amber-100 text-amber-700')}">${_translateTripStatus(it.status)}</span></td>
                         <td class="text-xs font-bold text-[#2B3674]">${locTxt}</td>
                         <td class="text-xs font-black ${devM != null && devM > 200 ? 'text-rose-600' : 'text-[#2B3674]'}">${devTxt}</td>
                         <td class="text-right text-xs font-black ${alertTxt === 'OK' ? 'text-emerald-600' : 'text-rose-600'}">${alertTxt}</td>
@@ -3920,6 +3956,49 @@
             if (ids.includes(Number(prev))) sel.value = String(prev);
         }
 
+        // Carga las trazas GPS de TODAS las rutas activas simultáneamente,
+        // con colores distintos para que el operador vea todas sin tener que elegir.
+        const CONTROL_TRAIL_COLORS = ['#f97316','#e11d48','#0ea5e9','#10b981','#8b5cf6','#14b8a6','#f59e0b','#ec4899'];
+        async function loadControlTrailAllActive() {
+            await initControlMap();
+            clearControlTrailPolylines();
+            const sel = document.getElementById('control-trail-route');
+            const routeIds = [];
+            if (sel) {
+                for (const opt of sel.options) {
+                    if (opt.value) routeIds.push(Number(opt.value));
+                }
+            }
+            if (routeIds.length === 0) {
+                const out = document.getElementById('control-live-summary');
+                if (out) out.innerHTML = '<p class="text-[#A3AED0] text-xs italic">No hay rutas activas para mostrar.</p>';
+                return;
+            }
+            const results = await Promise.allSettled(routeIds.map(rid =>
+                fetch(`${API_URL}/tracking/history?routeId=${rid}&hours=24&limit=3000`).then(r => r.ok ? r.json() : { points: [] }).then(j => ({ rid, j }))
+            ));
+            results.forEach((r, idx) => {
+                if (r.status !== 'fulfilled') return;
+                const { rid, j } = r.value;
+                const pts = Array.isArray(j.points) ? j.points : [];
+                if (pts.length < 2 || !controlMap) return;
+                const thin = thinRoutePointsForMap(pts.map(p => ({ lat: p.latitude, lng: p.longitude })), 500);
+                const color = CONTROL_TRAIL_COLORS[idx % CONTROL_TRAIL_COLORS.length];
+                const poly = new google.maps.Polyline({
+                    path: thin.map(p => ({ lat: p.lat, lng: p.lng })),
+                    geodesic: true,
+                    strokeColor: color,
+                    strokeOpacity: 0.9,
+                    strokeWeight: 3,
+                    zIndex: 2,
+                    map: controlMap
+                });
+                controlTrailPolylines.push(poly);
+            });
+            const out = document.getElementById('control-live-summary');
+            if (out) out.innerHTML = `<p class="text-xs text-[#2B3674] font-bold">${results.filter(r=>r.status==='fulfilled').length} trazas activas cargadas. Elegí un reparto del chevron para ver su detalle.</p>`;
+        }
+
         async function loadControlTrailAndSummary() {
             const sel = document.getElementById('control-trail-route');
             const out = document.getElementById('control-live-summary');
@@ -4106,6 +4185,92 @@
             }
         }
 
+        // ═══ Multi-reparto en Mapa y Ruteo ═══════════════════════════
+        // Permite superponer varios repartos en el mapa con colores distintos.
+        const VRP_LAYER_COLORS = ['#e11d48', '#0ea5e9', '#f59e0b', '#10b981', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316'];
+        window._vrpLayers = window._vrpLayers || {}; // { id: {name, color, polyline, markers[]} }
+
+        function _pickVrpLayerColor() {
+            const used = new Set(Object.values(window._vrpLayers).map(l => l.color));
+            return VRP_LAYER_COLORS.find(c => !used.has(c)) || VRP_LAYER_COLORS[Object.keys(window._vrpLayers).length % VRP_LAYER_COLORS.length];
+        }
+
+        function vrpAddTemplateLayer(templateId) {
+            if (!templateId) { alert('Elegí un reparto primero.'); return; }
+            if (window._vrpLayers[templateId]) {
+                addNotification('info', 'Capa ya activa', 'Ese reparto ya está cargado como capa.');
+                return;
+            }
+            const rt = routeTemplates.find(t => t.id === templateId);
+            if (!rt || !window.google?.maps || !vrpMap) return;
+            const color = _pickVrpLayerColor();
+            const pts = [];
+            const markers = [];
+            rt.stops.forEach(s => {
+                if (norm(s.name) === norm('REAL 14')) return;
+                const school = resolveStopToClient(s.name);
+                if (school && school.latitude != null && school.longitude != null) {
+                    const pos = { lat: Number(school.latitude), lng: Number(school.longitude) };
+                    pts.push(pos);
+                    const m = new google.maps.Marker({
+                        position: pos,
+                        map: vrpMap,
+                        title: `${rt.name} · ${school.name}`,
+                        icon: {
+                            path: google.maps.SymbolPath.CIRCLE,
+                            fillColor: color,
+                            fillOpacity: 1,
+                            strokeColor: '#fff',
+                            strokeWeight: 2,
+                            scale: 7
+                        }
+                    });
+                    markers.push(m);
+                }
+            });
+            const polyline = new google.maps.Polyline({
+                path: pts,
+                geodesic: true,
+                strokeColor: color,
+                strokeOpacity: 0.85,
+                strokeWeight: 4,
+                map: vrpMap,
+                icons: [{ icon: { path: google.maps.SymbolPath.FORWARD_CLOSED_ARROW, scale: 3, strokeColor: color }, offset: '100%' }]
+            });
+            window._vrpLayers[templateId] = { name: rt.name, color, polyline, markers };
+            _renderVrpLayersList();
+            // Fit map to include this layer
+            if (pts.length) {
+                const b = new google.maps.LatLngBounds();
+                pts.forEach(p => b.extend(p));
+                vrpMap.fitBounds(b, 60);
+            }
+            addNotification('info', 'Capa añadida', `Reparto ${rt.name} superpuesto en el mapa (${pts.length} paradas).`);
+        }
+
+        function vrpRemoveLayer(templateId) {
+            const layer = window._vrpLayers[templateId];
+            if (!layer) return;
+            if (layer.polyline) layer.polyline.setMap(null);
+            (layer.markers || []).forEach(m => m.setMap(null));
+            delete window._vrpLayers[templateId];
+            _renderVrpLayersList();
+        }
+
+        function _renderVrpLayersList() {
+            const host = document.getElementById('vrp-layers-list');
+            if (!host) return;
+            const keys = Object.keys(window._vrpLayers);
+            if (keys.length === 0) { host.innerHTML = ''; return; }
+            host.innerHTML = keys.map(id => {
+                const l = window._vrpLayers[id];
+                return `<span class="inline-flex items-center gap-1 px-2 py-1 rounded-full text-[10px] font-black uppercase text-white" style="background:${l.color}">
+                    ${l.name}
+                    <button onclick="vrpRemoveLayer('${id}')" class="ml-1 w-4 h-4 rounded-full bg-white/30 hover:bg-white/50 flex items-center justify-center" title="Quitar capa">×</button>
+                </span>`;
+            }).join('');
+        }
+
         function showStopAliasModal(unmatchedNames) {
             const existing = document.getElementById('stop-alias-modal');
             if (existing) existing.remove();
@@ -4154,14 +4319,35 @@
             }
         }
 
+        const RT_ORDER_KEY = 'r14_route_templates_order';
+        function _getRtOrder() {
+            try { return JSON.parse(localStorage.getItem(RT_ORDER_KEY) || '[]'); }
+            catch { return []; }
+        }
+        function _setRtOrder(arr) {
+            try { localStorage.setItem(RT_ORDER_KEY, JSON.stringify(arr)); } catch {}
+        }
+        function _applyRtOrder(list) {
+            const order = _getRtOrder();
+            if (!order.length) return list.slice();
+            const idx = new Map(order.map((id, i) => [id, i]));
+            return list.slice().sort((a, b) => {
+                const ai = idx.has(a.id) ? idx.get(a.id) : 1e9;
+                const bi = idx.has(b.id) ? idx.get(b.id) : 1e9;
+                if (ai !== bi) return ai - bi;
+                return String(a.name||'').localeCompare(String(b.name||''));
+            });
+        }
+
         function renderRouteTemplatesList() {
             const list = document.getElementById('routes-templates-list');
             if (!list) return;
             const filterEl = document.getElementById('routes-templates-filter');
             const filter = (filterEl?.value || '').toLowerCase().trim();
+            const ordered = _applyRtOrder(routeTemplates);
             const filtered = filter
-                ? routeTemplates.filter(rt => String(rt.name || '').toLowerCase().includes(filter))
-                : routeTemplates;
+                ? ordered.filter(rt => String(rt.name || '').toLowerCase().includes(filter))
+                : ordered;
 
             if (filtered.length === 0) {
                 list.innerHTML = `
@@ -4178,7 +4364,10 @@
                 const isEditing = currentlyEditingRoute && currentlyEditingRoute.id === rt.id;
                 const activeClass = isEditing ? 'border-indigo-200 bg-indigo-50' : 'border-transparent hover:border-[#F4F7FE] hover:bg-[#F4F7FE]';
                 return `
-                <div class="w-full p-4 rounded-xl border ${activeClass} transition-all flex items-center justify-between group cursor-pointer" onclick="selectRouteTemplate('${rt.id}')">
+                <div class="rt-item w-full p-4 rounded-xl border ${activeClass} transition-all flex items-center gap-2 group cursor-pointer" data-rt-id="${rt.id}" onclick="selectRouteTemplate('${rt.id}')">
+                    <div class="rt-drag-handle cursor-grab active:cursor-grabbing w-7 h-9 rounded-lg flex items-center justify-center text-[#A3AED0] hover:bg-indigo-50 hover:text-indigo-600 transition-all opacity-40 group-hover:opacity-100" title="Arrastrá para reordenar" onclick="event.stopPropagation()">
+                        <i data-lucide="grip-vertical" class="w-4 h-4"></i>
+                    </div>
                     <div class="flex-1 min-w-0">
                         <div class="text-sm font-black text-[#1B2559] ${isEditing ? 'text-indigo-600' : 'group-hover:text-indigo-600'} truncate">${rt.name}</div>
                         <div class="text-[10px] text-[#A3AED0] font-bold uppercase">${(rt.stops || []).length} Destinos</div>
@@ -4195,6 +4384,22 @@
                 `;
             }).join('');
             lucide.createIcons();
+
+            // Init drag-and-drop on the list (skip when filtering to avoid partial reorder)
+            if (!filter && window.Sortable) {
+                new Sortable(list, {
+                    animation: 150,
+                    handle: '.rt-drag-handle',
+                    ghostClass: 'opacity-40',
+                    chosenClass: 'ring-2',
+                    dragClass: 'shadow-2xl',
+                    onEnd: () => {
+                        const ids = Array.from(list.querySelectorAll('.rt-item')).map(el => el.getAttribute('data-rt-id'));
+                        // Preserve any IDs not currently shown (none, since no filter), plus any new ones
+                        _setRtOrder(ids);
+                    }
+                });
+            }
         }
 
         async function createNewRouteTemplate() {
@@ -4404,8 +4609,35 @@
 
             document.getElementById('editing-route-name').innerText = `EDITANDO: ${currentlyEditingRoute.name}`;
             document.getElementById('add-stop-btn')?.classList.remove('hidden');
-            renderRouteStopsEditor();
+            // Asegurar que las escuelas esten cargadas para mostrar direcciones
+            if (!Array.isArray(allSchools) || allSchools.length === 0) {
+                loadSchools().then(() => renderRouteStopsEditor());
+            } else {
+                renderRouteStopsEditor();
+            }
             renderRouteTemplatesList();
+        }
+
+        function _findSchoolForStop(stopName) {
+            if (!Array.isArray(allSchools) || !stopName) return null;
+            const target = String(stopName).normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
+            // exact
+            let hit = allSchools.find(s => {
+                const n = String(s.name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
+                return n === target;
+            });
+            if (hit) return hit;
+            // fuzzy: same digits + similar prefix
+            const nums = (target.match(/\d+/g) || []);
+            if (nums.length) {
+                hit = allSchools.find(s => {
+                    const n = String(s.name||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toUpperCase().replace(/\s+/g,' ').trim();
+                    const sn = (n.match(/\d+/g)||[]);
+                    return sn.join() === nums.join() && n.replace(/[^A-Z]/g,'').slice(0,2) === target.replace(/[^A-Z]/g,'').slice(0,2);
+                });
+                if (hit) return hit;
+            }
+            return null;
         }
 
         function renderRouteStopsEditor() {
@@ -4438,33 +4670,57 @@
                     ${stops.map((s, idx) => {
                         const isControl = norm(s.name) === norm('REAL 14');
                         let labelText = 'Punto de Entrega';
-                        let displayContent = '';
+                        let orderBadge = '';
 
                         if (isControl) {
                             if (idx === 0) labelText = '<span class="text-indigo-600">Punto de Partida</span>';
                             else if (idx === totalStops - 1) labelText = '<span class="text-rose-600">Punto de Llegada</span>';
                             else labelText = '<span class="text-emerald-600">Punto de Control</span>';
-                            displayContent = '<i data-lucide="map-pin" class="w-3 h-3"></i>';
+                            orderBadge = '<i data-lucide="map-pin" class="w-4 h-4"></i>';
                         } else {
                             deliveryCount++;
-                            displayContent = deliveryCount;
+                            orderBadge = deliveryCount;
                         }
 
+                        const sch = _findSchoolForStop(s.name);
+                        const fullName = sch ? (sch.name || s.name) : s.name;
+                        const rawAddr = sch?.address || '';
+                        const addrClean = rawAddr.replace(/\s*·\s*Maps:\s*https?:\/\/\S+/i, '').trim();
+                        const hasCoords = sch && sch.latitude != null && sch.longitude != null;
+                        const gmaps = hasCoords
+                            ? `https://www.google.com/maps?q=${sch.latitude},${sch.longitude}`
+                            : (addrClean ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(addrClean)}` : '');
+                        const noMatch = !sch;
+
                         return `
-                        <div class="stop-item bg-white border border-[#E0E5F2] p-4 rounded-xl flex items-center gap-4 cursor-move hover:border-indigo-500 hover:shadow-sm transition-all group" data-name="${s.name}">
-                            <div class="w-8 h-8 rounded-lg bg-[#F8FAFF] flex items-center justify-center text-[10px] font-black text-[#A3AED0] group-hover:text-indigo-600 group-hover:bg-indigo-50 transition-all">
-                                <span class="group-hover:hidden flex items-center justify-center">${displayContent}</span>
-                                <i data-lucide="more-vertical" class="w-3 h-3 hidden group-hover:block"></i>
+                        <div class="stop-item bg-white border ${noMatch ? 'border-amber-300' : 'border-[#E0E5F2]'} p-4 rounded-xl flex items-center gap-4 hover:border-indigo-500 hover:shadow-md transition-all group" data-name="${s.name}">
+                            <div class="drag-handle cursor-grab active:cursor-grabbing w-8 h-10 rounded-lg bg-[#F8FAFF] flex items-center justify-center text-[#A3AED0] hover:bg-indigo-100 hover:text-indigo-600 transition-all" title="Arrastrá para reordenar">
+                                <i data-lucide="grip-vertical" class="w-4 h-4"></i>
+                            </div>
+                            <div class="w-10 h-10 rounded-full ${isControl ? 'bg-indigo-50 text-indigo-600' : 'bg-emerald-50 text-emerald-600'} flex items-center justify-center text-xs font-black">
+                                ${orderBadge}
                             </div>
                             <div class="flex-1 min-w-0">
-                                <div class="text-sm font-bold text-[#1B2559] truncate">${s.name}</div>
-                                <div class="text-[9px] text-[#A3AED0] uppercase font-black tracking-widest">
+                                <div class="flex items-center gap-2 flex-wrap">
+                                    <span class="text-sm font-black text-[#1B2559]">${s.name}</span>
+                                    ${sch && sch.name && sch.name !== s.name ? `<span class="text-[10px] text-[#A3AED0] font-bold">· ${sch.name}</span>` : ''}
+                                    ${noMatch ? '<span class="text-[9px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-black uppercase">Sin match</span>' : ''}
+                                </div>
+                                <div class="text-[11px] text-[#A3AED0] font-medium truncate mt-0.5">
+                                    ${addrClean ? ('📍 ' + addrClean) : (noMatch ? '<span class="italic">No se encontró la escuela en la base — cargá la dirección desde el módulo Escuelas</span>' : 'Sin dirección cargada')}
+                                </div>
+                                <div class="text-[9px] text-[#A3AED0] uppercase font-black tracking-widest mt-1">
                                     ${labelText}
                                 </div>
                             </div>
-                            <button onclick="event.stopPropagation(); removeStopFromRoute(${idx})" title="Quitar parada" class="w-8 h-8 rounded-lg bg-white border border-[#E0E5F2] hover:border-rose-500 hover:text-rose-600 flex items-center justify-center text-[#A3AED0] opacity-0 group-hover:opacity-100 transition-all">
-                                <i data-lucide="x" class="w-3 h-3"></i>
-                            </button>
+                            <div class="flex items-center gap-1 opacity-50 group-hover:opacity-100 transition-all">
+                                ${gmaps ? `<a href="${gmaps}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Abrir en Google Maps" class="w-9 h-9 rounded-lg bg-white border border-[#E0E5F2] hover:border-indigo-500 hover:text-indigo-600 flex items-center justify-center text-[#A3AED0] transition-all">
+                                    <i data-lucide="map" class="w-4 h-4"></i>
+                                </a>` : ''}
+                                <button onclick="event.stopPropagation(); removeStopFromRoute(${idx})" title="Quitar parada" class="w-9 h-9 rounded-lg bg-white border border-[#E0E5F2] hover:border-rose-500 hover:text-rose-600 flex items-center justify-center text-[#A3AED0] transition-all">
+                                    <i data-lucide="x" class="w-4 h-4"></i>
+                                </button>
+                            </div>
                         </div>
                         `;
                     }).join('')}
@@ -4473,7 +4729,10 @@
 
             new Sortable(document.getElementById('sortable-stops'), {
                 animation: 150,
-                ghostClass: 'bg-indigo-600/10',
+                handle: '.drag-handle',
+                ghostClass: 'opacity-40',
+                chosenClass: 'ring-2',
+                dragClass: 'shadow-2xl',
                 onEnd: () => {
                     const stopElements = document.querySelectorAll('#sortable-stops .stop-item');
                     currentlyEditingRoute.stops = Array.from(stopElements).map((el, idx) => ({
@@ -5765,10 +6024,56 @@
                         : ''
                 }
                 <select id="weekly-stops-add-${tripId}" onchange="weeklyStopsOnAdd(${tripId})" class="mt-3 w-full max-w-md bg-white border border-[#E0E5F2] rounded-xl px-3 py-2 text-sm font-bold text-[#2B3674]"></select>
+                <!-- Incidencias del viaje -->
+                <div id="weekly-incidents-${tripId}" class="mt-4 border-t border-[#F4F7FE] pt-3">
+                    <div class="flex items-center justify-between mb-2">
+                        <span class="text-[10px] font-black uppercase tracking-wider text-[#A3AED0]">⚠️ Incidencias reportadas</span>
+                        <span id="weekly-inc-count-${tripId}" class="text-[9px] font-black text-[#A3AED0]">cargando…</span>
+                    </div>
+                    <div id="weekly-inc-list-${tripId}" class="space-y-2 text-xs"></div>
+                </div>
             `;
             weeklyStopsBindDrag(tripId);
             weeklyStopsPopulateAddSelect(tripId);
+            loadWeeklyTripIncidents(tripId);
             if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+        }
+
+        async function loadWeeklyTripIncidents(tripId) {
+            const list = document.getElementById('weekly-inc-list-' + tripId);
+            const count = document.getElementById('weekly-inc-count-' + tripId);
+            if (!list) return;
+            try {
+                const res = await fetch(`${API_URL}/incidents?tripId=${tripId}`);
+                let incs = await res.json();
+                if (!Array.isArray(incs)) incs = [];
+                // Backend podría no filtrar por tripId; filtramos en front por seguridad
+                incs = incs.filter(i => String(i.tripId) === String(tripId));
+                if (count) count.innerText = `${incs.length} incidencia(s)`;
+                if (incs.length === 0) {
+                    list.innerHTML = '<p class="text-[11px] text-[#A3AED0] italic">Sin incidencias reportadas.</p>';
+                    return;
+                }
+                list.innerHTML = incs.map(i => {
+                    const dt = new Date(i.createdAt).toLocaleString('es-AR', { day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit' });
+                    const typeLabel = (typeof INCIDENT_TYPE_LABELS !== 'undefined' && INCIDENT_TYPE_LABELS[i.type]) || i.type || 'Incidencia';
+                    const photo = i.photoUrl ? `<img src="${i.photoUrl}" onclick="openIncidentPhoto && openIncidentPhoto('${i.photoUrl}')" class="w-20 h-20 rounded-lg object-cover cursor-pointer" title="Click para ampliar">` : '';
+                    return `
+                    <div class="flex gap-3 p-2 rounded-xl bg-rose-50 border border-rose-200">
+                        ${photo}
+                        <div class="flex-1 min-w-0">
+                            <div class="flex items-center gap-2 mb-0.5">
+                                <span class="text-[9px] font-black text-rose-700 uppercase tracking-wider">${typeLabel}</span>
+                                <span class="text-[9px] text-[#A3AED0]">${dt}</span>
+                            </div>
+                            <p class="text-xs font-bold text-[#1B2559] leading-snug">${(i.description || '').replace(/</g,'&lt;')}</p>
+                            ${i.driverName ? `<p class="text-[10px] text-[#A3AED0]">Reportado por ${i.driverName}</p>` : ''}
+                        </div>
+                    </div>`;
+                }).join('');
+            } catch (e) {
+                list.innerHTML = '<p class="text-[11px] text-rose-500">No se pudieron cargar las incidencias.</p>';
+            }
         }
 
         function renderPlanningTable(data) {
@@ -8262,15 +8567,25 @@
             const data = getMaintenanceData();
             data.vehicles = data.vehicles || {};
             data.records = data.records || {};
+            // Lista de ids que el usuario borró manualmente (para no reinyectarlos desde el seed)
+            let deletedSeedIds;
+            try { deletedSeedIds = new Set(JSON.parse(localStorage.getItem('r14.deletedSeedMaintenanceIds') || '[]')); }
+            catch { deletedSeedIds = new Set(); }
+
             Object.entries(EXCEL_MAINTENANCE_SEED.vehicles || {}).forEach(([plate, seedV]) => {
                 data.vehicles[plate] = { ...(seedV || {}), ...(data.vehicles[plate] || {}) };
             });
             Object.entries(EXCEL_MAINTENANCE_SEED.records || {}).forEach(([plate, seedRows]) => {
                 const current = data.records[plate] || [];
-                const byId = {};
-                current.forEach(r => { if (r && r.id) byId[r.id] = r; });
-                (seedRows || []).forEach(r => { if (r && r.id && !byId[r.id]) current.push(r); });
-                data.records[plate] = current;
+                // Si ya hay registros cargados desde la BD para esa patente, NO mezclar con el seed.
+                // El seed es solo para primer arranque (cuando la BD está vacía para esa patente).
+                if (current.length > 0) {
+                    data.records[plate] = current;
+                    return;
+                }
+                // Primera vez: agregar seed excepto los ids ya borrados por el usuario
+                const seeded = (seedRows || []).filter(r => r && r.id && !deletedSeedIds.has(r.id));
+                data.records[plate] = seeded;
             });
             setMaintenanceData(data);
         }
@@ -8782,6 +9097,14 @@
                     renderMaintenanceRecords();
                     addNotification('info', 'Eliminado', 'Reparación local eliminada correctamente.');
                 }
+                // Persistir el id borrado para evitar que el seed lo reinyecte al recargar
+                try {
+                    const deleted = JSON.parse(localStorage.getItem('r14.deletedSeedMaintenanceIds') || '[]');
+                    if (!deleted.includes(id)) {
+                        deleted.push(id);
+                        localStorage.setItem('r14.deletedSeedMaintenanceIds', JSON.stringify(deleted));
+                    }
+                } catch (_) {}
                 return;
             }
 
@@ -9705,6 +10028,26 @@
                     addNotification('success', 'Recorrido', `${verb} registrado correctamente.`);
                 }
                 await loadWeeklyData();
+
+                // Al iniciar, auto-cargar la traza del viaje sobre el mapa de Torre de Control
+                // así el operador no necesita apretar «Cargar traza detalle».
+                if (action === 'start' && data?.route?.id) {
+                    try {
+                        const routeId = String(data.route.id);
+                        const ctrl = document.getElementById('view-control');
+                        if (ctrl && !ctrl.classList.contains('hidden')) {
+                            await loadControlLiveData();
+                            const sel = document.getElementById('control-trail-route');
+                            if (sel) {
+                                // Esperar al próximo tick para que populate se complete
+                                setTimeout(async () => {
+                                    sel.value = routeId;
+                                    await loadControlTrailAndSummary();
+                                }, 500);
+                            }
+                        }
+                    } catch (_) { /* no crítico */ }
+                }
             } catch (e) {
                 alert(e.message || String(e));
             }
@@ -10102,10 +10445,19 @@
                             body: JSON.stringify(p)
                         })
                     ));
-                    const ok = results.filter(r => r.status === 'fulfilled' && r.value.ok).length;
+                    const fulfilled = results.filter(r => r.status === 'fulfilled' && r.value.ok);
+                    const ok = fulfilled.length;
                     if (ok === 0) throw new Error('No se pudo crear ningún viaje');
                     if (ok < payloads.length) {
                         if (typeof addNotification === 'function') addNotification('warning', 'Creación parcial', `Se crearon ${ok} de ${payloads.length} viajes.`);
+                    }
+                    // Auto-guardar paradas en cada viaje creado (evita paso extra con el chevron)
+                    if (Array.isArray(tripDeliveryRows) && tripDeliveryRows.length > 0) {
+                        const newTrips = await Promise.all(fulfilled.map(r => r.value.json().catch(() => null)));
+                        const savePromises = newTrips
+                            .filter(t => t && t.id != null)
+                            .map(t => saveTripDeliveryStops(t.id).catch(e => console.warn('saveTripDeliveryStops', t.id, e.message)));
+                        await Promise.allSettled(savePromises);
                     }
                 }
 
@@ -10441,10 +10793,11 @@
 
         async function addCatalogEntry() {
             const meta = catalogLabels[currentCatalogRole];
-            const fullName = (document.getElementById('catalog-new-fullname').value || '').trim();
+            // Normalizar a MAYÚSCULAS para que el caso no importe — siempre guardamos igual
+            const fullName = (document.getElementById('catalog-new-fullname').value || '').trim().toUpperCase();
             if (!fullName) return alert(`Nombre del ${meta.singular} es obligatorio`);
 
-            let username = fullName.toUpperCase();
+            let username = fullName;
             let password = '';
             if (meta.needsLogin) {
                 const usernameInput = (document.getElementById('catalog-new-username').value || '').trim();
@@ -10515,8 +10868,10 @@
         async function saveCatalogName(userId) {
             const input = document.querySelector(`.catalog-name-input[data-user-id="${userId}"]`);
             if (!input) return;
-            const fullName = (input.value || '').trim();
+            // Normalizar a MAYÚSCULAS para unificar con el resto del sistema
+            const fullName = (input.value || '').trim().toUpperCase();
             if (!fullName) return alert('El nombre no puede estar vacío');
+            input.value = fullName;
             try {
                 const res = await fetch(`${API_URL}/users/${userId}`, {
                     method: 'PATCH',

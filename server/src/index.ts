@@ -2823,12 +2823,28 @@ app.get('/api/v1/trips', async (req, res) => {
         tripIds.length > 0
             ? await prisma.route.findMany({
                   where: { tripId: { in: tripIds } },
-                  include: { driver: true }
+                  include: { driver: true, stops: { orderBy: { sequence: 'asc' } } }
               })
             : [];
     const routeByTripId = new Map<number, (typeof routesLinkedToTrips)[0]>();
     for (const r of routesLinkedToTrips) {
         if (r.tripId != null) routeByTripId.set(r.tripId, r);
+    }
+    // Si un viaje tiene Route con Stops (flujo operador actual) pero no tiene TripStops,
+    // exponemos esas paradas en `t.stops` para que Reportes pueda contar entregas reales.
+    for (const t of filteredTrips as any[]) {
+        const r = routeByTripId.get(t.id);
+        if (r?.stops?.length && (!t.stops || t.stops.length === 0)) {
+            t.stops = r.stops.map((s: any) => ({
+                id: s.id,
+                clientId: s.clientId,
+                sequence: s.sequence,
+                status: s.status || 'PENDING',
+                actualArrival: s.actualArrival,
+                actualDeparture: s.actualDeparture,
+                name: null
+            }));
+        }
     }
 
     if (minD && maxD) {
@@ -3143,6 +3159,23 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
                   ]
                 : [])
         ]);
+
+        // Notificar al chofer asignado y a cualquier listener global que las paradas cambiaron,
+        // así la app móvil y el Torre de Control refrescan sin intervención del usuario.
+        try {
+            if (route.driverId) {
+                io.to(`driver:${route.driverId}`).emit('route:updated', {
+                    routeId: route.id,
+                    tripId,
+                    type: 'stops_reordered',
+                    stopCount: clientIds.length
+                });
+            }
+            io.emit('route:updated', { routeId: route.id, tripId, type: 'stops_reordered' });
+            io.emit('trip:updated', { trip: { id: tripId } });
+        } catch (emitErr) {
+            console.warn('emit route:updated failed', emitErr);
+        }
 
         res.json({ routeId: route.id, stopCount: clientIds.length });
     } catch (e: any) {

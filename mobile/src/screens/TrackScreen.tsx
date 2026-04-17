@@ -386,6 +386,18 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         setRouteChangedToast(true);
         setTimeout(() => setRouteChangedToast(false), 3500);
       });
+      // Si cambia el viaje (status, horarios, chofer asignado, etc.), refrescar la ruta
+      socket.on('trip:updated', () => {
+        loadRoutes({ silent: true });
+      });
+      // Si el operador crea un viaje nuevo, refrescar por si me lo asignaron
+      socket.on('trip:created', () => {
+        loadRoutes({ silent: true });
+      });
+      // Si una parada cambió (otro dispositivo marca entrega), refrescar
+      socket.on('stop:updated', () => {
+        loadRoutes({ silent: true });
+      });
     } catch {
       /* socket.io-client no disponible en este build */
     }
