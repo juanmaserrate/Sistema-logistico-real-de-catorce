@@ -12,6 +12,8 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <script src="/vendor/markerclusterer.min.js"></script>
     <link rel="stylesheet" href="/css/planificacion.css">
     <script src="/js/r14-utils.js"></script>
@@ -120,6 +122,9 @@
                     </a>
                     <a href="#costs" id="btn-costs" class="header-nav-item">
                         <i data-lucide="bar-chart-3" class="w-4 h-4"></i> Motor de Costos
+                    </a>
+                    <a href="#budget" id="btn-budget" class="header-nav-item">
+                        <i data-lucide="calculator" class="w-4 h-4"></i> Presupuestar
                     </a>
                     <a href="#maintenance" id="btn-maintenance" class="header-nav-item">
                         <i data-lucide="settings" class="w-4 h-4"></i> Mantenimiento
@@ -818,105 +823,119 @@
                 </div>
             </div>
             <!-- VIEW: MAPA Y RUTEO (Google Maps) -->
-            <div id="view-vrp" class="hidden view-animate space-y-4">
+            <div id="view-vrp" class="hidden view-animate space-y-6">
                 <!-- PANEL DE DATOS (ARRIBA, ancho completo) -->
-                <div class="card-dark p-5">
-                    <div class="flex items-center justify-between mb-4">
-                        <h3 class="text-lg font-black text-[#1B2559] tracking-tight">Mapa y ruteo</h3>
-                        <button type="button" onclick="clearSelectedStops()" class="text-[10px] font-black text-rose-500 hover:text-rose-700 uppercase">Limpiar ruta</button>
-                    </div>
-                    <!-- 1. Cargar reparto (multi) -->
-                    <div class="grid grid-cols-1 md:grid-cols-12 gap-4 items-start">
-                        <div class="md:col-span-5">
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">1. Cargar reparto (plantilla)</label>
-                            <div class="flex gap-2 mb-2">
-                                <select id="vrp-template-select" class="flex-1 bg-[#F4F7FE] border-0 rounded-2xl p-3 text-sm font-bold text-[#1B2559] outline-none min-w-0">
-                                    <option value="">— Elegir reparto —</option>
-                                </select>
-                                <button type="button" onclick="loadVrpFromTemplate(document.getElementById('vrp-template-select').value)" class="shrink-0 px-4 py-3 rounded-2xl bg-indigo-600 text-white text-[10px] font-black uppercase hover:bg-indigo-700">Cargar</button>
-                                <button type="button" onclick="vrpAddTemplateLayer(document.getElementById('vrp-template-select').value)" class="shrink-0 px-4 py-3 rounded-2xl bg-emerald-600 text-white text-[10px] font-black uppercase hover:bg-emerald-700" title="Agregar este reparto como capa al mapa (sin reemplazar la ruta actual)">+ Capa</button>
-                            </div>
-                            <div id="vrp-layers-list" class="flex flex-wrap gap-1.5 mb-2"></div>
-                            <label class="flex items-start gap-2 cursor-pointer select-none">
-                                <input type="checkbox" id="vrp-solo-reparto-mapa" class="mt-0.5 rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500" onchange="updateVrpMarkersStatusDebounced()">
-                                <span class="text-[10px] font-bold text-[#2B3674] leading-snug">Solo escuelas del reparto</span>
-                            </label>
+                <div class="card-dark p-8">
+                    <div class="flex items-center justify-between mb-8 pb-6 border-b border-[#F4F7FE]">
+                        <div>
+                            <h3 class="text-2xl font-black text-[#1B2559] tracking-tight">Mapa y ruteo</h3>
+                            <p class="text-sm text-[#A3AED0] font-medium mt-1">Cargá un reparto, elegí el punto de partida y optimizá el recorrido.</p>
                         </div>
-                        <!-- 2. Punto de partida -->
-                        <div class="md:col-span-3">
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">2. Punto de partida</label>
-                            <select id="vrp-origin-select" onchange="updateOrigin()" class="w-full bg-[#F4F7FE] border-0 rounded-2xl p-3 text-sm font-bold text-[#1B2559] outline-none">
+                        <button type="button" onclick="clearSelectedStops()" class="text-xs font-black text-rose-500 hover:text-rose-700 uppercase tracking-widest px-4 py-3 rounded-xl hover:bg-rose-50">Limpiar ruta</button>
+                    </div>
+
+                    <!-- PASO 1: Cargar reparto -->
+                    <div class="mb-8">
+                        <label class="text-[11px] font-black text-[#A3AED0] uppercase mb-3 block tracking-widest">Paso 1 — Cargar reparto (plantilla)</label>
+                        <div class="flex flex-wrap gap-3 mb-3 items-stretch">
+                            <select id="vrp-template-select" class="flex-1 min-w-[320px] bg-[#F4F7FE] border-0 rounded-2xl p-4 text-sm font-bold text-[#1B2559] outline-none">
+                                <option value="">— Seleccionar reparto —</option>
+                            </select>
+                            <button type="button" onclick="loadVrpFromTemplate(document.getElementById('vrp-template-select').value)" class="px-6 py-4 rounded-2xl bg-indigo-600 text-white text-xs font-black uppercase tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-2">
+                                <i data-lucide="download" class="w-4 h-4"></i> Cargar
+                            </button>
+                            <button type="button" onclick="vrpAddTemplateLayer(document.getElementById('vrp-template-select').value)" class="px-6 py-4 rounded-2xl bg-emerald-600 text-white text-xs font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg shadow-emerald-200 flex items-center gap-2" title="Agregar como capa al mapa">
+                                <i data-lucide="layers" class="w-4 h-4"></i> + Capa
+                            </button>
+                        </div>
+                        <div id="vrp-layers-list" class="flex flex-wrap gap-2 mb-3"></div>
+                        <label class="flex items-center gap-2 cursor-pointer select-none">
+                            <input type="checkbox" id="vrp-solo-reparto-mapa" class="rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500" onchange="updateVrpMarkersStatusDebounced()">
+                            <span class="text-xs font-bold text-[#2B3674]">Mostrar en el mapa sólo las escuelas de este reparto</span>
+                        </label>
+                    </div>
+
+                    <!-- PASO 2 y 3: Partida + Buscar -->
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                        <div>
+                            <label class="text-[11px] font-black text-[#A3AED0] uppercase mb-3 block tracking-widest">Paso 2 — Punto de partida</label>
+                            <select id="vrp-origin-select" onchange="updateOrigin()" class="w-full bg-[#F4F7FE] border-0 rounded-2xl p-4 text-sm font-bold text-[#1B2559] outline-none">
                                 <option value="dep_1">Depósito Principal (Burzaco)</option>
                                 <option value="dep_2">Segundo Depósito (Lomas)</option>
                             </select>
                         </div>
-                        <!-- 3. Buscar escuela -->
-                        <div class="md:col-span-4">
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">3. Buscar escuela</label>
+                        <div>
+                            <label class="text-[11px] font-black text-[#A3AED0] uppercase mb-3 block tracking-widest">Paso 3 — Buscar escuela en el mapa</label>
                             <div class="flex gap-2">
-                                <input type="text" id="vrp-client-search" list="vrp-client-datalist" placeholder="Nombre, zona o dirección…" autocomplete="off" class="flex-1 bg-[#F4F7FE] border-0 rounded-2xl px-3 py-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500/25" onkeydown="if(event.key==='Enter'){event.preventDefault();vrpGoToSearchClient();}">
-                                <button type="button" onclick="vrpGoToSearchClient()" class="shrink-0 px-3 py-3 rounded-2xl bg-indigo-600 text-white text-[10px] font-black uppercase hover:bg-indigo-700">Ir</button>
+                                <input type="text" id="vrp-client-search" list="vrp-client-datalist" placeholder="Nombre, zona o dirección…" autocomplete="off" class="flex-1 bg-[#F4F7FE] border-0 rounded-2xl px-4 py-4 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500/25" onkeydown="if(event.key==='Enter'){event.preventDefault();vrpGoToSearchClient();}">
+                                <button type="button" onclick="vrpGoToSearchClient()" class="shrink-0 px-5 py-4 rounded-2xl bg-indigo-600 text-white text-xs font-black uppercase hover:bg-indigo-700">Ir</button>
                             </div>
                             <datalist id="vrp-client-datalist"></datalist>
-                            <label class="mt-2 flex items-center gap-2 cursor-pointer select-none">
+                            <label class="mt-3 flex items-center gap-2 cursor-pointer select-none">
                                 <input type="checkbox" id="vrp-zoom-on-select" class="rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500">
-                                <span class="text-[10px] font-bold text-[#2B3674]">Acercar al elegir</span>
+                                <span class="text-xs font-bold text-[#2B3674]">Acercar el mapa al elegir una escuela</span>
                             </label>
                         </div>
                     </div>
-                    <!-- 4. Filtros -->
-                    <div class="grid grid-cols-1 md:grid-cols-4 gap-3 mt-4">
-                        <select id="vrp-map-filter-zone" onchange="onVrpMapFilterZoneChange()" class="bg-[#F4F7FE] border-0 rounded-2xl p-3 text-xs font-bold text-[#1B2559] outline-none">
-                            <option value="">Todas las zonas</option>
-                        </select>
-                        <select id="vrp-map-filter-locality" onchange="onVrpMapFiltersChange()" class="bg-[#F4F7FE] border-0 rounded-2xl p-3 text-xs font-bold text-[#1B2559] outline-none">
-                            <option value="">Todas las localidades</option>
-                        </select>
-                        <select id="vrp-map-filter-bu" onchange="onVrpMapFiltersChange()" class="bg-[#F4F7FE] border-0 rounded-2xl p-3 text-xs font-bold text-[#1B2559] outline-none">
-                            <option value="">Todas las U.N.</option>
-                        </select>
-                        <input type="text" id="vrp-search-schools" oninput="filterVrpList()" placeholder="Filtrar escuelas…" class="bg-[#F4F7FE] border-0 rounded-2xl px-4 py-3 text-xs font-bold text-[#1B2559] outline-none">
+
+                    <!-- Filtros -->
+                    <div class="mb-8">
+                        <label class="text-[11px] font-black text-[#A3AED0] uppercase mb-3 block tracking-widest">Filtros del listado</label>
+                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                            <select id="vrp-map-filter-zone" onchange="onVrpMapFilterZoneChange()" class="bg-[#F4F7FE] border-0 rounded-2xl p-4 text-sm font-bold text-[#1B2559] outline-none">
+                                <option value="">Todas las zonas</option>
+                            </select>
+                            <select id="vrp-map-filter-locality" onchange="onVrpMapFiltersChange()" class="bg-[#F4F7FE] border-0 rounded-2xl p-4 text-sm font-bold text-[#1B2559] outline-none">
+                                <option value="">Todas las localidades</option>
+                            </select>
+                            <select id="vrp-map-filter-bu" onchange="onVrpMapFiltersChange()" class="bg-[#F4F7FE] border-0 rounded-2xl p-4 text-sm font-bold text-[#1B2559] outline-none">
+                                <option value="">Todas las U.N.</option>
+                            </select>
+                            <input type="text" id="vrp-search-schools" oninput="filterVrpList()" placeholder="Filtrar escuelas…" class="bg-[#F4F7FE] border-0 rounded-2xl px-4 py-4 text-sm font-bold text-[#1B2559] outline-none">
+                        </div>
                     </div>
-                    <!-- 5. Clientes en ruta + secuencia -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+
+                    <!-- Listados -->
+                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
                         <div>
-                            <div class="flex justify-between items-center mb-2">
-                                <span class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Clientes (<span id="vrp-selected-count">0</span> en ruta)</span>
+                            <div class="flex justify-between items-center mb-3">
+                                <span class="text-[11px] font-black text-[#A3AED0] uppercase tracking-widest">Escuelas (<span id="vrp-selected-count">0</span> en ruta)</span>
                             </div>
-                            <div id="vrp-schools-list" class="max-h-[170px] overflow-y-auto custom-scrollbar rounded-2xl border border-[#E8ECF8] bg-white/80 p-2 space-y-0.5"></div>
+                            <div id="vrp-schools-list" class="max-h-[320px] overflow-y-auto custom-scrollbar rounded-2xl border border-[#E8ECF8] bg-white/80 p-3 space-y-1"></div>
                         </div>
                         <div>
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Orden de paradas</label>
-                            <div class="flex items-center gap-2 mb-2">
-                                <button type="button" id="vrp-tour-prev" onclick="vrpRouteTourAdvance(-1)" disabled class="flex items-center justify-center w-10 h-10 rounded-xl bg-white border border-[#E0E5F2] text-[#1B2559] hover:bg-indigo-50 hover:border-indigo-200 disabled:opacity-40 disabled:pointer-events-none shrink-0">
+                            <label class="text-[11px] font-black text-[#A3AED0] uppercase mb-3 block tracking-widest">Orden de paradas</label>
+                            <div class="flex items-center gap-3 mb-3">
+                                <button type="button" id="vrp-tour-prev" onclick="vrpRouteTourAdvance(-1)" disabled class="flex items-center justify-center w-11 h-11 rounded-xl bg-white border border-[#E0E5F2] text-[#1B2559] hover:bg-indigo-50 hover:border-indigo-200 disabled:opacity-40 disabled:pointer-events-none shrink-0">
                                     <i data-lucide="chevron-left" class="w-5 h-5"></i>
                                 </button>
-                                <p id="vrp-route-tour-label" class="flex-1 min-w-[140px] text-center text-[11px] font-bold text-[#2B3674] leading-tight px-1">Sin paradas en la ruta</p>
-                                <button type="button" id="vrp-tour-next" onclick="vrpRouteTourAdvance(1)" disabled class="flex items-center justify-center w-10 h-10 rounded-xl bg-white border border-[#E0E5F2] text-[#1B2559] hover:bg-indigo-50 hover:border-indigo-200 disabled:opacity-40 disabled:pointer-events-none shrink-0">
+                                <p id="vrp-route-tour-label" class="flex-1 text-center text-xs font-bold text-[#2B3674] leading-tight px-2">Sin paradas en la ruta</p>
+                                <button type="button" id="vrp-tour-next" onclick="vrpRouteTourAdvance(1)" disabled class="flex items-center justify-center w-11 h-11 rounded-xl bg-white border border-[#E0E5F2] text-[#1B2559] hover:bg-indigo-50 hover:border-indigo-200 disabled:opacity-40 disabled:pointer-events-none shrink-0">
                                     <i data-lucide="chevron-right" class="w-5 h-5"></i>
                                 </button>
                             </div>
-                            <div id="vrp-selected-sequence" class="min-h-[100px] max-h-[170px] overflow-y-auto custom-scrollbar bg-[#F4F7FE]/60 rounded-2xl p-3 space-y-2 border border-dashed border-[#E0E5F2]">
-                                <div class="text-center py-6 text-[#A3AED0] text-xs font-medium italic">Cargá un reparto o seleccioná escuelas</div>
+                            <div id="vrp-selected-sequence" class="min-h-[280px] max-h-[320px] overflow-y-auto custom-scrollbar bg-[#F4F7FE]/60 rounded-2xl p-4 space-y-2 border border-dashed border-[#E0E5F2]">
+                                <div class="text-center py-16 text-[#A3AED0] text-sm font-medium italic">Cargá un reparto o seleccioná escuelas arriba</div>
                             </div>
                         </div>
                     </div>
-                    <!-- 6. Acciones + resumen -->
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-3 mt-4 items-stretch">
-                        <button type="button" onclick="runVrpOptimization()" id="vrp-btn-optimize" class="bg-indigo-600 py-3 rounded-2xl font-black text-[11px] text-white flex items-center justify-center gap-2 hover:bg-indigo-700 shadow-lg uppercase tracking-wide">
-                            <i data-lucide="zap" class="w-4 h-4"></i> Optimizar
+
+                    <!-- Acciones -->
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
+                        <button type="button" onclick="runVrpOptimization()" id="vrp-btn-optimize" class="bg-indigo-600 py-4 rounded-2xl font-black text-xs text-white flex items-center justify-center gap-2 hover:bg-indigo-700 shadow-lg shadow-indigo-200 uppercase tracking-widest">
+                            <i data-lucide="zap" class="w-5 h-5"></i> Optimizar
                         </button>
-                        <button type="button" onclick="runVrpOptimization({fixed:true})" id="vrp-btn-fixed" class="bg-[#11047A] py-3 rounded-2xl font-black text-[11px] text-white flex items-center justify-center gap-2 hover:bg-[#1e0a9e] shadow-lg uppercase tracking-wide">
-                            <i data-lucide="list-ordered" class="w-4 h-4"></i> Orden actual
+                        <button type="button" onclick="runVrpOptimization({fixed:true})" id="vrp-btn-fixed" class="bg-[#11047A] py-4 rounded-2xl font-black text-xs text-white flex items-center justify-center gap-2 hover:bg-[#1e0a9e] shadow-lg uppercase tracking-widest">
+                            <i data-lucide="list-ordered" class="w-5 h-5"></i> Orden actual
                         </button>
-                        <div id="vrp-route-summary" class="hidden rounded-2xl bg-[#1B2559] text-white p-3 flex items-center justify-around gap-3">
-                            <div><span class="text-[9px] text-white/60 uppercase">Distancia</span><p id="vrp-sum-km" class="text-sm font-black text-emerald-300">—</p></div>
-                            <div><span class="text-[9px] text-white/60 uppercase">Tiempo</span><p id="vrp-sum-time" class="text-sm font-black">—</p></div>
+                        <div id="vrp-route-summary" class="hidden rounded-2xl bg-[#1B2559] text-white p-4 flex items-center justify-around gap-4">
+                            <div class="text-center"><span class="text-[10px] text-white/60 uppercase tracking-widest">Distancia</span><p id="vrp-sum-km" class="text-lg font-black text-emerald-300 mt-1">—</p></div>
+                            <div class="text-center"><span class="text-[10px] text-white/60 uppercase tracking-widest">Tiempo</span><p id="vrp-sum-time" class="text-lg font-black mt-1">—</p></div>
                         </div>
                     </div>
-                    <div id="vrp-results" class="hidden border-t border-[#F4F7FE] pt-3 mt-3">
-                        <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-2">Detalle del recorrido</p>
-                        <div id="vrp-steps-list" class="text-sm space-y-1.5 max-h-[200px] overflow-y-auto custom-scrollbar"></div>
+                    <div id="vrp-results" class="hidden border-t border-[#F4F7FE] pt-5 mt-6">
+                        <p class="text-[11px] font-black text-[#A3AED0] uppercase tracking-widest mb-3">Detalle del recorrido</p>
+                        <div id="vrp-steps-list" class="text-sm space-y-2 max-h-[280px] overflow-y-auto custom-scrollbar"></div>
                     </div>
                 </div>
 
@@ -1552,6 +1571,281 @@
                             </tbody>
                         </table>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ═══ PRESUPUESTAR ═══ -->
+            <div id="view-budget" class="hidden view-animate space-y-6">
+                <!-- Header -->
+                <div class="card-dark p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div>
+                        <h3 class="text-2xl font-bold text-[#1B2559]">Presupuestar Viaje</h3>
+                        <p class="text-sm text-[#A3AED0] font-medium">Calculadora de costos + margen + impuestos. Todos los datos los ingresás a mano.</p>
+                    </div>
+                    <div class="flex items-center gap-3">
+                        <button onclick="budgetClearAll()" class="px-5 py-3 bg-white text-rose-600 border-2 border-rose-500 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-rose-50">Limpiar todo</button>
+                        <button onclick="budgetCalculate()" class="px-6 py-4 bg-indigo-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-2">
+                            <i data-lucide="calculator" class="w-4 h-4"></i> Calcular
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                    <!-- Columna izquierda: formulario -->
+                    <div class="xl:col-span-2 space-y-6">
+
+                        <!-- 1. PERSONAL -->
+                        <div class="card-dark p-6">
+                            <div class="flex items-center gap-3 mb-5">
+                                <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">1</div>
+                                <h4 class="text-lg font-bold text-[#1B2559]">Personal</h4>
+                            </div>
+
+                            <div class="mb-4">
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Chofer</label>
+                                <div class="grid grid-cols-1 md:grid-cols-4 gap-2">
+                                    <input id="bud-driver-name" type="text" placeholder="Nombre" class="bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                    <select id="bud-driver-type" class="bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                        <option value="MENSUAL">Sueldo mensual</option>
+                                        <option value="JORNAL">Jornal por día</option>
+                                    </select>
+                                    <input id="bud-driver-amount" type="number" placeholder="Monto $" class="bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                    <input id="bud-driver-viatico" type="number" placeholder="Viático $" class="bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                </div>
+                            </div>
+
+                            <div class="mb-4">
+                                <div class="flex justify-between items-center mb-2">
+                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Auxiliares</label>
+                                    <button onclick="budgetAddAux()" class="text-xs font-black text-indigo-600 hover:text-indigo-800">+ Agregar auxiliar</button>
+                                </div>
+                                <div id="bud-aux-list" class="space-y-2"></div>
+                            </div>
+
+                            <div class="grid grid-cols-2 gap-3 pt-3 border-t border-[#F4F7FE]">
+                                <div>
+                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Horas laborales del mes</label>
+                                    <input id="bud-month-hours" type="number" value="176" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Cargas sociales (%)</label>
+                                    <input id="bud-social-pct" type="number" value="30" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 2. CAMIÓN -->
+                        <div class="card-dark p-6">
+                            <div class="flex items-center gap-3 mb-5">
+                                <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">2</div>
+                                <h4 class="text-lg font-bold text-[#1B2559]">Camión</h4>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                <div>
+                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Valor nuevo $</label>
+                                    <input id="bud-truck-value" type="number" placeholder="50000000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Km vida útil</label>
+                                    <input id="bud-truck-life-km" type="number" placeholder="500000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Consumo L/100 km</label>
+                                    <input id="bud-consumption" type="number" placeholder="25" step="0.1" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                </div>
+                            </div>
+                            <label class="flex items-center gap-2 mt-3 cursor-pointer">
+                                <input id="bud-refrigerated" type="checkbox" class="rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500">
+                                <span class="text-xs font-bold text-[#2B3674]">Camión refrigerado (+15% combustible)</span>
+                            </label>
+
+                            <div class="mt-4 pt-3 border-t border-[#F4F7FE]">
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Gastos anuales del camión</label>
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+                                    <div>
+                                        <label class="text-[10px] font-bold text-[#A3AED0] mb-1 block">Cubiertas (set) $</label>
+                                        <input id="bud-tires-cost" type="number" placeholder="3000000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                        <label class="text-[9px] text-[#A3AED0] mt-1 block">Duración (km)</label>
+                                        <input id="bud-tires-km" type="number" placeholder="80000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-2 text-xs font-bold text-[#1B2559] mt-1">
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] font-bold text-[#A3AED0] mb-1 block">Mantenimiento/año $</label>
+                                        <input id="bud-maint-year" type="number" placeholder="3000000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                        <label class="text-[9px] text-[#A3AED0] mt-1 block">Km que hace al año</label>
+                                        <input id="bud-km-year" type="number" placeholder="60000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-2 text-xs font-bold text-[#1B2559] mt-1">
+                                    </div>
+                                    <div>
+                                        <label class="text-[10px] font-bold text-[#A3AED0] mb-1 block">Seguro+Pat+VTV $/mes</label>
+                                        <input id="bud-fixed-month" type="number" placeholder="150000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                        <label class="text-[9px] text-[#A3AED0] mt-1 block">Viajes promedio/mes</label>
+                                        <input id="bud-trips-month" type="number" value="22" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-2 text-xs font-bold text-[#1B2559] mt-1">
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 3. COMBUSTIBLE -->
+                        <div class="card-dark p-6">
+                            <div class="flex items-center gap-3 mb-5">
+                                <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">3</div>
+                                <h4 class="text-lg font-bold text-[#1B2559]">Combustible</h4>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Precio del litro $</label>
+                                    <input id="bud-fuel-price" type="number" placeholder="1200" step="0.01" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 4. PARADAS -->
+                        <div class="card-dark p-6">
+                            <div class="flex items-center gap-3 mb-5">
+                                <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">4</div>
+                                <h4 class="text-lg font-bold text-[#1B2559]">Paradas del viaje</h4>
+                            </div>
+                            <div class="mb-3">
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Origen</label>
+                                <input id="bud-origin" type="text" value="Ombú 1269, Burzaco, Buenos Aires" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                            </div>
+                            <div class="flex items-center justify-between mb-2">
+                                <span class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Paradas (<span id="bud-stops-count">0</span>)</span>
+                                <button onclick="budgetOpenStopModal()" class="text-xs font-black text-indigo-600 hover:text-indigo-800">+ Agregar parada</button>
+                            </div>
+                            <div id="bud-stops-list" class="space-y-2 min-h-[60px] border border-dashed border-[#E0E5F2] rounded-xl p-3">
+                                <div class="text-center text-xs text-[#A3AED0] italic py-4">Sin paradas. Clic en "+ Agregar parada".</div>
+                            </div>
+
+                            <div class="mt-4 grid grid-cols-2 gap-3">
+                                <button onclick="budgetCalculateRoute()" class="px-4 py-3 rounded-xl bg-white border-2 border-indigo-500 text-indigo-600 text-xs font-black uppercase tracking-widest hover:bg-indigo-50 flex items-center justify-center gap-2">
+                                    <i data-lucide="map" class="w-4 h-4"></i> Calcular km y tiempo
+                                </button>
+                                <button onclick="budgetOptimizeRoute()" class="px-4 py-3 rounded-xl bg-white border-2 border-emerald-500 text-emerald-600 text-xs font-black uppercase tracking-widest hover:bg-emerald-50 flex items-center justify-center gap-2">
+                                    <i data-lucide="zap" class="w-4 h-4"></i> Optimizar orden
+                                </button>
+                            </div>
+
+                            <div id="bud-route-metrics" class="hidden mt-4 p-3 rounded-xl bg-indigo-50 border border-indigo-100 flex justify-around text-center">
+                                <div>
+                                    <div class="text-[10px] font-black text-[#A3AED0] uppercase">Distancia</div>
+                                    <div id="bud-km" class="text-lg font-black text-indigo-700">0 km</div>
+                                </div>
+                                <div>
+                                    <div class="text-[10px] font-black text-[#A3AED0] uppercase">Tiempo</div>
+                                    <div id="bud-time" class="text-lg font-black text-indigo-700">0 min</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 5. FRECUENCIA + OFICINA -->
+                        <div class="card-dark p-6">
+                            <div class="flex items-center gap-3 mb-5">
+                                <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">5</div>
+                                <h4 class="text-lg font-bold text-[#1B2559]">Frecuencia y oficina</h4>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                <div>
+                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Frecuencia</label>
+                                    <select id="bud-frequency" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                        <option value="unico">Único (1.00)</option>
+                                        <option value="semanal1">Semanal 1 vez (1.00)</option>
+                                        <option value="semanal2">Semanal 2 veces (0.98)</option>
+                                        <option value="semanal3">Semanal 3-5 veces (0.95)</option>
+                                        <option value="diario">Diario (0.92)</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Overhead oficina (%)</label>
+                                    <input id="bud-overhead-pct" type="number" value="10" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- 6. GANANCIA + IMPUESTOS -->
+                        <div class="card-dark p-6">
+                            <div class="flex items-center gap-3 mb-5">
+                                <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">6</div>
+                                <h4 class="text-lg font-bold text-[#1B2559]">Ganancia e impuestos</h4>
+                            </div>
+                            <div class="mb-4">
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Ganancia deseada (%)</label>
+                                <input id="bud-margin-pct" type="number" value="25" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                            </div>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Impuestos (opcionales)</label>
+                            <div id="bud-tax-list" class="space-y-2">
+                                <div class="flex items-center gap-2 bg-[#F4F7FE] rounded-xl p-2">
+                                    <input type="checkbox" class="bud-tax-enabled rounded border-[#E0E5F2] text-indigo-600" checked>
+                                    <input type="text" value="IVA" class="bud-tax-name flex-1 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]">
+                                    <input type="number" value="21" class="bud-tax-pct w-20 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559] text-right">
+                                    <span class="text-xs font-black text-[#A3AED0]">%</span>
+                                </div>
+                                <div class="flex items-center gap-2 bg-[#F4F7FE] rounded-xl p-2">
+                                    <input type="checkbox" class="bud-tax-enabled rounded border-[#E0E5F2] text-indigo-600" checked>
+                                    <input type="text" value="Ingresos Brutos" class="bud-tax-name flex-1 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]">
+                                    <input type="number" value="3" class="bud-tax-pct w-20 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559] text-right">
+                                    <span class="text-xs font-black text-[#A3AED0]">%</span>
+                                </div>
+                                <div class="flex items-center gap-2 bg-[#F4F7FE] rounded-xl p-2">
+                                    <input type="checkbox" class="bud-tax-enabled rounded border-[#E0E5F2] text-indigo-600">
+                                    <input type="text" value="Ganancias" class="bud-tax-name flex-1 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]">
+                                    <input type="number" value="0" class="bud-tax-pct w-20 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559] text-right">
+                                    <span class="text-xs font-black text-[#A3AED0]">%</span>
+                                </div>
+                            </div>
+                            <button onclick="budgetAddTax()" class="mt-2 text-xs font-black text-indigo-600 hover:text-indigo-800">+ Agregar impuesto</button>
+                        </div>
+                    </div>
+
+                    <!-- Columna derecha: resultado -->
+                    <div class="xl:col-span-1">
+                        <div class="card-dark p-6 sticky top-6">
+                            <h4 class="text-lg font-bold text-[#1B2559] mb-4 flex items-center gap-2">
+                                <i data-lucide="receipt" class="w-5 h-5 text-indigo-600"></i> Resultado
+                            </h4>
+                            <div id="bud-result" class="text-sm text-[#2B3674]">
+                                <div class="text-center text-[#A3AED0] italic py-10">
+                                    Completá los datos y apretá <b>Calcular</b> para ver el presupuesto.
+                                </div>
+                            </div>
+                            <div id="bud-result-actions" class="hidden mt-5 space-y-2">
+                                <input id="bud-client-name" type="text" placeholder="Nombre del cliente (opcional)" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                <button onclick="budgetExportPresupuestoPDF()" class="w-full px-4 py-3 rounded-xl bg-indigo-600 text-white text-xs font-black uppercase tracking-widest hover:bg-indigo-700 flex items-center justify-center gap-2">
+                                    <i data-lucide="file-down" class="w-4 h-4"></i> Exportar presupuesto PDF
+                                </button>
+                                <button onclick="budgetExportCuentaPDF()" class="w-full px-4 py-3 rounded-xl bg-white border-2 border-emerald-500 text-emerald-600 text-xs font-black uppercase tracking-widest hover:bg-emerald-50 flex items-center justify-center gap-2">
+                                    <i data-lucide="sigma" class="w-4 h-4"></i> Exportar cuenta PDF
+                                </button>
+                                <button onclick="budgetSave()" class="w-full px-4 py-3 rounded-xl bg-white border-2 border-indigo-500 text-indigo-600 text-xs font-black uppercase tracking-widest hover:bg-indigo-50 flex items-center justify-center gap-2">
+                                    <i data-lucide="save" class="w-4 h-4"></i> Guardar presupuesto
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Presupuestos guardados -->
+                        <div id="bud-saved-list-wrap" class="card-dark p-6 mt-4 hidden">
+                            <h4 class="text-sm font-bold text-[#1B2559] mb-3">Presupuestos guardados</h4>
+                            <div id="bud-saved-list" class="space-y-2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL: Agregar parada al presupuesto -->
+            <div id="bud-stop-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                <div class="bg-white rounded-3xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col">
+                    <div class="p-5 border-b border-[#F4F7FE] flex items-center justify-between">
+                        <h4 class="text-lg font-bold text-[#1B2559]">Agregar parada</h4>
+                        <button onclick="budgetCloseStopModal()" class="text-[#A3AED0] hover:text-[#1B2559]"><i data-lucide="x" class="w-5 h-5"></i></button>
+                    </div>
+                    <div class="p-5 space-y-3">
+                        <label class="text-[10px] font-black text-[#A3AED0] uppercase block tracking-widest">Escribí nombre de escuela o dirección</label>
+                        <input id="bud-stop-search" type="text" placeholder="Ej: ES.30 - Río Limay 1062, Burzaco" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]" oninput="budgetStopSearch()">
+                        <div id="bud-stop-suggestions" class="max-h-[240px] overflow-y-auto custom-scrollbar space-y-1"></div>
+                    </div>
+                    <div class="p-4 border-t border-[#F4F7FE] flex justify-end gap-2">
+                        <button onclick="budgetCloseStopModal()" class="px-4 py-2 rounded-xl text-sm font-bold text-[#A3AED0] hover:text-[#1B2559]">Cancelar</button>
+                        <button onclick="budgetAddStopFromInput()" class="px-5 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">Agregar como dirección libre</button>
                     </div>
                 </div>
             </div>
@@ -2580,6 +2874,7 @@
             if(id === 'routes') loadRouteTemplates();
             if(id === 'users') { loadUsers(); renderProfileAssignments(); }
             if(id === 'reports') initReportFilters();
+            if(id === 'budget') { budgetInit(); }
             if(id === 'incidents') loadIncidents();
             if(id === 'audit') loadAuditLog();
         }
@@ -4926,6 +5221,764 @@
             } catch(e) {
                 addNotification('critical', 'Error de red', 'No se pudo completar la eliminación');
             }
+        }
+
+        // ═════════════════════════════════════════════════════════════════════
+        // MÓDULO PRESUPUESTAR
+        // Calcula costo + margen + impuestos para un viaje con paradas.
+        // Integra Google Maps para geocodificar paradas y calcular km/tiempo.
+        // Exporta dos PDFs: presupuesto formal (para el cliente) y cuenta paso a paso.
+        // ═════════════════════════════════════════════════════════════════════
+        let budgetState = {
+            auxiliares: [],         // [{nombre, tipo: 'MENSUAL'|'JORNAL', monto, viatico}]
+            stops: [],              // [{name, address, lat, lng, placeId}]
+            routeKm: 0,             // km totales calculados por Google Directions
+            routeMinutes: 0,        // tiempo total en minutos
+            lastCalc: null,         // objeto con el último cálculo (para los PDFs)
+        };
+
+        const BUD_KEY = 'r14_budgets_saved';
+        const BUD_DEFAULT_KEY = 'r14_budget_defaults';
+
+        function budgetInit() {
+            if (!window.__budgetInitialized) {
+                budgetLoadDefaults();
+                budgetLoadSavedList();
+                window.__budgetInitialized = true;
+            }
+            budgetRenderAuxList();
+            budgetRenderStopsList();
+            lucide.createIcons();
+        }
+
+        function budgetLoadDefaults() {
+            try {
+                const raw = localStorage.getItem(BUD_DEFAULT_KEY);
+                if (!raw) return;
+                const d = JSON.parse(raw);
+                Object.entries(d).forEach(([id, val]) => {
+                    const el = document.getElementById(id);
+                    if (el) el.value = val;
+                });
+            } catch {}
+        }
+
+        function budgetSaveDefaults() {
+            const ids = ['bud-driver-name','bud-driver-type','bud-driver-amount','bud-driver-viatico',
+                         'bud-month-hours','bud-social-pct','bud-truck-value','bud-truck-life-km',
+                         'bud-consumption','bud-tires-cost','bud-tires-km','bud-maint-year',
+                         'bud-km-year','bud-fixed-month','bud-trips-month','bud-fuel-price',
+                         'bud-overhead-pct','bud-margin-pct'];
+            const obj = {};
+            ids.forEach(id => { const el = document.getElementById(id); if (el) obj[id] = el.value; });
+            try { localStorage.setItem(BUD_DEFAULT_KEY, JSON.stringify(obj)); } catch {}
+        }
+
+        function budgetAddAux() {
+            budgetState.auxiliares.push({ nombre:'', tipo:'MENSUAL', monto:0, viatico:0 });
+            budgetRenderAuxList();
+        }
+
+        function budgetRemoveAux(idx) {
+            budgetState.auxiliares.splice(idx, 1);
+            budgetRenderAuxList();
+        }
+
+        function budgetRenderAuxList() {
+            const list = document.getElementById('bud-aux-list');
+            if (!list) return;
+            if (budgetState.auxiliares.length === 0) {
+                list.innerHTML = '<div class="text-xs text-[#A3AED0] italic">Sin auxiliares.</div>';
+                return;
+            }
+            list.innerHTML = budgetState.auxiliares.map((a, i) => `
+                <div class="grid grid-cols-1 md:grid-cols-5 gap-2 items-center">
+                    <input type="text" value="${escapeHtml(a.nombre)}" placeholder="Nombre" onchange="budgetState.auxiliares[${i}].nombre=this.value"
+                           class="bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                    <select onchange="budgetState.auxiliares[${i}].tipo=this.value" class="bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                        <option value="MENSUAL" ${a.tipo==='MENSUAL'?'selected':''}>Sueldo mensual</option>
+                        <option value="JORNAL" ${a.tipo==='JORNAL'?'selected':''}>Jornal por día</option>
+                    </select>
+                    <input type="number" value="${a.monto||''}" placeholder="Monto $" onchange="budgetState.auxiliares[${i}].monto=Number(this.value)"
+                           class="bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                    <input type="number" value="${a.viatico||''}" placeholder="Viático $" onchange="budgetState.auxiliares[${i}].viatico=Number(this.value)"
+                           class="bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                    <button onclick="budgetRemoveAux(${i})" class="px-3 py-2 rounded-xl bg-rose-50 text-rose-600 text-xs font-black hover:bg-rose-100">Quitar</button>
+                </div>
+            `).join('');
+        }
+
+        function budgetAddTax() {
+            const list = document.getElementById('bud-tax-list');
+            const div = document.createElement('div');
+            div.className = 'flex items-center gap-2 bg-[#F4F7FE] rounded-xl p-2';
+            div.innerHTML = `
+                <input type="checkbox" class="bud-tax-enabled rounded border-[#E0E5F2] text-indigo-600" checked>
+                <input type="text" placeholder="Nombre" class="bud-tax-name flex-1 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]">
+                <input type="number" placeholder="%" class="bud-tax-pct w-20 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559] text-right">
+                <span class="text-xs font-black text-[#A3AED0]">%</span>
+                <button onclick="this.parentElement.remove()" class="text-rose-500 hover:text-rose-700 px-2">✕</button>
+            `;
+            list.appendChild(div);
+        }
+
+        // ── PARADAS ────────────────────────────────────────────────────────
+        function budgetRenderStopsList() {
+            const list = document.getElementById('bud-stops-list');
+            const counter = document.getElementById('bud-stops-count');
+            if (counter) counter.textContent = budgetState.stops.length;
+            if (!list) return;
+            if (budgetState.stops.length === 0) {
+                list.innerHTML = '<div class="text-center text-xs text-[#A3AED0] italic py-4">Sin paradas. Clic en "+ Agregar parada".</div>';
+                return;
+            }
+            list.innerHTML = budgetState.stops.map((s, i) => `
+                <div class="flex items-center gap-3 bg-white border border-[#E0E5F2] rounded-xl p-3">
+                    <i data-lucide="grip-vertical" class="w-4 h-4 text-[#A3AED0] cursor-grab"></i>
+                    <span class="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-black">${i+1}</span>
+                    <div class="flex-1 min-w-0">
+                        <div class="text-sm font-bold text-[#1B2559] truncate">${escapeHtml(s.name)}</div>
+                        <div class="text-[11px] text-[#A3AED0] truncate">${escapeHtml(s.address || '')}</div>
+                    </div>
+                    <button onclick="budgetRemoveStop(${i})" class="text-rose-500 hover:text-rose-700 px-2">✕</button>
+                </div>
+            `).join('');
+            // Sortable drag-and-drop
+            if (window.Sortable) {
+                new Sortable(list, {
+                    animation: 150,
+                    handle: '[data-lucide="grip-vertical"]',
+                    onEnd: (evt) => {
+                        const [moved] = budgetState.stops.splice(evt.oldIndex, 1);
+                        budgetState.stops.splice(evt.newIndex, 0, moved);
+                        budgetRenderStopsList();
+                    }
+                });
+            }
+            lucide.createIcons();
+        }
+
+        function budgetRemoveStop(idx) {
+            budgetState.stops.splice(idx, 1);
+            budgetState.routeKm = 0;
+            budgetState.routeMinutes = 0;
+            document.getElementById('bud-route-metrics')?.classList.add('hidden');
+            budgetRenderStopsList();
+        }
+
+        function budgetOpenStopModal() {
+            document.getElementById('bud-stop-modal').classList.remove('hidden');
+            document.getElementById('bud-stop-search').value = '';
+            document.getElementById('bud-stop-suggestions').innerHTML = '';
+            setTimeout(() => document.getElementById('bud-stop-search')?.focus(), 50);
+            lucide.createIcons();
+        }
+
+        function budgetCloseStopModal() {
+            document.getElementById('bud-stop-modal').classList.add('hidden');
+        }
+
+        let budStopSearchTimer = null;
+        function budgetStopSearch() {
+            const q = (document.getElementById('bud-stop-search').value || '').trim().toLowerCase();
+            const container = document.getElementById('bud-stop-suggestions');
+            if (!q || q.length < 2) { container.innerHTML = ''; return; }
+            // Buscar en catálogo de escuelas (allSchools)
+            const list = Array.isArray(allSchools) ? allSchools : [];
+            const matches = list.filter(s => {
+                const n = (s.name || '').toLowerCase();
+                const a = (s.address || '').toLowerCase();
+                return n.includes(q) || a.includes(q);
+            }).slice(0, 20);
+            if (matches.length === 0) {
+                container.innerHTML = '<div class="text-xs text-[#A3AED0] italic p-3 text-center">No hay coincidencias en el catálogo. Apretá "Agregar como dirección libre" para usar el texto tipeado.</div>';
+                return;
+            }
+            container.innerHTML = matches.map((s, i) => `
+                <button type="button" onclick="budgetSelectStop(${i})" class="w-full text-left p-3 rounded-xl bg-[#F4F7FE] hover:bg-indigo-50 border border-transparent hover:border-indigo-200">
+                    <div class="text-sm font-bold text-[#1B2559]">${escapeHtml(s.name || '')}</div>
+                    <div class="text-[11px] text-[#A3AED0] truncate">${escapeHtml(s.address || 'Sin dirección')}</div>
+                </button>
+            `).join('');
+            // Guardamos la lista filtrada para el callback
+            window.__budStopMatches = matches;
+        }
+
+        function budgetSelectStop(idx) {
+            const s = window.__budStopMatches?.[idx];
+            if (!s) return;
+            budgetState.stops.push({
+                name: s.name,
+                address: (s.address || '').replace(/\s*·\s*Maps:.*$/i, '').trim(),
+                lat: s.latitude,
+                lng: s.longitude,
+            });
+            budgetCloseStopModal();
+            budgetRenderStopsList();
+        }
+
+        function budgetAddStopFromInput() {
+            const txt = (document.getElementById('bud-stop-search').value || '').trim();
+            if (!txt) return;
+            budgetState.stops.push({ name: txt, address: txt, lat: null, lng: null });
+            budgetCloseStopModal();
+            budgetRenderStopsList();
+        }
+
+        // ── Calcular ruta con Google Directions ────────────────────────────
+        async function budgetCalculateRoute() {
+            if (budgetState.stops.length === 0) {
+                addNotification('warning', 'Sin paradas', 'Agregá al menos una parada.');
+                return;
+            }
+            const origin = (document.getElementById('bud-origin').value || '').trim();
+            if (!origin) {
+                addNotification('warning', 'Sin origen', 'Ingresá la dirección de origen.');
+                return;
+            }
+            // Geocodificar paradas que no tengan coords
+            if (!window.google?.maps) {
+                addNotification('warning', 'Google Maps', 'Google Maps no está cargado todavía. Esperá unos segundos y reintentá.');
+                return;
+            }
+            const geocoder = new google.maps.Geocoder();
+            async function geocode(addr) {
+                return new Promise((resolve) => {
+                    geocoder.geocode({ address: addr, region: 'AR' }, (res, status) => {
+                        if (status === 'OK' && res && res[0]) {
+                            const p = res[0].geometry.location;
+                            resolve({ lat: p.lat(), lng: p.lng(), formatted: res[0].formatted_address });
+                        } else {
+                            resolve(null);
+                        }
+                    });
+                });
+            }
+            for (const s of budgetState.stops) {
+                if (!s.lat || !s.lng) {
+                    const g = await geocode(s.address || s.name);
+                    if (g) { s.lat = g.lat; s.lng = g.lng; s.address = s.address || g.formatted; }
+                }
+            }
+            const originGeo = await geocode(origin);
+            if (!originGeo) {
+                addNotification('warning', 'Origen no encontrado', 'No se pudo geocodificar la dirección de origen.');
+                return;
+            }
+            // Directions Service
+            const ds = new google.maps.DirectionsService();
+            const waypoints = budgetState.stops.slice(0, -1).map(s => ({
+                location: new google.maps.LatLng(s.lat, s.lng),
+                stopover: true,
+            }));
+            const dest = budgetState.stops[budgetState.stops.length - 1];
+            try {
+                const result = await new Promise((resolve, reject) => {
+                    ds.route({
+                        origin: { lat: originGeo.lat, lng: originGeo.lng },
+                        destination: { lat: dest.lat, lng: dest.lng },
+                        waypoints,
+                        optimizeWaypoints: false,
+                        travelMode: google.maps.TravelMode.DRIVING,
+                    }, (res, status) => {
+                        if (status === 'OK') resolve(res); else reject(status);
+                    });
+                });
+                const legs = result.routes[0].legs;
+                const totalMeters = legs.reduce((a, l) => a + l.distance.value, 0);
+                const totalSeconds = legs.reduce((a, l) => a + l.duration.value, 0);
+                // Sumar el regreso al origen
+                const returnLeg = await new Promise((resolve, reject) => {
+                    ds.route({
+                        origin: { lat: dest.lat, lng: dest.lng },
+                        destination: { lat: originGeo.lat, lng: originGeo.lng },
+                        travelMode: google.maps.TravelMode.DRIVING,
+                    }, (res, status) => { if (status === 'OK') resolve(res.routes[0].legs[0]); else resolve(null); });
+                });
+                const retMeters = returnLeg?.distance?.value || 0;
+                const retSeconds = returnLeg?.duration?.value || 0;
+                budgetState.routeKm = (totalMeters + retMeters) / 1000;
+                budgetState.routeMinutes = Math.round((totalSeconds + retSeconds) / 60);
+                document.getElementById('bud-km').textContent = budgetState.routeKm.toFixed(1) + ' km';
+                document.getElementById('bud-time').textContent = budgetState.routeMinutes + ' min (' + (budgetState.routeMinutes/60).toFixed(1) + ' h)';
+                document.getElementById('bud-route-metrics').classList.remove('hidden');
+            } catch (e) {
+                console.error('Directions error', e);
+                addNotification('warning', 'No se pudo calcular la ruta', 'Error de Google Directions.');
+            }
+        }
+
+        async function budgetOptimizeRoute() {
+            if (budgetState.stops.length < 2) {
+                addNotification('warning', 'Pocas paradas', 'Necesitás al menos 2 paradas para optimizar.');
+                return;
+            }
+            if (!window.google?.maps) return;
+            const origin = (document.getElementById('bud-origin').value || '').trim();
+            const geocoder = new google.maps.Geocoder();
+            function geocode(addr) {
+                return new Promise((res) => geocoder.geocode({ address: addr, region: 'AR' }, (r, s) =>
+                    s === 'OK' && r[0] ? res({ lat: r[0].geometry.location.lat(), lng: r[0].geometry.location.lng() }) : res(null)));
+            }
+            for (const s of budgetState.stops) {
+                if (!s.lat) { const g = await geocode(s.address || s.name); if (g) { s.lat = g.lat; s.lng = g.lng; } }
+            }
+            const originGeo = await geocode(origin);
+            if (!originGeo) return;
+            const ds = new google.maps.DirectionsService();
+            const result = await new Promise((res, rej) => ds.route({
+                origin: originGeo,
+                destination: originGeo,
+                waypoints: budgetState.stops.map(s => ({ location: new google.maps.LatLng(s.lat, s.lng), stopover: true })),
+                optimizeWaypoints: true,
+                travelMode: google.maps.TravelMode.DRIVING,
+            }, (r, st) => st === 'OK' ? res(r) : rej(st)));
+            const order = result.routes[0].waypoint_order;
+            budgetState.stops = order.map(i => budgetState.stops[i]);
+            budgetRenderStopsList();
+            await budgetCalculateRoute();
+            addNotification('success', 'Ruta optimizada', 'El orden de las paradas se ajustó.');
+        }
+
+        // ── CÁLCULO ────────────────────────────────────────────────────────
+        function budgetGetTaxes() {
+            const rows = document.querySelectorAll('#bud-tax-list > div');
+            const out = [];
+            rows.forEach(r => {
+                const enabled = r.querySelector('.bud-tax-enabled')?.checked;
+                const name = (r.querySelector('.bud-tax-name')?.value || '').trim();
+                const pct = Number(r.querySelector('.bud-tax-pct')?.value || 0);
+                if (enabled && name && pct > 0) out.push({ name, pct });
+            });
+            return out;
+        }
+
+        function budgetCalculate() {
+            const km = budgetState.routeKm || 0;
+            const hours = (budgetState.routeMinutes || 0) / 60;
+            if (km <= 0 || hours <= 0) {
+                addNotification('warning', 'Falta calcular la ruta', 'Apretá "Calcular km y tiempo" primero.');
+                return;
+            }
+            const monthHours = Number(document.getElementById('bud-month-hours').value) || 176;
+            const socialPct = Number(document.getElementById('bud-social-pct').value) || 0;
+
+            // 1. PERSONAL
+            function personCost(tipo, monto, viatico) {
+                const m = Number(monto) || 0;
+                const v = Number(viatico) || 0;
+                if (tipo === 'JORNAL') return m + v;
+                return (m * (1 + socialPct/100) / monthHours) * hours + v;
+            }
+            const driver = {
+                nombre: document.getElementById('bud-driver-name').value || 'Chofer',
+                tipo: document.getElementById('bud-driver-type').value,
+                monto: Number(document.getElementById('bud-driver-amount').value) || 0,
+                viatico: Number(document.getElementById('bud-driver-viatico').value) || 0,
+            };
+            const driverCost = personCost(driver.tipo, driver.monto, driver.viatico);
+            const auxCosts = budgetState.auxiliares.map(a => ({
+                ...a, costo: personCost(a.tipo, a.monto, a.viatico)
+            }));
+            const personalTotal = driverCost + auxCosts.reduce((a, x) => a + x.costo, 0);
+
+            // 2. CAMIÓN
+            const truckValue = Number(document.getElementById('bud-truck-value').value) || 0;
+            const truckLifeKm = Number(document.getElementById('bud-truck-life-km').value) || 500000;
+            const tiresCost = Number(document.getElementById('bud-tires-cost').value) || 0;
+            const tiresKm = Number(document.getElementById('bud-tires-km').value) || 80000;
+            const maintYear = Number(document.getElementById('bud-maint-year').value) || 0;
+            const kmYear = Number(document.getElementById('bud-km-year').value) || 60000;
+            const fixedMonth = Number(document.getElementById('bud-fixed-month').value) || 0;
+            const tripsMonth = Number(document.getElementById('bud-trips-month').value) || 22;
+
+            const depreciation = (truckValue / truckLifeKm) * km;
+            const tires = (tiresCost / tiresKm) * km;
+            const maintenance = (maintYear / kmYear) * km;
+            const fixedPerTrip = fixedMonth / Math.max(tripsMonth, 1);
+            const vehicleTotal = depreciation + tires + maintenance + fixedPerTrip;
+
+            // 3. COMBUSTIBLE
+            const consumption = Number(document.getElementById('bud-consumption').value) || 25;
+            const fuelPrice = Number(document.getElementById('bud-fuel-price').value) || 0;
+            const refrigerated = document.getElementById('bud-refrigerated').checked;
+            const fuelTotal = km * (consumption / 100) * fuelPrice * (refrigerated ? 1.15 : 1);
+
+            // 4. OFICINA (overhead)
+            const overheadPct = Number(document.getElementById('bud-overhead-pct').value) || 0;
+            const subCostDirect = personalTotal + vehicleTotal + fuelTotal;
+            const overhead = subCostDirect * (overheadPct / 100);
+
+            // 5. FRECUENCIA
+            const freqMap = { unico: 1, semanal1: 1, semanal2: 0.98, semanal3: 0.95, diario: 0.92 };
+            const freqKey = document.getElementById('bud-frequency').value;
+            const freqFactor = freqMap[freqKey] ?? 1;
+
+            const costoTotal = (subCostDirect + overhead) * freqFactor;
+
+            // 6. GANANCIA + IMPUESTOS
+            const marginPct = Number(document.getElementById('bud-margin-pct').value) || 0;
+            const margin = costoTotal * (marginPct / 100);
+            const subtotal = costoTotal + margin;
+            const taxes = budgetGetTaxes().map(t => ({ ...t, monto: subtotal * (t.pct/100) }));
+            const taxesTotal = taxes.reduce((a, t) => a + t.monto, 0);
+            const precioFinal = subtotal + taxesTotal;
+
+            budgetState.lastCalc = {
+                driver, driverCost, auxCosts,
+                personalTotal, vehicleTotal, fuelTotal, overhead, freqFactor, freqKey,
+                costoTotal, marginPct, margin, subtotal, taxes, taxesTotal, precioFinal,
+                km, hours, refrigerated,
+                socialPct, consumption, fuelPrice,
+                depreciation, tires, maintenance, fixedPerTrip, overheadPct,
+                stops: [...budgetState.stops],
+                origin: document.getElementById('bud-origin').value,
+                fecha: new Date().toLocaleDateString('es-AR'),
+            };
+            budgetRenderResult();
+            budgetSaveDefaults();
+        }
+
+        function budgetRenderResult() {
+            const c = budgetState.lastCalc;
+            if (!c) return;
+            const money = (n) => '$ ' + n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+            const pct = (a, tot) => tot > 0 ? Math.round(a/tot*100) : 0;
+            const container = document.getElementById('bud-result');
+            let html = `
+                <div class="text-[10px] font-black text-[#A3AED0] uppercase mb-1">Desglose del costo</div>
+                <div class="space-y-1 text-xs">
+                    <div class="flex justify-between"><span>🧑 Gente</span><span class="font-bold">${money(c.personalTotal)}</span></div>
+                    <div class="flex justify-between"><span>🚚 Camión</span><span class="font-bold">${money(c.vehicleTotal)}</span></div>
+                    <div class="flex justify-between"><span>⛽ Combustible</span><span class="font-bold">${money(c.fuelTotal)}</span></div>
+                    <div class="flex justify-between"><span>📎 Oficina (${c.overheadPct}%)</span><span class="font-bold">${money(c.overhead)}</span></div>
+                </div>
+                <div class="border-t-2 border-[#E0E5F2] my-3"></div>
+                <div class="flex justify-between text-sm font-black text-[#1B2559] mb-3">
+                    <span>Costo${c.freqFactor!==1?` (×${c.freqFactor})`:''}</span><span>${money(c.costoTotal)}</span>
+                </div>
+                <div class="space-y-1 text-xs text-emerald-700">
+                    <div class="flex justify-between"><span>+ Ganancia ${c.marginPct}%</span><span class="font-bold">${money(c.margin)}</span></div>
+                </div>
+                <div class="border-t border-[#E0E5F2] my-2"></div>
+                <div class="flex justify-between text-xs font-bold text-[#1B2559] mb-2">
+                    <span>Subtotal</span><span>${money(c.subtotal)}</span>
+                </div>
+                <div class="space-y-1 text-xs text-amber-700">
+                    ${c.taxes.map(t => `<div class="flex justify-between"><span>+ ${escapeHtml(t.name)} ${t.pct}%</span><span class="font-bold">${money(t.monto)}</span></div>`).join('')}
+                </div>
+                <div class="mt-3 p-3 rounded-xl bg-indigo-600 text-white">
+                    <div class="text-[10px] uppercase font-black opacity-80">Precio al cliente</div>
+                    <div class="text-2xl font-black">${money(c.precioFinal)}</div>
+                </div>
+                <div class="mt-2 text-[10px] text-[#A3AED0] space-y-0.5">
+                    <div>Costo por parada: ${money(c.costoTotal / Math.max(c.stops.length, 1))}</div>
+                    <div>Costo por km: ${money(c.costoTotal / Math.max(c.km, 1))}</div>
+                    <div>Ruta: ${c.km.toFixed(1)} km · ${Math.round(c.hours*60)} min</div>
+                </div>
+            `;
+            container.innerHTML = html;
+            document.getElementById('bud-result-actions').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function budgetClearAll() {
+            if (!confirm('¿Limpiar todos los datos del presupuesto?')) return;
+            budgetState = { auxiliares: [], stops: [], routeKm: 0, routeMinutes: 0, lastCalc: null };
+            ['bud-driver-name','bud-driver-amount','bud-driver-viatico',
+             'bud-truck-value','bud-truck-life-km','bud-consumption',
+             'bud-tires-cost','bud-tires-km','bud-maint-year','bud-km-year',
+             'bud-fixed-month','bud-fuel-price','bud-client-name'].forEach(id => {
+                const el = document.getElementById(id); if (el) el.value = '';
+            });
+            document.getElementById('bud-refrigerated').checked = false;
+            document.getElementById('bud-route-metrics')?.classList.add('hidden');
+            budgetRenderAuxList();
+            budgetRenderStopsList();
+            document.getElementById('bud-result').innerHTML = '<div class="text-center text-[#A3AED0] italic py-10">Completá los datos y apretá <b>Calcular</b> para ver el presupuesto.</div>';
+            document.getElementById('bud-result-actions').classList.add('hidden');
+        }
+
+        // ── GUARDAR / LISTADO ──────────────────────────────────────────────
+        function budgetSave() {
+            if (!budgetState.lastCalc) { addNotification('warning', 'Primero calculá', 'Apretá "Calcular" antes de guardar.'); return; }
+            const name = prompt('Nombre del presupuesto:', document.getElementById('bud-client-name').value || ('Presupuesto ' + new Date().toLocaleDateString('es-AR')));
+            if (!name) return;
+            try {
+                const saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]');
+                saved.unshift({ id: Date.now(), name, date: new Date().toISOString(), calc: budgetState.lastCalc });
+                if (saved.length > 50) saved.length = 50;
+                localStorage.setItem(BUD_KEY, JSON.stringify(saved));
+                budgetLoadSavedList();
+                addNotification('success', 'Presupuesto guardado', name);
+            } catch (e) { addNotification('warning', 'Error', 'No se pudo guardar.'); }
+        }
+
+        function budgetLoadSavedList() {
+            const wrap = document.getElementById('bud-saved-list-wrap');
+            const list = document.getElementById('bud-saved-list');
+            if (!wrap || !list) return;
+            let saved = [];
+            try { saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]'); } catch {}
+            if (saved.length === 0) { wrap.classList.add('hidden'); return; }
+            wrap.classList.remove('hidden');
+            list.innerHTML = saved.map(s => `
+                <div class="flex items-center justify-between bg-[#F4F7FE] rounded-xl p-2">
+                    <div class="flex-1 min-w-0">
+                        <div class="text-xs font-bold text-[#1B2559] truncate">${escapeHtml(s.name)}</div>
+                        <div class="text-[10px] text-[#A3AED0]">${new Date(s.date).toLocaleString('es-AR')} · $${Math.round(s.calc.precioFinal).toLocaleString('es-AR')}</div>
+                    </div>
+                    <button onclick="budgetLoadSaved(${s.id})" class="text-[10px] font-black text-indigo-600 hover:text-indigo-800 px-2">Ver</button>
+                    <button onclick="budgetDeleteSaved(${s.id})" class="text-[10px] font-black text-rose-500 hover:text-rose-700 px-2">✕</button>
+                </div>
+            `).join('');
+        }
+
+        function budgetLoadSaved(id) {
+            const saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]');
+            const s = saved.find(x => x.id === id);
+            if (!s) return;
+            budgetState.lastCalc = s.calc;
+            budgetRenderResult();
+        }
+
+        function budgetDeleteSaved(id) {
+            if (!confirm('¿Eliminar este presupuesto?')) return;
+            const saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]').filter(x => x.id !== id);
+            localStorage.setItem(BUD_KEY, JSON.stringify(saved));
+            budgetLoadSavedList();
+        }
+
+        // ── PDFs ───────────────────────────────────────────────────────────
+        function budgetExportPresupuestoPDF() {
+            const c = budgetState.lastCalc;
+            if (!c) return;
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const money = (n) => '$ ' + Math.round(n).toLocaleString('es-AR');
+            const cliente = (document.getElementById('bud-client-name').value || '').trim();
+
+            // Header
+            doc.setFillColor(67, 24, 255);
+            doc.rect(0, 0, 210, 30, 'F');
+            doc.setTextColor(255);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(20);
+            doc.text('REAL DE CATORCE', 15, 18);
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.text('Ombú 1269, Burzaco · Prov. de Buenos Aires', 15, 25);
+
+            doc.setTextColor(27, 37, 89);
+            doc.setFontSize(24);
+            doc.setFont('helvetica', 'bold');
+            doc.text('PRESUPUESTO', 15, 50);
+            doc.setFontSize(10);
+            doc.setFont('helvetica', 'normal');
+            doc.setTextColor(120);
+            doc.text('N° ' + Date.now().toString().slice(-6) + '  ·  Fecha: ' + c.fecha, 15, 57);
+
+            // Cliente
+            doc.setTextColor(27, 37, 89);
+            doc.setFontSize(11);
+            doc.setFont('helvetica', 'bold');
+            doc.text('CLIENTE', 15, 72);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(11);
+            doc.text(cliente || '__________________________________', 15, 80);
+
+            // Detalle
+            doc.setFont('helvetica', 'bold');
+            doc.text('DETALLE DEL SERVICIO', 15, 95);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(10);
+            const detalle = [
+                `Viaje de distribución — ${c.stops.length} paradas`,
+                `Distancia: ${c.km.toFixed(1)} km · Tiempo estimado: ${Math.round(c.hours*60)} min`,
+                `Frecuencia: ${c.freqKey}` + (c.freqFactor !== 1 ? ` (factor ${c.freqFactor})` : ''),
+                `Camión: ${c.refrigerated ? 'Refrigerado' : 'Estándar'} · Chofer: ${c.driver.nombre}` + (c.auxCosts.length ? ` + ${c.auxCosts.length} auxiliar(es)` : ''),
+                `Origen: ${c.origin}`,
+            ];
+            detalle.forEach((line, i) => doc.text(line, 15, 103 + i*6));
+
+            // Tabla de importes
+            const body = [
+                ['Subtotal', money(c.subtotal)],
+                ...c.taxes.map(t => [`${t.name} ${t.pct}%`, money(t.monto)]),
+                ['TOTAL', money(c.precioFinal)],
+            ];
+            doc.autoTable({
+                startY: 145,
+                head: [['Concepto', 'Importe']],
+                body,
+                theme: 'grid',
+                headStyles: { fillColor: [27, 37, 89], textColor: 255, fontStyle: 'bold', halign: 'center' },
+                columnStyles: { 0: { cellWidth: 130 }, 1: { halign: 'right', cellWidth: 50 } },
+                styles: { fontSize: 10, cellPadding: 3 },
+                didParseCell: (data) => {
+                    if (data.row.index === body.length - 1) {
+                        data.cell.styles.fillColor = [240, 240, 255];
+                        data.cell.styles.fontStyle = 'bold';
+                        data.cell.styles.fontSize = 12;
+                    }
+                },
+            });
+
+            const y = doc.lastAutoTable.finalY + 15;
+            doc.setFontSize(9);
+            doc.setTextColor(120);
+            doc.text('Forma de pago: A convenir.', 15, y);
+            doc.text('Validez del presupuesto: 15 días desde la fecha.', 15, y + 5);
+
+            // Paradas detalle en segunda página si hay muchas
+            if (c.stops.length > 0) {
+                doc.addPage();
+                doc.setFillColor(67, 24, 255);
+                doc.rect(0, 0, 210, 12, 'F');
+                doc.setTextColor(255);
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(10);
+                doc.text('Detalle de paradas', 15, 8);
+                const stopBody = c.stops.map((s, i) => [i+1, s.name, s.address || '']);
+                doc.autoTable({
+                    startY: 20,
+                    head: [['#', 'Destino', 'Dirección']],
+                    body: stopBody,
+                    theme: 'striped',
+                    headStyles: { fillColor: [27, 37, 89], textColor: 255 },
+                    styles: { fontSize: 9 },
+                });
+            }
+
+            doc.save(`Presupuesto-${(cliente || 'sin-cliente').replace(/[^a-z0-9]/gi,'-')}-${c.fecha.replace(/\//g,'-')}.pdf`);
+        }
+
+        function budgetExportCuentaPDF() {
+            const c = budgetState.lastCalc;
+            if (!c) return;
+            const { jsPDF } = window.jspdf;
+            const doc = new jsPDF();
+            const money = (n) => Math.round(n).toLocaleString('es-AR');
+            const pct = (a, tot) => tot > 0 ? Math.round(a/tot*100) : 0;
+
+            // Header
+            doc.setFillColor(67, 24, 255);
+            doc.rect(0, 0, 210, 16, 'F');
+            doc.setTextColor(255);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(13);
+            doc.text('CÓMO SE CALCULÓ ESTE PRESUPUESTO', 15, 10);
+
+            doc.setTextColor(120);
+            doc.setFont('helvetica', 'normal');
+            doc.setFontSize(9);
+            doc.text('Fecha: ' + c.fecha + '  ·  Ruta: ' + c.km.toFixed(1) + ' km · ' + Math.round(c.hours*60) + ' min', 15, 22);
+
+            let y = 34;
+            const COL_NUM = 90;  // columna del número (alineado derecha)
+            const COL_SIGN = COL_NUM - 35;
+            const COL_LABEL = COL_NUM + 8;
+
+            function section(title) {
+                doc.setDrawColor(200, 200, 220);
+                doc.setLineWidth(0.3);
+                doc.line(15, y, 195, y);
+                y += 5;
+                doc.setTextColor(67, 24, 255);
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(11);
+                doc.text(title, 15, y);
+                y += 7;
+            }
+            function line(sign, amount, label, sub) {
+                doc.setFont('courier', 'bold');
+                doc.setFontSize(13);
+                doc.setTextColor(27, 37, 89);
+                doc.text(sign, COL_SIGN, y);
+                doc.text('$ ' + money(amount).padStart(12, ' '), COL_NUM, y, { align: 'right' });
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(10);
+                doc.setTextColor(67, 24, 255);
+                doc.text('← ' + label, COL_LABEL, y);
+                y += 5;
+                if (sub) {
+                    doc.setFont('helvetica', 'italic');
+                    doc.setFontSize(8);
+                    doc.setTextColor(120);
+                    doc.text(sub, COL_LABEL + 4, y);
+                    y += 5;
+                }
+                y += 1;
+            }
+            function bar() {
+                doc.setDrawColor(100, 100, 120);
+                doc.setLineWidth(0.6);
+                doc.line(COL_NUM - 40, y - 3, COL_NUM + 2, y - 3);
+                y += 2;
+            }
+            function total(amount, label) {
+                doc.setFont('courier', 'bold');
+                doc.setFontSize(14);
+                doc.setTextColor(16, 185, 129);
+                doc.text('$ ' + money(amount).padStart(12, ' '), COL_NUM, y, { align: 'right' });
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(11);
+                doc.setTextColor(67, 24, 255);
+                doc.text('← ' + label, COL_LABEL, y);
+                y += 10;
+            }
+
+            // ── PARTE 1: COSTO ─────────────────────────────────────────────
+            section('PARTE 1 — EL COSTO');
+            line(' ', c.personalTotal, 'Gente', `Chofer ${c.driver.nombre} + ${c.auxCosts.length} aux · ${c.hours.toFixed(1)}h`);
+            line(' ', c.vehicleTotal, 'Camión', `Desgaste por ${c.km.toFixed(1)} km + seguro prorrateado`);
+            line(' ', c.fuelTotal, 'Combustible', `${c.km.toFixed(1)} km · ${c.consumption} L/100km · $${c.fuelPrice}/L` + (c.refrigerated ? ' × 1.15 (refrigerado)' : ''));
+            line('+', c.overhead, `Oficina (${c.overheadPct}%)`, 'Overhead admin');
+            bar();
+            if (c.freqFactor !== 1) {
+                line(' ', c.personalTotal + c.vehicleTotal + c.fuelTotal + c.overhead, 'Subtotal', '');
+                line('×', c.freqFactor, 'Factor frecuencia', c.freqKey);
+                bar();
+            }
+            total(c.costoTotal, 'COSTO DEL VIAJE');
+
+            // ── PARTE 2: GANANCIA ──────────────────────────────────────────
+            if (y > 230) { doc.addPage(); y = 25; }
+            section('PARTE 2 — LA GANANCIA');
+            line(' ', c.costoTotal, 'Costo', '');
+            line('+', c.margin, `Ganancia ${c.marginPct}%`, `${c.marginPct}% sobre el costo`);
+            bar();
+            total(c.subtotal, 'SUBTOTAL');
+
+            // ── PARTE 3: IMPUESTOS ─────────────────────────────────────────
+            if (y > 230) { doc.addPage(); y = 25; }
+            section('PARTE 3 — LOS IMPUESTOS');
+            line(' ', c.subtotal, 'Subtotal', '');
+            c.taxes.forEach(t => line('+', t.monto, `${t.name} ${t.pct}%`, `${t.pct}% sobre el subtotal`));
+            bar();
+            total(c.precioFinal, 'PRECIO FINAL');
+
+            // ── RESUMEN ────────────────────────────────────────────────────
+            if (y > 230) { doc.addPage(); y = 25; }
+            y += 5;
+            section('RESUMEN');
+            doc.autoTable({
+                startY: y,
+                body: [
+                    ['Costo', '$ ' + money(c.costoTotal), pct(c.costoTotal, c.precioFinal) + '%'],
+                    ['Ganancia', '$ ' + money(c.margin), pct(c.margin, c.precioFinal) + '%'],
+                    ['Impuestos', '$ ' + money(c.taxesTotal), pct(c.taxesTotal, c.precioFinal) + '%'],
+                    ['TOTAL', '$ ' + money(c.precioFinal), '100%'],
+                ],
+                theme: 'grid',
+                columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60 }, 1: { halign: 'right', cellWidth: 60 }, 2: { halign: 'right', cellWidth: 30 } },
+                styles: { fontSize: 10, cellPadding: 3 },
+                didParseCell: (d) => {
+                    if (d.row.index === 3) { d.cell.styles.fillColor = [240, 240, 255]; d.cell.styles.fontStyle = 'bold'; d.cell.styles.fontSize = 12; }
+                },
+            });
+
+            doc.save(`Cuenta-paso-a-paso-${c.fecha.replace(/\//g,'-')}.pdf`);
         }
 
         async function loadIncidents() {
@@ -10775,11 +11828,20 @@
                 const pwdBtn = meta.needsLogin
                     ? `<button onclick="promptCatalogResetPassword('${u.id}','${safeName}')" class="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 text-[10px] font-bold hover:bg-amber-100 transition-all">Cambiar pass</button>`
                     : '';
+                const pt = (u.payType || '').toUpperCase();
+                const payTypeCell = `<td class="py-3">
+                    <select data-user-id="${u.id}" class="catalog-paytype-select bg-white border border-[#E0E5F2] rounded-lg px-2 py-1 text-[11px] font-bold text-[#1B2559] outline-none" onchange="saveCatalogPayType('${u.id}', this.value)">
+                        <option value="" ${!pt ? 'selected' : ''}>—</option>
+                        <option value="FIJO" ${pt === 'FIJO' ? 'selected' : ''}>Fijo</option>
+                        <option value="JORNAL" ${pt === 'JORNAL' ? 'selected' : ''}>Jornal</option>
+                    </select>
+                </td>`;
                 return `
                 <tr class="border-b border-[#F4F7FE]">
                     <td class="py-3 w-8"><input type="checkbox" class="catalog-row-check w-4 h-4 accent-indigo-600 cursor-pointer" data-user-id="${u.id}" onchange="onCatalogRowCheckChange()"></td>
                     <td class="font-bold text-[#1B2559] py-3"><input type="text" value="${safeName}" data-user-id="${u.id}" class="catalog-name-input w-full bg-transparent border-0 outline-none font-bold text-[#1B2559]"></td>
                     ${loginCell}
+                    ${payTypeCell}
                     <td class="text-[#A3AED0] text-xs">${u.createdAt ? new Date(u.createdAt).toLocaleDateString('es-AR') : '-'}</td>
                     <td class="text-right whitespace-nowrap">
                         <button onclick="saveCatalogName('${u.id}')" class="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-[10px] font-bold hover:bg-indigo-100 transition-all mr-1">Guardar</button>
@@ -10806,6 +11868,8 @@
                 if (!password) return alert('La contraseña es obligatoria para los repartos');
             }
 
+            const payTypeSel = document.getElementById('catalog-new-paytype');
+            const payType = payTypeSel ? (payTypeSel.value || '').trim().toUpperCase() : '';
             try {
                 const res = await fetch(`${API_URL}/users`, {
                     method: 'POST',
@@ -10814,7 +11878,8 @@
                         username,
                         fullName,
                         role: currentCatalogRole,
-                        password: password || 'no-login'
+                        password: password || 'no-login',
+                        payType: payType || null
                     })
                 });
                 const data = await res.json().catch(() => ({}));
@@ -11187,6 +12252,14 @@
                             <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Contraseña</label>
                             <input id="catalog-new-password" type="text" placeholder="••••••" class="w-full bg-white border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] font-mono outline-none focus:ring-2 focus:ring-indigo-500">
                         </div>
+                        <div id="catalog-new-paytype-wrap" class="min-w-[150px]">
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Tipo de pago</label>
+                            <select id="catalog-new-paytype" class="w-full bg-white border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="">— Sin definir —</option>
+                                <option value="FIJO">Fijo</option>
+                                <option value="JORNAL">Jornal</option>
+                            </select>
+                        </div>
                         <button onclick="addCatalogEntry()" class="px-6 py-3 rounded-xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200">
                             AGREGAR
                         </button>
@@ -11206,6 +12279,7 @@
                             <th class="py-3 w-8"><input type="checkbox" id="catalog-check-all" class="w-4 h-4 accent-indigo-600 cursor-pointer" onchange="toggleAllCatalogRows(this.checked)"></th>
                             <th class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest py-3">Nombre</th>
                             <th id="catalog-login-col" class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest py-3" style="display:none;">Usuario</th>
+                            <th class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest py-3">Tipo pago</th>
                             <th class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest py-3">Alta</th>
                             <th class="text-right text-[10px] font-black text-[#A3AED0] uppercase tracking-widest py-3">Acciones</th>
                         </tr>
