@@ -5379,29 +5379,78 @@
         }
 
         let budStopSearchTimer = null;
+        let budAutocompleteSvc = null;
+        let budPlacesSvc = null;
+
         function budgetStopSearch() {
-            const q = (document.getElementById('bud-stop-search').value || '').trim().toLowerCase();
+            const q = (document.getElementById('bud-stop-search').value || '').trim();
             const container = document.getElementById('bud-stop-suggestions');
             if (!q || q.length < 2) { container.innerHTML = ''; return; }
-            // Buscar en catálogo de escuelas (allSchools)
+
+            // 1) Catálogo (clientes/escuelas ya cargadas con sus coords)
+            const qLow = q.toLowerCase();
             const list = Array.isArray(allSchools) ? allSchools : [];
-            const matches = list.filter(s => {
+            const catalogMatches = list.filter(s => {
                 const n = (s.name || '').toLowerCase();
                 const a = (s.address || '').toLowerCase();
-                return n.includes(q) || a.includes(q);
-            }).slice(0, 20);
-            if (matches.length === 0) {
-                container.innerHTML = '<div class="text-xs text-[#A3AED0] italic p-3 text-center">No hay coincidencias en el catálogo. Apretá "Agregar como dirección libre" para usar el texto tipeado.</div>';
-                return;
+                return n.includes(qLow) || a.includes(qLow);
+            }).slice(0, 8);
+            window.__budStopMatches = catalogMatches;
+
+            let html = '';
+            if (catalogMatches.length > 0) {
+                html += '<div class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest px-2 py-1">Del catálogo de clientes</div>';
+                html += catalogMatches.map((s, i) => `
+                    <button type="button" onclick="budgetSelectStop(${i})" class="w-full text-left p-3 rounded-xl bg-[#ecfdf5] hover:bg-emerald-100 border border-emerald-200 flex items-start gap-2">
+                        <i data-lucide="bookmark" class="w-4 h-4 text-emerald-600 shrink-0 mt-0.5"></i>
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm font-bold text-[#1B2559]">${escapeHtml(s.name || '')}</div>
+                            <div class="text-[11px] text-[#A3AED0] truncate">${escapeHtml((s.address || 'Sin dirección').replace(/\s*·\s*Maps:.*$/i, '').trim())}</div>
+                        </div>
+                    </button>
+                `).join('');
+            } else {
+                html += '<div class="text-[11px] text-[#A3AED0] italic p-2">No hay coincidencias en el catálogo. Mirá abajo sugerencias de Google Maps.</div>';
             }
-            container.innerHTML = matches.map((s, i) => `
-                <button type="button" onclick="budgetSelectStop(${i})" class="w-full text-left p-3 rounded-xl bg-[#F4F7FE] hover:bg-indigo-50 border border-transparent hover:border-indigo-200">
-                    <div class="text-sm font-bold text-[#1B2559]">${escapeHtml(s.name || '')}</div>
-                    <div class="text-[11px] text-[#A3AED0] truncate">${escapeHtml(s.address || 'Sin dirección')}</div>
-                </button>
-            `).join('');
-            // Guardamos la lista filtrada para el callback
-            window.__budStopMatches = matches;
+
+            // 2) Google Maps Places Autocomplete
+            if (q.length >= 3 && window.google?.maps?.places) {
+                if (!budAutocompleteSvc) {
+                    budAutocompleteSvc = new google.maps.places.AutocompleteService();
+                }
+                clearTimeout(budStopSearchTimer);
+                html += '<div class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest px-2 py-1 mt-3">Sugerencias de Google Maps</div><div id="bud-google-sug" class="space-y-1"></div>';
+                container.innerHTML = html;
+                lucide.createIcons();
+                budStopSearchTimer = setTimeout(() => {
+                    budAutocompleteSvc.getPlacePredictions({
+                        input: q,
+                        componentRestrictions: { country: 'ar' },
+                        language: 'es-AR',
+                    }, (preds, status) => {
+                        const sugDiv = document.getElementById('bud-google-sug');
+                        if (!sugDiv) return;
+                        if (status !== google.maps.places.PlacesServiceStatus.OK || !preds?.length) {
+                            sugDiv.innerHTML = '<div class="text-[11px] text-[#A3AED0] italic p-2">Sin sugerencias de Google.</div>';
+                            return;
+                        }
+                        window.__budGooglePreds = preds.slice(0, 8);
+                        sugDiv.innerHTML = window.__budGooglePreds.map((p, i) => `
+                            <button type="button" onclick="budgetSelectGooglePlace(${i})" class="w-full text-left p-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 flex items-start gap-2">
+                                <i data-lucide="map-pin" class="w-4 h-4 text-indigo-600 shrink-0 mt-0.5"></i>
+                                <div class="flex-1 min-w-0">
+                                    <div class="text-sm font-bold text-[#1B2559]">${escapeHtml(p.structured_formatting?.main_text || p.description)}</div>
+                                    <div class="text-[11px] text-[#A3AED0] truncate">${escapeHtml(p.structured_formatting?.secondary_text || '')}</div>
+                                </div>
+                            </button>
+                        `).join('');
+                        lucide.createIcons();
+                    });
+                }, 250);
+            } else {
+                container.innerHTML = html;
+                lucide.createIcons();
+            }
         }
 
         function budgetSelectStop(idx) {
@@ -5415,6 +5464,35 @@
             });
             budgetCloseStopModal();
             budgetRenderStopsList();
+        }
+
+        function budgetSelectGooglePlace(idx) {
+            const p = window.__budGooglePreds?.[idx];
+            if (!p || !window.google?.maps?.places) return;
+            if (!budPlacesSvc) {
+                // PlacesService necesita un div oculto como contenedor
+                let dummy = document.getElementById('bud-places-dummy');
+                if (!dummy) { dummy = document.createElement('div'); dummy.id = 'bud-places-dummy'; dummy.style.display = 'none'; document.body.appendChild(dummy); }
+                budPlacesSvc = new google.maps.places.PlacesService(dummy);
+            }
+            budPlacesSvc.getDetails({
+                placeId: p.place_id,
+                fields: ['name', 'formatted_address', 'geometry'],
+            }, (place, status) => {
+                if (status !== google.maps.places.PlacesServiceStatus.OK || !place) {
+                    addNotification('warning', 'Google Maps', 'No se pudo obtener la ubicación.');
+                    return;
+                }
+                budgetState.stops.push({
+                    name: p.structured_formatting?.main_text || place.name || p.description,
+                    address: place.formatted_address,
+                    lat: place.geometry?.location?.lat() ?? null,
+                    lng: place.geometry?.location?.lng() ?? null,
+                });
+                budgetCloseStopModal();
+                budgetRenderStopsList();
+                addNotification('success', 'Parada agregada', place.formatted_address);
+            });
         }
 
         function budgetAddStopFromInput() {
