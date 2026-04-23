@@ -2534,10 +2534,10 @@
 
         // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
         const ACCESS_PROFILES = {
-            SUPERADMIN: ['control','weekly','dashboard','vrp','costs','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'],
-            TRAFICO: ['control','weekly','dashboard','vrp','maintenance','routes','users','employees','schools','reports','incidents'],
+            SUPERADMIN: ['control','weekly','dashboard','vrp','costs','budget','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'],
+            TRAFICO: ['control','weekly','dashboard','vrp','budget','maintenance','routes','users','employees','schools','reports','incidents'],
             RRHH: ['salaries','employees'],
-            ADMINISTRACION: ['weekly','dashboard','salaries','schools','reports']
+            ADMINISTRACION: ['weekly','dashboard','budget','salaries','schools','reports']
         };
 
         const USER_PROFILES = {
@@ -2571,7 +2571,7 @@
             }
 
             // Hide/show nav buttons based on access
-            const allSections = ['control','weekly','dashboard','vrp','costs','maintenance','routes','users','employees','salaries','schools','reports'];
+            const allSections = ['control','weekly','dashboard','vrp','costs','budget','maintenance','routes','users','employees','salaries','schools','reports'];
             allSections.forEach(sec => {
                 const btn = document.getElementById('btn-' + sec);
                 if (btn) {
