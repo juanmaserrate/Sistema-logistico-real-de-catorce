@@ -5240,7 +5240,7 @@
         const BUD_KEY = 'r14_budgets_saved';
         const BUD_DEFAULT_KEY = 'r14_budget_defaults';
 
-        function budgetInit() {
+        async function budgetInit() {
             if (!window.__budgetInitialized) {
                 budgetLoadDefaults();
                 budgetLoadSavedList();
@@ -5249,6 +5249,13 @@
             budgetRenderAuxList();
             budgetRenderStopsList();
             lucide.createIcons();
+            // Cargar Google Maps en segundo plano para que el buscador de paradas funcione
+            if (!window.google?.maps && typeof loadGoogleMapsScript === 'function' && typeof getGoogleMapsKey === 'function') {
+                try {
+                    const key = await getGoogleMapsKey();
+                    if (key) await loadGoogleMapsScript(key);
+                } catch (e) { console.warn('[budget] No se pudo cargar Google Maps:', e); }
+            }
         }
 
         function budgetLoadDefaults() {
@@ -5382,7 +5389,7 @@
         let budAutocompleteSvc = null;
         let budPlacesSvc = null;
 
-        function budgetStopSearch() {
+        async function budgetStopSearch() {
             const q = (document.getElementById('bud-stop-search').value || '').trim();
             const container = document.getElementById('bud-stop-suggestions');
             if (!q || q.length < 2) { container.innerHTML = ''; return; }
@@ -5410,7 +5417,21 @@
                     </button>
                 `).join('');
             } else {
-                html += '<div class="text-[11px] text-[#A3AED0] italic p-2">No hay coincidencias en el catálogo. Mirá abajo sugerencias de Google Maps.</div>';
+                html += '<div class="text-[11px] text-[#A3AED0] italic p-2">No hay coincidencias en el catálogo. Buscando en Google Maps abajo...</div>';
+            }
+
+            // Si Google Maps no está listo, intentar cargarlo y esperar
+            if (q.length >= 3 && !window.google?.maps && typeof loadGoogleMapsScript === 'function' && typeof getGoogleMapsKey === 'function') {
+                html += '<div class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest px-2 py-1 mt-3">Sugerencias de Google Maps</div><div id="bud-google-sug" class="space-y-1"><div class="text-[11px] text-amber-600 italic p-2">Cargando Google Maps...</div></div>';
+                container.innerHTML = html;
+                lucide.createIcons();
+                try {
+                    const key = await getGoogleMapsKey();
+                    if (key) await loadGoogleMapsScript(key);
+                    // Re-disparar la búsqueda una vez cargado
+                    setTimeout(() => budgetStopSearch(), 50);
+                } catch {}
+                return;
             }
 
             // 2) Google Maps — Autocomplete primero, Geocoder como respaldo
