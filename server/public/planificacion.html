@@ -1879,11 +1879,11 @@
                             </div>
                             <div id="bud-result-actions" class="hidden mt-5 space-y-2">
                                 <input id="bud-client-name" type="text" placeholder="Nombre del cliente (opcional)" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
-                                <button onclick="budgetExportPresupuestoPDF()" class="w-full px-4 py-3 rounded-xl bg-indigo-600 text-white text-xs font-black uppercase tracking-widest hover:bg-indigo-700 flex items-center justify-center gap-2">
-                                    <i data-lucide="file-down" class="w-4 h-4"></i> Exportar presupuesto PDF
+                                <button onclick="budgetOpenExportModal('presupuesto')" class="w-full px-4 py-3 rounded-xl bg-indigo-600 text-white text-xs font-black uppercase tracking-widest hover:bg-indigo-700 flex items-center justify-center gap-2">
+                                    <i data-lucide="file-down" class="w-4 h-4"></i> Exportar presupuesto
                                 </button>
-                                <button onclick="budgetExportCuentaPDF()" class="w-full px-4 py-3 rounded-xl bg-white border-2 border-emerald-500 text-emerald-600 text-xs font-black uppercase tracking-widest hover:bg-emerald-50 flex items-center justify-center gap-2">
-                                    <i data-lucide="sigma" class="w-4 h-4"></i> Exportar cuenta PDF
+                                <button onclick="budgetOpenExportModal('cuenta')" class="w-full px-4 py-3 rounded-xl bg-white border-2 border-emerald-500 text-emerald-600 text-xs font-black uppercase tracking-widest hover:bg-emerald-50 flex items-center justify-center gap-2">
+                                    <i data-lucide="sigma" class="w-4 h-4"></i> Exportar cuenta
                                 </button>
                                 <button onclick="budgetSave()" class="w-full px-4 py-3 rounded-xl bg-white border-2 border-indigo-500 text-indigo-600 text-xs font-black uppercase tracking-widest hover:bg-indigo-50 flex items-center justify-center gap-2">
                                     <i data-lucide="save" class="w-4 h-4"></i> Guardar presupuesto
@@ -1928,6 +1928,34 @@
                     <div class="p-4 border-t border-[#F4F7FE] flex justify-end gap-2">
                         <button onclick="budgetCloseStopModal()" class="px-4 py-2 rounded-xl text-sm font-bold text-[#A3AED0] hover:text-[#1B2559]">Cancelar</button>
                         <button onclick="budgetAddStopFromInput()" class="px-5 py-2 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">Agregar como dirección libre</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL: Exportar presupuesto o cuenta -->
+            <div id="bud-export-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+                <div class="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
+                    <div class="p-5 border-b border-[#F4F7FE] flex items-center justify-between">
+                        <div>
+                            <h4 id="bud-export-title" class="text-lg font-bold text-[#1B2559]">Exportar presupuesto</h4>
+                            <p id="bud-export-subtitle" class="text-xs text-[#A3AED0]">Elegí el formato de descarga.</p>
+                        </div>
+                        <button onclick="budgetCloseExportModal()" class="text-[#A3AED0] hover:text-[#1B2559]"><i data-lucide="x" class="w-5 h-5"></i></button>
+                    </div>
+                    <div class="p-5 grid grid-cols-2 gap-3">
+                        <button onclick="budgetExportNow('pdf')" class="group flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-rose-200 bg-rose-50 hover:bg-rose-100 hover:border-rose-400 transition">
+                            <div class="w-12 h-12 rounded-full bg-rose-500 text-white flex items-center justify-center font-black text-sm">PDF</div>
+                            <div class="text-sm font-black text-[#1B2559]">Descargar PDF</div>
+                            <div class="text-[10px] text-[#A3AED0] text-center">Documento listo para imprimir o enviar al cliente.</div>
+                        </button>
+                        <button onclick="budgetExportNow('xls')" class="group flex flex-col items-center justify-center gap-2 p-5 rounded-2xl border-2 border-emerald-200 bg-emerald-50 hover:bg-emerald-100 hover:border-emerald-400 transition">
+                            <div class="w-12 h-12 rounded-full bg-emerald-600 text-white flex items-center justify-center font-black text-sm">XLS</div>
+                            <div class="text-sm font-black text-[#1B2559]">Descargar Excel</div>
+                            <div class="text-[10px] text-[#A3AED0] text-center">Planilla editable con todos los valores y fórmulas.</div>
+                        </button>
+                    </div>
+                    <div class="p-4 border-t border-[#F4F7FE] flex justify-end">
+                        <button onclick="budgetCloseExportModal()" class="px-4 py-2 rounded-xl text-sm font-bold text-[#A3AED0] hover:text-[#1B2559]">Cancelar</button>
                     </div>
                 </div>
             </div>
@@ -6306,8 +6334,8 @@
                         <div id="bud-hist-body-${s.id}"></div>
                         <div class="flex flex-wrap gap-2 mt-4">
                             <button onclick="event.stopPropagation();budgetLoadSaved(${s.id})" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-indigo-700">Cargar en calculadora</button>
-                            <button onclick="event.stopPropagation();budgetReExportPresupuesto(${s.id})" class="px-3 py-2 rounded-xl bg-white border-2 border-indigo-500 text-indigo-600 text-[11px] font-black uppercase tracking-widest hover:bg-indigo-50">PDF presupuesto</button>
-                            <button onclick="event.stopPropagation();budgetReExportCuenta(${s.id})" class="px-3 py-2 rounded-xl bg-white border-2 border-emerald-500 text-emerald-600 text-[11px] font-black uppercase tracking-widest hover:bg-emerald-50">PDF cuenta</button>
+                            <button onclick="event.stopPropagation();budgetReExportPresupuesto(${s.id})" class="px-3 py-2 rounded-xl bg-white border-2 border-indigo-500 text-indigo-600 text-[11px] font-black uppercase tracking-widest hover:bg-indigo-50">Exportar presupuesto</button>
+                            <button onclick="event.stopPropagation();budgetReExportCuenta(${s.id})" class="px-3 py-2 rounded-xl bg-white border-2 border-emerald-500 text-emerald-600 text-[11px] font-black uppercase tracking-widest hover:bg-emerald-50">Exportar cuenta</button>
                             <button onclick="event.stopPropagation();budgetDeleteSaved(${s.id})" class="ml-auto px-3 py-2 rounded-xl bg-rose-50 text-rose-600 text-[11px] font-black uppercase tracking-widest hover:bg-rose-100">Eliminar</button>
                         </div>
                     </div>
@@ -6334,17 +6362,13 @@
             const saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]');
             const s = saved.find(x => x.id === id);
             if (!s) return;
-            const prev = budgetState.lastCalc;
-            budgetState.lastCalc = s.calc;
-            budgetExportPresupuestoPDF().finally(() => { budgetState.lastCalc = prev; });
+            budgetOpenExportModal('presupuesto', s.calc);
         }
         function budgetReExportCuenta(id) {
             const saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]');
             const s = saved.find(x => x.id === id);
             if (!s) return;
-            const prev = budgetState.lastCalc;
-            budgetState.lastCalc = s.calc;
-            budgetExportCuentaPDF().finally(() => { budgetState.lastCalc = prev; });
+            budgetOpenExportModal('cuenta', s.calc);
         }
 
         function budgetExportHistoryCSV() {
@@ -6412,144 +6436,256 @@
             if (!c) return;
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
-            const money = (n) => '$ ' + Math.round(n).toLocaleString('es-AR');
+            const money = (n) => '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
             const cliente = (document.getElementById('bud-client-name').value || '').trim();
+            const presupuestoNro = 'P-' + Date.now().toString().slice(-6);
 
-            // Header con fondo negro + logo blanco (estilo de marca R14)
+            // ── HEADER marca R14 ─────────────────────────────────────────
             const logo = await budgetLoadLogo();
             doc.setFillColor(0, 0, 0);
             doc.rect(0, 0, 210, 34, 'F');
-            if (logo) {
-                // Logo cuadrado a la izquierda, 22x22 mm
-                try { doc.addImage(logo, 'PNG', 12, 6, 22, 22); } catch {}
-            }
+            if (logo) { try { doc.addImage(logo, 'PNG', 12, 6, 22, 22); } catch {} }
             doc.setTextColor(255);
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(20);
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(20);
             doc.text('REAL DE CATORCE', 40, 18);
-            doc.setFontSize(10);
-            doc.setFont('helvetica', 'normal');
-            doc.text('Ombú 1269, Burzaco · Prov. de Buenos Aires', 40, 25);
-            // Mover los bloques que estaban en y=50 un poco más abajo porque el header ahora mide 34
-            // (jsPDF seguirá con los text() originales en y=50, pero ajustamos el offset)
+            doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+            doc.text('Transporte y logística · Ombú 1269, Burzaco, Prov. Bs. As.', 40, 25);
+            doc.text('contacto@r14trafico.com · www.r14trafico.com', 40, 30);
 
+            // Título + N° + fecha
             doc.setTextColor(27, 37, 89);
-            doc.setFontSize(24);
-            doc.setFont('helvetica', 'bold');
-            doc.text('PRESUPUESTO', 15, 50);
-            doc.setFontSize(10);
-            doc.setFont('helvetica', 'normal');
-            doc.setTextColor(120);
-            doc.text('N° ' + Date.now().toString().slice(-6) + '  ·  Fecha: ' + c.fecha, 15, 57);
+            doc.setFontSize(22); doc.setFont('helvetica', 'bold');
+            doc.text('PRESUPUESTO', 15, 48);
+            doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(120);
+            doc.text(`N° ${presupuestoNro}  ·  Fecha: ${c.fecha}`, 15, 55);
+            doc.text('Validez: 15 días desde la fecha', 15, 60);
 
-            // Cliente / Destinatario
+            // ── DESTINATARIO ─────────────────────────────────────────────
             const dest = c.destinatario || {};
-            doc.setTextColor(27, 37, 89);
-            doc.setFontSize(11);
-            doc.setFont('helvetica', 'bold');
-            doc.text('DESTINATARIO', 15, 72);
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(10);
-            const destName = dest.nombre || cliente || '__________________________________';
-            doc.text(destName, 15, 80);
-            const destLines = [];
-            if (dest.cuit) destLines.push('CUIT/DNI: ' + dest.cuit);
-            if (dest.email) destLines.push('Email: ' + dest.email);
-            if (dest.telefono) destLines.push('Tel: ' + dest.telefono);
-            if (dest.direccion) destLines.push('Dirección: ' + dest.direccion);
-            let destY = 86;
-            destLines.forEach(l => { doc.text(l, 15, destY); destY += 5; });
-            if (dest.notas) { doc.setFont('helvetica', 'italic'); doc.text(dest.notas, 15, destY); destY += 5; doc.setFont('helvetica', 'normal'); }
+            const destBody = [];
+            destBody.push(['Razón social / Nombre', dest.nombre || cliente || '—']);
+            if (dest.cuit) destBody.push(['CUIT / DNI', dest.cuit]);
+            if (dest.email) destBody.push(['Email', dest.email]);
+            if (dest.telefono) destBody.push(['Teléfono', dest.telefono]);
+            if (dest.direccion) destBody.push(['Dirección', dest.direccion]);
+            doc.autoTable({
+                startY: 66,
+                head: [[{ content: 'DESTINATARIO', colSpan: 2, styles: { fillColor: [27, 37, 89], textColor: 255, halign: 'left', fontStyle: 'bold' } }]],
+                body: destBody,
+                theme: 'grid',
+                styles: { fontSize: 9, cellPadding: 2.5 },
+                columnStyles: { 0: { cellWidth: 45, textColor: [100, 100, 120] }, 1: { fontStyle: 'bold', textColor: [27, 37, 89] } },
+            });
+            let y = doc.lastAutoTable.finalY + 5;
+            if (dest.notas) {
+                doc.setFont('helvetica', 'italic'); doc.setFontSize(9); doc.setTextColor(100);
+                const nlines = doc.splitTextToSize('Notas: ' + dest.notas, 180);
+                doc.text(nlines, 15, y); y += nlines.length * 4 + 3;
+            }
 
-            // Detalle
-            let detY = Math.max(destY + 4, 110);
-            doc.setFont('helvetica', 'bold');
-            doc.setFontSize(11);
-            doc.text('DETALLE DEL SERVICIO', 15, detY);
-            detY += 8;
-            doc.setFont('helvetica', 'normal');
-            doc.setFontSize(10);
-            const detalle = [
-                `Viaje de distribución — ${c.stops.length} paradas`,
-                `Distancia: ${c.km.toFixed(1)} km · Tiempo estimado: ${Math.round(c.hours*60)} min`,
-                `Frecuencia: ${c.freqKey}` + (c.freqFactor !== 1 ? ` (factor ${c.freqFactor})` : ''),
-                `Camión: ${c.refrigerated ? 'Refrigerado' : 'Estándar'} · Chofer: ${c.driver.nombre}` + (c.auxCosts.length ? ` + ${c.auxCosts.length} auxiliar(es)` : ''),
-                `Origen: ${c.origin}`,
+            // ── RESUMEN DEL SERVICIO (4 chips + ficha técnica) ───────────
+            // Chips visuales: Paradas · Km · Tiempo · Frecuencia
+            const chipData = [
+                { label: 'Paradas', value: String(c.stops.length) },
+                { label: 'Distancia', value: `${c.km.toFixed(1)} km` },
+                { label: 'Tiempo estim.', value: `${Math.floor(c.hours)}h ${Math.round((c.hours % 1) * 60)}min` },
+                { label: 'Frecuencia', value: c.freqKey },
             ];
-            detalle.forEach((line, i) => doc.text(line, 15, detY + i*6));
-            detY += detalle.length * 6 + 4;
+            const chipW = 43, chipH = 16, chipGap = 3, chipY = y;
+            chipData.forEach((chip, i) => {
+                const x = 15 + i * (chipW + chipGap);
+                doc.setFillColor(244, 247, 254);
+                doc.roundedRect(x, chipY, chipW, chipH, 2, 2, 'F');
+                doc.setTextColor(100, 100, 120);
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(7);
+                doc.text(chip.label.toUpperCase(), x + chipW/2, chipY + 5, { align: 'center' });
+                doc.setTextColor(27, 37, 89);
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+                doc.text(chip.value, x + chipW/2, chipY + 12, { align: 'center' });
+            });
+            y = chipY + chipH + 5;
 
-            // Ítems (qué lleva)
+            // Ficha técnica del servicio (tabla)
+            const originText = (c.origin || '—');
+            doc.autoTable({
+                startY: y,
+                head: [[{ content: 'FICHA TÉCNICA DEL SERVICIO', colSpan: 2, styles: { fillColor: [27, 37, 89], textColor: 255, halign: 'left', fontStyle: 'bold' } }]],
+                body: [
+                    ['Tipo de servicio', 'Transporte y distribución multi-parada'],
+                    ['Origen del recorrido', originText],
+                    ['Cantidad de paradas', `${c.stops.length} destino(s)`],
+                    ['Distancia total', `${c.km.toFixed(1)} km (ida + regreso a origen)`],
+                    ['Tiempo estimado de operación', `${Math.floor(c.hours)}h ${Math.round((c.hours % 1) * 60)}min (${Math.round(c.hours * 60)} min)`],
+                    ['Tipo de unidad', c.refrigerated ? 'Camión refrigerado (cadena de frío)' : 'Camión estándar'],
+                    ['Personal asignado', `${c.driver.nombre} (chofer)` + ((c.auxCosts || []).length ? ` + ${c.auxCosts.length} auxiliar(es)` : '')],
+                    ['Frecuencia del servicio', c.freqKey + (c.freqFactor !== 1 ? ` (descuento por recurrencia: ${Math.round((1 - c.freqFactor) * 100)}%)` : '')],
+                ],
+                theme: 'grid',
+                styles: { fontSize: 9, cellPadding: 2.5 },
+                columnStyles: { 0: { cellWidth: 60, textColor: [100, 100, 120] }, 1: { fontStyle: 'bold', textColor: [27, 37, 89] } },
+            });
+            y = doc.lastAutoTable.finalY + 5;
+
+            // ── ÍTEMS: QUÉ LLEVA ─────────────────────────────────────────
             if (c.items && c.items.length) {
+                if (y > 230) { doc.addPage(); y = 20; }
+                const itemsBody = c.items.map((it, i) => [
+                    i + 1,
+                    it.descripcion || '—',
+                    it.cantidad,
+                    it.unidad,
+                    (it.pesoTotalKg ? it.pesoTotalKg.toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' kg' : '—'),
+                    (it.valorTotal ? '$ ' + Math.round(it.valorTotal).toLocaleString('es-AR') : '—'),
+                ]);
+                const t = c.itemsTotals || {};
+                if (t.bultos || t.pesoTotalKg || t.valorDeclarado) {
+                    itemsBody.push([
+                        { content: 'TOTAL', colSpan: 2, styles: { fontStyle: 'bold', fillColor: [240, 240, 255] } },
+                        { content: String(t.bultos || 0), styles: { fontStyle: 'bold', halign: 'right', fillColor: [240, 240, 255] } },
+                        { content: '', styles: { fillColor: [240, 240, 255] } },
+                        { content: t.pesoTotalKg ? Number(t.pesoTotalKg).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' kg' : '—', styles: { fontStyle: 'bold', halign: 'right', fillColor: [240, 240, 255] } },
+                        { content: t.valorDeclarado ? '$ ' + Math.round(t.valorDeclarado).toLocaleString('es-AR') : '—', styles: { fontStyle: 'bold', halign: 'right', fillColor: [240, 240, 255] } },
+                    ]);
+                }
                 doc.autoTable({
-                    startY: detY,
-                    head: [['#', 'Descripción', 'Cant.', 'Unidad', 'Peso total', 'Valor declarado']],
-                    body: c.items.map((it, i) => [
-                        i+1,
-                        it.descripcion || '',
-                        it.cantidad,
-                        it.unidad,
-                        (it.pesoTotalKg ? it.pesoTotalKg.toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' kg' : '—'),
-                        (it.valorTotal ? '$ ' + Math.round(it.valorTotal).toLocaleString('es-AR') : '—'),
-                    ]),
+                    startY: y,
+                    head: [[{ content: 'QUÉ SE TRANSPORTA', colSpan: 6, styles: { fillColor: [27, 37, 89], textColor: 255, halign: 'left', fontStyle: 'bold' } }],
+                           ['#', 'Descripción', 'Cant.', 'Unidad', 'Peso total', 'Valor declarado']],
+                    body: itemsBody,
                     theme: 'grid',
-                    headStyles: { fillColor: [27, 37, 89], textColor: 255, fontStyle: 'bold', halign: 'center' },
+                    headStyles: { fillColor: [244, 247, 254], textColor: [27, 37, 89], fontStyle: 'bold' },
                     styles: { fontSize: 9, cellPadding: 2 },
                     columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 2: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
                 });
-                detY = doc.lastAutoTable.finalY + 6;
+                y = doc.lastAutoTable.finalY + 5;
             }
 
-            // Tabla de importes
+            // ── TABLA DE IMPORTES ────────────────────────────────────────
+            if (y > 220) { doc.addPage(); y = 20; }
             const body = [
-                ['Subtotal', money(c.subtotal)],
+                ['Servicio de transporte (base)', money(c.costoTotal)],
+                ['Margen operativo', money(c.margin)],
+                [{ content: 'SUBTOTAL', styles: { fontStyle: 'bold', fillColor: [247, 247, 255] } },
+                 { content: money(c.subtotal), styles: { fontStyle: 'bold', halign: 'right', fillColor: [247, 247, 255] } }],
                 ...c.taxes.map(t => [`${t.name} ${t.pct}%`, money(t.monto)]),
-                ['TOTAL', money(c.precioFinal)],
+                ['TOTAL A PAGAR', money(c.precioFinal)],
             ];
             doc.autoTable({
-                startY: detY + 2,
-                head: [['Concepto', 'Importe']],
+                startY: y,
+                head: [[{ content: 'DETALLE DE IMPORTES', colSpan: 2, styles: { fillColor: [27, 37, 89], textColor: 255, halign: 'left', fontStyle: 'bold' } }],
+                       ['Concepto', 'Importe']],
                 body,
                 theme: 'grid',
-                headStyles: { fillColor: [27, 37, 89], textColor: 255, fontStyle: 'bold', halign: 'center' },
+                headStyles: { fillColor: [244, 247, 254], textColor: [27, 37, 89], fontStyle: 'bold' },
                 columnStyles: { 0: { cellWidth: 130 }, 1: { halign: 'right', cellWidth: 50 } },
                 styles: { fontSize: 10, cellPadding: 3 },
                 didParseCell: (data) => {
-                    if (data.row.index === body.length - 1) {
-                        data.cell.styles.fillColor = [240, 240, 255];
+                    if (data.section === 'body' && data.row.index === body.length - 1) {
+                        data.cell.styles.fillColor = [220, 252, 231];
+                        data.cell.styles.textColor = [16, 100, 75];
                         data.cell.styles.fontStyle = 'bold';
                         data.cell.styles.fontSize = 12;
                     }
                 },
             });
+            y = doc.lastAutoTable.finalY + 5;
 
-            const y = doc.lastAutoTable.finalY + 15;
-            doc.setFontSize(9);
-            doc.setTextColor(120);
-            doc.text('Forma de pago: A convenir.', 15, y);
-            doc.text('Validez del presupuesto: 15 días desde la fecha.', 15, y + 5);
+            // Precio por km / por parada (transparencia para el cliente)
+            doc.setFontSize(8); doc.setTextColor(120); doc.setFont('helvetica', 'italic');
+            doc.text(`Equivalencias de referencia:  ${money(c.precioFinal / Math.max(c.km, 1))} / km  ·  ${money(c.precioFinal / Math.max(c.stops.length, 1))} / parada`, 15, y);
+            y += 6;
 
-            // Paradas detalle en segunda página si hay muchas
+            // ── QUÉ INCLUYE / QUÉ NO INCLUYE ─────────────────────────────
+            if (y > 230) { doc.addPage(); y = 20; }
+            const yIncluye = y;
+            doc.setFillColor(240, 253, 244);
+            doc.rect(15, yIncluye, 85, 55, 'F');
+            doc.setTextColor(16, 100, 75); doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+            doc.text('EL SERVICIO INCLUYE', 18, yIncluye + 6);
+            doc.setTextColor(60); doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+            const incl = [
+                '• Chofer y personal auxiliar',
+                '• Combustible para todo el recorrido',
+                '• Uso y desgaste del vehículo',
+                '• Mantenimiento, seguro y patente',
+                '• Carga y descarga en cada parada',
+                '• Coordinación operativa',
+                c.refrigerated ? '• Mantenimiento de cadena de frío' : null,
+            ].filter(Boolean);
+            incl.forEach((l, i) => doc.text(l, 18, yIncluye + 13 + i * 5));
+
+            doc.setFillColor(254, 242, 242);
+            doc.rect(110, yIncluye, 85, 55, 'F');
+            doc.setTextColor(153, 27, 27); doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+            doc.text('NO INCLUYE', 113, yIncluye + 6);
+            doc.setTextColor(60); doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+            const noIncl = [
+                '• Peajes (se facturan aparte)',
+                '• Estadías mayores a 30 min por parada',
+                '• Seguro de carga — rige el valor declarado',
+                '• Cambios de ruta no previstos',
+                '• Servicios fuera del horario pactado',
+            ];
+            noIncl.forEach((l, i) => doc.text(l, 113, yIncluye + 13 + i * 5));
+            y = yIncluye + 60;
+
+            // ── CONDICIONES COMERCIALES ──────────────────────────────────
+            if (y > 240) { doc.addPage(); y = 20; }
+            doc.autoTable({
+                startY: y,
+                head: [[{ content: 'CONDICIONES COMERCIALES', colSpan: 2, styles: { fillColor: [27, 37, 89], textColor: 255, halign: 'left', fontStyle: 'bold' } }]],
+                body: [
+                    ['Forma de pago', 'A convenir (transferencia / efectivo / cheque)'],
+                    ['Validez del presupuesto', '15 días corridos desde la fecha de emisión'],
+                    ['Moneda', 'Pesos argentinos (ARS)'],
+                    ['Impuestos', c.taxes.length ? c.taxes.map(t => `${t.name} ${t.pct}%`).join(', ') : 'No incluidos'],
+                    ['Responsable del presupuesto', 'Real de Catorce — Departamento comercial'],
+                ],
+                theme: 'grid',
+                styles: { fontSize: 9, cellPadding: 2.5 },
+                columnStyles: { 0: { cellWidth: 55, textColor: [100, 100, 120] }, 1: { textColor: [27, 37, 89] } },
+            });
+
+            // ── DETALLE DE PARADAS (página aparte) ───────────────────────
             if (c.stops.length > 0) {
                 doc.addPage();
                 doc.setFillColor(67, 24, 255);
                 doc.rect(0, 0, 210, 12, 'F');
-                doc.setTextColor(255);
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(10);
-                doc.text('Detalle de paradas', 15, 8);
-                const stopBody = c.stops.map((s, i) => [i+1, s.name, s.address || '']);
+                doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+                doc.text('Detalle del recorrido', 15, 8);
+                const stopBody = c.stops.map((s, i) => [i + 1, s.name, s.address || '']);
+                stopBody.unshift([
+                    { content: '↑', styles: { halign: 'center', fontStyle: 'bold', fillColor: [244, 247, 254] } },
+                    { content: 'ORIGEN', styles: { fontStyle: 'bold', fillColor: [244, 247, 254] } },
+                    { content: c.origin || '', styles: { fillColor: [244, 247, 254] } },
+                ]);
+                stopBody.push([
+                    { content: '↩', styles: { halign: 'center', fontStyle: 'bold', fillColor: [244, 247, 254] } },
+                    { content: 'REGRESO', styles: { fontStyle: 'bold', fillColor: [244, 247, 254] } },
+                    { content: c.origin || '', styles: { fillColor: [244, 247, 254] } },
+                ]);
                 doc.autoTable({
-                    startY: 20,
-                    head: [['#', 'Destino', 'Dirección']],
+                    startY: 18,
+                    head: [['#', 'Destino / Hito', 'Dirección']],
                     body: stopBody,
-                    theme: 'striped',
+                    theme: 'grid',
                     headStyles: { fillColor: [27, 37, 89], textColor: 255 },
-                    styles: { fontSize: 9 },
+                    columnStyles: { 0: { cellWidth: 12, halign: 'center' }, 1: { cellWidth: 58 } },
+                    styles: { fontSize: 9, cellPadding: 2.5 },
                 });
             }
 
-            doc.save(`Presupuesto-${(cliente || 'sin-cliente').replace(/[^a-z0-9]/gi,'-')}-${c.fecha.replace(/\//g,'-')}.pdf`);
+            // ── FOOTER en todas las páginas ──────────────────────────────
+            const pages = doc.internal.getNumberOfPages();
+            for (let i = 1; i <= pages; i++) {
+                doc.setPage(i);
+                doc.setFontSize(8); doc.setTextColor(150); doc.setFont('helvetica', 'normal');
+                doc.text(`Real de Catorce · ${presupuestoNro} · Pág. ${i} de ${pages}`, 15, 290);
+                doc.text('Documento emitido el ' + c.fecha, 195, 290, { align: 'right' });
+            }
+
+            const safe = (dest.nombre || cliente || 'sin-cliente').replace(/[^a-z0-9]/gi, '-');
+            doc.save(`Presupuesto-${safe}-${c.fecha.replace(/\//g,'-')}.pdf`);
         }
 
         async function budgetExportCuentaPDF() {
@@ -6557,141 +6693,500 @@
             if (!c) return;
             const { jsPDF } = window.jspdf;
             const doc = new jsPDF();
-            const money = (n) => Math.round(n).toLocaleString('es-AR');
+            const money = (n) => Math.round(Number(n) || 0).toLocaleString('es-AR');
+            const moneyDec = (n) => (Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const pct = (a, tot) => tot > 0 ? Math.round(a/tot*100) : 0;
 
-            // Header con fondo negro + logo R14
+            // ── HEADER ────────────────────────────────────────────────────
             const logo = await budgetLoadLogo();
             doc.setFillColor(0, 0, 0);
-            doc.rect(0, 0, 210, 22, 'F');
-            if (logo) {
-                try { doc.addImage(logo, 'PNG', 12, 3, 16, 16); } catch {}
-            }
+            doc.rect(0, 0, 210, 26, 'F');
+            if (logo) { try { doc.addImage(logo, 'PNG', 12, 4, 18, 18); } catch {} }
             doc.setTextColor(255);
             doc.setFont('helvetica', 'bold');
-            doc.setFontSize(13);
-            doc.text('CÓMO SE CALCULÓ ESTE PRESUPUESTO', 32, 13);
-
-            doc.setTextColor(120);
+            doc.setFontSize(14);
+            doc.text('CUENTA PASO A PASO', 34, 13);
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9);
-            doc.text('Fecha: ' + c.fecha + '  ·  Ruta: ' + c.km.toFixed(1) + ' km · ' + Math.round(c.hours*60) + ' min', 15, 22);
+            doc.text('Documento interno — cómo se formó el precio final', 34, 19);
+
+            let y = 34;
+            doc.setTextColor(27, 37, 89);
+            doc.setFont('helvetica', 'bold');
+            doc.setFontSize(9);
+            doc.text('Fecha:', 15, y); doc.setFont('helvetica', 'normal'); doc.text(c.fecha, 30, y);
+            doc.setFont('helvetica', 'bold'); doc.text('Ruta:', 70, y); doc.setFont('helvetica', 'normal');
+            doc.text(`${c.km.toFixed(1)} km · ${Math.round(c.hours*60)} min (${c.hours.toFixed(2)} h)`, 82, y);
+            y += 6;
             if (c.destinatario && c.destinatario.nombre) {
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(9);
-                doc.setTextColor(27, 37, 89);
-                doc.text('Destinatario: ' + c.destinatario.nombre + (c.destinatario.cuit ? ' — CUIT ' + c.destinatario.cuit : ''), 15, 28);
+                doc.setFont('helvetica', 'bold'); doc.text('Destinatario:', 15, y);
+                doc.setFont('helvetica', 'normal');
+                doc.text(c.destinatario.nombre + (c.destinatario.cuit ? ` — CUIT ${c.destinatario.cuit}` : ''), 40, y);
+                y += 6;
+            }
+            doc.setFont('helvetica', 'bold'); doc.text('Origen:', 15, y);
+            doc.setFont('helvetica', 'normal');
+            const originTxt = doc.splitTextToSize(c.origin || '—', 160);
+            doc.text(originTxt, 30, y); y += originTxt.length * 5 + 1;
+
+            // ── SECCIÓN 1 — PARÁMETROS INGRESADOS ──────────────────────────
+            y += 2;
+            doc.setDrawColor(200, 200, 220); doc.setLineWidth(0.3); doc.line(15, y, 195, y); y += 5;
+            doc.setTextColor(67, 24, 255);
+            doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+            doc.text('1 · PARÁMETROS QUE INGRESASTE', 15, y); y += 5;
+            doc.setFont('helvetica', 'italic'); doc.setFontSize(8); doc.setTextColor(120);
+            doc.text('Estos son los datos que usamos como base para calcular todo lo demás.', 15, y); y += 3;
+
+            const auxRows = (c.auxCosts || []).map((a, i) => [
+                `Auxiliar ${i+1} — ${a.nombre || '(s/n)'}`,
+                a.tipo,
+                `$ ${money(a.monto)}`,
+                `$ ${money(a.viatico || 0)}`
+            ]);
+
+            const paramSections = [
+                { title: 'Ruta', rows: [
+                    ['Paradas', c.stops.length],
+                    ['Kilometraje calculado', `${c.km.toFixed(1)} km`],
+                    ['Tiempo de ruta', `${Math.round(c.hours*60)} min (${c.hours.toFixed(2)} h)`],
+                    ['Frecuencia del servicio', c.freqKey + (c.freqFactor !== 1 ? ` — factor ${c.freqFactor}` : '')],
+                    ['Camión', c.refrigerated ? 'Refrigerado (+15% combustible)' : 'Estándar'],
+                ]},
+                { title: 'Chofer y auxiliares', rows: [
+                    ['Chofer', c.driver.nombre],
+                    ['Tipo de liquidación chofer', c.driver.tipo],
+                    ['Sueldo/Jornal chofer', `$ ${money(c.driver.monto)}`],
+                    ['Viático chofer', `$ ${money(c.driver.viatico)}`],
+                    ['Cargas sociales', `${c.socialPct}%`],
+                    ['Horas mensuales de referencia', `${c.monthHours} h/mes`],
+                    ['Auxiliares cargados', (c.auxCosts || []).length],
+                ]},
+                { title: 'Camión (costos variables)', rows: [
+                    ['Valor del camión', `$ ${money(c.truckValue)}`],
+                    ['Vida útil estimada', `${Number(c.truckLifeKm).toLocaleString('es-AR')} km`],
+                    ['Juego de cubiertas', `$ ${money(c.tiresCost)}`],
+                    ['Duración cubiertas', `${Number(c.tiresKm).toLocaleString('es-AR')} km`],
+                    ['Mantenimiento anual', `$ ${money(c.maintYear)}`],
+                    ['Km anuales recorridos', `${Number(c.kmYear).toLocaleString('es-AR')} km`],
+                    ['Gastos fijos mensuales (seguro+patente+VTV)', `$ ${money(c.fixedMonth)}`],
+                    ['Viajes promedio por mes', c.tripsMonth],
+                ]},
+                { title: 'Combustible', rows: [
+                    ['Consumo', `${c.consumption} L / 100 km`],
+                    ['Precio del litro', `$ ${money(c.fuelPrice)}`],
+                ]},
+                { title: 'Estructura comercial', rows: [
+                    ['Overhead de oficina', `${c.overheadPct}%`],
+                    ['Margen de ganancia', `${c.marginPct}%`],
+                    ['Impuestos aplicados', c.taxes.length ? c.taxes.map(t => `${t.name} ${t.pct}%`).join(', ') : '—'],
+                ]},
+            ];
+
+            for (const sec of paramSections) {
+                doc.autoTable({
+                    startY: y + 3,
+                    head: [[{ content: sec.title, colSpan: 2, styles: { fillColor: [240, 240, 255], textColor: [27, 37, 89], halign: 'left', fontStyle: 'bold' } }]],
+                    body: sec.rows,
+                    theme: 'grid',
+                    styles: { fontSize: 9, cellPadding: 2 },
+                    columnStyles: { 0: { cellWidth: 95, textColor: [100, 100, 120] }, 1: { cellWidth: 85, halign: 'right', fontStyle: 'bold', textColor: [27, 37, 89] } },
+                });
+                y = doc.lastAutoTable.finalY;
             }
 
-            let y = 36;
-            const COL_NUM = 90;  // columna del número (alineado derecha)
-            const COL_SIGN = COL_NUM - 35;
-            const COL_LABEL = COL_NUM + 8;
+            if (auxRows.length) {
+                doc.autoTable({
+                    startY: y + 3,
+                    head: [[{ content: 'Auxiliares — detalle', colSpan: 4, styles: { fillColor: [240, 240, 255], textColor: [27, 37, 89], halign: 'left', fontStyle: 'bold' } }],
+                           ['Nombre', 'Tipo', 'Sueldo/Jornal', 'Viático']],
+                    body: auxRows,
+                    theme: 'grid',
+                    styles: { fontSize: 8, cellPadding: 2 },
+                    headStyles: { fillColor: [245, 245, 255], textColor: [100, 100, 120] },
+                });
+                y = doc.lastAutoTable.finalY;
+            }
 
-            function section(title) {
-                doc.setDrawColor(200, 200, 220);
-                doc.setLineWidth(0.3);
-                doc.line(15, y, 195, y);
-                y += 5;
-                doc.setTextColor(67, 24, 255);
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(11);
-                doc.text(title, 15, y);
+            // ── SECCIÓN 2 — CÓMO SE HIZO CADA CÁLCULO ──────────────────────
+            doc.addPage(); y = 20;
+            doc.setFillColor(67, 24, 255); doc.rect(0, 0, 210, 10, 'F');
+            doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+            doc.text('2 · CÓMO SE CALCULÓ CADA VALOR', 15, 7);
+            y = 20;
+
+            // Helper: bloque de cálculo con nombre, fórmula, sustitución y resultado
+            function calcBlock(name, formula, substitution, result, kind) {
+                if (y > 260) { doc.addPage(); y = 20; }
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+                doc.setTextColor(27, 37, 89);
+                doc.text(name, 15, y); y += 5;
+
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(8);
+                doc.setTextColor(100, 100, 120);
+                const fLines = doc.splitTextToSize('Fórmula:  ' + formula, 180);
+                doc.text(fLines, 18, y); y += fLines.length * 4;
+
+                const sLines = doc.splitTextToSize('Reemplazo:  ' + substitution, 180);
+                doc.setFont('courier', 'normal'); doc.setFontSize(8);
+                doc.text(sLines, 18, y); y += sLines.length * 4;
+
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+                doc.setTextColor(kind === 'total' ? 16 : 67, kind === 'total' ? 185 : 24, kind === 'total' ? 129 : 255);
+                doc.text(`= $ ${moneyDec(result)}`, 18, y + 1);
                 y += 7;
-            }
-            function line(sign, amount, label, sub) {
-                doc.setFont('courier', 'bold');
-                doc.setFontSize(13);
-                doc.setTextColor(27, 37, 89);
-                doc.text(sign, COL_SIGN, y);
-                doc.text('$ ' + money(amount).padStart(12, ' '), COL_NUM, y, { align: 'right' });
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(10);
-                doc.setTextColor(67, 24, 255);
-                doc.text('← ' + label, COL_LABEL, y);
-                y += 5;
-                if (sub) {
-                    doc.setFont('helvetica', 'italic');
-                    doc.setFontSize(8);
-                    doc.setTextColor(120);
-                    doc.text(sub, COL_LABEL + 4, y);
-                    y += 5;
-                }
+                doc.setDrawColor(230, 232, 240); doc.setLineWidth(0.2);
+                doc.line(15, y - 2, 195, y - 2);
                 y += 1;
             }
-            function bar() {
-                doc.setDrawColor(100, 100, 120);
-                doc.setLineWidth(0.6);
-                doc.line(COL_NUM - 40, y - 3, COL_NUM + 2, y - 3);
-                y += 2;
-            }
-            function total(amount, label) {
-                doc.setFont('courier', 'bold');
-                doc.setFontSize(14);
-                doc.setTextColor(16, 185, 129);
-                doc.text('$ ' + money(amount).padStart(12, ' '), COL_NUM, y, { align: 'right' });
-                doc.setFont('helvetica', 'bold');
-                doc.setFontSize(11);
+
+            function sectionTitle(title) {
+                if (y > 255) { doc.addPage(); y = 20; }
+                y += 3;
+                doc.setFillColor(244, 247, 254);
+                doc.rect(15, y - 4, 180, 7, 'F');
                 doc.setTextColor(67, 24, 255);
-                doc.text('← ' + label, COL_LABEL, y);
-                y += 10;
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+                doc.text(title, 18, y + 1); y += 8;
             }
 
-            // ── PARTE 1: COSTO ─────────────────────────────────────────────
-            section('PARTE 1 — EL COSTO');
-            line(' ', c.driverCost, `Chofer ${c.driver.nombre}`, c.driverFormula || '');
-            (c.auxCosts || []).forEach(a => line(' ', a.costo, `Aux ${a.nombre || ''} (${a.tipo})`, a.formula || ''));
-            line(' ', c.depreciation, 'Depreciación camión', `$${Number(c.truckValue||0).toLocaleString('es-AR')} / ${Number(c.truckLifeKm||0).toLocaleString('es-AR')} km × ${c.km.toFixed(1)} km`);
-            line(' ', c.tires, 'Cubiertas', `$${Number(c.tiresCost||0).toLocaleString('es-AR')} / ${Number(c.tiresKm||0).toLocaleString('es-AR')} km × ${c.km.toFixed(1)} km`);
-            line(' ', c.maintenance, 'Mantenimiento', `$${Number(c.maintYear||0).toLocaleString('es-AR')} / ${Number(c.kmYear||0).toLocaleString('es-AR')} km × ${c.km.toFixed(1)} km`);
-            line(' ', c.fixedPerTrip, 'Seguro+Patente+VTV', `$${Number(c.fixedMonth||0).toLocaleString('es-AR')} / ${c.tripsMonth||22} viajes`);
-            line(' ', c.fuelTotal, 'Combustible', `${c.km.toFixed(1)} km · ${c.consumption} L/100km · $${c.fuelPrice}/L` + (c.refrigerated ? ' × 1.15 (refrigerado)' : ''));
-            line('+', c.overhead, `Oficina (${c.overheadPct}%)`, `${c.overheadPct}% sobre costo directo`);
-            bar();
+            // ── 2.1 Personal ─────────────────────────────────────────────
+            sectionTitle('Personal');
+            const driverFormulaName = c.driver.tipo === 'JORNAL'
+                ? 'Sueldo_jornal + Viático'
+                : 'Sueldo × (1 + Cargas_sociales) / Horas_mes × Horas_viaje + Viático';
+            const driverSub = c.driver.tipo === 'JORNAL'
+                ? `$${money(c.driver.monto)} + $${money(c.driver.viatico)}`
+                : `$${money(c.driver.monto)} × (1 + ${c.socialPct}%) / ${c.monthHours}h × ${c.hours.toFixed(2)}h + $${money(c.driver.viatico)}`;
+            calcBlock(`Costo del chofer (${c.driver.nombre})`, driverFormulaName, driverSub, c.driverCost);
+
+            (c.auxCosts || []).forEach((a, i) => {
+                const fName = a.tipo === 'JORNAL'
+                    ? 'Sueldo_jornal + Viático'
+                    : 'Sueldo × (1 + Cargas_sociales) / Horas_mes × Horas_viaje + Viático';
+                const fSub = a.tipo === 'JORNAL'
+                    ? `$${money(a.monto)} + $${money(a.viatico || 0)}`
+                    : `$${money(a.monto)} × (1 + ${c.socialPct}%) / ${c.monthHours}h × ${c.hours.toFixed(2)}h + $${money(a.viatico || 0)}`;
+                calcBlock(`Costo auxiliar #${i+1} (${a.nombre || 's/n'})`, fName, fSub, a.costo);
+            });
+            calcBlock('Subtotal Personal', 'Chofer + Auxiliares', `$${money(c.driverCost)} + $${money(c.personalTotal - c.driverCost)}`, c.personalTotal);
+
+            // ── 2.2 Camión ───────────────────────────────────────────────
+            sectionTitle('Camión (costos variables por viaje)');
+            calcBlock('Depreciación', 'Valor_camión / Vida_útil_km × Km_viaje',
+                `$${money(c.truckValue)} / ${Number(c.truckLifeKm).toLocaleString('es-AR')} km × ${c.km.toFixed(1)} km`, c.depreciation);
+            calcBlock('Cubiertas', 'Costo_cubiertas / Km_duración × Km_viaje',
+                `$${money(c.tiresCost)} / ${Number(c.tiresKm).toLocaleString('es-AR')} km × ${c.km.toFixed(1)} km`, c.tires);
+            calcBlock('Mantenimiento', 'Mant_anual / Km_anuales × Km_viaje',
+                `$${money(c.maintYear)} / ${Number(c.kmYear).toLocaleString('es-AR')} km × ${c.km.toFixed(1)} km`, c.maintenance);
+            calcBlock('Fijos prorrateados (seguro+patente+VTV)', 'Gastos_fijos_mes / Viajes_mes',
+                `$${money(c.fixedMonth)} / ${c.tripsMonth} viajes`, c.fixedPerTrip);
+            calcBlock('Subtotal Camión', 'Depreciación + Cubiertas + Mantenimiento + Fijos',
+                `$${money(c.depreciation)} + $${money(c.tires)} + $${money(c.maintenance)} + $${money(c.fixedPerTrip)}`, c.vehicleTotal);
+
+            // ── 2.3 Combustible ───────────────────────────────────────────
+            sectionTitle('Combustible');
+            calcBlock('Combustible base', 'Km × (Consumo / 100) × Precio_litro',
+                `${c.km.toFixed(1)} km × (${c.consumption}/100) × $${money(c.fuelPrice)}`, c.fuelBase);
+            if (c.refrigerated) {
+                calcBlock('Ajuste refrigerado', 'Combustible_base × 1.15',
+                    `$${money(c.fuelBase)} × 1.15`, c.fuelTotal);
+            }
+
+            // ── 2.4 Oficina + Frecuencia ─────────────────────────────────
+            sectionTitle('Estructura (oficina + frecuencia)');
+            calcBlock('Overhead oficina', '(Personal + Camión + Combustible) × Overhead%',
+                `($${money(c.personalTotal)} + $${money(c.vehicleTotal)} + $${money(c.fuelTotal)}) × ${c.overheadPct}%`, c.overhead);
+            calcBlock('Costo sin frecuencia', 'Personal + Camión + Combustible + Overhead',
+                `$${money(c.personalTotal)} + $${money(c.vehicleTotal)} + $${money(c.fuelTotal)} + $${money(c.overhead)}`, c.costoSinFreq);
             if (c.freqFactor !== 1) {
-                line(' ', c.personalTotal + c.vehicleTotal + c.fuelTotal + c.overhead, 'Subtotal', '');
-                line('×', c.freqFactor, 'Factor frecuencia', c.freqKey);
-                bar();
+                calcBlock(`Aplicar factor de frecuencia (${c.freqKey})`, 'Costo_sin_frecuencia × Factor',
+                    `$${money(c.costoSinFreq)} × ${c.freqFactor}`, c.costoTotal);
             }
-            total(c.costoTotal, 'COSTO DEL VIAJE');
+            calcBlock('COSTO TOTAL DEL VIAJE', 'Todo lo anterior', `(ver cálculos previos)`, c.costoTotal, 'total');
 
-            // ── PARTE 2: GANANCIA ──────────────────────────────────────────
-            if (y > 230) { doc.addPage(); y = 25; }
-            section('PARTE 2 — LA GANANCIA');
-            line(' ', c.costoTotal, 'Costo', '');
-            line('+', c.margin, `Ganancia ${c.marginPct}%`, `${c.marginPct}% sobre el costo`);
-            bar();
-            total(c.subtotal, 'SUBTOTAL');
+            // ── 2.5 Ganancia ──────────────────────────────────────────────
+            sectionTitle('Ganancia');
+            calcBlock('Ganancia', 'Costo × Margen%',
+                `$${money(c.costoTotal)} × ${c.marginPct}%`, c.margin);
+            calcBlock('SUBTOTAL (costo + ganancia)', 'Costo + Ganancia',
+                `$${money(c.costoTotal)} + $${money(c.margin)}`, c.subtotal, 'total');
 
-            // ── PARTE 3: IMPUESTOS ─────────────────────────────────────────
-            if (y > 230) { doc.addPage(); y = 25; }
-            section('PARTE 3 — LOS IMPUESTOS');
-            line(' ', c.subtotal, 'Subtotal', '');
-            c.taxes.forEach(t => line('+', t.monto, `${t.name} ${t.pct}%`, `${t.pct}% sobre el subtotal`));
-            bar();
-            total(c.precioFinal, 'PRECIO FINAL');
+            // ── 2.6 Impuestos ─────────────────────────────────────────────
+            sectionTitle('Impuestos');
+            c.taxes.forEach(t => {
+                calcBlock(`${t.name} (${t.pct}%)`, 'Subtotal × Alícuota',
+                    `$${money(c.subtotal)} × ${t.pct}%`, t.monto);
+            });
+            calcBlock('PRECIO FINAL AL CLIENTE', 'Subtotal + Impuestos',
+                `$${money(c.subtotal)} + $${money(c.taxesTotal)}`, c.precioFinal, 'total');
 
-            // ── RESUMEN ────────────────────────────────────────────────────
-            if (y > 230) { doc.addPage(); y = 25; }
-            y += 5;
-            section('RESUMEN');
+            // ── SECCIÓN 3 — RESUMEN ──────────────────────────────────────
+            doc.addPage();
+            doc.setFillColor(67, 24, 255); doc.rect(0, 0, 210, 10, 'F');
+            doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(10);
+            doc.text('3 · RESUMEN EJECUTIVO', 15, 7);
+
             doc.autoTable({
-                startY: y,
+                startY: 20,
+                head: [['Componente', 'Monto', '% del precio final']],
                 body: [
-                    ['Costo', '$ ' + money(c.costoTotal), pct(c.costoTotal, c.precioFinal) + '%'],
-                    ['Ganancia', '$ ' + money(c.margin), pct(c.margin, c.precioFinal) + '%'],
-                    ['Impuestos', '$ ' + money(c.taxesTotal), pct(c.taxesTotal, c.precioFinal) + '%'],
-                    ['TOTAL', '$ ' + money(c.precioFinal), '100%'],
+                    ['Personal (chofer + auxiliares)', `$ ${money(c.personalTotal)}`, pct(c.personalTotal, c.precioFinal) + '%'],
+                    ['Camión (desgaste + fijos)', `$ ${money(c.vehicleTotal)}`, pct(c.vehicleTotal, c.precioFinal) + '%'],
+                    ['Combustible', `$ ${money(c.fuelTotal)}`, pct(c.fuelTotal, c.precioFinal) + '%'],
+                    ['Oficina (overhead)', `$ ${money(c.overhead)}`, pct(c.overhead, c.precioFinal) + '%'],
+                    [{ content: 'COSTO TOTAL', styles: { fontStyle: 'bold', fillColor: [247, 247, 255] } },
+                     { content: `$ ${money(c.costoTotal)}`, styles: { fontStyle: 'bold', halign: 'right', fillColor: [247, 247, 255] } },
+                     { content: pct(c.costoTotal, c.precioFinal) + '%', styles: { fontStyle: 'bold', halign: 'right', fillColor: [247, 247, 255] } }],
+                    ['Ganancia', `$ ${money(c.margin)}`, pct(c.margin, c.precioFinal) + '%'],
+                    ['Impuestos', `$ ${money(c.taxesTotal)}`, pct(c.taxesTotal, c.precioFinal) + '%'],
+                    [{ content: 'PRECIO FINAL', styles: { fontStyle: 'bold', fillColor: [220, 252, 231], textColor: [16, 100, 75] } },
+                     { content: `$ ${money(c.precioFinal)}`, styles: { fontStyle: 'bold', halign: 'right', fillColor: [220, 252, 231], textColor: [16, 100, 75] } },
+                     { content: '100%', styles: { fontStyle: 'bold', halign: 'right', fillColor: [220, 252, 231], textColor: [16, 100, 75] } }],
                 ],
                 theme: 'grid',
-                columnStyles: { 0: { fontStyle: 'bold', cellWidth: 60 }, 1: { halign: 'right', cellWidth: 60 }, 2: { halign: 'right', cellWidth: 30 } },
+                headStyles: { fillColor: [27, 37, 89], textColor: 255, fontStyle: 'bold' },
+                columnStyles: { 0: { cellWidth: 95 }, 1: { halign: 'right', cellWidth: 50 }, 2: { halign: 'right', cellWidth: 35 } },
                 styles: { fontSize: 10, cellPadding: 3 },
-                didParseCell: (d) => {
-                    if (d.row.index === 3) { d.cell.styles.fillColor = [240, 240, 255]; d.cell.styles.fontStyle = 'bold'; d.cell.styles.fontSize = 12; }
-                },
             });
 
-            doc.save(`Cuenta-paso-a-paso-${c.fecha.replace(/\//g,'-')}.pdf`);
+            // Nota: precio por km
+            const finalY = doc.lastAutoTable.finalY + 10;
+            doc.setFontSize(9); doc.setTextColor(100);
+            doc.setFont('helvetica', 'italic');
+            doc.text(`Referencias: $ ${money(c.precioFinal / Math.max(c.km, 1))} por km  ·  $ ${money(c.precioFinal / Math.max(c.stops.length, 1))} por parada`, 15, finalY);
+
+            const safeDest = (c.destinatario?.nombre || 'sin-dest').replace(/[^a-z0-9]/gi, '-');
+            doc.save(`Cuenta-paso-a-paso-${safeDest}-${c.fecha.replace(/\//g,'-')}.pdf`);
+        }
+
+        // ── MODAL DE EXPORTACIÓN (PDF / XLS) ───────────────────────────────
+        let budgetExportContext = null; // { kind: 'presupuesto'|'cuenta', calc? }
+
+        function budgetOpenExportModal(kind, calc) {
+            const c = calc || budgetState.lastCalc;
+            if (!c) { addNotification('warning', 'Sin cálculo', 'Primero calculá el presupuesto.'); return; }
+            budgetExportContext = { kind, calc: c };
+            const modal = document.getElementById('bud-export-modal');
+            const title = document.getElementById('bud-export-title');
+            const sub = document.getElementById('bud-export-subtitle');
+            if (kind === 'cuenta') {
+                title.textContent = 'Exportar cuenta paso a paso';
+                sub.textContent = 'Desglose con todas las fórmulas y valores usados.';
+            } else {
+                title.textContent = 'Exportar presupuesto';
+                sub.textContent = 'Documento para el destinatario con tabla de importes.';
+            }
+            modal?.classList.remove('hidden');
+            lucide.createIcons();
+        }
+        function budgetCloseExportModal() {
+            document.getElementById('bud-export-modal')?.classList.add('hidden');
+        }
+        function budgetExportNow(format) {
+            const ctx = budgetExportContext;
+            if (!ctx) return;
+            const prev = budgetState.lastCalc;
+            budgetState.lastCalc = ctx.calc;
+            const finish = () => { budgetState.lastCalc = prev; budgetCloseExportModal(); };
+            const p = (ctx.kind === 'cuenta')
+                ? (format === 'xls' ? budgetExportCuentaXLS() : budgetExportCuentaPDF())
+                : (format === 'xls' ? budgetExportPresupuestoXLS() : budgetExportPresupuestoPDF());
+            Promise.resolve(p).finally(finish);
+        }
+
+        // ── XLS: PRESUPUESTO (para el cliente) ────────────────────────────
+        function budgetExportPresupuestoXLS() {
+            const c = budgetState.lastCalc;
+            if (!c) return;
+            const dest = c.destinatario || {};
+            const wb = XLSX.utils.book_new();
+
+            // Hoja 1: Resumen del presupuesto
+            const resumen = [
+                ['PRESUPUESTO'],
+                [''],
+                ['Fecha', c.fecha],
+                ['N°', 'P-' + Date.now().toString().slice(-6)],
+                [''],
+                ['— DESTINATARIO —'],
+                ['Razón social / Nombre', dest.nombre || ''],
+                ['CUIT / DNI', dest.cuit || ''],
+                ['Email', dest.email || ''],
+                ['Teléfono', dest.telefono || ''],
+                ['Dirección', dest.direccion || ''],
+                ['Notas', dest.notas || ''],
+                [''],
+                ['— DETALLE DEL SERVICIO —'],
+                ['Tipo', 'Viaje de distribución'],
+                ['Paradas', c.stops?.length || 0],
+                ['Distancia total (km)', Number(c.km.toFixed(1))],
+                ['Tiempo estimado (min)', Math.round(c.hours * 60)],
+                ['Origen', c.origin || ''],
+                ['Camión', c.refrigerated ? 'Refrigerado' : 'Estándar'],
+                ['Chofer', c.driver?.nombre || ''],
+                ['Frecuencia', c.freqKey + (c.freqFactor !== 1 ? ` (x${c.freqFactor})` : '')],
+                [''],
+                ['— IMPORTES —'],
+                ['Concepto', 'Importe'],
+                ['Costo del viaje', Math.round(c.costoTotal)],
+                [`Ganancia ${c.marginPct}%`, Math.round(c.margin)],
+                ['Subtotal', Math.round(c.subtotal)],
+                ...(c.taxes || []).map(t => [`${t.name} ${t.pct}%`, Math.round(t.monto)]),
+                ['TOTAL AL CLIENTE', Math.round(c.precioFinal)],
+            ];
+            const ws1 = XLSX.utils.aoa_to_sheet(resumen);
+            ws1['!cols'] = [{ wch: 32 }, { wch: 40 }];
+            XLSX.utils.book_append_sheet(wb, ws1, 'Presupuesto');
+
+            // Hoja 2: Qué lleva
+            if (c.items && c.items.length) {
+                const itemsAoA = [
+                    ['#', 'Descripción', 'Cantidad', 'Unidad', 'Peso unit. (kg)', 'Valor unit. ($)', 'Peso total (kg)', 'Valor total ($)'],
+                    ...c.items.map((it, i) => [
+                        i+1,
+                        it.descripcion || '',
+                        Number(it.cantidad) || 0,
+                        it.unidad || '',
+                        Number(it.pesoKg) || 0,
+                        Number(it.valor) || 0,
+                        Number(it.pesoTotalKg) || 0,
+                        Math.round(Number(it.valorTotal) || 0),
+                    ]),
+                    [],
+                    ['', '', c.itemsTotals?.bultos || 0, '', '', '', Number(c.itemsTotals?.pesoTotalKg || 0), Math.round(c.itemsTotals?.valorDeclarado || 0)],
+                ];
+                const ws2 = XLSX.utils.aoa_to_sheet(itemsAoA);
+                ws2['!cols'] = [{ wch: 4 }, { wch: 40 }, { wch: 10 }, { wch: 10 }, { wch: 14 }, { wch: 14 }, { wch: 14 }, { wch: 14 }];
+                XLSX.utils.book_append_sheet(wb, ws2, 'Qué lleva');
+            }
+
+            // Hoja 3: Paradas
+            if (c.stops && c.stops.length) {
+                const stopsAoA = [
+                    ['#', 'Destino', 'Dirección', 'Lat', 'Lng'],
+                    ...c.stops.map((s, i) => [i+1, s.name || '', s.address || '', s.lat ?? '', s.lng ?? '']),
+                ];
+                const ws3 = XLSX.utils.aoa_to_sheet(stopsAoA);
+                ws3['!cols'] = [{ wch: 4 }, { wch: 30 }, { wch: 55 }, { wch: 12 }, { wch: 12 }];
+                XLSX.utils.book_append_sheet(wb, ws3, 'Paradas');
+            }
+
+            const safe = (dest.nombre || 'sin-destinatario').replace(/[^a-z0-9]/gi, '-');
+            XLSX.writeFile(wb, `Presupuesto-${safe}-${c.fecha.replace(/\//g, '-')}.xlsx`);
+        }
+
+        // ── XLS: CUENTA PASO A PASO ───────────────────────────────────────
+        function budgetExportCuentaXLS() {
+            const c = budgetState.lastCalc;
+            if (!c) return;
+            const dest = c.destinatario || {};
+            const wb = XLSX.utils.book_new();
+
+            const R = (n) => Math.round(Number(n) || 0);
+            const aux = c.auxCosts || [];
+
+            const rows = [
+                ['CUENTA PASO A PASO — Cómo se calculó el presupuesto'],
+                [''],
+                ['Fecha', c.fecha],
+                ['Destinatario', dest.nombre || ''],
+                ['CUIT', dest.cuit || ''],
+                ['Km', Number(c.km.toFixed(1))],
+                ['Horas', Number(c.hours.toFixed(2))],
+                [''],
+                ['=== 1) PERSONAL ==='],
+                ['Concepto', 'Fórmula', 'Valor usado', 'Resultado'],
+                [`Chofer ${c.driver?.nombre || ''} (${c.driver?.tipo || ''})`, c.driverFormula || '', '', R(c.driverCost)],
+                ...aux.map(a => [`Aux ${a.nombre || ''} (${a.tipo})`, a.formula || '', '', R(a.costo)]),
+                ['', '', 'Total personal', R(c.personalTotal)],
+                [''],
+                [`=== 2) CAMIÓN (${c.km.toFixed(1)} km) ===`],
+                ['Concepto', 'Fórmula', 'Valor usado', 'Resultado'],
+                ['Depreciación', `$${R(c.truckValue)} / ${R(c.truckLifeKm)} km × ${c.km.toFixed(1)} km`, c.truckValue, R(c.depreciation)],
+                ['Cubiertas', `$${R(c.tiresCost)} / ${R(c.tiresKm)} km × ${c.km.toFixed(1)} km`, c.tiresCost, R(c.tires)],
+                ['Mantenimiento', `$${R(c.maintYear)} / ${R(c.kmYear)} km × ${c.km.toFixed(1)} km`, c.maintYear, R(c.maintenance)],
+                ['Seguro + Patente + VTV', `$${R(c.fixedMonth)} / ${c.tripsMonth} viajes`, c.fixedMonth, R(c.fixedPerTrip)],
+                ['', '', 'Total camión', R(c.vehicleTotal)],
+                [''],
+                ['=== 3) COMBUSTIBLE ==='],
+                ['Concepto', 'Fórmula', 'Valor usado', 'Resultado'],
+                [c.refrigerated ? 'Gasoil + 15% refrigerado' : 'Gasoil',
+                 `${c.km.toFixed(1)} km × ${c.consumption}L/100km × $${c.fuelPrice}/L${c.refrigerated ? ' × 1.15' : ''}`,
+                 c.fuelPrice, R(c.fuelTotal)],
+                [''],
+                ['=== 4) OFICINA ==='],
+                ['Concepto', 'Fórmula', 'Valor usado', 'Resultado'],
+                [`Overhead ${c.overheadPct}%`, `(${R(c.personalTotal)} + ${R(c.vehicleTotal)} + ${R(c.fuelTotal)}) × ${c.overheadPct}%`, c.overheadPct, R(c.overhead)],
+                [''],
+                ['=== 5) COSTO DEL VIAJE ==='],
+                ['Costo directo (personal + camión + combustible)', '', '', R(c.personalTotal + c.vehicleTotal + c.fuelTotal)],
+                ['+ Overhead', '', '', R(c.overhead)],
+                ...(c.freqFactor !== 1 ? [[`× Factor frecuencia (${c.freqKey})`, `${R(c.costoSinFreq)} × ${c.freqFactor}`, c.freqFactor, R(c.costoTotal - c.costoSinFreq)]] : []),
+                ['', '', 'COSTO TOTAL', R(c.costoTotal)],
+                [''],
+                ['=== 6) GANANCIA ==='],
+                [`+ ${c.marginPct}% sobre el costo`, `${R(c.costoTotal)} × ${c.marginPct}%`, c.marginPct, R(c.margin)],
+                ['', '', 'Subtotal (costo + ganancia)', R(c.subtotal)],
+                [''],
+                ['=== 7) IMPUESTOS ==='],
+                ...((c.taxes || []).map(t => [`+ ${t.name} ${t.pct}%`, `${R(c.subtotal)} × ${t.pct}%`, t.pct, R(t.monto)])),
+                ['', '', 'Total impuestos', R(c.taxesTotal)],
+                [''],
+                ['=== PRECIO AL CLIENTE ==='],
+                ['Costo', '', '', R(c.costoTotal)],
+                ['Ganancia', '', '', R(c.margin)],
+                ['Impuestos', '', '', R(c.taxesTotal)],
+                ['PRECIO FINAL', '', '', R(c.precioFinal)],
+                [''],
+                ['Costo por parada', '', '', R(c.costoTotal / Math.max((c.stops?.length || 1), 1))],
+                ['Costo por km', '', '', R(c.costoTotal / Math.max(c.km, 1))],
+            ];
+            const ws = XLSX.utils.aoa_to_sheet(rows);
+            ws['!cols'] = [{ wch: 44 }, { wch: 50 }, { wch: 18 }, { wch: 16 }];
+            XLSX.utils.book_append_sheet(wb, ws, 'Cuenta paso a paso');
+
+            // Hoja 2: Inputs (los datos que se ingresaron)
+            const inputs = [
+                ['PARÁMETROS USADOS EN EL CÁLCULO'],
+                [''],
+                ['Sección', 'Parámetro', 'Valor'],
+                ['Personal', 'Horas laborales / mes', c.monthHours],
+                ['Personal', 'Cargas sociales (%)', c.socialPct],
+                ['Personal', `Chofer ${c.driver?.nombre} - monto`, c.driver?.monto],
+                ['Personal', `Chofer - tipo`, c.driver?.tipo],
+                ['Personal', `Chofer - viático`, c.driver?.viatico],
+                ...aux.flatMap(a => [
+                    ['Personal', `Aux ${a.nombre} - monto`, a.monto],
+                    ['Personal', `Aux ${a.nombre} - tipo`, a.tipo],
+                    ['Personal', `Aux ${a.nombre} - viático`, a.viatico],
+                ]),
+                ['Camión', 'Valor nuevo ($)', c.truckValue],
+                ['Camión', 'Km vida útil', c.truckLifeKm],
+                ['Camión', 'Cubiertas - costo set ($)', c.tiresCost],
+                ['Camión', 'Cubiertas - duración km', c.tiresKm],
+                ['Camión', 'Mantenimiento anual ($)', c.maintYear],
+                ['Camión', 'Km/año', c.kmYear],
+                ['Camión', 'Seguro+Pat+VTV mensual ($)', c.fixedMonth],
+                ['Camión', 'Viajes/mes', c.tripsMonth],
+                ['Camión', 'Refrigerado', c.refrigerated ? 'Sí' : 'No'],
+                ['Combustible', 'Consumo (L/100km)', c.consumption],
+                ['Combustible', 'Precio ($/L)', c.fuelPrice],
+                ['Oficina', 'Overhead (%)', c.overheadPct],
+                ['Frecuencia', 'Tipo', c.freqKey],
+                ['Frecuencia', 'Factor', c.freqFactor],
+                ['Ganancia', 'Margen (%)', c.marginPct],
+                ...((c.taxes || []).map(t => ['Impuestos', t.name, t.pct + '%'])),
+                ['Ruta', 'Km totales', c.km.toFixed(1)],
+                ['Ruta', 'Horas', c.hours.toFixed(2)],
+                ['Ruta', 'Paradas', c.stops?.length || 0],
+            ];
+            const ws2 = XLSX.utils.aoa_to_sheet(inputs);
+            ws2['!cols'] = [{ wch: 14 }, { wch: 38 }, { wch: 20 }];
+            XLSX.utils.book_append_sheet(wb, ws2, 'Parámetros');
+
+            const safe = (dest.nombre || 'sin-destinatario').replace(/[^a-z0-9]/gi, '-');
+            XLSX.writeFile(wb, `Cuenta-paso-a-paso-${safe}-${c.fecha.replace(/\//g, '-')}.xlsx`);
         }
 
         async function loadIncidents() {
