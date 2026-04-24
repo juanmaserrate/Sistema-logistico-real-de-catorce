@@ -5934,7 +5934,28 @@
         }
 
         // ── PDFs ───────────────────────────────────────────────────────────
-        function budgetExportPresupuestoPDF() {
+        // Cargar el logo como dataURL una sola vez
+        async function budgetLoadLogo() {
+            if (window.__budLogoDataUrl) return window.__budLogoDataUrl;
+            try {
+                const resp = await fetch('/logo-r14.png', { cache: 'force-cache' });
+                if (!resp.ok) return null;
+                const blob = await resp.blob();
+                const dataUrl = await new Promise((res, rej) => {
+                    const r = new FileReader();
+                    r.onload = () => res(r.result);
+                    r.onerror = rej;
+                    r.readAsDataURL(blob);
+                });
+                window.__budLogoDataUrl = dataUrl;
+                return dataUrl;
+            } catch (e) {
+                console.warn('[budget] No se pudo cargar el logo:', e);
+                return null;
+            }
+        }
+
+        async function budgetExportPresupuestoPDF() {
             const c = budgetState.lastCalc;
             if (!c) return;
             const { jsPDF } = window.jspdf;
@@ -5942,16 +5963,23 @@
             const money = (n) => '$ ' + Math.round(n).toLocaleString('es-AR');
             const cliente = (document.getElementById('bud-client-name').value || '').trim();
 
-            // Header
-            doc.setFillColor(67, 24, 255);
-            doc.rect(0, 0, 210, 30, 'F');
+            // Header con fondo negro + logo blanco (estilo de marca R14)
+            const logo = await budgetLoadLogo();
+            doc.setFillColor(0, 0, 0);
+            doc.rect(0, 0, 210, 34, 'F');
+            if (logo) {
+                // Logo cuadrado a la izquierda, 22x22 mm
+                try { doc.addImage(logo, 'PNG', 12, 6, 22, 22); } catch {}
+            }
             doc.setTextColor(255);
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(20);
-            doc.text('REAL DE CATORCE', 15, 18);
+            doc.text('REAL DE CATORCE', 40, 18);
             doc.setFontSize(10);
             doc.setFont('helvetica', 'normal');
-            doc.text('Ombú 1269, Burzaco · Prov. de Buenos Aires', 15, 25);
+            doc.text('Ombú 1269, Burzaco · Prov. de Buenos Aires', 40, 25);
+            // Mover los bloques que estaban en y=50 un poco más abajo porque el header ahora mide 34
+            // (jsPDF seguirá con los text() originales en y=50, pero ajustamos el offset)
 
             doc.setTextColor(27, 37, 89);
             doc.setFontSize(24);
@@ -6037,7 +6065,7 @@
             doc.save(`Presupuesto-${(cliente || 'sin-cliente').replace(/[^a-z0-9]/gi,'-')}-${c.fecha.replace(/\//g,'-')}.pdf`);
         }
 
-        function budgetExportCuentaPDF() {
+        async function budgetExportCuentaPDF() {
             const c = budgetState.lastCalc;
             if (!c) return;
             const { jsPDF } = window.jspdf;
@@ -6045,13 +6073,17 @@
             const money = (n) => Math.round(n).toLocaleString('es-AR');
             const pct = (a, tot) => tot > 0 ? Math.round(a/tot*100) : 0;
 
-            // Header
-            doc.setFillColor(67, 24, 255);
-            doc.rect(0, 0, 210, 16, 'F');
+            // Header con fondo negro + logo R14
+            const logo = await budgetLoadLogo();
+            doc.setFillColor(0, 0, 0);
+            doc.rect(0, 0, 210, 22, 'F');
+            if (logo) {
+                try { doc.addImage(logo, 'PNG', 12, 3, 16, 16); } catch {}
+            }
             doc.setTextColor(255);
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(13);
-            doc.text('CÓMO SE CALCULÓ ESTE PRESUPUESTO', 15, 10);
+            doc.text('CÓMO SE CALCULÓ ESTE PRESUPUESTO', 32, 13);
 
             doc.setTextColor(120);
             doc.setFont('helvetica', 'normal');
