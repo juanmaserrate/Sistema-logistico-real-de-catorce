@@ -1584,16 +1584,55 @@
                         <p class="text-sm text-[#A3AED0] font-medium">Calculadora de costos + margen + impuestos. Todos los datos los ingresás a mano.</p>
                     </div>
                     <div class="flex items-center gap-3">
-                        <button onclick="budgetClearAll()" class="px-5 py-3 bg-white text-rose-600 border-2 border-rose-500 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-rose-50">Limpiar todo</button>
-                        <button onclick="budgetCalculate()" class="px-6 py-4 bg-indigo-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-2">
+                        <div class="inline-flex rounded-2xl bg-[#F4F7FE] p-1" role="tablist">
+                            <button id="bud-tab-calc-btn" onclick="budgetShowTab('calc')" class="px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest bg-indigo-600 text-white shadow">Calculadora</button>
+                            <button id="bud-tab-history-btn" onclick="budgetShowTab('history')" class="px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest text-[#A3AED0] hover:text-[#1B2559]">Historial <span id="bud-history-count" class="ml-1 inline-block min-w-[1.2rem] px-1 rounded-full bg-[#E0E5F2] text-[#1B2559]">0</span></button>
+                        </div>
+                        <button id="bud-btn-clear" onclick="budgetClearAll()" class="px-5 py-3 bg-white text-rose-600 border-2 border-rose-500 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-rose-50">Limpiar todo</button>
+                        <button id="bud-btn-calc" onclick="budgetCalculate()" class="px-6 py-4 bg-indigo-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-2">
                             <i data-lucide="calculator" class="w-4 h-4"></i> Calcular
                         </button>
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 xl:grid-cols-3 gap-6">
+                <div id="bud-pane-calc" class="grid grid-cols-1 xl:grid-cols-3 gap-6">
                     <!-- Columna izquierda: formulario -->
                     <div class="xl:col-span-2 space-y-6">
+
+                        <!-- 0. DESTINATARIO -->
+                        <div class="card-dark p-6">
+                            <div class="flex items-center gap-3 mb-5">
+                                <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">0</div>
+                                <h4 class="text-lg font-bold text-[#1B2559]">Destinatario</h4>
+                                <span class="text-[10px] font-bold text-[#A3AED0]">A quién va dirigido el presupuesto</span>
+                            </div>
+                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                <div>
+                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Razón social / Nombre</label>
+                                    <input id="bud-dest-name" type="text" placeholder="Ej: Escuelas R14 SA" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">CUIT / DNI</label>
+                                    <input id="bud-dest-cuit" type="text" placeholder="30-12345678-9" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Email</label>
+                                    <input id="bud-dest-email" type="email" placeholder="contacto@empresa.com" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                </div>
+                                <div>
+                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Teléfono</label>
+                                    <input id="bud-dest-phone" type="text" placeholder="+54 11 1234-5678" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                </div>
+                                <div class="md:col-span-2">
+                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Dirección</label>
+                                    <input id="bud-dest-address" type="text" placeholder="Calle 123, Ciudad, Prov." class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                </div>
+                                <div class="md:col-span-2">
+                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Notas / referencia interna</label>
+                                    <input id="bud-dest-notes" type="text" placeholder="Contacto: Juan Pérez (operaciones)" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                </div>
+                            </div>
+                        </div>
 
                         <!-- 1. PERSONAL -->
                         <div class="card-dark p-6">
@@ -1738,6 +1777,36 @@
                             </div>
                         </div>
 
+                        <!-- 4B. QUÉ LLEVA -->
+                        <div class="card-dark p-6">
+                            <div class="flex items-center gap-3 mb-5">
+                                <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">📦</div>
+                                <h4 class="text-lg font-bold text-[#1B2559]">Qué lleva</h4>
+                                <span class="text-[10px] font-bold text-[#A3AED0]">Detalle de la carga</span>
+                            </div>
+                            <div class="flex items-center justify-between mb-2">
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Ítems (<span id="bud-items-count">0</span>)</label>
+                                <button onclick="budgetAddItem()" class="text-xs font-black text-indigo-600 hover:text-indigo-800">+ Agregar ítem</button>
+                            </div>
+                            <div id="bud-items-list" class="space-y-2 min-h-[60px] border border-dashed border-[#E0E5F2] rounded-xl p-3">
+                                <div class="text-center text-xs text-[#A3AED0] italic py-4">Sin ítems. Clic en "+ Agregar ítem".</div>
+                            </div>
+                            <div id="bud-items-totals" class="hidden mt-3 p-3 rounded-xl bg-indigo-50 border border-indigo-100 flex justify-around text-center">
+                                <div>
+                                    <div class="text-[10px] font-black text-[#A3AED0] uppercase">Bultos</div>
+                                    <div id="bud-items-qty" class="text-lg font-black text-indigo-700">0</div>
+                                </div>
+                                <div>
+                                    <div class="text-[10px] font-black text-[#A3AED0] uppercase">Peso total</div>
+                                    <div id="bud-items-weight" class="text-lg font-black text-indigo-700">0 kg</div>
+                                </div>
+                                <div>
+                                    <div class="text-[10px] font-black text-[#A3AED0] uppercase">Valor declarado</div>
+                                    <div id="bud-items-value" class="text-lg font-black text-indigo-700">$ 0</div>
+                                </div>
+                            </div>
+                        </div>
+
                         <!-- 5. FRECUENCIA + OFICINA -->
                         <div class="card-dark p-6">
                             <div class="flex items-center gap-3 mb-5">
@@ -1822,11 +1891,24 @@
                             </div>
                         </div>
 
-                        <!-- Presupuestos guardados -->
-                        <div id="bud-saved-list-wrap" class="card-dark p-6 mt-4 hidden">
-                            <h4 class="text-sm font-bold text-[#1B2559] mb-3">Presupuestos guardados</h4>
-                            <div id="bud-saved-list" class="space-y-2"></div>
+                    </div>
+                </div>
+
+                <!-- Pane: HISTORIAL -->
+                <div id="bud-pane-history" class="hidden">
+                    <div class="card-dark p-6">
+                        <div class="flex items-center justify-between mb-5">
+                            <div>
+                                <h4 class="text-lg font-bold text-[#1B2559]">Historial de presupuestos</h4>
+                                <p class="text-xs text-[#A3AED0] font-medium">Cada presupuesto guarda destinatario, ítems y el detalle completo del cálculo.</p>
+                            </div>
+                            <div class="flex items-center gap-2">
+                                <input id="bud-history-search" type="text" placeholder="Buscar por destinatario o nombre…" oninput="budgetRenderHistory()" class="bg-[#F4F7FE] border-0 rounded-xl p-2 text-xs font-bold text-[#1B2559] w-64">
+                                <button onclick="budgetExportHistoryCSV()" class="px-3 py-2 rounded-xl bg-white border-2 border-indigo-500 text-indigo-600 text-xs font-black uppercase tracking-widest hover:bg-indigo-50">Exportar CSV</button>
+                            </div>
                         </div>
+                        <div id="bud-history-list" class="space-y-3"></div>
+                        <div id="bud-history-empty" class="hidden text-center text-xs italic text-[#A3AED0] py-12">Todavía no guardaste ningún presupuesto.</div>
                     </div>
                 </div>
             </div>
@@ -5232,9 +5314,11 @@
         let budgetState = {
             auxiliares: [],         // [{nombre, tipo: 'MENSUAL'|'JORNAL', monto, viatico}]
             stops: [],              // [{name, address, lat, lng, placeId}]
+            items: [],              // [{descripcion, cantidad, unidad, pesoKg, valor}]
             routeKm: 0,             // km totales calculados por Google Directions
             routeMinutes: 0,        // tiempo total en minutos
             lastCalc: null,         // objeto con el último cálculo (para los PDFs)
+            currentTab: 'calc',     // 'calc' | 'history'
         };
 
         const BUD_KEY = 'r14_budgets_saved';
@@ -5244,10 +5328,12 @@
             if (!window.__budgetInitialized) {
                 budgetLoadDefaults();
                 budgetLoadSavedList();
+                budgetUpdateHistoryCount();
                 window.__budgetInitialized = true;
             }
             budgetRenderAuxList();
             budgetRenderStopsList();
+            budgetRenderItemsList();
             lucide.createIcons();
             // Cargar Google Maps en segundo plano para que el buscador de paradas funcione
             if (!window.google?.maps && typeof loadGoogleMapsScript === 'function' && typeof getGoogleMapsKey === 'function') {
@@ -5279,6 +5365,115 @@
             const obj = {};
             ids.forEach(id => { const el = document.getElementById(id); if (el) obj[id] = el.value; });
             try { localStorage.setItem(BUD_DEFAULT_KEY, JSON.stringify(obj)); } catch {}
+        }
+
+        // ── TABS (Calculadora / Historial) ─────────────────────────────────
+        function budgetShowTab(tab) {
+            budgetState.currentTab = tab;
+            const pCalc = document.getElementById('bud-pane-calc');
+            const pHist = document.getElementById('bud-pane-history');
+            const bCalc = document.getElementById('bud-tab-calc-btn');
+            const bHist = document.getElementById('bud-tab-history-btn');
+            const btnCalc = document.getElementById('bud-btn-calc');
+            const btnClear = document.getElementById('bud-btn-clear');
+            if (tab === 'calc') {
+                pCalc?.classList.remove('hidden');
+                pHist?.classList.add('hidden');
+                bCalc.classList.add('bg-indigo-600','text-white','shadow');
+                bCalc.classList.remove('text-[#A3AED0]');
+                bHist.classList.remove('bg-indigo-600','text-white','shadow');
+                bHist.classList.add('text-[#A3AED0]');
+                btnCalc?.classList.remove('hidden');
+                btnClear?.classList.remove('hidden');
+            } else {
+                pCalc?.classList.add('hidden');
+                pHist?.classList.remove('hidden');
+                bHist.classList.add('bg-indigo-600','text-white','shadow');
+                bHist.classList.remove('text-[#A3AED0]');
+                bCalc.classList.remove('bg-indigo-600','text-white','shadow');
+                bCalc.classList.add('text-[#A3AED0]');
+                btnCalc?.classList.add('hidden');
+                btnClear?.classList.add('hidden');
+                budgetRenderHistory();
+            }
+        }
+
+        function budgetUpdateHistoryCount() {
+            let saved = [];
+            try { saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]'); } catch {}
+            const el = document.getElementById('bud-history-count');
+            if (el) el.textContent = String(saved.length);
+        }
+
+        // ── DESTINATARIO helpers ──────────────────────────────────────────
+        function budgetReadDestinatario() {
+            return {
+                nombre: (document.getElementById('bud-dest-name')?.value || '').trim(),
+                cuit: (document.getElementById('bud-dest-cuit')?.value || '').trim(),
+                email: (document.getElementById('bud-dest-email')?.value || '').trim(),
+                telefono: (document.getElementById('bud-dest-phone')?.value || '').trim(),
+                direccion: (document.getElementById('bud-dest-address')?.value || '').trim(),
+                notas: (document.getElementById('bud-dest-notes')?.value || '').trim(),
+            };
+        }
+        function budgetWriteDestinatario(d) {
+            const map = { 'bud-dest-name': 'nombre', 'bud-dest-cuit': 'cuit', 'bud-dest-email': 'email',
+                          'bud-dest-phone': 'telefono', 'bud-dest-address': 'direccion', 'bud-dest-notes': 'notas' };
+            Object.entries(map).forEach(([id, k]) => { const el = document.getElementById(id); if (el) el.value = (d && d[k]) || ''; });
+        }
+
+        // ── ÍTEMS (Qué lleva) ─────────────────────────────────────────────
+        function budgetAddItem() {
+            budgetState.items.push({ descripcion: '', cantidad: 1, unidad: 'bultos', pesoKg: 0, valor: 0 });
+            budgetRenderItemsList();
+        }
+        function budgetRemoveItem(idx) {
+            budgetState.items.splice(idx, 1);
+            budgetRenderItemsList();
+        }
+        function budgetRenderItemsList() {
+            const list = document.getElementById('bud-items-list');
+            const counter = document.getElementById('bud-items-count');
+            const totals = document.getElementById('bud-items-totals');
+            if (!list) return;
+            if (counter) counter.textContent = budgetState.items.length;
+            if (budgetState.items.length === 0) {
+                list.innerHTML = '<div class="text-center text-xs text-[#A3AED0] italic py-4">Sin ítems. Clic en "+ Agregar ítem".</div>';
+                if (totals) totals.classList.add('hidden');
+                return;
+            }
+            list.innerHTML = budgetState.items.map((it, i) => `
+                <div class="grid grid-cols-12 gap-2 bg-[#F4F7FE] rounded-xl p-2 items-center">
+                    <input type="text" value="${escapeHtml(it.descripcion || '')}" placeholder="Descripción (ej: Pallet lácteos)" onchange="budgetState.items[${i}].descripcion=this.value"
+                        class="col-span-5 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]">
+                    <input type="number" value="${it.cantidad || ''}" placeholder="Cant." min="0" step="0.01" onchange="budgetState.items[${i}].cantidad=Number(this.value);budgetRenderItemsTotals()"
+                        class="col-span-1 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559] text-right">
+                    <select onchange="budgetState.items[${i}].unidad=this.value" class="col-span-2 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]">
+                        ${['bultos','pallets','cajas','rollos','kg','L','unid','m³'].map(u => `<option value="${u}" ${it.unidad===u?'selected':''}>${u}</option>`).join('')}
+                    </select>
+                    <input type="number" value="${it.pesoKg || ''}" placeholder="Peso kg" min="0" step="0.1" onchange="budgetState.items[${i}].pesoKg=Number(this.value);budgetRenderItemsTotals()"
+                        class="col-span-1 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559] text-right">
+                    <input type="number" value="${it.valor || ''}" placeholder="Valor $" min="0" step="1" onchange="budgetState.items[${i}].valor=Number(this.value);budgetRenderItemsTotals()"
+                        class="col-span-2 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559] text-right">
+                    <button onclick="budgetRemoveItem(${i})" class="col-span-1 px-2 py-2 rounded-lg bg-rose-50 text-rose-600 text-xs font-black hover:bg-rose-100">✕</button>
+                </div>
+            `).join('');
+            budgetRenderItemsTotals();
+        }
+        function budgetRenderItemsTotals() {
+            const totals = document.getElementById('bud-items-totals');
+            const qtyEl = document.getElementById('bud-items-qty');
+            const weightEl = document.getElementById('bud-items-weight');
+            const valueEl = document.getElementById('bud-items-value');
+            if (!totals) return;
+            if (budgetState.items.length === 0) { totals.classList.add('hidden'); return; }
+            const qty = budgetState.items.reduce((a, x) => a + (Number(x.cantidad) || 0), 0);
+            const weight = budgetState.items.reduce((a, x) => a + (Number(x.pesoKg) || 0) * (Number(x.cantidad) || 0), 0);
+            const value = budgetState.items.reduce((a, x) => a + (Number(x.valor) || 0) * (Number(x.cantidad) || 0), 0);
+            totals.classList.remove('hidden');
+            if (qtyEl) qtyEl.textContent = qty.toLocaleString('es-AR');
+            if (weightEl) weightEl.textContent = weight.toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' kg';
+            if (valueEl) valueEl.textContent = '$ ' + value.toLocaleString('es-AR', { maximumFractionDigits: 0 });
         }
 
         function budgetAddAux() {
@@ -5754,6 +5949,12 @@
                 if (tipo === 'JORNAL') return m + v;
                 return (m * (1 + socialPct/100) / monthHours) * hours + v;
             }
+            function personFormula(tipo, monto, viatico) {
+                const m = Number(monto) || 0;
+                const v = Number(viatico) || 0;
+                if (tipo === 'JORNAL') return `$${m.toLocaleString('es-AR')} jornal + $${v.toLocaleString('es-AR')} viático`;
+                return `$${m.toLocaleString('es-AR')} × (1 + ${socialPct}%) / ${monthHours}h × ${hours.toFixed(2)}h + $${v.toLocaleString('es-AR')} viático`;
+            }
             const driver = {
                 nombre: document.getElementById('bud-driver-name').value || 'Chofer',
                 tipo: document.getElementById('bud-driver-type').value,
@@ -5761,8 +5962,11 @@
                 viatico: Number(document.getElementById('bud-driver-viatico').value) || 0,
             };
             const driverCost = personCost(driver.tipo, driver.monto, driver.viatico);
+            const driverFormula = personFormula(driver.tipo, driver.monto, driver.viatico);
             const auxCosts = budgetState.auxiliares.map(a => ({
-                ...a, costo: personCost(a.tipo, a.monto, a.viatico)
+                ...a,
+                costo: personCost(a.tipo, a.monto, a.viatico),
+                formula: personFormula(a.tipo, a.monto, a.viatico),
             }));
             const personalTotal = driverCost + auxCosts.reduce((a, x) => a + x.costo, 0);
 
@@ -5786,7 +5990,8 @@
             const consumption = Number(document.getElementById('bud-consumption').value) || 25;
             const fuelPrice = Number(document.getElementById('bud-fuel-price').value) || 0;
             const refrigerated = document.getElementById('bud-refrigerated').checked;
-            const fuelTotal = km * (consumption / 100) * fuelPrice * (refrigerated ? 1.15 : 1);
+            const fuelBase = km * (consumption / 100) * fuelPrice;
+            const fuelTotal = fuelBase * (refrigerated ? 1.15 : 1);
 
             // 4. OFICINA (overhead)
             const overheadPct = Number(document.getElementById('bud-overhead-pct').value) || 0;
@@ -5797,8 +6002,8 @@
             const freqMap = { unico: 1, semanal1: 1, semanal2: 0.98, semanal3: 0.95, diario: 0.92 };
             const freqKey = document.getElementById('bud-frequency').value;
             const freqFactor = freqMap[freqKey] ?? 1;
-
-            const costoTotal = (subCostDirect + overhead) * freqFactor;
+            const costoSinFreq = subCostDirect + overhead;
+            const costoTotal = costoSinFreq * freqFactor;
 
             // 6. GANANCIA + IMPUESTOS
             const marginPct = Number(document.getElementById('bud-margin-pct').value) || 0;
@@ -5808,77 +6013,184 @@
             const taxesTotal = taxes.reduce((a, t) => a + t.monto, 0);
             const precioFinal = subtotal + taxesTotal;
 
+            // Totales ítems
+            const items = budgetState.items.map(it => ({
+                descripcion: it.descripcion || '',
+                cantidad: Number(it.cantidad) || 0,
+                unidad: it.unidad || 'unid',
+                pesoKg: Number(it.pesoKg) || 0,
+                valor: Number(it.valor) || 0,
+                pesoTotalKg: (Number(it.cantidad) || 0) * (Number(it.pesoKg) || 0),
+                valorTotal: (Number(it.cantidad) || 0) * (Number(it.valor) || 0),
+            }));
+            const itemsTotals = {
+                bultos: items.reduce((a, x) => a + x.cantidad, 0),
+                pesoTotalKg: items.reduce((a, x) => a + x.pesoTotalKg, 0),
+                valorDeclarado: items.reduce((a, x) => a + x.valorTotal, 0),
+            };
+
             budgetState.lastCalc = {
-                driver, driverCost, auxCosts,
-                personalTotal, vehicleTotal, fuelTotal, overhead, freqFactor, freqKey,
-                costoTotal, marginPct, margin, subtotal, taxes, taxesTotal, precioFinal,
+                destinatario: budgetReadDestinatario(),
+                items, itemsTotals,
+                driver, driverCost, driverFormula,
+                auxCosts,
+                personalTotal, vehicleTotal, fuelTotal, fuelBase,
+                overhead, freqFactor, freqKey,
+                costoSinFreq, costoTotal,
+                marginPct, margin, subtotal, taxes, taxesTotal, precioFinal,
                 km, hours, refrigerated,
-                socialPct, consumption, fuelPrice,
+                socialPct, monthHours, consumption, fuelPrice,
+                truckValue, truckLifeKm, tiresCost, tiresKm, maintYear, kmYear, fixedMonth, tripsMonth,
                 depreciation, tires, maintenance, fixedPerTrip, overheadPct,
                 stops: [...budgetState.stops],
                 origin: document.getElementById('bud-origin').value,
                 fecha: new Date().toLocaleDateString('es-AR'),
+                fechaISO: new Date().toISOString(),
             };
             budgetRenderResult();
             budgetSaveDefaults();
         }
 
-        function budgetRenderResult() {
-            const c = budgetState.lastCalc;
-            if (!c) return;
-            const money = (n) => '$ ' + n.toLocaleString('es-AR', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-            const pct = (a, tot) => tot > 0 ? Math.round(a/tot*100) : 0;
-            const container = document.getElementById('bud-result');
-            let html = `
-                <div class="text-[10px] font-black text-[#A3AED0] uppercase mb-1">Desglose del costo</div>
-                <div class="space-y-1 text-xs">
-                    <div class="flex justify-between"><span>🧑 Gente</span><span class="font-bold">${money(c.personalTotal)}</span></div>
-                    <div class="flex justify-between"><span>🚚 Camión</span><span class="font-bold">${money(c.vehicleTotal)}</span></div>
-                    <div class="flex justify-between"><span>⛽ Combustible</span><span class="font-bold">${money(c.fuelTotal)}</span></div>
-                    <div class="flex justify-between"><span>📎 Oficina (${c.overheadPct}%)</span><span class="font-bold">${money(c.overhead)}</span></div>
-                </div>
-                <div class="border-t-2 border-[#E0E5F2] my-3"></div>
-                <div class="flex justify-between text-sm font-black text-[#1B2559] mb-3">
-                    <span>Costo${c.freqFactor!==1?` (×${c.freqFactor})`:''}</span><span>${money(c.costoTotal)}</span>
-                </div>
-                <div class="space-y-1 text-xs text-emerald-700">
-                    <div class="flex justify-between"><span>+ Ganancia ${c.marginPct}%</span><span class="font-bold">${money(c.margin)}</span></div>
-                </div>
-                <div class="border-t border-[#E0E5F2] my-2"></div>
-                <div class="flex justify-between text-xs font-bold text-[#1B2559] mb-2">
-                    <span>Subtotal</span><span>${money(c.subtotal)}</span>
-                </div>
-                <div class="space-y-1 text-xs text-amber-700">
-                    ${c.taxes.map(t => `<div class="flex justify-between"><span>+ ${escapeHtml(t.name)} ${t.pct}%</span><span class="font-bold">${money(t.monto)}</span></div>`).join('')}
-                </div>
-                <div class="mt-3 p-3 rounded-xl bg-indigo-600 text-white">
+        // HTML del desglose detallado (usado tanto en Resultado como en Historial).
+        function budgetBuildBreakdownHtml(c, opts = {}) {
+            if (!c) return '';
+            const money = (n) => '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+            const compact = !!opts.compact;
+            const row = (label, formula, value) => `
+                <div class="flex items-start justify-between gap-2 py-1">
+                    <div class="min-w-0 flex-1">
+                        <div class="text-[11px] font-bold text-[#2B3674] truncate">${label}</div>
+                        ${formula ? `<div class="text-[10px] text-[#A3AED0] font-mono whitespace-normal break-words">${formula}</div>` : ''}
+                    </div>
+                    <div class="text-[11px] font-black text-[#1B2559] whitespace-nowrap">${money(value)}</div>
+                </div>`;
+            const section = (title, rows, subtotal, subLabel) => `
+                <div class="mb-3">
+                    <div class="text-[10px] font-black uppercase tracking-widest text-indigo-600 mb-1">${title}</div>
+                    <div class="bg-[#F4F7FE] rounded-xl px-3 py-2">
+                        ${rows}
+                        ${subtotal != null ? `
+                        <div class="border-t border-[#E0E5F2] mt-2 pt-2 flex items-center justify-between">
+                            <span class="text-[11px] font-black text-[#1B2559]">${subLabel || 'Subtotal'}</span>
+                            <span class="text-[12px] font-black text-[#1B2559]">${money(subtotal)}</span>
+                        </div>` : ''}
+                    </div>
+                </div>`;
+            const destLine = c.destinatario && (c.destinatario.nombre || c.destinatario.cuit)
+                ? `<div class="mb-3 p-3 rounded-xl bg-indigo-50 border border-indigo-100">
+                       <div class="text-[10px] font-black uppercase tracking-widest text-indigo-600">Destinatario</div>
+                       <div class="text-sm font-black text-[#1B2559]">${escapeHtml(c.destinatario.nombre || '(sin nombre)')}</div>
+                       <div class="text-[10px] text-[#2B3674]">${[c.destinatario.cuit, c.destinatario.email, c.destinatario.telefono].filter(Boolean).map(escapeHtml).join(' · ')}</div>
+                       ${c.destinatario.direccion ? `<div class="text-[10px] text-[#2B3674]">${escapeHtml(c.destinatario.direccion)}</div>` : ''}
+                       ${c.destinatario.notas ? `<div class="text-[10px] italic text-[#A3AED0]">${escapeHtml(c.destinatario.notas)}</div>` : ''}
+                   </div>` : '';
+            const itemsLine = (c.items && c.items.length)
+                ? section('Qué lleva', c.items.map(it => `
+                    <div class="flex items-start justify-between gap-2 py-1">
+                        <div class="flex-1 min-w-0">
+                            <div class="text-[11px] font-bold text-[#2B3674] truncate">${escapeHtml(it.descripcion || '(sin descripción)')}</div>
+                            <div class="text-[10px] text-[#A3AED0]">${it.cantidad} ${escapeHtml(it.unidad)}${it.pesoKg ? ` · ${it.pesoKg} kg c/u` : ''}${it.valor ? ` · $${Math.round(it.valor).toLocaleString('es-AR')} c/u` : ''}</div>
+                        </div>
+                        <div class="text-[10px] text-[#1B2559] whitespace-nowrap">${it.pesoTotalKg ? `${Number(it.pesoTotalKg).toLocaleString('es-AR')} kg` : ''} ${it.valorTotal ? `· ${money(it.valorTotal)}` : ''}</div>
+                    </div>
+                `).join(''),
+                  null,
+                  null) + `<div class="flex items-center justify-between -mt-3 mb-3 px-3 text-[10px] text-[#A3AED0]">
+                            <span>${c.itemsTotals.bultos} en total</span>
+                            <span>Peso: ${Number(c.itemsTotals.pesoTotalKg).toLocaleString('es-AR', { maximumFractionDigits: 1 })} kg</span>
+                            <span>Valor: ${money(c.itemsTotals.valorDeclarado)}</span>
+                          </div>`
+                : '';
+
+            const auxRows = (c.auxCosts || []).map(a => row(`Aux ${escapeHtml(a.nombre || '')} (${a.tipo})`, a.formula, a.costo)).join('');
+            const personalSection = section('1) Personal',
+                row(`Chofer ${escapeHtml(c.driver.nombre)} (${c.driver.tipo})`, c.driverFormula, c.driverCost) + auxRows,
+                c.personalTotal, 'Total personal');
+
+            const vehicleSection = section('2) Camión (' + c.km.toFixed(1) + ' km)',
+                row('Depreciación', `$${Number(c.truckValue).toLocaleString('es-AR')} / ${Number(c.truckLifeKm).toLocaleString('es-AR')} km × ${c.km.toFixed(1)} km`, c.depreciation) +
+                row('Cubiertas', `$${Number(c.tiresCost).toLocaleString('es-AR')} / ${Number(c.tiresKm).toLocaleString('es-AR')} km × ${c.km.toFixed(1)} km`, c.tires) +
+                row('Mantenimiento', `$${Number(c.maintYear).toLocaleString('es-AR')} / ${Number(c.kmYear).toLocaleString('es-AR')} km × ${c.km.toFixed(1)} km`, c.maintenance) +
+                row('Seguro/Patente/VTV prorrateado', `$${Number(c.fixedMonth).toLocaleString('es-AR')} / ${c.tripsMonth} viajes`, c.fixedPerTrip),
+                c.vehicleTotal, 'Total camión');
+
+            const fuelFormula = `${c.km.toFixed(1)} km × ${c.consumption}L/100km × $${Number(c.fuelPrice).toLocaleString('es-AR')}/L${c.refrigerated ? ' × 1.15 (refrigerado)' : ''}`;
+            const fuelSection = section('3) Combustible',
+                row(c.refrigerated ? 'Gasoil + 15% refrigerado' : 'Gasoil', fuelFormula, c.fuelTotal),
+                null, null);
+
+            const officeSection = section('4) Oficina (overhead)',
+                row(`Overhead ${c.overheadPct}%`, `(${money(c.personalTotal)} + ${money(c.vehicleTotal)} + ${money(c.fuelTotal)}) × ${c.overheadPct}%`, c.overhead),
+                null, null);
+
+            const freqLine = c.freqFactor !== 1
+                ? row(`Ajuste frecuencia (${c.freqKey})`, `${money(c.costoSinFreq)} × ${c.freqFactor}`, c.costoTotal - c.costoSinFreq)
+                : '';
+            const costSection = section('5) Costo del viaje',
+                row('Costo directo', `Personal + Camión + Combustible`, c.personalTotal + c.vehicleTotal + c.fuelTotal) +
+                row('+ Overhead', '', c.overhead) +
+                freqLine,
+                c.costoTotal, 'COSTO TOTAL');
+
+            const marginSection = section('6) Ganancia',
+                row(`+ ${c.marginPct}% sobre el costo`, `${money(c.costoTotal)} × ${c.marginPct}%`, c.margin),
+                c.subtotal, 'Subtotal (costo + ganancia)');
+
+            const taxRows = (c.taxes || []).map(t =>
+                row(`+ ${escapeHtml(t.name)} ${t.pct}%`, `${money(c.subtotal)} × ${t.pct}%`, t.monto)
+            ).join('');
+            const taxSection = c.taxes && c.taxes.length
+                ? section('7) Impuestos', taxRows, c.taxesTotal, 'Total impuestos')
+                : '';
+
+            return `
+                ${destLine}
+                ${itemsLine}
+                ${personalSection}
+                ${vehicleSection}
+                ${fuelSection}
+                ${officeSection}
+                ${costSection}
+                ${marginSection}
+                ${taxSection}
+                <div class="mt-3 p-4 rounded-xl bg-indigo-600 text-white">
                     <div class="text-[10px] uppercase font-black opacity-80">Precio al cliente</div>
                     <div class="text-2xl font-black">${money(c.precioFinal)}</div>
+                    <div class="text-[10px] opacity-80 mt-1">Costo ${money(c.costoTotal)} · Ganancia ${money(c.margin)} · Impuestos ${money(c.taxesTotal)}</div>
                 </div>
+                ${compact ? '' : `
                 <div class="mt-2 text-[10px] text-[#A3AED0] space-y-0.5">
                     <div>Costo por parada: ${money(c.costoTotal / Math.max(c.stops.length, 1))}</div>
                     <div>Costo por km: ${money(c.costoTotal / Math.max(c.km, 1))}</div>
                     <div>Ruta: ${c.km.toFixed(1)} km · ${Math.round(c.hours*60)} min</div>
-                </div>
+                </div>`}
             `;
-            container.innerHTML = html;
+        }
+
+        function budgetRenderResult() {
+            const c = budgetState.lastCalc;
+            if (!c) return;
+            const container = document.getElementById('bud-result');
+            container.innerHTML = budgetBuildBreakdownHtml(c, { compact: false });
             document.getElementById('bud-result-actions').classList.remove('hidden');
             lucide.createIcons();
         }
 
         function budgetClearAll() {
             if (!confirm('¿Limpiar todos los datos del presupuesto?')) return;
-            budgetState = { auxiliares: [], stops: [], routeKm: 0, routeMinutes: 0, lastCalc: null };
+            budgetState = { auxiliares: [], stops: [], items: [], routeKm: 0, routeMinutes: 0, lastCalc: null, currentTab: 'calc' };
             ['bud-driver-name','bud-driver-amount','bud-driver-viatico',
              'bud-truck-value','bud-truck-life-km','bud-consumption',
              'bud-tires-cost','bud-tires-km','bud-maint-year','bud-km-year',
-             'bud-fixed-month','bud-fuel-price','bud-client-name'].forEach(id => {
+             'bud-fixed-month','bud-fuel-price','bud-client-name',
+             'bud-dest-name','bud-dest-cuit','bud-dest-email','bud-dest-phone','bud-dest-address','bud-dest-notes'].forEach(id => {
                 const el = document.getElementById(id); if (el) el.value = '';
             });
             document.getElementById('bud-refrigerated').checked = false;
             document.getElementById('bud-route-metrics')?.classList.add('hidden');
             budgetRenderAuxList();
             budgetRenderStopsList();
+            budgetRenderItemsList();
             document.getElementById('bud-result').innerHTML = '<div class="text-center text-[#A3AED0] italic py-10">Completá los datos y apretá <b>Calcular</b> para ver el presupuesto.</div>';
             document.getElementById('bud-result-actions').classList.add('hidden');
         }
@@ -5886,51 +6198,191 @@
         // ── GUARDAR / LISTADO ──────────────────────────────────────────────
         function budgetSave() {
             if (!budgetState.lastCalc) { addNotification('warning', 'Primero calculá', 'Apretá "Calcular" antes de guardar.'); return; }
-            const name = prompt('Nombre del presupuesto:', document.getElementById('bud-client-name').value || ('Presupuesto ' + new Date().toLocaleDateString('es-AR')));
+            const dest = budgetState.lastCalc.destinatario || {};
+            const sugg = dest.nombre || document.getElementById('bud-client-name').value || ('Presupuesto ' + new Date().toLocaleDateString('es-AR'));
+            const name = prompt('Nombre del presupuesto:', sugg);
             if (!name) return;
             try {
                 const saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]');
-                saved.unshift({ id: Date.now(), name, date: new Date().toISOString(), calc: budgetState.lastCalc });
-                if (saved.length > 50) saved.length = 50;
+                saved.unshift({
+                    id: Date.now(),
+                    name,
+                    date: new Date().toISOString(),
+                    destinatario: dest,
+                    itemsCount: (budgetState.lastCalc.items || []).length,
+                    precioFinal: budgetState.lastCalc.precioFinal,
+                    km: budgetState.lastCalc.km,
+                    calc: budgetState.lastCalc,
+                });
+                if (saved.length > 200) saved.length = 200;
                 localStorage.setItem(BUD_KEY, JSON.stringify(saved));
                 budgetLoadSavedList();
-                addNotification('success', 'Presupuesto guardado', name);
+                budgetUpdateHistoryCount();
+                addNotification('success', 'Presupuesto guardado', name + ' — visible en Historial');
             } catch (e) { addNotification('warning', 'Error', 'No se pudo guardar.'); }
         }
 
-        function budgetLoadSavedList() {
-            const wrap = document.getElementById('bud-saved-list-wrap');
-            const list = document.getElementById('bud-saved-list');
-            if (!wrap || !list) return;
-            let saved = [];
-            try { saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]'); } catch {}
-            if (saved.length === 0) { wrap.classList.add('hidden'); return; }
-            wrap.classList.remove('hidden');
-            list.innerHTML = saved.map(s => `
-                <div class="flex items-center justify-between bg-[#F4F7FE] rounded-xl p-2">
-                    <div class="flex-1 min-w-0">
-                        <div class="text-xs font-bold text-[#1B2559] truncate">${escapeHtml(s.name)}</div>
-                        <div class="text-[10px] text-[#A3AED0]">${new Date(s.date).toLocaleString('es-AR')} · $${Math.round(s.calc.precioFinal).toLocaleString('es-AR')}</div>
-                    </div>
-                    <button onclick="budgetLoadSaved(${s.id})" class="text-[10px] font-black text-indigo-600 hover:text-indigo-800 px-2">Ver</button>
-                    <button onclick="budgetDeleteSaved(${s.id})" class="text-[10px] font-black text-rose-500 hover:text-rose-700 px-2">✕</button>
-                </div>
-            `).join('');
-        }
+        // Lista compacta a la derecha (legacy): ya no se muestra, pero la función queda para compatibilidad.
+        function budgetLoadSavedList() { budgetUpdateHistoryCount(); }
 
         function budgetLoadSaved(id) {
             const saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]');
             const s = saved.find(x => x.id === id);
             if (!s) return;
+            // Restaurar estado en formulario
             budgetState.lastCalc = s.calc;
+            if (s.calc.destinatario) budgetWriteDestinatario(s.calc.destinatario);
+            if (Array.isArray(s.calc.items)) {
+                budgetState.items = s.calc.items.map(it => ({
+                    descripcion: it.descripcion,
+                    cantidad: it.cantidad,
+                    unidad: it.unidad,
+                    pesoKg: it.pesoKg,
+                    valor: it.valor,
+                }));
+            }
+            if (Array.isArray(s.calc.stops)) {
+                budgetState.stops = s.calc.stops.map(st => ({ ...st }));
+                budgetState.routeKm = s.calc.km || 0;
+                budgetState.routeMinutes = Math.round((s.calc.hours || 0) * 60);
+                const km = document.getElementById('bud-km'); if (km) km.textContent = budgetState.routeKm.toFixed(1) + ' km';
+                const tm = document.getElementById('bud-time'); if (tm) tm.textContent = budgetState.routeMinutes + ' min (' + (budgetState.routeMinutes/60).toFixed(1) + ' h)';
+                document.getElementById('bud-route-metrics')?.classList.remove('hidden');
+            }
+            budgetRenderStopsList();
+            budgetRenderItemsList();
             budgetRenderResult();
+            budgetShowTab('calc');
+            addNotification('success', 'Presupuesto cargado', s.name);
         }
 
         function budgetDeleteSaved(id) {
             if (!confirm('¿Eliminar este presupuesto?')) return;
             const saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]').filter(x => x.id !== id);
             localStorage.setItem(BUD_KEY, JSON.stringify(saved));
-            budgetLoadSavedList();
+            budgetUpdateHistoryCount();
+            budgetRenderHistory();
+        }
+
+        // ── HISTORIAL ──────────────────────────────────────────────────────
+        function budgetRenderHistory() {
+            const list = document.getElementById('bud-history-list');
+            const empty = document.getElementById('bud-history-empty');
+            if (!list) return;
+            let saved = [];
+            try { saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]'); } catch {}
+            const q = ((document.getElementById('bud-history-search')?.value) || '').toLowerCase().trim();
+            if (q) {
+                saved = saved.filter(s => {
+                    const d = s.destinatario || {};
+                    const blob = `${s.name||''} ${d.nombre||''} ${d.cuit||''} ${d.email||''}`.toLowerCase();
+                    return blob.includes(q);
+                });
+            }
+            if (saved.length === 0) {
+                list.innerHTML = '';
+                empty?.classList.remove('hidden');
+                return;
+            }
+            empty?.classList.add('hidden');
+            const money = (n) => '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+            list.innerHTML = saved.map(s => {
+                const d = s.destinatario || {};
+                const contact = [d.cuit, d.email, d.telefono].filter(Boolean).map(escapeHtml).join(' · ');
+                return `
+                <div class="rounded-2xl border border-[#E0E5F2] bg-white overflow-hidden">
+                    <div class="flex items-start justify-between gap-3 p-4 cursor-pointer" onclick="budgetToggleHistory(${s.id})">
+                        <div class="flex-1 min-w-0">
+                            <div class="text-sm font-black text-[#1B2559] truncate">${escapeHtml(s.name)}</div>
+                            <div class="text-[11px] text-[#2B3674] truncate">${escapeHtml(d.nombre || '(sin destinatario)')}${contact ? ` · ${contact}` : ''}</div>
+                            <div class="text-[10px] text-[#A3AED0] mt-0.5">${new Date(s.date).toLocaleString('es-AR')} · ${(s.calc?.km ?? s.km ?? 0).toFixed(1)} km · ${s.itemsCount || 0} ítems</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-lg font-black text-indigo-600">${money(s.precioFinal ?? s.calc?.precioFinal ?? 0)}</div>
+                            <div class="text-[10px] font-black text-[#A3AED0] uppercase">Precio al cliente</div>
+                        </div>
+                    </div>
+                    <div id="bud-hist-detail-${s.id}" class="hidden border-t border-[#E0E5F2] bg-[#FAFBFF] p-4">
+                        <div id="bud-hist-body-${s.id}"></div>
+                        <div class="flex flex-wrap gap-2 mt-4">
+                            <button onclick="event.stopPropagation();budgetLoadSaved(${s.id})" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-indigo-700">Cargar en calculadora</button>
+                            <button onclick="event.stopPropagation();budgetReExportPresupuesto(${s.id})" class="px-3 py-2 rounded-xl bg-white border-2 border-indigo-500 text-indigo-600 text-[11px] font-black uppercase tracking-widest hover:bg-indigo-50">PDF presupuesto</button>
+                            <button onclick="event.stopPropagation();budgetReExportCuenta(${s.id})" class="px-3 py-2 rounded-xl bg-white border-2 border-emerald-500 text-emerald-600 text-[11px] font-black uppercase tracking-widest hover:bg-emerald-50">PDF cuenta</button>
+                            <button onclick="event.stopPropagation();budgetDeleteSaved(${s.id})" class="ml-auto px-3 py-2 rounded-xl bg-rose-50 text-rose-600 text-[11px] font-black uppercase tracking-widest hover:bg-rose-100">Eliminar</button>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        function budgetToggleHistory(id) {
+            const body = document.getElementById(`bud-hist-body-${id}`);
+            const wrap = document.getElementById(`bud-hist-detail-${id}`);
+            if (!body || !wrap) return;
+            if (!wrap.classList.contains('hidden')) { wrap.classList.add('hidden'); return; }
+            if (!body.dataset.rendered) {
+                const saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]');
+                const s = saved.find(x => x.id === id);
+                if (!s) return;
+                body.innerHTML = budgetBuildBreakdownHtml(s.calc, { compact: true });
+                body.dataset.rendered = '1';
+            }
+            wrap.classList.remove('hidden');
+        }
+
+        function budgetReExportPresupuesto(id) {
+            const saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]');
+            const s = saved.find(x => x.id === id);
+            if (!s) return;
+            const prev = budgetState.lastCalc;
+            budgetState.lastCalc = s.calc;
+            budgetExportPresupuestoPDF().finally(() => { budgetState.lastCalc = prev; });
+        }
+        function budgetReExportCuenta(id) {
+            const saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]');
+            const s = saved.find(x => x.id === id);
+            if (!s) return;
+            const prev = budgetState.lastCalc;
+            budgetState.lastCalc = s.calc;
+            budgetExportCuentaPDF().finally(() => { budgetState.lastCalc = prev; });
+        }
+
+        function budgetExportHistoryCSV() {
+            let saved = [];
+            try { saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]'); } catch {}
+            if (saved.length === 0) { addNotification('warning', 'Vacío', 'No hay presupuestos guardados.'); return; }
+            const esc = (v) => {
+                const s = String(v == null ? '' : v);
+                return /[",\n;]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+            };
+            const header = ['Fecha','Nombre','Destinatario','CUIT','Email','Telefono','Km','Horas','Bultos','Peso kg','Costo','Ganancia','Impuestos','Precio final'];
+            const rows = saved.map(s => {
+                const c = s.calc || {}; const d = s.destinatario || {};
+                return [
+                    new Date(s.date).toLocaleString('es-AR'),
+                    s.name,
+                    d.nombre || '',
+                    d.cuit || '',
+                    d.email || '',
+                    d.telefono || '',
+                    (c.km || 0).toFixed(1),
+                    (c.hours || 0).toFixed(2),
+                    c.itemsTotals?.bultos || 0,
+                    c.itemsTotals?.pesoTotalKg || 0,
+                    Math.round(c.costoTotal || 0),
+                    Math.round(c.margin || 0),
+                    Math.round(c.taxesTotal || 0),
+                    Math.round(c.precioFinal || s.precioFinal || 0),
+                ];
+            });
+            const csv = [header, ...rows].map(r => r.map(esc).join(',')).join('\n');
+            const blob = new Blob(["\ufeff" + csv], { type: 'text/csv;charset=utf-8;' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `Historial-presupuestos-${new Date().toISOString().slice(0,10)}.csv`;
+            document.body.appendChild(a); a.click(); document.body.removeChild(a);
+            URL.revokeObjectURL(url);
         }
 
         // ── PDFs ───────────────────────────────────────────────────────────
@@ -5990,18 +6442,31 @@
             doc.setTextColor(120);
             doc.text('N° ' + Date.now().toString().slice(-6) + '  ·  Fecha: ' + c.fecha, 15, 57);
 
-            // Cliente
+            // Cliente / Destinatario
+            const dest = c.destinatario || {};
             doc.setTextColor(27, 37, 89);
             doc.setFontSize(11);
             doc.setFont('helvetica', 'bold');
-            doc.text('CLIENTE', 15, 72);
+            doc.text('DESTINATARIO', 15, 72);
             doc.setFont('helvetica', 'normal');
-            doc.setFontSize(11);
-            doc.text(cliente || '__________________________________', 15, 80);
+            doc.setFontSize(10);
+            const destName = dest.nombre || cliente || '__________________________________';
+            doc.text(destName, 15, 80);
+            const destLines = [];
+            if (dest.cuit) destLines.push('CUIT/DNI: ' + dest.cuit);
+            if (dest.email) destLines.push('Email: ' + dest.email);
+            if (dest.telefono) destLines.push('Tel: ' + dest.telefono);
+            if (dest.direccion) destLines.push('Dirección: ' + dest.direccion);
+            let destY = 86;
+            destLines.forEach(l => { doc.text(l, 15, destY); destY += 5; });
+            if (dest.notas) { doc.setFont('helvetica', 'italic'); doc.text(dest.notas, 15, destY); destY += 5; doc.setFont('helvetica', 'normal'); }
 
             // Detalle
+            let detY = Math.max(destY + 4, 110);
             doc.setFont('helvetica', 'bold');
-            doc.text('DETALLE DEL SERVICIO', 15, 95);
+            doc.setFontSize(11);
+            doc.text('DETALLE DEL SERVICIO', 15, detY);
+            detY += 8;
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(10);
             const detalle = [
@@ -6011,7 +6476,29 @@
                 `Camión: ${c.refrigerated ? 'Refrigerado' : 'Estándar'} · Chofer: ${c.driver.nombre}` + (c.auxCosts.length ? ` + ${c.auxCosts.length} auxiliar(es)` : ''),
                 `Origen: ${c.origin}`,
             ];
-            detalle.forEach((line, i) => doc.text(line, 15, 103 + i*6));
+            detalle.forEach((line, i) => doc.text(line, 15, detY + i*6));
+            detY += detalle.length * 6 + 4;
+
+            // Ítems (qué lleva)
+            if (c.items && c.items.length) {
+                doc.autoTable({
+                    startY: detY,
+                    head: [['#', 'Descripción', 'Cant.', 'Unidad', 'Peso total', 'Valor declarado']],
+                    body: c.items.map((it, i) => [
+                        i+1,
+                        it.descripcion || '',
+                        it.cantidad,
+                        it.unidad,
+                        (it.pesoTotalKg ? it.pesoTotalKg.toLocaleString('es-AR', { maximumFractionDigits: 1 }) + ' kg' : '—'),
+                        (it.valorTotal ? '$ ' + Math.round(it.valorTotal).toLocaleString('es-AR') : '—'),
+                    ]),
+                    theme: 'grid',
+                    headStyles: { fillColor: [27, 37, 89], textColor: 255, fontStyle: 'bold', halign: 'center' },
+                    styles: { fontSize: 9, cellPadding: 2 },
+                    columnStyles: { 0: { cellWidth: 10, halign: 'center' }, 2: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right' } },
+                });
+                detY = doc.lastAutoTable.finalY + 6;
+            }
 
             // Tabla de importes
             const body = [
@@ -6020,7 +6507,7 @@
                 ['TOTAL', money(c.precioFinal)],
             ];
             doc.autoTable({
-                startY: 145,
+                startY: detY + 2,
                 head: [['Concepto', 'Importe']],
                 body,
                 theme: 'grid',
@@ -6089,8 +6576,14 @@
             doc.setFont('helvetica', 'normal');
             doc.setFontSize(9);
             doc.text('Fecha: ' + c.fecha + '  ·  Ruta: ' + c.km.toFixed(1) + ' km · ' + Math.round(c.hours*60) + ' min', 15, 22);
+            if (c.destinatario && c.destinatario.nombre) {
+                doc.setFont('helvetica', 'bold');
+                doc.setFontSize(9);
+                doc.setTextColor(27, 37, 89);
+                doc.text('Destinatario: ' + c.destinatario.nombre + (c.destinatario.cuit ? ' — CUIT ' + c.destinatario.cuit : ''), 15, 28);
+            }
 
-            let y = 34;
+            let y = 36;
             const COL_NUM = 90;  // columna del número (alineado derecha)
             const COL_SIGN = COL_NUM - 35;
             const COL_LABEL = COL_NUM + 8;
@@ -6146,10 +6639,14 @@
 
             // ── PARTE 1: COSTO ─────────────────────────────────────────────
             section('PARTE 1 — EL COSTO');
-            line(' ', c.personalTotal, 'Gente', `Chofer ${c.driver.nombre} + ${c.auxCosts.length} aux · ${c.hours.toFixed(1)}h`);
-            line(' ', c.vehicleTotal, 'Camión', `Desgaste por ${c.km.toFixed(1)} km + seguro prorrateado`);
+            line(' ', c.driverCost, `Chofer ${c.driver.nombre}`, c.driverFormula || '');
+            (c.auxCosts || []).forEach(a => line(' ', a.costo, `Aux ${a.nombre || ''} (${a.tipo})`, a.formula || ''));
+            line(' ', c.depreciation, 'Depreciación camión', `$${Number(c.truckValue||0).toLocaleString('es-AR')} / ${Number(c.truckLifeKm||0).toLocaleString('es-AR')} km × ${c.km.toFixed(1)} km`);
+            line(' ', c.tires, 'Cubiertas', `$${Number(c.tiresCost||0).toLocaleString('es-AR')} / ${Number(c.tiresKm||0).toLocaleString('es-AR')} km × ${c.km.toFixed(1)} km`);
+            line(' ', c.maintenance, 'Mantenimiento', `$${Number(c.maintYear||0).toLocaleString('es-AR')} / ${Number(c.kmYear||0).toLocaleString('es-AR')} km × ${c.km.toFixed(1)} km`);
+            line(' ', c.fixedPerTrip, 'Seguro+Patente+VTV', `$${Number(c.fixedMonth||0).toLocaleString('es-AR')} / ${c.tripsMonth||22} viajes`);
             line(' ', c.fuelTotal, 'Combustible', `${c.km.toFixed(1)} km · ${c.consumption} L/100km · $${c.fuelPrice}/L` + (c.refrigerated ? ' × 1.15 (refrigerado)' : ''));
-            line('+', c.overhead, `Oficina (${c.overheadPct}%)`, 'Overhead admin');
+            line('+', c.overhead, `Oficina (${c.overheadPct}%)`, `${c.overheadPct}% sobre costo directo`);
             bar();
             if (c.freqFactor !== 1) {
                 line(' ', c.personalTotal + c.vehicleTotal + c.fuelTotal + c.overhead, 'Subtotal', '');
