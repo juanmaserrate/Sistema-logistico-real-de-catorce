@@ -5420,16 +5420,23 @@
                 container.innerHTML = html;
                 lucide.createIcons();
 
-                const BA_BOUNDS = new google.maps.LatLngBounds(
-                    new google.maps.LatLng(-35.30, -59.20),   // SW: BA provincia sur-oeste
-                    new google.maps.LatLng(-34.20, -58.00)    // NE: BA CABA norte-este
+                // Provincia de Buenos Aires (toda, desde norte hasta la costa atlántica)
+                const PBA_BOUNDS = new google.maps.LatLngBounds(
+                    new google.maps.LatLng(-41.05, -63.50),   // SW
+                    new google.maps.LatLng(-33.25, -56.60)    // NE
                 );
+                // Es una parada de PBA si NO tiene CABA y sí dice Buenos Aires
+                function isPBAResult(formattedAddress) {
+                    const a = (formattedAddress || '').toLowerCase();
+                    if (a.includes('ciudad autónoma de buenos aires') || a.includes('ciudad autonoma de buenos aires') || a.includes('caba,')) return false;
+                    return a.includes('buenos aires') && a.includes('argentina');
+                }
 
                 budStopSearchTimer = setTimeout(async () => {
                     const sugDiv = document.getElementById('bud-google-sug');
                     if (!sugDiv) return;
 
-                    // --- Intento 1: Places Autocomplete ---
+                    // --- Intento 1: Places Autocomplete (bias a PBA) ---
                     let preds = [];
                     if (window.google?.maps?.places) {
                         if (!budAutocompleteSvc) {
@@ -5441,7 +5448,7 @@
                                     input: q,
                                     componentRestrictions: { country: 'ar' },
                                     language: 'es-AR',
-                                    locationBias: BA_BOUNDS,
+                                    locationBias: PBA_BOUNDS,
                                 }, (r, status) => {
                                     resolve(status === google.maps.places.PlacesServiceStatus.OK && r ? r : []);
                                 });
@@ -5449,8 +5456,12 @@
                         } catch {}
                     }
 
-                    if (preds.length) {
-                        window.__budGooglePreds = preds.slice(0, 8);
+                    // Filtrar: priorizar PBA, dejar CABA solo si no hay otros
+                    const predsPBA = preds.filter(p => isPBAResult(p.description));
+                    const predsFinal = predsPBA.length ? predsPBA : preds;
+
+                    if (predsFinal.length) {
+                        window.__budGooglePreds = predsFinal.slice(0, 8);
                         window.__budGeocoderResults = [];
                         sugDiv.innerHTML = window.__budGooglePreds.map((p, i) => `
                             <button type="button" onclick="budgetSelectGooglePlace(${i})" class="w-full text-left p-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 flex items-start gap-2">
@@ -5465,16 +5476,27 @@
                         return;
                     }
 
-                    // --- Intento 2: Geocoder (más permisivo con direcciones sueltas) ---
+                    // --- Intento 2: Geocoder con restricción administrativeArea=Buenos Aires (estricto PBA) ---
                     const geocoder = new google.maps.Geocoder();
-                    const geoResults = await new Promise((resolve) => {
+                    let geoResults = await new Promise((resolve) => {
                         geocoder.geocode({
                             address: q,
                             region: 'AR',
-                            bounds: BA_BOUNDS,
-                            componentRestrictions: { country: 'AR' },
+                            bounds: PBA_BOUNDS,
+                            componentRestrictions: { country: 'AR', administrativeArea: 'Buenos Aires' },
                         }, (r, status) => resolve(status === 'OK' && r ? r : []));
                     });
+                    // Si PBA estricta no devuelve, probar sin admin area (aceptar lo que venga)
+                    if (!geoResults.length) {
+                        geoResults = await new Promise((resolve) => {
+                            geocoder.geocode({
+                                address: q,
+                                region: 'AR',
+                                bounds: PBA_BOUNDS,
+                                componentRestrictions: { country: 'AR' },
+                            }, (r, status) => resolve(status === 'OK' && r ? r : []));
+                        });
+                    }
 
                     if (!geoResults.length) {
                         sugDiv.innerHTML = '<div class="text-[11px] text-[#A3AED0] italic p-2">Sin resultados de Google. Podés agregar el texto como dirección libre (abajo).</div>';
