@@ -5413,28 +5413,45 @@
                 html += '<div class="text-[11px] text-[#A3AED0] italic p-2">No hay coincidencias en el catálogo. Mirá abajo sugerencias de Google Maps.</div>';
             }
 
-            // 2) Google Maps Places Autocomplete
-            if (q.length >= 3 && window.google?.maps?.places) {
-                if (!budAutocompleteSvc) {
-                    budAutocompleteSvc = new google.maps.places.AutocompleteService();
-                }
+            // 2) Google Maps — Autocomplete primero, Geocoder como respaldo
+            if (q.length >= 3 && window.google?.maps) {
                 clearTimeout(budStopSearchTimer);
-                html += '<div class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest px-2 py-1 mt-3">Sugerencias de Google Maps</div><div id="bud-google-sug" class="space-y-1"></div>';
+                html += '<div class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest px-2 py-1 mt-3">Sugerencias de Google Maps</div><div id="bud-google-sug" class="space-y-1"><div class="text-[11px] text-[#A3AED0] italic p-2">Buscando...</div></div>';
                 container.innerHTML = html;
                 lucide.createIcons();
-                budStopSearchTimer = setTimeout(() => {
-                    budAutocompleteSvc.getPlacePredictions({
-                        input: q,
-                        componentRestrictions: { country: 'ar' },
-                        language: 'es-AR',
-                    }, (preds, status) => {
-                        const sugDiv = document.getElementById('bud-google-sug');
-                        if (!sugDiv) return;
-                        if (status !== google.maps.places.PlacesServiceStatus.OK || !preds?.length) {
-                            sugDiv.innerHTML = '<div class="text-[11px] text-[#A3AED0] italic p-2">Sin sugerencias de Google.</div>';
-                            return;
+
+                const BA_BOUNDS = new google.maps.LatLngBounds(
+                    new google.maps.LatLng(-35.30, -59.20),   // SW: BA provincia sur-oeste
+                    new google.maps.LatLng(-34.20, -58.00)    // NE: BA CABA norte-este
+                );
+
+                budStopSearchTimer = setTimeout(async () => {
+                    const sugDiv = document.getElementById('bud-google-sug');
+                    if (!sugDiv) return;
+
+                    // --- Intento 1: Places Autocomplete ---
+                    let preds = [];
+                    if (window.google?.maps?.places) {
+                        if (!budAutocompleteSvc) {
+                            budAutocompleteSvc = new google.maps.places.AutocompleteService();
                         }
+                        try {
+                            preds = await new Promise((resolve) => {
+                                budAutocompleteSvc.getPlacePredictions({
+                                    input: q,
+                                    componentRestrictions: { country: 'ar' },
+                                    language: 'es-AR',
+                                    locationBias: BA_BOUNDS,
+                                }, (r, status) => {
+                                    resolve(status === google.maps.places.PlacesServiceStatus.OK && r ? r : []);
+                                });
+                            });
+                        } catch {}
+                    }
+
+                    if (preds.length) {
                         window.__budGooglePreds = preds.slice(0, 8);
+                        window.__budGeocoderResults = [];
                         sugDiv.innerHTML = window.__budGooglePreds.map((p, i) => `
                             <button type="button" onclick="budgetSelectGooglePlace(${i})" class="w-full text-left p-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 flex items-start gap-2">
                                 <i data-lucide="map-pin" class="w-4 h-4 text-indigo-600 shrink-0 mt-0.5"></i>
@@ -5445,11 +5462,57 @@
                             </button>
                         `).join('');
                         lucide.createIcons();
+                        return;
+                    }
+
+                    // --- Intento 2: Geocoder (más permisivo con direcciones sueltas) ---
+                    const geocoder = new google.maps.Geocoder();
+                    const geoResults = await new Promise((resolve) => {
+                        geocoder.geocode({
+                            address: q,
+                            region: 'AR',
+                            bounds: BA_BOUNDS,
+                            componentRestrictions: { country: 'AR' },
+                        }, (r, status) => resolve(status === 'OK' && r ? r : []));
                     });
-                }, 250);
+
+                    if (!geoResults.length) {
+                        sugDiv.innerHTML = '<div class="text-[11px] text-[#A3AED0] italic p-2">Sin resultados de Google. Podés agregar el texto como dirección libre (abajo).</div>';
+                        return;
+                    }
+
+                    window.__budGeocoderResults = geoResults.slice(0, 6);
+                    window.__budGooglePreds = [];
+                    sugDiv.innerHTML = window.__budGeocoderResults.map((g, i) => `
+                        <button type="button" onclick="budgetSelectGeocoderResult(${i})" class="w-full text-left p-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 flex items-start gap-2">
+                            <i data-lucide="map-pin" class="w-4 h-4 text-indigo-600 shrink-0 mt-0.5"></i>
+                            <div class="flex-1 min-w-0">
+                                <div class="text-sm font-bold text-[#1B2559]">${escapeHtml(g.formatted_address.split(',')[0])}</div>
+                                <div class="text-[11px] text-[#A3AED0] truncate">${escapeHtml(g.formatted_address)}</div>
+                            </div>
+                        </button>
+                    `).join('');
+                    lucide.createIcons();
+                }, 350);
             } else {
                 container.innerHTML = html;
                 lucide.createIcons();
+            }
+        }
+
+        function budgetSelectGeocoderResult(idx) {
+            const g = window.__budGeocoderResults?.[idx];
+            if (!g) return;
+            budgetState.stops.push({
+                name: g.formatted_address.split(',')[0],
+                address: g.formatted_address,
+                lat: g.geometry.location.lat(),
+                lng: g.geometry.location.lng(),
+            });
+            budgetCloseStopModal();
+            budgetRenderStopsList();
+            if (typeof addNotification === 'function') {
+                addNotification('success', 'Parada agregada', g.formatted_address);
             }
         }
 
