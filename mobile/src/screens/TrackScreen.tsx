@@ -12,7 +12,6 @@ import {
   AppState,
   type AppStateStatus,
   RefreshControl,
-  TextInput,
   Animated,
   Dimensions,
 } from 'react-native';
@@ -39,7 +38,8 @@ import {
   flushStopQueue,
   flushIncidentQueue,
   getPendingStopCount,
-  updateVehicleKm,
+  getPendingLocationCount,
+  pingServer,
   type NavigationToNext,
 } from '../api';
 import StopDeliveryModal from '../components/StopDeliveryModal';
@@ -93,7 +93,9 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   const [navLoading, setNavLoading] = useState(false);
   const [navErr, setNavErr] = useState('');
   const [deliveryModalStop, setDeliveryModalStop] = useState<Stop | null>(null);
-  const [trackingOk, setTrackingOk] = useState(true);
+  // Estado de la señal: 'ok' verde, 'queued' amarillo (hay cola pendiente), 'error' rojo.
+  const [signalState, setSignalState] = useState<'ok' | 'queued' | 'error'>('ok');
+  const [pendingLoc, setPendingLoc] = useState(0);
   const deviceIdRef = useRef<string>('');
   const socketRef = useRef<any>(null);
   // Incidencias
@@ -101,10 +103,6 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   // Modo offline
   const [isOnline, setIsOnline] = useState(true);
   const [pendingOffline, setPendingOffline] = useState(0);
-  // Odómetro modal al iniciar recorrido
-  const [kmModalOpen, setKmModalOpen] = useState(false);
-  const [kmInput, setKmInput] = useState('');
-  const pendingStartRef = useRef<{ routeId: number; plate: string | null } | null>(null);
   // Reordenamiento de paradas
   const [reorderModalOpen, setReorderModalOpen] = useState(false);
   // Toast de ruta actualizada
@@ -119,7 +117,8 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
 
   /** Primera parada PENDING con cliente (Maps, navegación embebida, registro). */
   const firstPendingStop = useMemo(() => {
-    if (!selected?.stops?.length || selected?.actualEndTime) return null;
+    if (!selected?.stops?.length) return null;
+    if (selected.trip?.status === 'COMPLETED') return null;
     const pending = [...selected.stops]
       .filter((s) => s.status === 'PENDING')
       .sort((a, b) => a.sequence - b.sequence);
@@ -452,19 +451,33 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     };
   }, [selId, geometryStopsKey]);
 
-  useEffect(() => {
-    if (!geom?.points?.length || !mapRef.current) return;
-    const coords = geom.points.map((p) => ({ latitude: p.lat, longitude: p.lng }));
-    for (const s of geom.stops || []) {
-      coords.push({ latitude: s.lat, longitude: s.lng });
+  /** Encuadrar el mapa: usa geometría por calles si está, si no usa los stops directamente. */
+  const fitMapToRoute = useCallback(() => {
+    if (!mapRef.current) return;
+    const coords: Array<{ latitude: number; longitude: number }> = [];
+    if (geom?.points?.length) {
+      for (const p of geom.points) coords.push({ latitude: p.lat, longitude: p.lng });
+      for (const s of geom.stops || []) coords.push({ latitude: s.lat, longitude: s.lng });
+    } else if (selected?.stops?.length) {
+      for (const s of selected.stops) {
+        if (s.client?.latitude != null && s.client?.longitude != null) {
+          coords.push({ latitude: s.client.latitude, longitude: s.client.longitude });
+        }
+      }
     }
+    if (coords.length < 2) return;
     setTimeout(() => {
       mapRef.current?.fitToCoordinates(coords, {
         edgePadding: { top: 100, right: 40, bottom: 200, left: 40 },
         animated: true,
       });
     }, 400);
-  }, [geom]);
+  }, [geom, selected]);
+
+  /** Re-encuadrar cuando llega geom, cambia ruta, o el usuario va a la tab mapa. */
+  useEffect(() => {
+    fitMapToRoute();
+  }, [fitMapToRoute, activeTab]);
 
   useEffect(() => {
     setNav(null);
@@ -478,6 +491,34 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       setTracking(on);
     })();
   }, []);
+
+  /** Heartbeat de señal: cada 10s mide latencia al servidor y chequea la cola offline.
+   *  Verde = OK, Amarillo = hay cola pendiente, Rojo = sin respuesta del servidor. */
+  useEffect(() => {
+    if (!tracking) return;
+    let cancelled = false;
+    const tick = async () => {
+      const [latency, pending] = await Promise.all([
+        pingServer(4000),
+        getPendingLocationCount(),
+      ]);
+      if (cancelled) return;
+      setPendingLoc(pending);
+      if (latency == null) {
+        setSignalState('error');
+      } else if (pending > 0) {
+        setSignalState('queued');
+      } else {
+        setSignalState('ok');
+      }
+    };
+    void tick();
+    const id = setInterval(() => void tick(), 10000);
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [tracking]);
 
   const sendOnePing = async (routeId: number | null) => {
     const pos = await Location.getCurrentPositionAsync({
@@ -496,33 +537,10 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         speed: pos.coords.speed ?? null,
         heading: pos.coords.heading ?? null,
       });
-      setTrackingOk(true);
+      setSignalState('ok');
     } catch {
-      setTrackingOk(false);
+      setSignalState('error');
     }
-  };
-
-  /** Abre el modal de odómetro antes de iniciar el recorrido. */
-  const promptKmAndStart = () => {
-    const plate = selected?.vehicle?.plate ?? null;
-    pendingStartRef.current = { routeId: selId!, plate };
-    setKmInput('');
-    setKmModalOpen(true);
-  };
-
-  const confirmKmAndStart = async () => {
-    const km = parseFloat(kmInput);
-    const { routeId, plate } = pendingStartRef.current ?? {};
-    setKmModalOpen(false);
-    if (plate && !isNaN(km) && km > 0) {
-      updateVehicleKm(plate, km).catch(() => {});
-    }
-    await doStartTracking();
-  };
-
-  const skipKmAndStart = async () => {
-    setKmModalOpen(false);
-    await doStartTracking();
   };
 
   const startTracking = () => {
@@ -530,11 +548,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       Alert.alert('Ruta', 'Seleccioná una ruta en la lista de arriba antes de fichar entrada.');
       return;
     }
-    if (selected?.vehicle?.plate) {
-      promptKmAndStart();
-    } else {
-      void doStartTracking();
-    }
+    void doStartTracking();
   };
 
   const doStartTracking = async () => {
@@ -563,14 +577,14 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     const started = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
     if (!started) {
       await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
-        accuracy: Location.Accuracy.Balanced,
-        timeInterval: 20000,
-        distanceInterval: 35,
+        accuracy: Location.Accuracy.High,
+        timeInterval: 5000,
+        distanceInterval: 15,
         pausesUpdatesAutomatically: false,
         showsBackgroundLocationIndicator: true,
         foregroundService: {
           notificationTitle: 'R14 · Seguimiento activo',
-          notificationBody: 'Tu posición se envía a planificación',
+          notificationBody: 'Tu posición se envía a planificación en tiempo real',
         },
       });
     }
@@ -658,8 +672,10 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           >
         <View style={styles.panelHeader}>
           <View style={{ flex: 1 }}>
-            <Text style={styles.panelTitle}>Mi recorrido</Text>
-            <Text style={styles.panelSub}>{selected?.trip?.businessUnit || selected?.trip?.reparto || session.fullName}</Text>
+            <Text style={styles.panelTitle}>
+              {selected?.trip?.businessUnit || selected?.trip?.reparto || 'Mi recorrido'}
+            </Text>
+            <Text style={styles.panelSub}>{session.fullName}</Text>
           </View>
           <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('History')}>
             <Text style={styles.iconBtnTxt}>📋</Text>
@@ -724,14 +740,10 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           {!tracking ? (
             <Pressable style={styles.ficharEntrada} onPress={startTracking}>
               <Text style={styles.ficharEntradaTxt}>Fichar entrada</Text>
-              <Text style={styles.ficharEntradaSub}>
-                Empezás a enviar tu ubicación a planificación (torre de control).
-              </Text>
             </Pressable>
           ) : (
             <Pressable style={styles.ficharSalida} onPress={stopTracking}>
               <Text style={styles.ficharSalidaTxt}>Fichar salida</Text>
-              <Text style={styles.ficharSalidaSub}>Se detiene el reporte de posición.</Text>
             </Pressable>
           )}
 
@@ -761,25 +773,29 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           ) : routes.length === 0 ? (
             <Text style={styles.hint}>No tenés rutas asignadas para hoy.</Text>
           ) : (
-            <ScrollView
-              horizontal
-              nestedScrollEnabled
-              showsHorizontalScrollIndicator={false}
-              style={styles.chips}
-            >
-              {routes.map((r) => (
-                <Pressable
-                  key={r.id}
-                  onPress={() => onChangeRoute(r.id)}
-                  style={[styles.chip, selId === r.id && styles.chipOn]}
-                >
-                  <Text style={[styles.chipTxt, selId === r.id && styles.chipTxtOn]}>
-                    {r.driver?.username || `Ruta #${r.id}`}
-                    {r.vehicle?.plate ? ` · ${r.vehicle.plate}` : ''}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
+            <View style={styles.routeCards}>
+              {routes.map((r) => {
+                const bu = r.trip?.businessUnit || r.trip?.reparto || `Ruta #${r.id}`;
+                const isOn = selId === r.id;
+                const concluded = r.trip?.status === 'COMPLETED';
+                return (
+                  <Pressable
+                    key={r.id}
+                    onPress={() => onChangeRoute(r.id)}
+                    style={[styles.routeCard, isOn && styles.routeCardOn]}
+                  >
+                    <Text style={[styles.routeCardTitle, isOn && styles.routeCardTitleOn]} numberOfLines={2}>
+                      {bu}
+                    </Text>
+                    {concluded ? (
+                      <Text style={[styles.routeCardBadge, isOn && { color: 'rgba(255,255,255,0.9)' }]}>
+                        Viaje concluido
+                      </Text>
+                    ) : null}
+                  </Pressable>
+                );
+              })}
+            </View>
           )}
           {geomLoading ? (
             <Text style={styles.mini}>Cargando trazado por calles…</Text>
@@ -788,7 +804,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
               Ruta no disponible en el mapa.
             </Text>
           ) : null}
-          {selected && !selected.actualEndTime && routeStopsSorted.length > 0 ? (
+          {selected && selected.trip?.status !== 'COMPLETED' && routeStopsSorted.length > 0 ? (
             <View style={styles.stopsSection}>
               <View style={styles.stopsSectionHeader}>
                 <Text style={styles.stopsSectionTitle}>Paradas del recorrido</Text>
@@ -922,9 +938,26 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           </Pressable>
           {tracking ? (
             <View style={styles.liveRow}>
-              <View style={[styles.connectionDot, trackingOk ? styles.connectionDotOk : styles.connectionDotErr]} />
-              <Text style={styles.live}>
-                Entrada fichada: ubicación cada ~20 s a planificación. Tocá «Fichar salida» al terminar.
+              <View
+                style={[
+                  styles.connectionDot,
+                  signalState === 'ok' && styles.connectionDotOk,
+                  signalState === 'queued' && styles.connectionDotWarn,
+                  signalState === 'error' && styles.connectionDotErr,
+                ]}
+              />
+              <Text
+                style={[
+                  styles.live,
+                  signalState === 'queued' && { color: colors.warning },
+                  signalState === 'error' && { color: colors.error },
+                ]}
+              >
+                {signalState === 'ok'
+                  ? 'Enviando ubicación en tiempo real (cada 5 s).'
+                  : signalState === 'queued'
+                  ? `Sin señal — ${pendingLoc} ubicación${pendingLoc === 1 ? '' : 'es'} en cola. Se enviarán al recuperarla.`
+                  : 'Sin conexión al servidor. Reintentando…'}
               </Text>
             </View>
           ) : null}
@@ -941,12 +974,12 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
             showsUserLocation
             showsMyLocationButton
           >
-            {/* Polyline Google Directions (si hay geometría) */}
+            {/* Polyline Google Directions (si hay geometría por calles) */}
             {lineCoords.length >= 2 && (
-              <Polyline coordinates={lineCoords} strokeColor={colors.primary} strokeWidth={4} />
+              <Polyline coordinates={lineCoords} strokeColor={colors.primary} strokeWidth={6} />
             )}
-            {/* Polyline directa entre paradas (si NO hay geometría) */}
-            {!geom && selected?.stops && (() => {
+            {/* Polyline directa entre paradas — fallback siempre visible si hay >= 2 stops con coordenadas */}
+            {!lineCoords.length && selected?.stops && (() => {
               const sorted = [...selected.stops]
                 .sort((a, b) => a.sequence - b.sequence)
                 .filter(s => s.client?.latitude != null && s.client?.longitude != null);
@@ -954,8 +987,8 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                 <Polyline
                   coordinates={sorted.map(s => ({ latitude: s.client.latitude!, longitude: s.client.longitude! }))}
                   strokeColor={colors.primary}
-                  strokeWidth={3}
-                  lineDashPattern={[8, 4]}
+                  strokeWidth={5}
+                  lineDashPattern={[10, 6]}
                 />
               ) : null;
             })()}
@@ -1058,33 +1091,6 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         />
       ) : null}
 
-      {/* Modal odómetro */}
-      {kmModalOpen && (
-        <View style={StyleSheet.absoluteFill}>
-          <Pressable style={styles.kmBackdrop} onPress={() => setKmModalOpen(false)} />
-          <View style={styles.kmSheet}>
-            <Text style={styles.kmTitle}>¿Cuál es el odómetro actual?</Text>
-            <Text style={styles.kmSub}>Ingresá los kilómetros del vehículo antes de salir. Podés saltar este paso.</Text>
-            <TextInput
-              style={styles.kmInput}
-              keyboardType="numeric"
-              placeholder="Ej: 125000"
-              placeholderTextColor="#94a3b8"
-              value={kmInput}
-              onChangeText={setKmInput}
-              autoFocus
-            />
-            <View style={styles.kmActions}>
-              <Pressable style={styles.kmSkipBtn} onPress={() => void skipKmAndStart()}>
-                <Text style={styles.kmSkipTxt}>Saltar</Text>
-              </Pressable>
-              <Pressable style={styles.kmConfirmBtn} onPress={() => void confirmKmAndStart()}>
-                <Text style={styles.kmConfirmTxt}>Confirmar y fichar</Text>
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      )}
     </View>
   );
 }
@@ -1216,7 +1222,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: spacing.xs,
   },
-  tlName: { flex: 1, fontSize: font.md, fontWeight: font.extrabold, color: colors.textPrimary },
+  tlName: { flex: 1, fontSize: font.xl, fontWeight: font.black, color: colors.textPrimary, letterSpacing: 0.2 },
   tlBadge: {
     paddingHorizontal: spacing.sm + 2,
     paddingVertical: 2,
@@ -1232,10 +1238,10 @@ const styles = StyleSheet.create({
   tlBadgeActiveTxt: { color: colors.primary },
   tlBadgeDoneTxt: { color: colors.success },
   tlBadgeFailedTxt: { color: colors.error },
-  tlAddr: { fontSize: font.sm, color: colors.textSecondary, lineHeight: 15 },
-  tlZone: { fontSize: font.xs, color: colors.textMuted, marginTop: 2 },
-  tlHorario: { fontSize: font.xs, color: colors.primaryContainer, fontWeight: font.bold, marginTop: 3 },
-  tlMeta: { fontSize: font.xs, color: colors.textMuted, marginTop: spacing.xs },
+  tlAddr: { fontSize: font.md, color: colors.textSecondary, lineHeight: 20, marginTop: 4 },
+  tlZone: { fontSize: font.sm, color: colors.textMuted, marginTop: 3 },
+  tlHorario: { fontSize: font.sm, color: colors.primaryContainer, fontWeight: font.bold, marginTop: 4 },
+  tlMeta: { fontSize: font.sm, color: colors.textMuted, marginTop: spacing.xs },
   tlDoneInfo: { marginTop: spacing.sm, paddingTop: spacing.sm, borderTopWidth: 1, borderTopColor: colors.borderLight },
   tlDoneOk: { fontSize: font.sm, fontWeight: font.extrabold, color: colors.success },
   tlObs: { fontSize: font.sm, color: colors.textSecondary, marginTop: 3 },
@@ -1296,56 +1302,55 @@ const styles = StyleSheet.create({
 
   /* ── Misc controls ─────────────────────────────── */
   hint: { color: colors.textSecondary, fontSize: font.base, marginVertical: 6 },
-  chips: { marginTop: spacing.sm + 2, maxHeight: 44 },
-  chip: {
-    paddingHorizontal: spacing.lg + 2,
-    paddingVertical: spacing.md,
-    borderRadius: radius.xl,
-    backgroundColor: colors.border,
-    marginRight: spacing.sm,
-    alignSelf: 'flex-start',
+  routeCards: { marginTop: spacing.sm + 2, gap: spacing.sm },
+  routeCard: {
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.lg,
+    borderRadius: radius.md,
+    backgroundColor: colors.surfaceContainerLowest,
+    ...shadow.sm,
   },
-  chipOn: { backgroundColor: colors.primary },
-  chipTxt: { fontWeight: font.bold, color: colors.textSecondary, fontSize: font.base },
-  chipTxtOn: { color: colors.textInverse },
+  routeCardOn: {
+    backgroundColor: colors.primary,
+  },
+  routeCardTitle: {
+    fontWeight: font.black,
+    color: colors.textPrimary,
+    fontSize: font.xl,
+    letterSpacing: 0.2,
+  },
+  routeCardTitleOn: { color: colors.textInverse },
+  routeCardBadge: {
+    marginTop: 6,
+    fontSize: font.xs,
+    fontWeight: font.extrabold,
+    color: colors.textMuted,
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
+  },
   mini: { fontSize: font.sm, color: colors.textMuted, marginTop: 6 },
 
   /* ── Fichar entrada/salida ─────────────────────── */
   ficharEntrada: {
     marginTop: spacing.md,
     backgroundColor: colors.primary,
-    paddingVertical: spacing.lg,
+    paddingVertical: spacing.xl + 4,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.full,
     alignItems: 'center',
     ...shadow.md,
   },
-  ficharEntradaTxt: { fontWeight: font.black, color: colors.textInverse, fontSize: font.xl - 1, letterSpacing: 0.3 },
-  ficharEntradaSub: {
-    marginTop: spacing.sm,
-    fontSize: font.sm,
-    fontWeight: font.semibold,
-    color: 'rgba(255,255,255,0.85)',
-    textAlign: 'center',
-    lineHeight: 15,
-  },
+  ficharEntradaTxt: { fontWeight: font.black, color: colors.textInverse, fontSize: font['2xl'] + 2, letterSpacing: 0.5 },
   ficharSalida: {
     marginTop: spacing.md,
     backgroundColor: '#991b1b',
-    paddingVertical: spacing.lg,
+    paddingVertical: spacing.xl + 4,
     paddingHorizontal: spacing.lg,
     borderRadius: radius.full,
     alignItems: 'center',
     ...shadow.md,
   },
-  ficharSalidaTxt: { fontWeight: font.black, color: colors.textInverse, fontSize: font.xl - 1, letterSpacing: 0.3 },
-  ficharSalidaSub: {
-    marginTop: spacing.sm,
-    fontSize: font.sm,
-    fontWeight: font.semibold,
-    color: 'rgba(255,255,255,0.85)',
-    textAlign: 'center',
-  },
+  ficharSalidaTxt: { fontWeight: font.black, color: colors.textInverse, fontSize: font['2xl'] + 2, letterSpacing: 0.5 },
 
   /* ── Offline / incident ────────────────────────── */
   offlineBanner: {
@@ -1366,38 +1371,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   incidentBtnTxt: { fontSize: font.md, fontWeight: font.extrabold, color: colors.accentHover },
-
-  /* ── Odómetro modal ────────────────────────────── */
-  kmBackdrop: { ...StyleSheet.absoluteFillObject, backgroundColor: colors.overlay },
-  kmSheet: {
-    position: 'absolute',
-    bottom: 0,
-    left: 0,
-    right: 0,
-    backgroundColor: colors.bg,
-    borderTopLeftRadius: radius['2xl'],
-    borderTopRightRadius: radius['2xl'],
-    padding: spacing['2xl'],
-    paddingBottom: 36,
-  },
-  kmTitle: { fontSize: font.xl - 1, fontWeight: font.black, color: colors.textPrimary, marginBottom: spacing.sm },
-  kmSub: { fontSize: font.sm, color: colors.textSecondary, marginBottom: spacing.lg },
-  kmInput: {
-    borderWidth: 1,
-    borderColor: colors.border,
-    borderRadius: radius.md,
-    padding: spacing.md + 2,
-    fontSize: font['2xl'],
-    fontWeight: font.bold,
-    color: colors.textPrimary,
-    marginBottom: spacing.lg,
-    textAlign: 'center',
-  },
-  kmActions: { flexDirection: 'row', gap: spacing.sm + 2 },
-  kmSkipBtn: { flex: 1, paddingVertical: spacing.md + 2, borderRadius: radius.md, backgroundColor: colors.border, alignItems: 'center' },
-  kmSkipTxt: { fontWeight: font.extrabold, color: colors.textSecondary },
-  kmConfirmBtn: { flex: 2, paddingVertical: spacing.md + 2, borderRadius: radius.md, backgroundColor: colors.primary, alignItems: 'center' },
-  kmConfirmTxt: { fontWeight: font.black, color: colors.textInverse },
 
   /* ── Refresh / live ────────────────────────────── */
   refreshFull: {
@@ -1462,5 +1435,6 @@ const styles = StyleSheet.create({
   liveRow: { flexDirection: 'row', alignItems: 'center', marginTop: spacing.sm + 2, gap: 6 },
   connectionDot: { width: 10, height: 10, borderRadius: 5 },
   connectionDotOk: { backgroundColor: colors.success },
+  connectionDotWarn: { backgroundColor: colors.warning },
   connectionDotErr: { backgroundColor: colors.error },
 });

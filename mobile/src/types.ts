@@ -42,7 +42,14 @@ export interface Route {
   stops: Stop[];
   vehicle?: { plate?: string } | null;
   driver?: { id: string; username: string; fullName: string } | null;
-  trip?: { businessUnit?: string | null; reparto?: string | null; zone?: string | null } | null;
+  trip?: {
+    id?: number;
+    businessUnit?: string | null;
+    reparto?: string | null;
+    zone?: string | null;
+    status?: string | null;
+    completedAt?: string | null;
+  } | null;
   /** Justificación del chofer al reordenar paradas */
   reorderReason?: string | null;
   reorderedAt?: string | null;

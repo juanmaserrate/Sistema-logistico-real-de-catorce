@@ -80,9 +80,10 @@ function localYmd(d: Date): string {
 }
 
 export async function fetchRoutesToday(driverId: string): Promise<Route[]> {
+  const today = localYmd(new Date());
   const q = new URLSearchParams({
     driverId,
-    date: localYmd(new Date()),
+    date: today,
     _ts: String(Date.now()),
   });
   try {
@@ -92,8 +93,30 @@ export async function fetchRoutesToday(driverId: string): Promise<Route[]> {
     );
     if (!res.ok) throw new Error('No se pudieron cargar las rutas');
     const routes = (await res.json()) as Route[];
-    // Save to cache for offline fallback
-    AsyncStorage.setItem(ROUTES_CACHE_KEY, JSON.stringify({ driverId, routes, ts: Date.now() })).catch(() => {});
+
+    // Si el servidor devuelve vacío pero tenemos caché de hoy con rutas, preferimos caché
+    // (evita "desaparición" por respuesta vacía transitoria del backend).
+    if (routes.length === 0) {
+      try {
+        const raw = await AsyncStorage.getItem(ROUTES_CACHE_KEY);
+        if (raw) {
+          const cached = JSON.parse(raw);
+          if (
+            cached?.driverId === driverId &&
+            cached?.date === today &&
+            Array.isArray(cached.routes) &&
+            cached.routes.length > 0
+          ) {
+            return cached.routes as Route[];
+          }
+        }
+      } catch {}
+    }
+
+    AsyncStorage.setItem(
+      ROUTES_CACHE_KEY,
+      JSON.stringify({ driverId, date: today, routes, ts: Date.now() })
+    ).catch(() => {});
     return routes;
   } catch (e) {
     // Offline fallback: return cached routes if they belong to the same driver
@@ -107,6 +130,18 @@ export async function fetchRoutesToday(driverId: string): Promise<Route[]> {
       }
     } catch {}
     throw e;
+  }
+}
+
+/** Cantidad de ubicaciones GPS pendientes en la cola offline. */
+export async function getPendingLocationCount(): Promise<number> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.offlineLocationQueue);
+    if (!raw) return 0;
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr.length : 0;
+  } catch {
+    return 0;
   }
 }
 
@@ -295,11 +330,40 @@ export async function postTrackingLocation(payload: {
   speed: number | null;
   heading: number | null;
 }): Promise<void> {
-  await fetch(apiUrl('/api/v1/tracking/location'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
+  // Reintentos exponenciales (0.5s, 2s, 5s) antes de considerar fallido.
+  const delays = [0, 500, 2000, 5000];
+  let lastErr: unknown = null;
+  for (const d of delays) {
+    if (d > 0) await new Promise((r) => setTimeout(r, d));
+    try {
+      const res = await fetch(apiUrl('/api/v1/tracking/location'), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      if (res.ok) return;
+      lastErr = new Error(`HTTP ${res.status}`);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr ?? new Error('postTrackingLocation failed');
+}
+
+/** Healthcheck al servidor: devuelve latencia (ms) o null si falla. */
+export async function pingServer(timeout = 4000): Promise<number | null> {
+  const started = Date.now();
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), timeout);
+  try {
+    const res = await fetch(apiUrl('/api/v1/ping'), { signal: controller.signal });
+    clearTimeout(tid);
+    if (!res.ok) return null;
+    return Date.now() - started;
+  } catch {
+    clearTimeout(tid);
+    return null;
+  }
 }
 
 export async function patchRouteRecorrido(
