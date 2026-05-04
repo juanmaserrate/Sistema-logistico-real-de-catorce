@@ -13741,28 +13741,22 @@
     if (window.__r14ModalFixInstalled) return;
     window.__r14ModalFixInstalled = true;
 
-    /** Devuelve todos los modales (divs con id terminado en -modal o que tengan clase modal-overlay) actualmente VISIBLES. */
+    /** Devuelve todos los modales actualmente VISIBLES (no tienen clase 'hidden'). */
     function getOpenModals() {
         const all = document.querySelectorAll('[id$="-modal"], .modal-overlay');
-        return Array.from(all).filter(m => !m.classList.contains('hidden') && m.offsetParent !== null);
+        // No usamos offsetParent porque position:fixed lo hace null. Solo chequeamos la clase.
+        return Array.from(all).filter(m => !m.classList.contains('hidden'));
     }
 
-    /** Esconde el modal pasando por su `hidden` y dispara cualquier `closeXxxModal()` global registrado. */
+    /** Esconde el modal — primero intenta closeXxxModal(), si no existe usa hidden directo. */
     function hideModal(modal) {
         if (!modal) return;
-        // Si tiene una función global close<Id>Modal asociada, invocarla por compatibilidad
         const id = modal.id || '';
         if (id) {
-            // Tenemos closeColumnSettingsModal, closeBulkEditModal, etc.
-            const fnNames = [
-                // close + camelCase del id sin "-modal"
-                'close' + id.replace(/-modal$/, '')
-                    .split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('') + 'Modal',
-            ];
-            for (const fn of fnNames) {
-                if (typeof window[fn] === 'function') {
-                    try { window[fn](); return; } catch (e) { /* fall through */ }
-                }
+            const fnName = 'close' + id.replace(/-modal$/, '')
+                .split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('') + 'Modal';
+            if (typeof window[fnName] === 'function') {
+                try { window[fnName](); return; } catch (e) { /* fall through */ }
             }
         }
         modal.classList.add('hidden');
@@ -13780,30 +13774,46 @@
         modal.style.zIndex = String(maxZ + 10);
     }
 
-    // 1) Click en la X (button con onclick="closeXxxModal()") en fase de captura
-    document.addEventListener('click', function(ev) {
-        const btn = ev.target.closest && ev.target.closest('button[onclick*="close"][onclick*="Modal"]');
-        if (!btn) return;
-        const onclickStr = btn.getAttribute('onclick') || '';
-        // Extraer el nombre de la función: closeXxxModal()
-        const m = onclickStr.match(/(close[A-Za-z0-9]+Modal)\s*\(/);
-        if (!m) return;
-        const fnName = m[1];
-        if (typeof window[fnName] === 'function') {
-            ev.preventDefault();
-            ev.stopPropagation();
-            try { window[fnName](); } catch (e) {
-                console.warn('[modal-fix] error invocando', fnName, e);
-            }
+    /** Intenta cerrar el modal asociado al botón clickeado, ejecutando su onclick directamente. */
+    function handleCloseButtonClick(ev) {
+        // ev.target puede ser el SVG/path/etc. dentro del button. Buscar el button ancestro.
+        let btn = ev.target;
+        while (btn && btn !== document.body) {
+            if (btn.tagName === 'BUTTON' && btn.hasAttribute('onclick')) break;
+            btn = btn.parentElement;
         }
-    }, true /* capture */);
+        if (!btn || btn === document.body) return false;
+        const onclickStr = btn.getAttribute('onclick') || '';
+        if (!/close[A-Za-z0-9_]*Modal\s*\(/.test(onclickStr)) return false;
+
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (ev.stopImmediatePropagation) ev.stopImmediatePropagation();
+        try {
+            // Ejecutar el onclick literal — igual que haría el browser
+            const fn = new Function(onclickStr);
+            fn.call(btn);
+        } catch (e) {
+            console.warn('[modal-fix] error ejecutando onclick:', onclickStr, e);
+        }
+        return true;
+    }
+
+    // 1) Click en la X — fase de captura para ganar a cualquier otro listener
+    document.addEventListener('click', handleCloseButtonClick, true);
+    // También en pointerdown por si algún sistema captura antes del click
+    document.addEventListener('pointerdown', function(ev) {
+        // Solo si es botón izquierdo
+        if (ev.button !== 0) return;
+        // No prevenimos por defecto en pointerdown porque eso rompería focus.
+        // Solo registramos para diagnóstico — el click real se maneja arriba.
+    }, true);
 
     // 2) ESC cierra el modal visible más alto
     document.addEventListener('keydown', function(ev) {
         if (ev.key !== 'Escape') return;
         const openMods = getOpenModals();
         if (openMods.length === 0) return;
-        // Tomar el de mayor z-index
         openMods.sort((a, b) => {
             const za = parseInt(window.getComputedStyle(a).zIndex || '0', 10);
             const zb = parseInt(window.getComputedStyle(b).zIndex || '0', 10);
@@ -13813,14 +13823,12 @@
         hideModal(openMods[0]);
     }, true);
 
-    // 3) Click en el backdrop cierra el modal (solo si el click fue exactamente en el contenedor, no en el contenido)
+    // 3) Click en el backdrop (área del modal-container, no el contenido) cierra
     document.addEventListener('click', function(ev) {
-        const modal = ev.target.matches && ev.target.matches('[id$="-modal"], .modal-overlay')
-            ? ev.target : null;
-        if (!modal) return;
+        const modal = ev.target;
+        if (!(modal instanceof HTMLElement)) return;
+        if (!modal.matches('[id$="-modal"], .modal-overlay')) return;
         if (modal.classList.contains('hidden')) return;
-        // Solo cerrar si el click fue directamente en el contenedor del modal (no en hijos)
-        if (ev.target !== modal) return;
         hideModal(modal);
     }, false);
 
@@ -13832,7 +13840,6 @@
             if (!(t instanceof HTMLElement)) continue;
             if (!t.matches('[id$="-modal"], .modal-overlay')) continue;
             if (!t.classList.contains('hidden')) {
-                // Recién se mostró
                 bringModalToFront(t);
             }
         }
@@ -13841,7 +13848,12 @@
         observer.observe(m, { attributes: true, attributeFilter: ['class'] });
     });
 
-    console.log('[r14] modal-fix instalado');
+    // Helper de debug accesible desde la consola
+    window.__r14CloseAllModals = function() {
+        getOpenModals().forEach(hideModal);
+    };
+
+    console.log('[r14] modal-fix v2 instalado — usa __r14CloseAllModals() en consola si algo queda colgado');
 })();
 </script>
 </body>
