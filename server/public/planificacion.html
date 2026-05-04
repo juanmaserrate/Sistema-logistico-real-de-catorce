@@ -13722,5 +13722,127 @@
         </div>
     </div>
 </div>
+<script>
+/* ============================================================
+ * FIX GLOBAL DE MODALES — cierre confiable cuando se superponen
+ * ------------------------------------------------------------
+ * Problema: cuando se abre un modal encima de otro, los clicks en
+ * la X o en botones a veces caen en el modal de atrás (mismo z-index
+ * o stacking context). Este script asegura:
+ *   1. La X y cualquier botón con onclick="closeXxxModal()" siempre
+ *      cierra (capturamos el click en fase de captura, antes de que
+ *      cualquier handler lo bloquee).
+ *   2. ESC cierra el modal visible más alto.
+ *   3. Click en el backdrop (área oscura fuera del contenido) cierra.
+ *   4. Cuando se abre un modal, su z-index se eleva automáticamente
+ *      sobre los demás abiertos.
+ * ============================================================ */
+(function() {
+    if (window.__r14ModalFixInstalled) return;
+    window.__r14ModalFixInstalled = true;
+
+    /** Devuelve todos los modales (divs con id terminado en -modal o que tengan clase modal-overlay) actualmente VISIBLES. */
+    function getOpenModals() {
+        const all = document.querySelectorAll('[id$="-modal"], .modal-overlay');
+        return Array.from(all).filter(m => !m.classList.contains('hidden') && m.offsetParent !== null);
+    }
+
+    /** Esconde el modal pasando por su `hidden` y dispara cualquier `closeXxxModal()` global registrado. */
+    function hideModal(modal) {
+        if (!modal) return;
+        // Si tiene una función global close<Id>Modal asociada, invocarla por compatibilidad
+        const id = modal.id || '';
+        if (id) {
+            // Tenemos closeColumnSettingsModal, closeBulkEditModal, etc.
+            const fnNames = [
+                // close + camelCase del id sin "-modal"
+                'close' + id.replace(/-modal$/, '')
+                    .split('-').map(s => s.charAt(0).toUpperCase() + s.slice(1)).join('') + 'Modal',
+            ];
+            for (const fn of fnNames) {
+                if (typeof window[fn] === 'function') {
+                    try { window[fn](); return; } catch (e) { /* fall through */ }
+                }
+            }
+        }
+        modal.classList.add('hidden');
+    }
+
+    /** Eleva el z-index del modal recién abierto sobre todos los demás visibles. */
+    function bringModalToFront(modal) {
+        if (!modal) return;
+        const open = getOpenModals().filter(m => m !== modal);
+        let maxZ = 100;
+        for (const m of open) {
+            const z = parseInt(window.getComputedStyle(m).zIndex || '0', 10);
+            if (z > maxZ) maxZ = z;
+        }
+        modal.style.zIndex = String(maxZ + 10);
+    }
+
+    // 1) Click en la X (button con onclick="closeXxxModal()") en fase de captura
+    document.addEventListener('click', function(ev) {
+        const btn = ev.target.closest && ev.target.closest('button[onclick*="close"][onclick*="Modal"]');
+        if (!btn) return;
+        const onclickStr = btn.getAttribute('onclick') || '';
+        // Extraer el nombre de la función: closeXxxModal()
+        const m = onclickStr.match(/(close[A-Za-z0-9]+Modal)\s*\(/);
+        if (!m) return;
+        const fnName = m[1];
+        if (typeof window[fnName] === 'function') {
+            ev.preventDefault();
+            ev.stopPropagation();
+            try { window[fnName](); } catch (e) {
+                console.warn('[modal-fix] error invocando', fnName, e);
+            }
+        }
+    }, true /* capture */);
+
+    // 2) ESC cierra el modal visible más alto
+    document.addEventListener('keydown', function(ev) {
+        if (ev.key !== 'Escape') return;
+        const openMods = getOpenModals();
+        if (openMods.length === 0) return;
+        // Tomar el de mayor z-index
+        openMods.sort((a, b) => {
+            const za = parseInt(window.getComputedStyle(a).zIndex || '0', 10);
+            const zb = parseInt(window.getComputedStyle(b).zIndex || '0', 10);
+            return zb - za;
+        });
+        ev.stopPropagation();
+        hideModal(openMods[0]);
+    }, true);
+
+    // 3) Click en el backdrop cierra el modal (solo si el click fue exactamente en el contenedor, no en el contenido)
+    document.addEventListener('click', function(ev) {
+        const modal = ev.target.matches && ev.target.matches('[id$="-modal"], .modal-overlay')
+            ? ev.target : null;
+        if (!modal) return;
+        if (modal.classList.contains('hidden')) return;
+        // Solo cerrar si el click fue directamente en el contenedor del modal (no en hijos)
+        if (ev.target !== modal) return;
+        hideModal(modal);
+    }, false);
+
+    // 4) Observador: cuando un modal pasa de hidden→visible, lo subimos al frente
+    const observer = new MutationObserver(function(muts) {
+        for (const mut of muts) {
+            if (mut.type !== 'attributes' || mut.attributeName !== 'class') continue;
+            const t = mut.target;
+            if (!(t instanceof HTMLElement)) continue;
+            if (!t.matches('[id$="-modal"], .modal-overlay')) continue;
+            if (!t.classList.contains('hidden')) {
+                // Recién se mostró
+                bringModalToFront(t);
+            }
+        }
+    });
+    document.querySelectorAll('[id$="-modal"], .modal-overlay').forEach(m => {
+        observer.observe(m, { attributes: true, attributeFilter: ['class'] });
+    });
+
+    console.log('[r14] modal-fix instalado');
+})();
+</script>
 </body>
 </html>
