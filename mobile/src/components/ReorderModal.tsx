@@ -39,11 +39,25 @@ export default function ReorderModal({ visible, routeId, stops, driverName, onCl
   const [customReason, setCustomReason] = useState('');
   const [saving, setSaving] = useState(false);
 
-  const pendingStops = stops.filter((s) => s.status === 'PENDING');
+  // M3 fix: useMemo para que `pendingStops` mantenga su referencia entre renders.
+  // Antes se recreaba en CADA render -> el useEffect que depende de `stops` y la
+  // comparación `hasChanged` daban resultados inconsistentes y el orden que el
+  // chofer arrastraba se perdía cuando llegaba un refresh externo de routes.
+  const pendingStops = React.useMemo(
+    () => stops.filter((s) => s.status === 'PENDING'),
+    [stops]
+  );
+  // Snapshot inicial — se usa como "orden original" para la comparación y NO se
+  // reescribe cuando llega un refresh de stops mientras el chofer está reordenando.
+  const initialOrderRef = React.useRef<Stop[]>([]);
 
   useEffect(() => {
+    // Solo reseteamos al ABRIR (transición !visible -> visible). Si visible ya está
+    // true y solo cambia `stops` por un refresh de fondo, conservamos el orden actual.
     if (visible) {
-      setOrderedStops([...pendingStops].sort((a, b) => a.sequence - b.sequence));
+      const sorted = [...pendingStops].sort((a, b) => a.sequence - b.sequence);
+      initialOrderRef.current = sorted;
+      setOrderedStops(sorted);
       setStep('reorder');
       setJustification('');
       setCustomReason('');
@@ -52,9 +66,10 @@ export default function ReorderModal({ visible, routeId, stops, driverName, onCl
   }, [visible]);
 
   const hasChanged = useCallback(() => {
-    return orderedStops.some((s, i) => orderedStops[i]?.id !== pendingStops[i]?.id);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderedStops, pendingStops]);
+    const base = initialOrderRef.current;
+    if (orderedStops.length !== base.length) return true;
+    return orderedStops.some((s, i) => s?.id !== base[i]?.id);
+  }, [orderedStops]);
 
   const goToJustify = () => {
     if (!hasChanged()) {

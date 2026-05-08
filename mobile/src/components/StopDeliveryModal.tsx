@@ -124,7 +124,8 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
         actualDeparture: new Date().toISOString(),
         observations: observations.trim() || undefined,
         proofPhotoUrl: photo.url ?? undefined,
-        deliveryWithoutIssues: deliveryOk ? true : null,
+        // M7 fix: enviar false explícito en lugar de null para "entrega con problemas"
+        deliveryWithoutIssues: deliveryOk,
       });
       if (photo.failed) {
         Alert.alert(

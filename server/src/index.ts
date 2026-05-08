@@ -472,7 +472,7 @@ app.get('/api/v1/preflight', async (_req, res) => {
                     'https://maps.googleapis.com/maps/api/geocode/json' +
                     `?address=${encodeURIComponent('Burzaco Buenos Aires')}` +
                     `&key=${encodeURIComponent(mapsKey)}`;
-                const gRes = await fetch(testUrl);
+                const gRes = await fetchWithTimeout(testUrl, {}, 5000);
                 const gData = (await gRes.json().catch(() => ({}))) as { status?: string; error_message?: string };
                 googleMapsReachable = gRes.ok && gData?.status === 'OK';
                 googleMapsMessage = googleMapsReachable
@@ -1252,7 +1252,7 @@ app.post('/api/v1/control/snap-to-roads', async (req, res) => {
             const path = toSnap.map(i => `${points[i].lat},${points[i].lng}`).join('|');
             const url = `https://roads.googleapis.com/v1/snapToRoads?path=${encodeURIComponent(path)}&interpolate=false&key=${apiKey}`;
             try {
-                const r = await fetch(url);
+                const r = await fetchWithTimeout(url, {}, 6000);
                 const data: any = await r.json().catch(() => ({}));
                 const sps: any[] = Array.isArray(data?.snappedPoints) ? data.snappedPoints : [];
                 // Roads API puede devolver MENOS puntos que los enviados (cuando no encuentra calle).
@@ -2018,15 +2018,18 @@ app.post('/api/v1/routes-direct', async (req, res) => {
         });
 
         // 2. Limpiar rutas anteriores del día para ese chofer (Re-publicación)
+        // B13 fix: antes mutaba `d` con setHours(0,...) y luego setHours(23,...) sobre EL MISMO objeto.
+        // El primer .setHours mutaba `d`, asi que el segundo .setHours partia desde 00:00:00 y ponia 23:59:59
+        // — pero como `gte` y `lte` recibian el MISMO objeto Date mutado, ambos quedaban a 23:59:59 →
+        // el rango era VACIO y NUNCA borraba nada (re-publicacion no funcionaba).
         const d = new Date(date);
+        const dayStartLocal = new Date(d); dayStartLocal.setHours(0, 0, 0, 0);
+        const dayEndLocal = new Date(d); dayEndLocal.setHours(23, 59, 59, 999);
         await prisma.route.deleteMany({
             where: {
                 driverId: user.id,
                 tripId: null,
-                date: {
-                    gte: new Date(d.setHours(0, 0, 0, 0)),
-                    lte: new Date(d.setHours(23, 59, 59, 999))
-                }
+                date: { gte: dayStartLocal, lte: dayEndLocal }
             }
         });
 
@@ -2453,8 +2456,13 @@ async function fetchDirectionsSegmentPolyline(
             .join('|');
         url += `&waypoints=${encodeURIComponent(wps)}`;
     }
-    const res = await fetch(url);
-    const data: any = await res.json();
+    // B11: timeout 8s para no colgar el server si Google Directions tarda
+    const res = await fetchWithTimeout(url, {}, 8000).catch(() => null);
+    if (!res) {
+        console.warn('[directions] timeout');
+        return chunk.map((c) => ({ lat: c.lat, lng: c.lng }));
+    }
+    const data: any = await res.json().catch(() => ({}));
     const route0 = data?.routes?.[0];
     if (data.status === 'OK' && route0) {
         const detailed = polylineFromDirectionsRoute(route0);
@@ -2468,6 +2476,45 @@ async function fetchDirectionsSegmentPolyline(
 
 const routeGeometryCache = new Map<string, { expires: number; body: unknown }>();
 const ROUTE_GEOMETRY_TTL_MS = 10 * 60 * 1000;
+const ROUTE_GEOMETRY_CACHE_MAX = 500; // tope duro: si supera, purga lo expirado o LRU
+
+/** B11 fix: wrapper de fetch con timeout (default 8s). Antes los fetch a Google/OSRM/Mapbox/Expo
+ *  no tenían AbortController, asi que si la API externa colgaba se mantenían pending para siempre,
+ *  acumulando sockets hasta exhaust del event loop del servidor. */
+async function fetchWithTimeout(url: string, init: any = {}, timeoutMs = 8000): Promise<Response> {
+    const ctrl = new AbortController();
+    const tid = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+        return await fetch(url, { ...init, signal: ctrl.signal });
+    } finally {
+        clearTimeout(tid);
+    }
+}
+
+// B10 fix: limpieza periódica del cache cada 5 min. Antes solo se chequeaba al leer,
+// y entradas que nunca se volvían a pedir quedaban en memoria para siempre →
+// fuga progresiva en server long-running con muchas rutas distintas.
+setInterval(() => {
+    const now = Date.now();
+    for (const [k, v] of routeGeometryCache) {
+        if (v.expires <= now) routeGeometryCache.delete(k);
+    }
+    // Si tras la purga sigue por encima del tope, eliminamos las primeras (más viejas en orden de inserción)
+    if (routeGeometryCache.size > ROUTE_GEOMETRY_CACHE_MAX) {
+        const excess = routeGeometryCache.size - ROUTE_GEOMETRY_CACHE_MAX;
+        let i = 0;
+        for (const k of routeGeometryCache.keys()) {
+            if (i++ >= excess) break;
+            routeGeometryCache.delete(k);
+        }
+    }
+    // Lo mismo para snap-cache si existe
+    if (typeof _snapCache !== 'undefined') {
+        for (const [k, v] of _snapCache) {
+            if (v.expires <= now) _snapCache.delete(k);
+        }
+    }
+}, 5 * 60 * 1000);
 
 /** Incluye coords y sequence para invalidar caché si cambia el cliente o el orden (sin depender de PATCH explícitos) */
 function routeGeometryCacheKey(routeId: number, validStops: Array<{ id: number; sequence: number; client: { latitude: unknown; longitude: unknown } }>): string {
@@ -2761,7 +2808,8 @@ app.get('/api/v1/routes/:id/navigation-to-next', async (req, res) => {
             `&destination=${encodeURIComponent(`${destLat},${destLng}`)}` +
             '&mode=driving&language=es&alternatives=false' +
             `&key=${encodeURIComponent(apiKey)}`;
-        const dres = await fetch(url);
+        // B11: timeout 8s — si Google no responde, devolvemos error en vez de colgar
+        const dres = await fetchWithTimeout(url, {}, 8000);
         const data: any = await dres.json();
         if (data.status !== 'OK' || !data.routes?.[0]?.legs?.[0]) {
             return res.status(502).json({
@@ -2905,7 +2953,7 @@ app.post('/api/v1/routes/:id/stops/reorder', async (req, res) => {
 async function requestOptimizedTripFromOsrm(coords: number[][]) {
     const coordsString = coords.map(c => c.join(',')).join(';');
     const url = `https://router.project-osrm.org/trip/v1/driving/${coordsString}?overview=full&geometries=geojson&steps=true&source=first&destination=last`;
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url, {}, 15000);  // OSRM puede tardar para muchos puntos
     const data = await response.json();
     if (!response.ok || data?.code !== 'Ok') {
         throw new Error(data?.message || 'OSRM route request failed');
@@ -2916,7 +2964,7 @@ async function requestOptimizedTripFromOsrm(coords: number[][]) {
 async function requestOptimizedTripFromMapbox(coords: number[][], token: string) {
     const coordsString = coords.map(c => c.join(',')).join(';');
     const url = `https://api.mapbox.com/optimized-trips/v1/mapbox/driving-traffic/${coordsString}?geometries=geojson&steps=true&source=first&destination=last&roundtrip=false&access_token=${encodeURIComponent(token)}`;
-    const response = await fetch(url);
+    const response = await fetchWithTimeout(url, {}, 15000);
     const data = await response.json();
     if (!response.ok || data?.code !== 'Ok') {
         throw new Error(data?.message || 'Mapbox optimized trips request failed');
@@ -2945,10 +2993,16 @@ app.post('/api/v1/vrp/fixed-route', async (req, res) => {
             provider = 'mapbox';
             const coordsString = coords.map(c => c.join(',')).join(';');
             const url = `https://api.mapbox.com/directions/v5/mapbox/driving-traffic/${coordsString}?geometries=geojson&overview=full&steps=true&access_token=${encodeURIComponent(mapboxToken)}`;
-            const response = await fetch(url);
-            routingData = await response.json();
-            if (!response.ok || routingData?.code !== 'Ok') {
-                console.warn('Mapbox directions failed, falling back to OSRM');
+            const response = await fetchWithTimeout(url, {}, 12000).catch(() => null);
+            if (response && response.ok) {
+                routingData = await response.json();
+                if (routingData?.code !== 'Ok') {
+                    console.warn('Mapbox directions failed, falling back to OSRM');
+                    provider = 'osrm';
+                    routingData = null;
+                }
+            } else {
+                console.warn('Mapbox directions timeout/error, falling back to OSRM');
                 provider = 'osrm';
                 routingData = null;
             }
@@ -2957,7 +3011,7 @@ app.post('/api/v1/vrp/fixed-route', async (req, res) => {
         if (provider === 'osrm' || !routingData) {
             const coordsString = coords.map(c => c.join(',')).join(';');
             const url = `https://router.project-osrm.org/route/v1/driving/${coordsString}?overview=full&geometries=geojson&steps=true`;
-            const response = await fetch(url);
+            const response = await fetchWithTimeout(url, {}, 12000);
             routingData = await response.json();
         }
 
@@ -3750,26 +3804,42 @@ app.get('/api/v1/fleet/locations', async (req, res) => {
             driverIdByLabel.set(d.fullName.toLowerCase(), d.id);
         }
 
+        // B9 fix: antes este loop hacia 1-2 queries `prisma.route.findFirst` por device.
+        // Con 50 choferes activos eran ~100 queries en CADA poll de Torre de Control (cada 10s).
+        // Ahora juntamos todos los driverIds y hacemos UNA sola query con `IN`, despues
+        // armamos un Map en memoria.
+        const inferredDriverIds = new Set<string>();
+        const deviceLookup: Array<{ r: typeof recentDev[number]; uidFromLabel: string | null; uidFromR: string | null }> = [];
         for (const r of latestByDevice.values()) {
             const labelKey = (r.deviceLabel || '').trim().toLowerCase();
-            let inferredRouteId: number | null = null;
-            if (labelKey) {
-                const uid = driverIdByLabel.get(labelKey);
-                if (uid) {
-                    const rtToday = await prisma.route.findFirst({
-                        where: { driverId: uid, date: { gte: dayStart, lte: dayEnd } },
-                        orderBy: { id: 'desc' }
-                    });
-                    inferredRouteId = rtToday?.id ?? null;
+            const uidFromLabel = labelKey ? driverIdByLabel.get(labelKey) || null : null;
+            const uidFromR = r.driverId || null;
+            if (uidFromLabel) inferredDriverIds.add(uidFromLabel);
+            if (uidFromR) inferredDriverIds.add(uidFromR);
+            deviceLookup.push({ r, uidFromLabel, uidFromR });
+        }
+
+        const routeByDriverId = new Map<string, number>();
+        if (inferredDriverIds.size > 0) {
+            const routesToday = await prisma.route.findMany({
+                where: {
+                    driverId: { in: Array.from(inferredDriverIds) },
+                    date: { gte: dayStart, lte: dayEnd }
+                },
+                orderBy: { id: 'desc' }
+            });
+            // Tomamos la ruta de mayor id por chofer (equivalente a findFirst desc por id)
+            for (const rt of routesToday) {
+                if (rt.driverId && !routeByDriverId.has(rt.driverId)) {
+                    routeByDriverId.set(rt.driverId, rt.id);
                 }
             }
-            if (r.driverId && inferredRouteId == null) {
-                const rtByDriver = await prisma.route.findFirst({
-                    where: { driverId: r.driverId, date: { gte: dayStart, lte: dayEnd } },
-                    orderBy: { id: 'desc' }
-                });
-                inferredRouteId = rtByDriver?.id ?? null;
-            }
+        }
+
+        for (const { r, uidFromLabel, uidFromR } of deviceLookup) {
+            let inferredRouteId: number | null = null;
+            if (uidFromLabel) inferredRouteId = routeByDriverId.get(uidFromLabel) ?? null;
+            if (inferredRouteId == null && uidFromR) inferredRouteId = routeByDriverId.get(uidFromR) ?? null;
             const plannedRouteId = r.routeId != null ? r.routeId : inferredRouteId;
             result.push({
                 tripId: `gps-${r.deviceId}`,
@@ -4254,11 +4324,12 @@ app.post('/api/v1/users/:id/push-token', async (req, res) => {
 async function sendExpoPush(pushToken: string, title: string, body: string, data?: any) {
     try {
         if (!pushToken.startsWith('ExponentPushToken[') && !pushToken.startsWith('ExpoPushToken[')) return;
-        await fetch('https://exp.host/--/api/v2/push/send', {
+        // B11: timeout 6s — si Expo no responde, no bloqueamos otras notificaciones
+        await fetchWithTimeout('https://exp.host/--/api/v2/push/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', Accept: 'application/json', 'Accept-encoding': 'gzip, deflate' },
             body: JSON.stringify({ to: pushToken, title, body, data: data || {}, sound: 'default', priority: 'high' })
-        });
+        }, 6000);
     } catch (e) { console.warn('[push] Error sending notification:', e); }
 }
 

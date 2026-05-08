@@ -68,8 +68,15 @@ export default function IncidentModal({ visible, session, tripId, onClose, onSen
     setSaving(true);
     try {
       let photoUrl: string | null = null;
+      let photoFailed = false;
+      // M6 fix: si la foto falla al subir, antes se "tragaba" el error y la incidencia se
+      // enviaba SIN foto sin avisar al chofer (que creía haberla adjuntado). Ahora avisamos.
       if (photoUri) {
-        try { photoUrl = await uploadProofPhoto(await compressPhoto(photoUri, liteMode)); } catch { /* foto no crítica */ }
+        try {
+          photoUrl = await uploadProofPhoto(await compressPhoto(photoUri, liteMode));
+        } catch {
+          photoFailed = true;
+        }
       }
       const result = await reportIncident({
         driverId: session.id,
@@ -79,11 +86,15 @@ export default function IncidentModal({ visible, session, tripId, onClose, onSen
         photoUrl,
       });
       const queued = 'queued' in result && result.queued;
+      const baseMsg = queued
+        ? 'No hay conexión. Se enviará automáticamente cuando vuelva la señal.'
+        : 'La oficina fue notificada.';
+      const finalMsg = photoFailed
+        ? `${baseMsg}\n\n⚠️ La foto no pudo subirse — la incidencia se envió sin imagen. Reintentá tomar la foto cuando tengas señal.`
+        : baseMsg;
       Alert.alert(
         queued ? 'Guardado offline' : 'Incidencia reportada',
-        queued
-          ? 'No hay conexión. Se enviará automáticamente cuando vuelva la señal.'
-          : 'La oficina fue notificada.',
+        finalMsg,
         [{ text: 'OK', onPress: () => { reset(); onSent(); onClose(); } }]
       );
     } catch (e) {
@@ -91,7 +102,7 @@ export default function IncidentModal({ visible, session, tripId, onClose, onSen
     } finally {
       setSaving(false);
     }
-  }, [description, onClose, onSent, photoUri, session.id, tripId, type]);
+  }, [description, liteMode, onClose, onSent, photoUri, session.id, tripId, type]);
 
   return (
     <Modal visible={visible} animationType="slide" transparent onRequestClose={() => { reset(); onClose(); }}>

@@ -76,61 +76,78 @@ export default function EmbeddedNavigationScreen({ route, navigation }: Props) {
   const arrivalSentRef = useRef(false);
 
   const refreshIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fitTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isMountedRef = useRef(true);
+  const loadInFlightRef = useRef(false);
 
-  /** Carga instrucciones de ruta desde el servidor */
+  /** Carga instrucciones de ruta desde el servidor.
+   *  M1 fix: chequea isMounted antes de setState y evita ejecuciones simultáneas. */
   const loadRoute = useCallback(async () => {
+    if (loadInFlightRef.current) return;  // Evita doble panel de permisos GPS
+    loadInFlightRef.current = true;
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
+      if (!isMountedRef.current) return;
       if (status !== 'granted') {
         setError('Se necesita permiso de ubicación.');
         setPhase('error');
         return;
       }
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+      if (!isMountedRef.current) return;
       const loc = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
       setUserLoc(loc);
 
       const data = await fetchNavigationToNext(routeId, loc.latitude, loc.longitude);
+      if (!isMountedRef.current) return;
       setNav(data);
 
       if (data.overviewPolyline) {
         const coords = decodePolyline(data.overviewPolyline);
         setRouteCoords(coords);
       } else {
-        // Fallback: línea recta
         setRouteCoords([loc, { latitude: destLat, longitude: destLng }]);
       }
 
       setPhase('navigating');
 
-      // Ajustar mapa para mostrar la ruta
-      setTimeout(() => {
+      // Ajustar mapa con cleanup del timer si la pantalla se cierra antes
+      if (fitTimerRef.current) clearTimeout(fitTimerRef.current);
+      fitTimerRef.current = setTimeout(() => {
+        if (!isMountedRef.current) return;
         mapRef.current?.fitToCoordinates(
           [loc, { latitude: destLat, longitude: destLng }],
           { edgePadding: { top: 120, right: 60, bottom: 300, left: 60 }, animated: true }
         );
       }, 500);
     } catch (e) {
+      if (!isMountedRef.current) return;
       setError(e instanceof Error ? e.message : 'Error cargando ruta');
       setPhase('error');
+    } finally {
+      loadInFlightRef.current = false;
     }
   }, [routeId, destLat, destLng]);
 
   /** Carga inicial + actualización periódica cada 30s */
   useEffect(() => {
+    isMountedRef.current = true;
     void loadRoute();
     refreshIntervalRef.current = setInterval(() => {
       void loadRoute();
     }, 30000);
     return () => {
-      if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
+      isMountedRef.current = false;
+      if (refreshIntervalRef.current) { clearInterval(refreshIntervalRef.current); refreshIntervalRef.current = null; }
+      if (fitTimerRef.current) { clearTimeout(fitTimerRef.current); fitTimerRef.current = null; }
     };
   }, [loadRoute]);
 
-  /** Marcar llegada */
+  /** Marcar llegada.
+   *  M4 fix: hacemos el patchStop ANTES de cambiar a 'at_stop'. Si el backend falla por red,
+   *  el chofer ve el error y queda en 'navigating'; no aparece el panel de entrega cuando
+   *  el server no recibió "ARRIVED". */
   const onArrived = useCallback(async () => {
-    if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
-    setPhase('at_stop');
     if (arrivalSentRef.current) return;
     arrivalSentRef.current = true;
     try {
@@ -138,8 +155,11 @@ export default function EmbeddedNavigationScreen({ route, navigation }: Props) {
         status: 'ARRIVED',
         actualArrival: new Date().toISOString(),
       });
-    } catch {
+      if (refreshIntervalRef.current) clearInterval(refreshIntervalRef.current);
+      setPhase('at_stop');
+    } catch (e) {
       arrivalSentRef.current = false;
+      Alert.alert('Sin red', 'No se pudo registrar la llegada. Reintentá en un instante.');
     }
   }, [stopId]);
 
@@ -172,7 +192,9 @@ export default function EmbeddedNavigationScreen({ route, navigation }: Props) {
         actualDeparture: new Date().toISOString(),
         observations: observations.trim() || undefined,
         proofPhotoUrl: proofUrl ?? undefined,
-        deliveryWithoutIssues: deliveryOk ? true : null,
+        // M7 fix: enviar false explícito (antes mandaba null cuando deliveryOk=false,
+        // así planificación nunca veía "entrega CON problemas" registrado).
+        deliveryWithoutIssues: deliveryOk,
       });
       navigation.goBack();
     } catch (e) {

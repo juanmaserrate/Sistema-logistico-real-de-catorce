@@ -2270,6 +2270,11 @@
                 const origin = getServerOrigin();
                 _socket = io(origin, { transports: ['websocket', 'polling'], reconnectionDelay: 3000 });
 
+                // W1 fix: removeAllListeners antes de registrar handlers, así si por alguna razón
+                // initSocketIO() se invoca dos veces o el socket reconecta y duplica handlers,
+                // los eventos de tipo trip:updated no disparan loadXxxData() N veces en paralelo.
+                _socket.removeAllListeners();
+
                 _socket.on('connect', () => {
                     console.log('[ws] Conectado al servidor en tiempo real');
                 });
@@ -2320,17 +2325,15 @@
                 _socket.on('incident:created', ({ incident }) => {
                     if (typeof addNotification === 'function')
                         addNotification('warning', '⚠️ Incidencia reportada',
-                            `${incident.type} · ${incident.description?.substring(0, 60)}`);
+                            `${incident?.type || 'INCIDENCIA'} · ${(incident?.description || '').substring(0, 60)}`);
                     const incView = document.getElementById('view-incidents');
                     if (incView && !incView.classList.contains('hidden')) loadIncidents();
-                    // Badge en el botón de incidencias
-                    const badge = document.getElementById('incidents-badge');
-                    if (badge) {
-                        const cur = parseInt(badge.innerText || '0', 10);
-                        badge.innerText = String(cur + 1);
-                        badge.classList.remove('hidden');
-                    }
+                    // W8 fix: en lugar de hacer +1 al badge (que nunca se decrementaba),
+                    // pedimos el conteo real al servidor.
+                    refreshIncidentsBadge();
                 });
+                // Cuando se actualiza/cierra una incidencia desde otro cliente, refrescar conteo
+                _socket.on('incident:updated', () => { refreshIncidentsBadge(); });
 
                 // Ubicación GPS en vivo (Torre de Control)
                 _socket.on('location:update', (record) => {
@@ -2824,16 +2827,22 @@
             btn.disabled = true;
             errorEl.classList.add('hidden');
 
+            // W5 fix: AbortController con timeout de 15s. Antes el fetch quedaba pendiente
+            // eternamente si Railway no respondia, dejando el boton "Ingresando..." trabado.
+            const ctrl = new AbortController();
+            const timeoutId = setTimeout(() => ctrl.abort(), 15000);
             try {
                 const res = await fetch(getServerOrigin() + '/api/auth/login', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ username, password })
+                    body: JSON.stringify({ username, password }),
+                    signal: ctrl.signal
                 });
-                const data = await res.json();
+                // res.json() puede fallar si el server devuelve HTML (proxy 502, etc.)
+                const data = await res.json().catch(() => ({}));
 
                 if (!res.ok) {
-                    throw new Error(data.error || 'Usuario o contraseña incorrectos');
+                    throw new Error(data.error || `Error ${res.status}: usuario o contraseña incorrectos`);
                 }
 
                 const u = data.user || data;
@@ -2848,9 +2857,13 @@
                 document.getElementById('login-gate').style.display = 'none';
 
             } catch (e) {
-                errorEl.textContent = e.message || 'Error al iniciar sesión';
+                const msg = (e?.name === 'AbortError')
+                    ? 'El servidor no respondió en 15 segundos. Intentá de nuevo.'
+                    : (e.message || 'Error al iniciar sesión');
+                errorEl.textContent = msg;
                 errorEl.classList.remove('hidden');
             } finally {
+                clearTimeout(timeoutId);
                 btn.textContent = 'Ingresar';
                 btn.disabled = false;
             }
@@ -4571,6 +4584,13 @@
             clearControlTrailPolylines();
             clearControlPlannedStopMarkers();
             controlPlannedStopsMetaByRouteId = new Map();
+            // W7 fix: limpiar tambien los markers de los camiones de la flota.
+            // Antes quedaban en memoria con sus referencias a Google Maps y al `controlMap`,
+            // generando memory leak en sesiones largas que entran/salen de Torre de Control.
+            try {
+                controlMarkersByTrip.forEach((m) => { try { m.setMap(null); } catch (_) {} });
+                controlMarkersByTrip.clear();
+            } catch (_) {}
         }
 
         function populateControlTrailSelect() {
@@ -6633,8 +6653,19 @@
 
         function budgetDeleteSaved(id) {
             if (!confirm('¿Eliminar este presupuesto?')) return;
-            const saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]').filter(x => x.id !== id);
-            localStorage.setItem(BUD_KEY, JSON.stringify(saved));
+            // W6 fix: try/catch en lectura Y escritura. Si el JSON está corrupto o el
+            // localStorage llegó al cap (5MB), no rompemos el módulo Presupuestar.
+            let saved = [];
+            try {
+                saved = (JSON.parse(localStorage.getItem(BUD_KEY) || '[]') || []).filter(x => x.id !== id);
+            } catch {
+                saved = [];
+            }
+            try {
+                localStorage.setItem(BUD_KEY, JSON.stringify(saved));
+            } catch (e) {
+                addNotification('warning', 'Almacenamiento lleno', 'No se pudo guardar — limpiá presupuestos viejos.');
+            }
             budgetUpdateHistoryCount();
             budgetRenderHistory();
         }
@@ -7534,6 +7565,24 @@
 
             const safe = (dest.nombre || 'sin-destinatario').replace(/[^a-z0-9]/gi, '-');
             XLSX.writeFile(wb, `Cuenta-paso-a-paso-${safe}-${c.fecha.replace(/\//g, '-')}.xlsx`);
+        }
+
+        // W8 fix: refrescar SOLO el badge sin recargar toda la vista. Se usa cuando llega
+        // un evento de socket o despues de cerrar una incidencia, para que el contador
+        // refleje el estado real del servidor (no un incremento +1 que nunca se decrementa).
+        async function refreshIncidentsBadge() {
+            try {
+                const res = await fetch(`${API_URL}/incidents`);
+                if (!res.ok) return;
+                const list = await res.json();
+                const arr = Array.isArray(list) ? list : [];
+                const open = arr.filter(i => i.status === 'OPEN').length;
+                const badge = document.getElementById('incidents-badge');
+                if (badge) {
+                    badge.innerText = String(open);
+                    badge.classList.toggle('hidden', open === 0);
+                }
+            } catch (_) { /* sin red, no actualizamos */ }
         }
 
         async function loadIncidents() {
@@ -11017,12 +11066,27 @@
             }
         });
 
+        // W2 fix: guardamos los IDs de los intervals globales para poder limpiarlos
+        // (logout, beforeunload, hot-reload). Antes eran timers anonimos que crecian
+        // en sesiones largas.
+        window._r14GlobalTimers = window._r14GlobalTimers || { ids: [] };
+        function _r14RegisterTimer(id) { window._r14GlobalTimers.ids.push(id); return id; }
+        function _r14ClearAllTimers() {
+            for (const id of window._r14GlobalTimers.ids) { try { clearInterval(id); } catch (_) {} }
+            window._r14GlobalTimers.ids = [];
+        }
+
         window.addEventListener('load', () => {
             initApp();
-            setInterval(refreshApiStatusFromHealth, 45000);
+            _r14RegisterTimer(setInterval(refreshApiStatusFromHealth, 45000));
             document.addEventListener('keydown', vrpRouteTourOnKeydown);
             // Iniciar WebSocket después de que la app cargue
             setTimeout(initSocketIO, 1500);
+        });
+        // Limpiar timers + socket al cerrar/recargar la pagina
+        window.addEventListener('beforeunload', () => {
+            _r14ClearAllTimers();
+            try { if (_socket) _socket.disconnect(); } catch (_) {}
         });
 
 
@@ -11797,9 +11861,14 @@
                 if (res.ok) console.log('Old alerts cleaned up');
             } catch (e) { console.error('Alert cleanup failed', e); }
         }
-        setInterval(autoCleanupExpiredAlerts, 3600000); // Check every hour
-
-        setInterval(cleanupOldNotifications, 60000);
+        // W2 fix: registramos los IDs para poder limpiarlos en beforeunload
+        if (typeof _r14RegisterTimer === 'function') {
+            _r14RegisterTimer(setInterval(autoCleanupExpiredAlerts, 3600000));
+            _r14RegisterTimer(setInterval(cleanupOldNotifications, 60000));
+        } else {
+            setInterval(autoCleanupExpiredAlerts, 3600000);
+            setInterval(cleanupOldNotifications, 60000);
+        }
 
         // --- BASE DE DATOS DE KMS POR REPARTO (Extraído de Excel) ---
         const REPARTO_KMS = {

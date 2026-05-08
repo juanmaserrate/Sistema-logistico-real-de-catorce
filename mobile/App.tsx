@@ -22,6 +22,19 @@ const EmbeddedNavigationScreenLazy = React.lazy(
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
+/** M5 fix: registra el push token. Se llama en boot (si hay sesión guardada) y
+ *  también después de un login exitoso (antes solo se llamaba en boot). */
+async function tryRegisterPushToken(userId: string) {
+  try {
+    const Notifications = await import('expo-notifications').catch(() => null);
+    if (!Notifications) return;
+    const { status } = await Notifications.requestPermissionsAsync();
+    if (status !== 'granted') return;
+    const token = await Notifications.getExpoPushTokenAsync().catch(() => null);
+    if (token?.data) registerPushToken(userId, token.data).catch(() => {});
+  } catch { /* push no disponible */ }
+}
+
 export default function App() {
   const [boot, setBoot] = useState(true);
   const [session, setSession] = useState<SessionUser | null>(null);
@@ -30,22 +43,7 @@ export default function App() {
     loadSession().then(async (s) => {
       setSession(s);
       setBoot(false);
-      // Registrar push token si hay sesión activa
-      if (s) {
-        try {
-          // expo-notifications es opcional: si no está instalado, falla silenciosamente
-          const Notifications = await import('expo-notifications').catch(() => null);
-          if (Notifications) {
-            const { status } = await Notifications.requestPermissionsAsync();
-            if (status === 'granted') {
-              const token = await Notifications.getExpoPushTokenAsync().catch(() => null);
-              if (token?.data) {
-                registerPushToken(s.id, token.data).catch(() => {});
-              }
-            }
-          }
-        } catch { /* push no disponible en esta build */ }
-      }
+      if (s) await tryRegisterPushToken(s.id);
     });
   }, []);
 
@@ -59,77 +57,78 @@ export default function App() {
 
   const navEmbedded = isGoogleNavigationNativeAvailable();
 
+  /** M2 fix: en lugar de un solo Stack con `initialRouteName` (que solo se evalúa
+   *  una vez y queda atado al primer render), renderizamos UN Stack u OTRO según
+   *  haya sesión. Cuando `setSession(null)` ocurre tras logout, React desmonta
+   *  el Stack autenticado y monta el de Login automáticamente — sin race con el
+   *  initialRouteName. Mismo razonamiento al revés: tras login exitoso. */
   return (
     <NavProviderGate>
       <SafeAreaProvider>
         <NavigationContainer>
-          <Stack.Navigator
-            initialRouteName={session ? 'Track' : 'Login'}
-            screenOptions={{ headerShown: false }}
-          >
-            <Stack.Screen name="Login">
-              {({ navigation }) => (
-                <LoginScreen
-                  onLoggedIn={(user) => {
-                    setSession(user);
-                    navigation.reset({ index: 0, routes: [{ name: 'Track' }] });
-                  }}
-                />
-              )}
-            </Stack.Screen>
-            <Stack.Screen name="Track">
-              {({ navigation }) =>
-                session ? (
+          {session ? (
+            <Stack.Navigator screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="Track">
+                {({ navigation }) => (
                   <TrackScreen
                     session={session}
                     navigation={navigation}
                     onLogout={async () => {
                       await clearSession();
                       setSession(null);
-                      navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
                     }}
                   />
-                ) : null
-              }
-            </Stack.Screen>
-            {navEmbedded ? (
-              <Stack.Screen name="EmbeddedNav" options={{ headerShown: false, animation: 'slide_from_bottom' }}>
-                {(props) => (
-                  <Suspense
-                    fallback={
-                      <View style={styles.splash}>
-                        <ActivityIndicator size="large" color="#4f46e5" />
-                      </View>
-                    }
-                  >
-                    <EmbeddedNavigationScreenLazy {...props} />
-                  </Suspense>
                 )}
               </Stack.Screen>
-            ) : null}
-            <Stack.Screen name="History" options={{ headerShown: false, animation: 'slide_from_right' }}>
-              {({ navigation }) => (
-                session ? (
+              {navEmbedded ? (
+                <Stack.Screen name="EmbeddedNav" options={{ headerShown: false, animation: 'slide_from_bottom' }}>
+                  {(props) => (
+                    <Suspense
+                      fallback={
+                        <View style={styles.splash}>
+                          <ActivityIndicator size="large" color="#4f46e5" />
+                        </View>
+                      }
+                    >
+                      <EmbeddedNavigationScreenLazy {...props} />
+                    </Suspense>
+                  )}
+                </Stack.Screen>
+              ) : null}
+              <Stack.Screen name="History" options={{ headerShown: false, animation: 'slide_from_right' }}>
+                {({ navigation }) => (
                   <HistoryScreen session={session} navigation={navigation} />
-                ) : null
-              )}
-            </Stack.Screen>
-            <Stack.Screen name="Profile" options={{ headerShown: false, animation: 'slide_from_right' }}>
-              {({ navigation }) => (
-                session ? (
+                )}
+              </Stack.Screen>
+              <Stack.Screen name="Profile" options={{ headerShown: false, animation: 'slide_from_right' }}>
+                {({ navigation }) => (
                   <ProfileScreen
                     session={session}
                     navigation={navigation}
                     onLogout={async () => {
                       await clearSession();
                       setSession(null);
-                      navigation.reset({ index: 0, routes: [{ name: 'Login' }] });
                     }}
                   />
-                ) : null
-              )}
-            </Stack.Screen>
-          </Stack.Navigator>
+                )}
+              </Stack.Screen>
+            </Stack.Navigator>
+          ) : (
+            <Stack.Navigator screenOptions={{ headerShown: false }}>
+              <Stack.Screen name="Login">
+                {() => (
+                  <LoginScreen
+                    onLoggedIn={(user) => {
+                      setSession(user);
+                      // M5 fix: registrar push token recién después del login exitoso
+                      // (antes solo corría en boot, así que el primer login no recibía push)
+                      void tryRegisterPushToken(user.id);
+                    }}
+                  />
+                )}
+              </Stack.Screen>
+            </Stack.Navigator>
+          )}
         </NavigationContainer>
       </SafeAreaProvider>
     </NavProviderGate>
