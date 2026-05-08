@@ -2159,7 +2159,7 @@ app.post('/api/v1/sync-fleet-auth', async (req, res) => {
 
 // Route & Execution (planificación: rutas asignadas a choferes con paradas)
 app.get('/api/v1/routes', async (req, res) => {
-    const { driverId, date, fromDate, toDate, days } = req.query;
+    const { driverId, date, fromDate, toDate, days, excludeFinished } = req.query;
     const where: any = {};
     if (driverId) where.driverId = String(driverId);
     if (date && typeof date === 'string') {
@@ -2193,6 +2193,21 @@ app.get('/api/v1/routes', async (req, res) => {
             dateRange.lte = d;
         }
         if (Object.keys(dateRange).length > 0) where.date = dateRange;
+    }
+    // FIX: si la query trae driverId+date (uso tipico de la app movil en TrackScreen),
+    // NO devolver viajes finalizados. Antes la app recibia rutas con actualEndTime != null
+    // o trip.status === 'COMPLETED' y las mostraba como "VIAJE CONCLUIDO" sin desaparecer.
+    // Para el historial de chofer (HistoryScreen) se usa days/fromDate/toDate sin date,
+    // o se manda excludeFinished=false explicitamente.
+    const shouldExcludeFinished =
+        String(excludeFinished || '').toLowerCase() !== 'false' &&
+        !!driverId && !!date;
+    if (shouldExcludeFinished) {
+        where.actualEndTime = null;
+        where.NOT = [
+            { trip: { status: 'COMPLETED' } },
+            { trip: { status: 'RETURNED' } }
+        ];
     }
     const routes = await prisma.route.findMany({
         where,
