@@ -2372,6 +2372,11 @@
                     } catch (_) { /* fallback al original */ }
                     // Animar suave durante ~3s en vez de saltar (los pings llegan cada ~5s)
                     animateMarkerTo(marker, { lat, lng }, 3000);
+                    // Extender la polyline de la traza GPS de esa ruta con el punto nuevo
+                    // → la línea del recorrido CRECE en tiempo real, sin esperar al refresh.
+                    if (record.routeId != null && typeof appendPointToTrail === 'function') {
+                        appendPointToTrail(record.routeId, lat, lng);
+                    }
                 }
             }
             // Refrescar datos completos (debounced para no saturar con ráfagas de pings)
@@ -4467,6 +4472,9 @@
                 renderControlFeed();
                 renderControlMap(controlLiveData);
                 drawControlPlannedRoutes(controlLiveData).catch((err) => console.warn('Planned routes:', err));
+                // Auto-mostrar trazas GPS reales de los camiones activos (recorrido recorrido).
+                // Se actualiza cada vez que llega data del polling (cada 10s).
+                loadControlTrailAllActive().catch((err) => console.warn('Auto trail:', err));
             } catch (e) {
                 console.error('Control live:', e);
                 controlLiveData = [];
@@ -4638,6 +4646,11 @@
             clearControlTrailPolylines();
             clearControlPlannedStopMarkers();
             controlPlannedStopsMetaByRouteId = new Map();
+            // Limpiar el cache de trazas GPS por routeId (mapa nuevo)
+            if (typeof controlTrailByRouteId !== 'undefined') {
+                controlTrailByRouteId.forEach((entry) => { try { entry.polyline.setMap(null); } catch (_) {} });
+                controlTrailByRouteId.clear();
+            }
             // W7 fix: limpiar tambien los markers de los camiones de la flota.
             // Antes quedaban en memoria con sus referencias a Google Maps y al `controlMap`,
             // generando memory leak en sesiones largas que entran/salen de Torre de Control.
@@ -4792,9 +4805,13 @@
         // Carga las trazas GPS de TODAS las rutas activas simultáneamente,
         // con colores distintos para que el operador vea todas sin tener que elegir.
         const CONTROL_TRAIL_COLORS = ['#f97316','#e11d48','#0ea5e9','#10b981','#8b5cf6','#14b8a6','#f59e0b','#ec4899'];
+        // Mapa de routeId → polyline de la traza GPS, para poder ACTUALIZAR (no destruir/recrear)
+        // y para extender la polyline con cada ping nuevo en tiempo real.
+        const controlTrailByRouteId = new Map();
+        const CONTROL_TRAIL_REFRESH_MS = 12000;  // refrescamos las trazas cada 12s
+
         async function loadControlTrailAllActive() {
             await initControlMap();
-            clearControlTrailPolylines();
             const sel = document.getElementById('control-trail-route');
             const routeIds = [];
             if (sel) {
@@ -4803,33 +4820,77 @@
                 }
             }
             if (routeIds.length === 0) {
-                const out = document.getElementById('control-live-summary');
-                if (out) out.innerHTML = '<p class="text-[#A3AED0] text-xs italic">No hay rutas activas para mostrar.</p>';
+                // Sin rutas activas: limpiar polylines viejas
+                controlTrailByRouteId.forEach((entry) => { try { entry.polyline.setMap(null); } catch (_) {} });
+                controlTrailByRouteId.clear();
+                clearControlTrailPolylines();
                 return;
             }
             const results = await Promise.allSettled(routeIds.map(rid =>
                 fetch(`${API_URL}/tracking/history?routeId=${rid}&hours=24&limit=3000`).then(r => r.ok ? r.json() : { points: [] }).then(j => ({ rid, j }))
             ));
+            const seen = new Set();
             results.forEach((r, idx) => {
                 if (r.status !== 'fulfilled') return;
                 const { rid, j } = r.value;
                 const pts = Array.isArray(j.points) ? j.points : [];
-                if (pts.length < 2 || !controlMap) return;
+                if (!controlMap) return;
+                seen.add(rid);
                 const thin = thinRoutePointsForMap(pts.map(p => ({ lat: p.latitude, lng: p.longitude })), 500);
                 const color = CONTROL_TRAIL_COLORS[idx % CONTROL_TRAIL_COLORS.length];
-                const poly = new google.maps.Polyline({
-                    path: thin.map(p => ({ lat: p.lat, lng: p.lng })),
-                    geodesic: true,
-                    strokeColor: color,
-                    strokeOpacity: 0.9,
-                    strokeWeight: 3,
-                    zIndex: 2,
-                    map: controlMap
-                });
-                controlTrailPolylines.push(poly);
+                const path = thin.map(p => ({ lat: p.lat, lng: p.lng }));
+                const lastTs = pts.length ? new Date(pts[pts.length - 1].timestamp).getTime() : 0;
+                let entry = controlTrailByRouteId.get(rid);
+                if (entry && entry.polyline) {
+                    // Reusar polyline: solo actualizar el path
+                    entry.polyline.setPath(path);
+                    entry.polyline.setOptions({ strokeColor: color });
+                    entry.lastTs = lastTs;
+                    entry.color = color;
+                } else {
+                    if (path.length < 2) return;  // necesitamos al menos 2 puntos para crear polyline
+                    const poly = new google.maps.Polyline({
+                        path,
+                        geodesic: true,
+                        strokeColor: color,
+                        strokeOpacity: 0.9,
+                        strokeWeight: 4,
+                        zIndex: 2,
+                        map: controlMap
+                    });
+                    controlTrailByRouteId.set(rid, { polyline: poly, color, lastTs });
+                    controlTrailPolylines.push(poly);  // mantener compat con clearControlTrailPolylines
+                }
             });
-            const out = document.getElementById('control-live-summary');
-            if (out) out.innerHTML = `<p class="text-xs text-[#2B3674] font-bold">${results.filter(r=>r.status==='fulfilled').length} trazas activas cargadas. Elegí un reparto del chevron para ver su detalle.</p>`;
+            // Borrar polylines de rutas que ya no están activas
+            for (const [rid, entry] of controlTrailByRouteId) {
+                if (!seen.has(rid)) {
+                    try { entry.polyline.setMap(null); } catch (_) {}
+                    controlTrailByRouteId.delete(rid);
+                    // remover también del array legacy
+                    const idx = controlTrailPolylines.indexOf(entry.polyline);
+                    if (idx >= 0) controlTrailPolylines.splice(idx, 1);
+                }
+            }
+        }
+
+        /** Extiende una polyline existente con un punto nuevo (llega por socket).
+         *  Permite que la traza GPS crezca en tiempo real sin esperar al refresh de 12s. */
+        function appendPointToTrail(routeId, lat, lng) {
+            if (routeId == null || !Number.isFinite(Number(routeId))) return;
+            const entry = controlTrailByRouteId.get(Number(routeId));
+            if (!entry || !entry.polyline) return;
+            try {
+                const path = entry.polyline.getPath();
+                const last = path.getLength() > 0 ? path.getAt(path.getLength() - 1) : null;
+                // Filtrar duplicados o saltos despreciables (<5m)
+                if (last) {
+                    const dLat = lat - last.lat();
+                    const dLng = lng - last.lng();
+                    if (Math.abs(dLat) < 0.000045 && Math.abs(dLng) < 0.000045) return; // ~5m
+                }
+                path.push(new google.maps.LatLng(lat, lng));
+            } catch (_) {}
         }
 
         async function loadControlTrailAndSummary() {
