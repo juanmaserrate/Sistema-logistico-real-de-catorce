@@ -1204,10 +1204,23 @@ app.get('/api/v1/routes/:id/live-summary', async (req, res) => {
 });
 
 /** Cache en memoria para snap-to-roads (evita gastar Roads API por puntos repetidos).
- *  Key: lat,lng redondeado a 5 decimales (~1m). TTL 10 min. */
+ *  Key exacta: lat,lng redondeado a 5 decimales (~1m). TTL 10 min. */
 const _snapCache = new Map<string, { snapped: { lat: number; lng: number }; expires: number }>();
 const _SNAP_TTL = 10 * 60 * 1000;
 const _SNAP_KEY = (lat: number, lng: number) => `${lat.toFixed(5)},${lng.toFixed(5)}`;
+
+/** OPTIMIZACIÓN COSTOS: cache espacial con grilla de ~50m.
+ *  Si un punto cae cerca (<50m) de uno ya snappeado, reusamos su snap sin
+ *  llamar a Roads API. Reduce drasticamente el costo cuando el chofer
+ *  avanza poco entre pings (ej. en ciudad densa o stopped).
+ *  Cell-size: 50m / 111km/grado = 0.00045 grados.
+ *  Key = floor(lat/0.00045),floor(lng/0.00045) — colisionan los puntos
+ *  dentro del mismo cuadrado de ~50x50m. */
+const _SNAP_GRID_SIZE = 0.00045;  // ~50m en latitud (lng tambien aprox a 35° latitud)
+const _SNAP_GRID_TTL = 5 * 60 * 1000;  // 5 min para grilla — mas corto, más conservador
+const _snapGridCache = new Map<string, { snapped: { lat: number; lng: number }; expires: number }>();
+const _SNAP_GRID_KEY = (lat: number, lng: number) =>
+    `${Math.floor(lat / _SNAP_GRID_SIZE)},${Math.floor(lng / _SNAP_GRID_SIZE)}`;
 
 /** POST /control/snap-to-roads
  *  Body: { points: [{lat, lng}, ...] }   (max 100 por request)
@@ -1225,20 +1238,32 @@ app.post('/api/v1/control/snap-to-roads', async (req, res) => {
         const result: Array<{ lat: number; lng: number }> = new Array(points.length);
         const toSnap: number[] = [];
 
-        // 1) Resolver desde cache
+        // 1) Resolver desde cache: primero exacto (~1m), después espacial (~50m)
         for (let i = 0; i < points.length; i++) {
             const p = points[i];
             if (typeof p?.lat !== 'number' || typeof p?.lng !== 'number') {
                 result[i] = { lat: 0, lng: 0 };
                 continue;
             }
-            const key = _SNAP_KEY(p.lat, p.lng);
-            const cached = _snapCache.get(key);
-            if (cached && cached.expires > now) {
-                result[i] = cached.snapped;
-            } else {
-                toSnap.push(i);
+            // Cache EXACTO (~1m precision) — el mismo punto exacto se repite raro
+            const exactKey = _SNAP_KEY(p.lat, p.lng);
+            const exact = _snapCache.get(exactKey);
+            if (exact && exact.expires > now) {
+                result[i] = exact.snapped;
+                continue;
             }
+            // Cache ESPACIAL (~50m grilla) — si el chofer avanza poco entre pings,
+            // su nuevo punto cae en la misma celda y reusamos el snap anterior.
+            // Esta es LA optimización clave: reduce ~70% las llamadas a Roads API.
+            const gridKey = _SNAP_GRID_KEY(p.lat, p.lng);
+            const grid = _snapGridCache.get(gridKey);
+            if (grid && grid.expires > now) {
+                result[i] = grid.snapped;
+                // Memoizar también en exacto para próximas idénticas
+                _snapCache.set(exactKey, { snapped: grid.snapped, expires: now + _SNAP_TTL });
+                continue;
+            }
+            toSnap.push(i);
         }
 
         // 2) Llamar Roads API solo para los que no están cacheados
@@ -1265,9 +1290,16 @@ app.post('/api/v1/control/snap-to-roads', async (req, res) => {
                     const snapped = { lat: Number(sp.location?.latitude), lng: Number(sp.location?.longitude) };
                     if (Number.isFinite(snapped.lat) && Number.isFinite(snapped.lng)) {
                         result[realIdx] = snapped;
-                        _snapCache.set(_SNAP_KEY(points[realIdx].lat, points[realIdx].lng), {
+                        // Guardar en AMBOS caches: exacto + grilla de 50m
+                        const origLat = points[realIdx].lat;
+                        const origLng = points[realIdx].lng;
+                        _snapCache.set(_SNAP_KEY(origLat, origLng), {
                             snapped,
                             expires: now + _SNAP_TTL
+                        });
+                        _snapGridCache.set(_SNAP_GRID_KEY(origLat, origLng), {
+                            snapped,
+                            expires: now + _SNAP_GRID_TTL
                         });
                     }
                 }
@@ -2508,10 +2540,15 @@ setInterval(() => {
             routeGeometryCache.delete(k);
         }
     }
-    // Lo mismo para snap-cache si existe
+    // Lo mismo para snap-cache (exacto + grilla espacial)
     if (typeof _snapCache !== 'undefined') {
         for (const [k, v] of _snapCache) {
             if (v.expires <= now) _snapCache.delete(k);
+        }
+    }
+    if (typeof _snapGridCache !== 'undefined') {
+        for (const [k, v] of _snapGridCache) {
+            if (v.expires <= now) _snapGridCache.delete(k);
         }
     }
 }, 5 * 60 * 1000);

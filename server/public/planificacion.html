@@ -4631,7 +4631,10 @@
             await initControlMap();
             setupControlMapResizeObserver();
             loadControlLiveData();
-            controlAutoRefreshTimer = setInterval(loadControlLiveData, 10000);
+            // Polling cada 20s en vez de 10s. La fluidez del mapa la da el socket en vivo
+            // (push instantaneo cada ping), no el polling. Bajar a 20s reduce ~50% el costo
+            // de Roads API sin afectar visualmente el movimiento del camion.
+            controlAutoRefreshTimer = setInterval(loadControlLiveData, 20000);
         }
 
         function stopControlAutoRefresh() {
