@@ -110,9 +110,11 @@ const loginLimiter = rateLimit({
     legacyHeaders: false,
     message: { error: 'Demasiados intentos de login. Esperá un minuto.' }
 });
+// 600/min permite ~20 pings/seg por IP. Suficiente para hasta ~50 choferes
+// detras del mismo proxy de cellular network (Claro/Movistar) sin falsos rechazos.
 const trackingLimiter = rateLimit({
     windowMs: 60_000,
-    max: 300,
+    max: 600,
     standardHeaders: true,
     legacyHeaders: false,
     message: { error: 'Demasiadas actualizaciones de ubicación.' }
@@ -2552,6 +2554,39 @@ setInterval(() => {
         }
     }
 }, 5 * 60 * 1000);
+
+/** Cron de limpieza de DeviceLocation: borra pings GPS de mas de 30 dias.
+ *
+ *  Por que: con 30 choferes activos generamos ~200k filas/dia. En 30 dias son ~6M
+ *  filas. Postgres aguanta bien gracias al @@index([timestamp]), pero crecer mas
+ *  alla pone lentas las queries de HDR. 30 dias preserva el modulo HDR completo
+ *  (mapa con polyline GPS del recorrido) para todos los viajes del ultimo mes.
+ *
+ *  Si en el futuro se necesita historial mas largo, se puede:
+ *    a) Subir el retention a 60-90 dias (Postgres aguanta ~13-20M filas)
+ *    b) Hacer thinning: dejar todos los puntos de 0-7 dias y 1 cada 5 puntos
+ *       para 7-30 dias (reduce 80% el storage manteniendo la polyline visible)
+ *
+ *  Frecuencia: cada hora. La query corre en background y no bloquea requests.
+ *  Si falla (p.ej. la BD esta sobrecargada), no rompe nada — se reintenta en 1h.
+ */
+const DEVICE_LOCATION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
+async function cleanupOldDeviceLocations() {
+    try {
+        const cutoff = new Date(Date.now() - DEVICE_LOCATION_RETENTION_MS);
+        const result = await prisma.deviceLocation.deleteMany({
+            where: { timestamp: { lt: cutoff } }
+        });
+        if (result.count > 0) {
+            console.log(`[cleanup] Borrados ${result.count} DeviceLocation de mas de 30 dias`);
+        }
+    } catch (e: any) {
+        console.warn('[cleanup] cleanupOldDeviceLocations:', e?.message || e);
+    }
+}
+// Correr una vez al startup (despues de 1 min para no bloquear el boot) y luego cada hora.
+setTimeout(() => { void cleanupOldDeviceLocations(); }, 60_000);
+setInterval(() => { void cleanupOldDeviceLocations(); }, 60 * 60 * 1000);
 
 /** Incluye coords y sequence para invalidar caché si cambia el cliente o el orden (sin depender de PATCH explícitos) */
 function routeGeometryCacheKey(routeId: number, validStops: Array<{ id: number; sequence: number; client: { latitude: unknown; longitude: unknown } }>): string {
