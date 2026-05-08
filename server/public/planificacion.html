@@ -4125,17 +4125,21 @@
             return (toDeg(Math.atan2(y, x)) + 360) % 360;
         }
 
-        /** Genera un ícono solo con la píldora del nombre del reparto.
-         *  (El dibujo del camión fue removido a pedido del usuario.)
-         *  El parámetro `bearingDeg` se ignora pero queda por compatibilidad. */
-        function makeTruckIcon(repartoLabel, color, _bearingDeg) {
-            const txt = String(repartoLabel || 'S/D').toUpperCase().slice(0, 18);
-            const charW = 7.2;
-            const labelW = Math.max(50, Math.ceil(txt.length * charW) + 18);
-            const padOuter = 4;
-            const w = padOuter * 2 + labelW;
-            const h = 28;
-            const cy = h / 2;
+        /** Genera un ícono solo con el camión (sin la píldora del reparto).
+         *  Flippea horizontalmente cuando el bearing indica que va al este. */
+        function makeTruckIcon(_repartoLabel, _color, bearingDeg) {
+            const truckW = 72;       // ancho del camión renderizado
+            const truckH = 36;       // alto (mantiene aspect ratio del PNG ~2:1)
+            const w = truckW;
+            const h = truckH;
+
+            const hasBearing = bearingDeg != null && Number.isFinite(bearingDeg);
+            // Si va hacia el ESTE (bearing 0-180 excluyendo norte/sur), flipear horizontal
+            const flipH = hasBearing && bearingDeg > 0 && bearingDeg < 180;
+            const tcx = w / 2;
+            const flipTransform = flipH ? `scale(-1,1) translate(${-2 * tcx},0)` : '';
+
+            const truckImgUrl = _truckImageDataUrl || '';
 
             const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
   <defs>
@@ -4143,10 +4147,15 @@
       <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#0f172a" flood-opacity="0.35"/>
     </filter>
   </defs>
-  <g filter="url(#sh)">
-    <rect x="${padOuter}" y="2" width="${labelW}" height="${h - 4}" rx="${(h - 4) / 2}" ry="${(h - 4) / 2}" fill="${color}" stroke="#ffffff" stroke-width="2"/>
-    <text x="${padOuter + labelW / 2}" y="${cy + 4}" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="0.3">${txt.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>
-  </g>
+  ${truckImgUrl
+    ? `<image href="${truckImgUrl}" x="0" y="0" width="${w}" height="${h}" filter="url(#sh)" ${flipTransform ? `transform="${flipTransform}"` : ''}/>`
+    : `<g transform="translate(8,8)" fill="none" stroke="#1d4ed8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#sh)">
+        <path d="M40 24V8a1 1 0 0 0-1-1H2v17"/>
+        <path d="M40 12h10l8 8v4h-18"/>
+        <circle cx="12" cy="24" r="3.5"/>
+        <circle cx="48" cy="24" r="3.5"/>
+      </g>`
+  }
 </svg>`;
             return {
                 url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
