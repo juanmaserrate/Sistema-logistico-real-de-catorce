@@ -4125,44 +4125,17 @@
             return (toDeg(Math.atan2(y, x)) + 360) % 360;
         }
 
-        /** Genera un ícono con la imagen REAL del camión + nombre del reparto al lado.
-         *  El camión rota según `bearingDeg` (rumbo de marcha).
-         *  El camión por defecto apunta a la izquierda (oeste = 270°), así que la rotación
-         *  visual = (bearing - 270 + 360) % 360.
-         *  Cuando va al ESTE (bearing entre 0-180), flippeamos horizontalmente para que
-         *  visualmente apunte a la derecha (más natural que rotar 180°).
-         */
-        function makeTruckIcon(repartoLabel, color, bearingDeg) {
+        /** Genera un ícono solo con la píldora del nombre del reparto.
+         *  (El dibujo del camión fue removido a pedido del usuario.)
+         *  El parámetro `bearingDeg` se ignora pero queda por compatibilidad. */
+        function makeTruckIcon(repartoLabel, color, _bearingDeg) {
             const txt = String(repartoLabel || 'S/D').toUpperCase().slice(0, 18);
             const charW = 7.2;
-            const labelW = Math.max(46, Math.ceil(txt.length * charW) + 14);
-            const truckW = 60;       // ancho del camión renderizado en el SVG
-            const truckH = 30;       // alto (mantiene aspect ratio del PNG ~2:1)
-            const gap = 6;           // separación entre camión y píldora
+            const labelW = Math.max(50, Math.ceil(txt.length * charW) + 18);
             const padOuter = 4;
-            const w = padOuter * 2 + truckW + gap + labelW;
-            const h = 40;
+            const w = padOuter * 2 + labelW;
+            const h = 28;
             const cy = h / 2;
-
-            // Heading: si bearing es null o NaN, no rotar (camión apunta a izquierda por defecto)
-            const hasBearing = bearingDeg != null && Number.isFinite(bearingDeg);
-            // Si va hacia el ESTE (bearing 0-180 excluyendo norte/sur exactos), flipear horizontal
-            const flipH = hasBearing && bearingDeg > 0 && bearingDeg < 180;
-            // Rotación residual (después del flip): proyectamos el bearing a un ángulo para vista lateral
-            // Para mantener la lectura natural del dibujo lateral, NO aplicamos rotación intermedia
-            // (rotar 45° un dibujo lateral se ve raro). Solo flippeamos según hemisferio E/W.
-
-            const truckImgUrl = _truckImageDataUrl || '';
-            const truckX = padOuter;
-            const truckY = (h - truckH) / 2;
-            // Centro del camión para transformaciones
-            const tcx = truckX + truckW / 2;
-            const tcy = truckY + truckH / 2;
-            const flipTransform = flipH ? `scale(-1,1) translate(${-2 * tcx},0)` : '';
-
-            const labelX = truckX + truckW + gap;
-            const pillBg = `<rect x="${labelX}" y="${(h - 22) / 2}" width="${labelW - 4}" height="22" rx="11" ry="11" fill="${color}" stroke="#ffffff" stroke-width="2"/>`;
-            const labelText = `<text x="${labelX + (labelW - 4) / 2}" y="${cy + 4}" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="0.3">${txt.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>`;
 
             const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
   <defs>
@@ -4171,17 +4144,8 @@
     </filter>
   </defs>
   <g filter="url(#sh)">
-    ${truckImgUrl
-        ? `<image href="${truckImgUrl}" x="${truckX}" y="${truckY}" width="${truckW}" height="${truckH}" ${flipTransform ? `transform="${flipTransform}"` : ''}/>`
-        : `<g transform="translate(${truckX + 4}, ${truckY + 6})" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M30 18V6a1 1 0 0 0-1-1H2v13"/>
-            <path d="M30 9h8l6 6v3h-14"/>
-            <circle cx="10" cy="18" r="3"/>
-            <circle cx="38" cy="18" r="3"/>
-        </g>`
-    }
-    ${pillBg}
-    ${labelText}
+    <rect x="${padOuter}" y="2" width="${labelW}" height="${h - 4}" rx="${(h - 4) / 2}" ry="${(h - 4) / 2}" fill="${color}" stroke="#ffffff" stroke-width="2"/>
+    <text x="${padOuter + labelW / 2}" y="${cy + 4}" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="0.3">${txt.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>
   </g>
 </svg>`;
             return {
