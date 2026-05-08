@@ -4066,38 +4066,111 @@
             }
         }
 
-        /** Genera un ícono SVG con forma de camión + el nombre del reparto al lado.
-         *  Devuelve un objeto compatible con google.maps.Marker icon. */
-        function makeTruckIcon(repartoLabel, color) {
+        /** Cache del PNG del camión como data URL (se carga una sola vez). */
+        let _truckImageDataUrl = null;
+        let _truckImageLoading = null;
+        async function loadTruckImage() {
+            if (_truckImageDataUrl) return _truckImageDataUrl;
+            if (_truckImageLoading) return _truckImageLoading;
+            _truckImageLoading = (async () => {
+                try {
+                    const res = await fetch('/assets/truck-r14.png');
+                    if (!res.ok) throw new Error('No se pudo cargar /assets/truck-r14.png');
+                    const blob = await res.blob();
+                    _truckImageDataUrl = await new Promise((resolve) => {
+                        const reader = new FileReader();
+                        reader.onload = () => resolve(reader.result);
+                        reader.readAsDataURL(blob);
+                    });
+                    // Re-render de markers ahora que tenemos la imagen real
+                    if (typeof controlLiveData !== 'undefined' && Array.isArray(controlLiveData) && typeof renderControlMap === 'function') {
+                        try { renderControlMap(controlLiveData); } catch (_) {}
+                    }
+                    return _truckImageDataUrl;
+                } catch (e) {
+                    console.warn('No se pudo precargar camion:', e);
+                    return null;
+                }
+            })();
+            return _truckImageLoading;
+        }
+        // Precargar al inicio (no bloquea)
+        if (typeof window !== 'undefined') loadTruckImage();
+
+        /** Calcula el bearing (rumbo en grados, 0=norte, 90=este) entre dos puntos lat/lng. */
+        function computeBearing(lat1, lng1, lat2, lng2) {
+            const toRad = (d) => d * Math.PI / 180;
+            const toDeg = (r) => r * 180 / Math.PI;
+            const dLng = toRad(lng2 - lng1);
+            const y = Math.sin(dLng) * Math.cos(toRad(lat2));
+            const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) -
+                      Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLng);
+            return (toDeg(Math.atan2(y, x)) + 360) % 360;
+        }
+
+        /** Genera un ícono con la imagen REAL del camión + nombre del reparto al lado.
+         *  El camión rota según `bearingDeg` (rumbo de marcha).
+         *  El camión por defecto apunta a la izquierda (oeste = 270°), así que la rotación
+         *  visual = (bearing - 270 + 360) % 360.
+         *  Cuando va al ESTE (bearing entre 0-180), flippeamos horizontalmente para que
+         *  visualmente apunte a la derecha (más natural que rotar 180°).
+         */
+        function makeTruckIcon(repartoLabel, color, bearingDeg) {
             const txt = String(repartoLabel || 'S/D').toUpperCase().slice(0, 18);
-            // Calcular ancho aproximado: 7px por char + padding del icono camión
             const charW = 7.2;
-            const labelW = Math.max(40, Math.ceil(txt.length * charW));
-            const iconW = 30;       // ancho de la zona del camión
-            const padX = 10;
-            const w = iconW + labelW + padX * 2;
-            const h = 38;
-            // SVG: pill con camión a la izquierda y nombre del reparto en blanco a la derecha
+            const labelW = Math.max(46, Math.ceil(txt.length * charW) + 14);
+            const truckW = 60;       // ancho del camión renderizado en el SVG
+            const truckH = 30;       // alto (mantiene aspect ratio del PNG ~2:1)
+            const gap = 6;           // separación entre camión y píldora
+            const padOuter = 4;
+            const w = padOuter * 2 + truckW + gap + labelW;
+            const h = 40;
+            const cy = h / 2;
+
+            // Heading: si bearing es null o NaN, no rotar (camión apunta a izquierda por defecto)
+            const hasBearing = bearingDeg != null && Number.isFinite(bearingDeg);
+            // Si va hacia el ESTE (bearing 0-180 excluyendo norte/sur exactos), flipear horizontal
+            const flipH = hasBearing && bearingDeg > 0 && bearingDeg < 180;
+            // Rotación residual (después del flip): proyectamos el bearing a un ángulo para vista lateral
+            // Para mantener la lectura natural del dibujo lateral, NO aplicamos rotación intermedia
+            // (rotar 45° un dibujo lateral se ve raro). Solo flippeamos según hemisferio E/W.
+
+            const truckImgUrl = _truckImageDataUrl || '';
+            const truckX = padOuter;
+            const truckY = (h - truckH) / 2;
+            // Centro del camión para transformaciones
+            const tcx = truckX + truckW / 2;
+            const tcy = truckY + truckH / 2;
+            const flipTransform = flipH ? `scale(-1,1) translate(${-2 * tcx},0)` : '';
+
+            const labelX = truckX + truckW + gap;
+            const pillBg = `<rect x="${labelX}" y="${(h - 22) / 2}" width="${labelW - 4}" height="22" rx="11" ry="11" fill="${color}" stroke="#ffffff" stroke-width="2"/>`;
+            const labelText = `<text x="${labelX + (labelW - 4) / 2}" y="${cy + 4}" font-family="Inter, system-ui, sans-serif" font-size="11" font-weight="800" fill="#ffffff" text-anchor="middle" letter-spacing="0.3">${txt.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>`;
+
             const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
   <defs>
     <filter id="sh" x="-10%" y="-10%" width="120%" height="130%">
       <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#0f172a" flood-opacity="0.35"/>
     </filter>
   </defs>
-  <rect x="2" y="2" width="${w - 4}" height="${h - 4}" rx="${(h - 4) / 2}" ry="${(h - 4) / 2}" fill="${color}" stroke="#ffffff" stroke-width="2.5" filter="url(#sh)"/>
-  <g transform="translate(8, 9)" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-    <path d="M14 18V6a1 1 0 0 0-1-1H1v13"/>
-    <path d="M14 9h4l3 3v6h-7"/>
-    <circle cx="6" cy="18" r="2"/>
-    <circle cx="18" cy="18" r="2"/>
+  <g filter="url(#sh)">
+    ${truckImgUrl
+        ? `<image href="${truckImgUrl}" x="${truckX}" y="${truckY}" width="${truckW}" height="${truckH}" ${flipTransform ? `transform="${flipTransform}"` : ''}/>`
+        : `<g transform="translate(${truckX + 4}, ${truckY + 6})" fill="none" stroke="${color}" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M30 18V6a1 1 0 0 0-1-1H2v13"/>
+            <path d="M30 9h8l6 6v3h-14"/>
+            <circle cx="10" cy="18" r="3"/>
+            <circle cx="38" cy="18" r="3"/>
+        </g>`
+    }
+    ${pillBg}
+    ${labelText}
   </g>
-  <text x="${iconW + padX}" y="${h / 2 + 4}" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="12" font-weight="800" fill="#ffffff" letter-spacing="0.3">${txt.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>
 </svg>`;
             return {
                 url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
                 scaledSize: new google.maps.Size(w, h),
-                anchor: new google.maps.Point(w / 2, h / 2),
-                labelOrigin: new google.maps.Point(w / 2, h + 8)
+                anchor: new google.maps.Point(w / 2, h / 2)
             };
         }
 
@@ -4129,14 +4202,33 @@
                 const pos = { lat: Number(loc.latitude), lng: Number(loc.longitude) };
                 const fillColor = it.status === 'OUT_OF_PLANT' ? '#10B981' : '#4F46E5';
                 const isVisible = controlIsTripVisible(id);
-                const truckIcon = makeTruckIcon(it.reparto || it.driver || 'S/D', fillColor);
                 let marker = controlMarkersByTrip.get(id);
+
+                // Calcular bearing comparando con la última posición conocida.
+                // Solo si se movió más de ~15m (filtro de ruido GPS).
+                let bearing = null;
+                if (marker && marker.__lastPos) {
+                    const lp = marker.__lastPos;
+                    const dLat = pos.lat - lp.lat;
+                    const dLng = pos.lng - lp.lng;
+                    // ~111km/grado, >15m = >0.000135 grados
+                    if (Math.abs(dLat) > 0.000135 || Math.abs(dLng) > 0.000135) {
+                        bearing = computeBearing(lp.lat, lp.lng, pos.lat, pos.lng);
+                    } else if (marker.__lastBearing != null) {
+                        bearing = marker.__lastBearing;  // mantener el último bearing si no se movió
+                    }
+                }
+
+                const truckIcon = makeTruckIcon(it.reparto || it.driver || 'S/D', fillColor, bearing);
+
                 if (marker) {
                     marker.setPosition(pos);
                     marker.setVisible(isVisible);
                     marker.setTitle(`${it.driver || 'SIN CHOFER'} · ${it.vehicle || 'S/D'} · ${it.reparto || '--'}`);
                     marker.setLabel(null);
                     marker.setIcon(truckIcon);
+                    marker.__lastPos = pos;
+                    if (bearing != null) marker.__lastBearing = bearing;
                     marker.__ctrl = {
                         driver: it.driver || 'SIN CHOFER',
                         vehicle: it.vehicle || 'S/D',
@@ -4153,6 +4245,7 @@
                         title: `${it.driver || 'SIN CHOFER'} · ${it.vehicle || 'S/D'} · ${it.reparto || '--'}`,
                         icon: truckIcon
                     });
+                    marker.__lastPos = pos;
                     marker.__ctrl = {
                         driver: it.driver || 'SIN CHOFER',
                         vehicle: it.vehicle || 'S/D',
