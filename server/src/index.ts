@@ -202,6 +202,11 @@ async function logAction(
 }
 
 // ── Audit Log Endpoint ───────────────────────────────────────────────────────
+/** Health check liviano para que el dispositivo mida latencia y señal. */
+app.get('/api/v1/ping', (_req, res) => {
+    res.json({ ok: true, ts: Date.now() });
+});
+
 app.get('/api/v1/audit', async (req, res) => {
     try {
         const limit  = Math.min(Number(req.query.limit  || 200), 500);
@@ -1198,6 +1203,220 @@ app.get('/api/v1/routes/:id/live-summary', async (req, res) => {
     }
 });
 
+/** Lista las rutas/viajes ACTIVOS hoy con sus paradas y horarios reales.
+ *  Usado por Torre de Control para mostrar todas las paradas a la vez sin filtrar. */
+app.get('/api/v1/control/active-routes', async (_req, res) => {
+    try {
+        const startOfDay = new Date();
+        startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date();
+        endOfDay.setHours(23, 59, 59, 999);
+
+        const routes = await prisma.route.findMany({
+            where: {
+                date: { gte: startOfDay, lte: endOfDay },
+                status: { in: ['PLANNED', 'IN_PROGRESS', 'STARTED', 'OUT_OF_PLANT', 'PENDING'] }
+            },
+            include: {
+                stops: { orderBy: { sequence: 'asc' }, include: { client: true } },
+                driver: { select: { id: true, fullName: true, username: true } },
+                vehicle: { select: { plate: true } },
+                trip: true
+            },
+            orderBy: { id: 'asc' }
+        });
+
+        const out = routes.map((route: any) => {
+            const sortedStops = [...(route.stops || [])].sort((a, b) => a.sequence - b.sequence);
+            return {
+                routeId: route.id,
+                tripId: route.tripId,
+                date: route.date.toISOString(),
+                status: route.status,
+                actualStartTime: route.actualStartTime?.toISOString() ?? null,
+                actualEndTime: route.actualEndTime?.toISOString() ?? null,
+                driver: route.driver?.fullName || route.driver?.username || route.trip?.driver || 'SIN CHOFER',
+                vehicle: route.vehicle?.plate || route.trip?.vehicle || 'S/D',
+                reparto: route.trip?.reparto || route.trip?.businessUnit || `Ruta #${route.id}`,
+                businessUnit: route.trip?.businessUnit ?? null,
+                stops: sortedStops.map((s: any) => ({
+                    stopId: s.id,
+                    sequence: s.sequence,
+                    name: s.client?.name || `Parada ${s.sequence}`,
+                    status: s.status,
+                    actualArrival: s.actualArrival?.toISOString() ?? null,
+                    actualDeparture: s.actualDeparture?.toISOString() ?? null,
+                    observations: s.observations ?? null,
+                    deliveryWithoutIssues: s.deliveryWithoutIssues ?? null,
+                    proofPhotoUrl: s.proofPhotoUrl ?? null
+                }))
+            };
+        });
+
+        res.json(out);
+    } catch (e: any) {
+        console.error('GET /control/active-routes:', e);
+        res.status(500).json({ error: e?.message || 'Error al obtener rutas activas' });
+    }
+});
+
+/** Historial de rutas FINALIZADAS (HDR — Historial de Rutas).
+ *  Filtros: from (YYYY-MM-DD), to (YYYY-MM-DD), driver, reparto.
+ *  Devuelve un resumen por cada ruta con stops + métricas. */
+app.get('/api/v1/history/completed-routes', async (req, res) => {
+    try {
+        const fromStr = String(req.query.from || '');
+        const toStr = String(req.query.to || '');
+        const now = new Date();
+        const defaultFrom = new Date(now.getTime() - 30 * 24 * 3600000); // últimos 30 días
+        const from = fromStr ? new Date(fromStr + 'T00:00:00') : defaultFrom;
+        const to = toStr ? new Date(toStr + 'T23:59:59') : now;
+        const driverFilter = String(req.query.driver || '').trim().toLowerCase();
+        const repartoFilter = String(req.query.reparto || '').trim().toLowerCase();
+
+        const routes = await prisma.route.findMany({
+            where: {
+                date: { gte: from, lte: to },
+                OR: [
+                    { status: 'COMPLETED' },
+                    { actualEndTime: { not: null } }
+                ]
+            },
+            include: {
+                stops: { orderBy: { sequence: 'asc' }, include: { client: true } },
+                driver: { select: { id: true, fullName: true, username: true } },
+                vehicle: { select: { plate: true } },
+                trip: true
+            },
+            orderBy: { date: 'desc' }
+        });
+
+        const out = routes
+            .map((route: any) => {
+                const stops = [...(route.stops || [])].sort((a, b) => a.sequence - b.sequence);
+                const completed = stops.filter((s: any) => s.status === 'COMPLETED').length;
+                const failed = stops.filter((s: any) => s.status === 'UNDELIVERABLE').length;
+                const driver = route.driver?.fullName || route.driver?.username || route.trip?.driver || 'SIN CHOFER';
+                const reparto = route.trip?.reparto || route.trip?.businessUnit || `Ruta #${route.id}`;
+                const startedAt = route.actualStartTime;
+                const endedAt = route.actualEndTime;
+                const durationMin = startedAt && endedAt
+                    ? Math.round((new Date(endedAt).getTime() - new Date(startedAt).getTime()) / 60000)
+                    : null;
+                return {
+                    routeId: route.id,
+                    tripId: route.tripId,
+                    date: route.date.toISOString(),
+                    status: route.status,
+                    actualStartTime: startedAt?.toISOString() ?? null,
+                    actualEndTime: endedAt?.toISOString() ?? null,
+                    durationMin,
+                    driver,
+                    vehicle: route.vehicle?.plate || route.trip?.vehicle || 'S/D',
+                    reparto,
+                    businessUnit: route.trip?.businessUnit ?? null,
+                    totalStops: stops.length,
+                    completedStops: completed,
+                    failedStops: failed
+                };
+            })
+            .filter((r: any) => {
+                if (driverFilter && !r.driver.toLowerCase().includes(driverFilter)) return false;
+                if (repartoFilter && !r.reparto.toLowerCase().includes(repartoFilter)) return false;
+                return true;
+            });
+
+        res.json({ from: from.toISOString(), to: to.toISOString(), count: out.length, routes: out });
+    } catch (e: any) {
+        console.error('GET /history/completed-routes:', e);
+        res.status(500).json({ error: e?.message || 'Error al leer historial' });
+    }
+});
+
+/** Detalle completo de una ruta del historial: stops, locations GPS y resumen. */
+app.get('/api/v1/history/routes/:id', async (req, res) => {
+    try {
+        const routeId = Number(req.params.id);
+        if (!Number.isFinite(routeId)) return res.status(400).json({ error: 'ID inválido' });
+        const route = await prisma.route.findUnique({
+            where: { id: routeId },
+            include: {
+                stops: { orderBy: { sequence: 'asc' }, include: { client: true } },
+                driver: { select: { id: true, fullName: true, username: true } },
+                vehicle: { select: { plate: true } },
+                trip: true
+            }
+        });
+        if (!route) return res.status(404).json({ error: 'Ruta no encontrada' });
+
+        // Traer todos los puntos GPS sin tope de horas (es histórico)
+        const locations = await prisma.deviceLocation.findMany({
+            where: { routeId },
+            orderBy: { timestamp: 'asc' },
+            select: { latitude: true, longitude: true, timestamp: true, accuracy: true, speed: true, offRouteMeters: true },
+            take: 20000
+        });
+
+        const stops = [...(route.stops || [])].sort((a, b) => a.sequence - b.sequence).map((s: any, i, arr) => {
+            const prev = i > 0 ? arr[i - 1] : null;
+            let legFromPreviousMinutes: number | null = null;
+            if (prev && s.actualArrival) {
+                const t0 = prev.actualDeparture
+                    ? new Date(prev.actualDeparture).getTime()
+                    : prev.actualArrival
+                      ? new Date(prev.actualArrival).getTime()
+                      : null;
+                const t1 = new Date(s.actualArrival).getTime();
+                if (t0 != null && t1 > t0) legFromPreviousMinutes = Math.round(((t1 - t0) / 60000) * 10) / 10;
+            }
+            return {
+                stopId: s.id,
+                sequence: s.sequence,
+                name: s.client?.name || `Parada ${s.sequence}`,
+                address: s.client?.address || null,
+                latitude: s.client?.latitude ?? null,
+                longitude: s.client?.longitude ?? null,
+                status: s.status,
+                actualArrival: s.actualArrival?.toISOString() ?? null,
+                actualDeparture: s.actualDeparture?.toISOString() ?? null,
+                observations: s.observations ?? null,
+                proofPhotoUrl: s.proofPhotoUrl ?? null,
+                deliveryWithoutIssues: s.deliveryWithoutIssues ?? null,
+                reasonCode: s.reasonCode ?? null,
+                legFromPreviousMinutes
+            };
+        });
+
+        const driver = route.driver?.fullName || route.driver?.username || route.trip?.driver || 'SIN CHOFER';
+        const reparto = route.trip?.reparto || route.trip?.businessUnit || `Ruta #${route.id}`;
+
+        res.json({
+            routeId: route.id,
+            tripId: route.tripId,
+            date: route.date.toISOString(),
+            status: route.status,
+            driver,
+            vehicle: route.vehicle?.plate || route.trip?.vehicle || 'S/D',
+            reparto,
+            businessUnit: route.trip?.businessUnit ?? null,
+            actualStartTime: route.actualStartTime?.toISOString() ?? null,
+            actualEndTime: route.actualEndTime?.toISOString() ?? null,
+            stops,
+            locations: locations.map(l => ({
+                lat: l.latitude,
+                lng: l.longitude,
+                t: l.timestamp.toISOString(),
+                accuracy: l.accuracy ?? null,
+                speed: l.speed ?? null,
+                offRouteMeters: l.offRouteMeters ?? null
+            }))
+        });
+    } catch (e: any) {
+        console.error('GET /history/routes/:id:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.get('/api/v1/tracking/locations', async (req, res) => {
     try {
         const since = new Date(Date.now() - 24 * 3600000);
@@ -1848,7 +2067,7 @@ app.get('/api/v1/routes', async (req, res) => {
     }
     const routes = await prisma.route.findMany({
         where,
-        include: { stops: { orderBy: { sequence: 'asc' }, include: { client: true } }, vehicle: true, driver: true, trip: { select: { businessUnit: true, reparto: true, zone: true } } },
+        include: { stops: { orderBy: { sequence: 'asc' }, include: { client: true } }, vehicle: true, driver: true, trip: { select: { id: true, businessUnit: true, reparto: true, zone: true, status: true, completedAt: true } } },
         orderBy: { date: 'desc' }
     });
     res.json(routes);
@@ -3551,7 +3770,7 @@ app.get('/api/v1/users', async (req, res) => {
         const users = await prisma.user.findMany({
             where,
             orderBy: [{ role: 'asc' }, { username: 'asc' }],
-            select: { id: true, username: true, fullName: true, role: true, tenantId: true, createdAt: true }
+            select: { id: true, username: true, fullName: true, role: true, payType: true, tenantId: true, createdAt: true }
         });
         res.json(users);
     } catch (e: any) {
@@ -3583,15 +3802,22 @@ app.post('/api/v1/users', async (req, res) => {
             create: { id: 'default-tenant', name: 'Real de Catorce' }
         });
 
+        // payType opcional para CHOFER/AUXILIAR: FIJO | JORNAL
+        let payType: string | null = null;
+        if (req.body?.payType) {
+            const pt = String(req.body.payType).trim().toUpperCase();
+            if (['FIJO', 'JORNAL'].includes(pt)) payType = pt;
+        }
         const user = await prisma.user.create({
             data: {
                 username,
                 password: requiresPassword ? await hashPassword(password) : '-',
                 fullName: fullName || username,
                 role,
+                payType,
                 tenantId: 'default-tenant'
             },
-            select: { id: true, username: true, fullName: true, role: true, tenantId: true, createdAt: true }
+            select: { id: true, username: true, fullName: true, role: true, payType: true, tenantId: true, createdAt: true }
         });
         await logAction(req, 'CREATE', 'user', user.id, user.username, null, { username: user.username, role: user.role });
         res.status(201).json(user);
@@ -3638,12 +3864,24 @@ app.patch('/api/v1/users/:id', async (req, res) => {
             }
             data.role = role;
         }
+        if (req.body?.payType !== undefined) {
+            const raw = req.body.payType;
+            if (raw == null || raw === '') {
+                data.payType = null;
+            } else {
+                const pt = String(raw).trim().toUpperCase();
+                if (!['FIJO', 'JORNAL'].includes(pt)) {
+                    return res.status(400).json({ error: 'payType inválido (FIJO | JORNAL)' });
+                }
+                data.payType = pt;
+            }
+        }
         if (Object.keys(data).length === 0) return res.status(400).json({ error: 'Sin cambios para actualizar' });
 
         const user = await prisma.user.update({
             where: { id },
             data,
-            select: { id: true, username: true, fullName: true, role: true, tenantId: true, createdAt: true }
+            select: { id: true, username: true, fullName: true, role: true, payType: true, tenantId: true, createdAt: true }
         });
         res.json(user);
     } catch (e: any) {

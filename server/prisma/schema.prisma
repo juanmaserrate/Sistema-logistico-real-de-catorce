@@ -24,6 +24,7 @@ model User {
   password     String
   fullName     String
   role         String     @default("DRIVER")
+  payType      String?    // "FIJO" | "JORNAL" para CHOFER/AUXILIAR (impacta costo logistico)
   pushToken    String?    // Token Expo para notificaciones push
   createdAt    DateTime   @default(now())
   driverRoutes Route[]    @relation("DriverRoutes")

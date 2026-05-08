@@ -111,6 +111,9 @@
                     <a href="#control" id="btn-control" class="header-nav-item">
                         <i data-lucide="monitor-play" class="w-4 h-4"></i> Torre de Control
                     </a>
+                    <a href="#hdr" id="btn-hdr" class="header-nav-item">
+                        <i data-lucide="history" class="w-4 h-4"></i> HDR
+                    </a>
                     <a href="#weekly" id="btn-weekly" class="header-nav-item header-nav-item-active">
                         <i data-lucide="layout-dashboard" class="w-4 h-4"></i> Logística Semanal
                     </a>
@@ -1455,6 +1458,80 @@
                 </div>
             </div>
 
+            <!-- VIEW: HDR — HISTORIAL DE RUTAS FINALIZADAS -->
+            <div id="view-hdr" class="hidden view-animate space-y-6">
+                <div class="card-dark p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+                    <div>
+                        <h3 class="text-2xl font-bold text-[#1B2559]">HDR — Historial de Rutas</h3>
+                        <p class="text-sm text-[#A3AED0] font-medium mt-1">Todos los recorridos finalizados de la flota. Ver paradas, horarios y trazado GPS real sobre el mapa.</p>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button onclick="loadHdrList()" class="px-5 py-3 bg-indigo-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-2">
+                            <i data-lucide="refresh-cw" class="w-4 h-4"></i> Actualizar
+                        </button>
+                    </div>
+                </div>
+
+                <!-- FILTROS -->
+                <div class="card-dark p-6">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Desde</label>
+                            <input id="hdr-from" type="date" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Hasta</label>
+                            <input id="hdr-to" type="date" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Chofer</label>
+                            <input id="hdr-driver" type="text" placeholder="Nombre del chofer..." class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Reparto / Unidad</label>
+                            <input id="hdr-reparto" type="text" placeholder="R10, SAM, ..." class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                        </div>
+                    </div>
+                    <div class="mt-4 flex justify-end">
+                        <button onclick="loadHdrList()" class="px-5 py-2.5 bg-emerald-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-emerald-700">Aplicar filtros</button>
+                    </div>
+                </div>
+
+                <!-- LISTA DE RUTAS FINALIZADAS -->
+                <div class="card-dark overflow-hidden">
+                    <div class="p-6 border-b border-[#F4F7FE] bg-white flex items-center justify-between">
+                        <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Rutas finalizadas</h4>
+                        <span id="hdr-count" class="text-[10px] font-bold text-[#A3AED0]">0 rutas</span>
+                    </div>
+                    <div id="hdr-list" class="divide-y divide-[#F4F7FE]">
+                        <p class="p-8 text-center text-[#A3AED0] text-xs italic">Cargando…</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL: DETALLE DE RUTA HISTÓRICA (HDR) -->
+            <div id="hdr-detail-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
+                <div class="bg-white rounded-3xl w-full max-w-6xl max-h-[92vh] shadow-2xl overflow-hidden flex flex-col">
+                    <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center bg-[#F8FAFF]">
+                        <div>
+                            <h3 id="hdr-detail-title" class="font-black text-[#1B2559] uppercase tracking-widest text-sm">Detalle de ruta</h3>
+                            <p id="hdr-detail-sub" class="text-[11px] text-[#A3AED0] font-medium mt-1">--</p>
+                        </div>
+                        <button onclick="closeHdrDetailModal()" class="text-[#A3AED0] hover:text-[#1B2559] transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
+                    </div>
+                    <div class="grid grid-cols-1 lg:grid-cols-2 flex-1 min-h-0">
+                        <div class="border-r border-[#F4F7FE] flex flex-col min-h-[400px]">
+                            <div id="hdr-detail-map" class="flex-1 min-h-[400px] bg-[#F4F7FE]"></div>
+                            <div id="hdr-detail-stats" class="p-4 bg-[#F8FAFF] border-t border-[#F4F7FE] grid grid-cols-3 gap-3 text-xs"></div>
+                        </div>
+                        <div class="overflow-y-auto custom-scrollbar p-6">
+                            <h5 class="text-[11px] font-black text-[#A3AED0] uppercase tracking-widest mb-3">Paradas</h5>
+                            <div id="hdr-detail-stops" class="space-y-2"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- VIEW: CONTROL TOWER / LIVE MONITORING -->
             <div id="view-control" class="hidden view-animate space-y-8">
                 <!-- MAPA DE FLOTA EN VIVO (HERO) -->
@@ -1527,18 +1604,23 @@
                     <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col sm:flex-row sm:items-end gap-4">
                         <div class="flex-1">
                             <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Recorrido real (app móvil)</h4>
-                            <p class="text-[10px] text-[#A3AED0] mt-1">Trazado GPS de las últimas horas sobre el mapa de arriba. Tiempos entre paradas y desvío respecto del recorrido planificado (Google Directions).</p>
+                            <p class="text-[10px] text-[#A3AED0] mt-1">Todos los viajes activos hoy con sus paradas y horarios reales (llegada / salida). Cuando un viaje finaliza pasa al módulo <strong>HDR</strong>.</p>
                         </div>
                         <div class="flex flex-wrap items-center gap-2">
-                            <select id="control-trail-route" onchange="loadControlTrailAndSummary()" class="bg-[#F4F7FE] border-0 rounded-xl px-4 py-2.5 text-xs font-bold text-[#1B2559] min-w-[200px] outline-none">
-                                <option value="">— Elegir reparto —</option>
+                            <select id="control-trail-route" onchange="loadControlTrailAndSummary()" class="bg-[#F4F7FE] border-0 rounded-xl px-4 py-2.5 text-xs font-bold text-[#1B2559] min-w-[200px] outline-none" title="Ver detalle completo de un solo reparto">
+                                <option value="">— Detalle de un reparto —</option>
                             </select>
-                            <button type="button" onclick="loadControlTrailAllActive()" class="px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-black uppercase tracking-widest hover:bg-emerald-700" title="Ver todas las trazas activas">Todas</button>
+                            <button type="button" onclick="loadControlTrailAllActive()" class="px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-black uppercase tracking-widest hover:bg-emerald-700" title="Dibujar trazas GPS de todos los repartos en el mapa">Trazas en mapa</button>
+                            <button type="button" onclick="loadAllActiveRoutesPanel()" class="px-4 py-2.5 rounded-xl bg-[#F4F7FE] text-[#1B2559] text-xs font-black uppercase tracking-widest hover:bg-indigo-50" title="Refrescar tabla de paradas">Refrescar</button>
                         </div>
                     </div>
                     <div id="control-preflight-summary" class="hidden"></div>
-                    <div id="control-live-summary" class="p-6 bg-[#F8FAFF]/80 text-sm border-t border-[#F4F7FE] min-h-[80px]">
-                        <p class="text-[#A3AED0] text-xs italic">Elegí una ruta y pulsá «Cargar» para ver tramos entre paradas y último desvío.</p>
+                    <!-- Panel de TODAS las rutas activas con paradas / horarios (auto-carga al entrar a Torre de Control) -->
+                    <div id="control-all-active-routes" class="p-6 bg-white border-b border-[#F4F7FE]">
+                        <p class="text-[#A3AED0] text-xs italic">Cargando viajes activos…</p>
+                    </div>
+                    <div id="control-live-summary" class="p-6 bg-[#F8FAFF]/80 text-sm border-t border-[#F4F7FE] min-h-[40px]">
+                        <p class="text-[#A3AED0] text-xs italic">Elegí un reparto del select de arriba para ver detalle por tramo y dibujar la traza GPS en el mapa.</p>
                     </div>
                 </div>
 
@@ -2644,8 +2726,8 @@
 
         // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
         const ACCESS_PROFILES = {
-            SUPERADMIN: ['control','weekly','dashboard','vrp','costs','budget','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'],
-            TRAFICO: ['control','weekly','dashboard','vrp','budget','maintenance','routes','users','employees','schools','reports','incidents'],
+            SUPERADMIN: ['control','hdr','weekly','dashboard','vrp','costs','budget','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'],
+            TRAFICO: ['control','hdr','weekly','dashboard','vrp','budget','maintenance','routes','users','employees','schools','reports','incidents'],
             RRHH: ['salaries','employees'],
             ADMINISTRACION: ['weekly','dashboard','budget','salaries','schools','reports']
         };
@@ -2681,7 +2763,7 @@
             }
 
             // Hide/show nav buttons based on access
-            const allSections = ['control','weekly','dashboard','vrp','costs','budget','maintenance','routes','users','employees','salaries','schools','reports'];
+            const allSections = ['control','hdr','weekly','dashboard','vrp','costs','budget','maintenance','routes','users','employees','salaries','schools','reports'];
             allSections.forEach(sec => {
                 const btn = document.getElementById('btn-' + sec);
                 if (btn) {
@@ -2805,7 +2887,7 @@
             return { ...stored, ...hardcoded };
         }
 
-        const ALL_MODULES = ['control','weekly','dashboard','vrp','costs','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'];
+        const ALL_MODULES = ['control','hdr','weekly','dashboard','vrp','costs','budget','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'];
 
         function renderProfileAssignments() {
             const tbody = document.getElementById('profile-assignments-body');
@@ -2933,6 +3015,7 @@
 
             const titles = {
                 control: 'Torre de Control / En Vivo',
+                hdr: 'Historial de Rutas (HDR)',
                 weekly: 'Planificación Semanal',
                 dashboard: 'Dashboard logístico',
                 vrp: 'Optimizador de Rutas',
@@ -2950,6 +3033,7 @@
 
             const descs = {
                 control: 'Monitoreo en tiempo real de operaciones y estados de tránsito',
+                hdr: 'Recorridos finalizados con paradas, horarios y trazado GPS de la flota',
                 weekly: 'Gestión centralizada de la operación logística de Real de Catorce',
                 dashboard: 'Costos propio vs tercerizado y distribución por unidad, zona y localidad',
                 vrp: 'Asignación inteligente de paradas y optimización de secuencias',
@@ -2980,7 +3064,13 @@
                 setTimeout(() => {
                     if (controlMap) google.maps.event.trigger(controlMap, 'resize');
                 }, 100);
+                // Cargar el panel de TODAS las rutas activas con paradas y horarios
+                if (typeof startAllActiveRoutesPolling === 'function') startAllActiveRoutesPolling();
+            } else {
+                // Al salir de Torre de Control, parar el polling
+                if (typeof stopAllActiveRoutesPolling === 'function') stopAllActiveRoutesPolling();
             }
+            if(id === 'hdr') { if (typeof loadHdrList === 'function') loadHdrList(); }
             if(id === 'routes') loadRouteTemplates();
             if(id === 'users') { loadUsers(); renderProfileAssignments(); }
             if(id === 'reports') initReportFilters();
@@ -3976,6 +4066,41 @@
             }
         }
 
+        /** Genera un ícono SVG con forma de camión + el nombre del reparto al lado.
+         *  Devuelve un objeto compatible con google.maps.Marker icon. */
+        function makeTruckIcon(repartoLabel, color) {
+            const txt = String(repartoLabel || 'S/D').toUpperCase().slice(0, 18);
+            // Calcular ancho aproximado: 7px por char + padding del icono camión
+            const charW = 7.2;
+            const labelW = Math.max(40, Math.ceil(txt.length * charW));
+            const iconW = 30;       // ancho de la zona del camión
+            const padX = 10;
+            const w = iconW + labelW + padX * 2;
+            const h = 38;
+            // SVG: pill con camión a la izquierda y nombre del reparto en blanco a la derecha
+            const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+  <defs>
+    <filter id="sh" x="-10%" y="-10%" width="120%" height="130%">
+      <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#0f172a" flood-opacity="0.35"/>
+    </filter>
+  </defs>
+  <rect x="2" y="2" width="${w - 4}" height="${h - 4}" rx="${(h - 4) / 2}" ry="${(h - 4) / 2}" fill="${color}" stroke="#ffffff" stroke-width="2.5" filter="url(#sh)"/>
+  <g transform="translate(8, 9)" fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M14 18V6a1 1 0 0 0-1-1H1v13"/>
+    <path d="M14 9h4l3 3v6h-7"/>
+    <circle cx="6" cy="18" r="2"/>
+    <circle cx="18" cy="18" r="2"/>
+  </g>
+  <text x="${iconW + padX}" y="${h / 2 + 4}" font-family="Inter, system-ui, -apple-system, sans-serif" font-size="12" font-weight="800" fill="#ffffff" letter-spacing="0.3">${txt.replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>
+</svg>`;
+            return {
+                url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
+                scaledSize: new google.maps.Size(w, h),
+                anchor: new google.maps.Point(w / 2, h / 2),
+                labelOrigin: new google.maps.Point(w / 2, h + 8)
+            };
+        }
+
         /** Ubicaciones GPS: actualizar posición sin borrar markers ni fitBounds (evita trabarse cada poll) */
         function renderControlMap(items) {
             if (!controlMap) return;
@@ -4004,20 +4129,14 @@
                 const pos = { lat: Number(loc.latitude), lng: Number(loc.longitude) };
                 const fillColor = it.status === 'OUT_OF_PLANT' ? '#10B981' : '#4F46E5';
                 const isVisible = controlIsTripVisible(id);
+                const truckIcon = makeTruckIcon(it.reparto || it.driver || 'S/D', fillColor);
                 let marker = controlMarkersByTrip.get(id);
                 if (marker) {
                     marker.setPosition(pos);
                     marker.setVisible(isVisible);
-                    marker.setTitle(`${it.driver || 'SIN CHOFER'} · ${it.vehicle || 'S/D'}`);
-                    marker.setLabel({ text: String(it.driver || 'CH').slice(0, 2).toUpperCase(), color: '#ffffff', fontSize: '10px' });
-                    marker.setIcon({
-                        path: google.maps.SymbolPath.CIRCLE,
-                        scale: 12,
-                        fillColor,
-                        fillOpacity: 1,
-                        strokeColor: '#ffffff',
-                        strokeWeight: 2
-                    });
+                    marker.setTitle(`${it.driver || 'SIN CHOFER'} · ${it.vehicle || 'S/D'} · ${it.reparto || '--'}`);
+                    marker.setLabel(null);
+                    marker.setIcon(truckIcon);
                     marker.__ctrl = {
                         driver: it.driver || 'SIN CHOFER',
                         vehicle: it.vehicle || 'S/D',
@@ -4031,16 +4150,8 @@
                         map: controlMap,
                         position: pos,
                         visible: isVisible,
-                        label: { text: String(it.driver || 'CH').slice(0, 2).toUpperCase(), color: '#ffffff', fontSize: '10px' },
-                        title: `${it.driver || 'SIN CHOFER'} · ${it.vehicle || 'S/D'}`,
-                        icon: {
-                            path: google.maps.SymbolPath.CIRCLE,
-                            scale: 12,
-                            fillColor,
-                            fillOpacity: 1,
-                            strokeColor: '#ffffff',
-                            strokeWeight: 2
-                        }
+                        title: `${it.driver || 'SIN CHOFER'} · ${it.vehicle || 'S/D'} · ${it.reparto || '--'}`,
+                        icon: truckIcon
                     });
                     marker.__ctrl = {
                         driver: it.driver || 'SIN CHOFER',
@@ -4359,6 +4470,115 @@
                 '<option value="">— Elegir reparto —</option>' +
                 ids.map((id) => `<option value="${id}">${routeLabels[id]}</option>`).join('');
             if (ids.includes(Number(prev))) sel.value = String(prev);
+        }
+
+        /** Renderiza un panel apilado con TODAS las rutas activas y sus paradas + horarios.
+         *  Reemplaza el flujo anterior de "elegir reparto en chevron". Auto-refresca cada 30s. */
+        const TRIP_STOP_STATUS_BADGE = {
+            'PENDING': { text: 'Pendiente', cls: 'bg-amber-50 text-amber-700' },
+            'ARRIVED': { text: 'En destino', cls: 'bg-indigo-50 text-indigo-700' },
+            'COMPLETED': { text: 'Entregado', cls: 'bg-emerald-50 text-emerald-700' },
+            'UNDELIVERABLE': { text: 'No entregado', cls: 'bg-rose-50 text-rose-700' }
+        };
+        function _fmtHm(iso) {
+            if (!iso) return '—';
+            try {
+                return new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+            } catch (_) { return '—'; }
+        }
+        async function loadAllActiveRoutesPanel() {
+            const box = document.getElementById('control-all-active-routes');
+            if (!box) return;
+            try {
+                const res = await fetch(`${API_URL}/control/active-routes`);
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const list = await res.json();
+                if (!Array.isArray(list) || list.length === 0) {
+                    box.innerHTML = '<p class="text-[#A3AED0] text-xs italic py-4">No hay viajes activos hoy.</p>';
+                    return;
+                }
+                box.innerHTML = list.map(r => {
+                    const stopRows = (r.stops || []).map(s => {
+                        const badge = TRIP_STOP_STATUS_BADGE[s.status] || { text: s.status || '--', cls: 'bg-gray-50 text-gray-600' };
+                        const obs = (s.observations || '').toString().replace(/</g, '&lt;');
+                        const obsTd = obs ? `<span class="text-xs text-[#2B3674] truncate inline-block max-w-[180px]" title="${obs.replace(/"/g, '&quot;')}">${obs.length > 32 ? obs.slice(0, 32) + '…' : obs}</span>` : '<span class="text-[#A3AED0]">—</span>';
+                        const okTd = s.deliveryWithoutIssues === true ? '<span class="text-emerald-600 font-black">Sí</span>' : '<span class="text-[#A3AED0]">—</span>';
+                        return `
+                        <tr class="border-b border-[#F4F7FE] hover:bg-[#F8FAFF]">
+                            <td class="py-2 px-3 font-black text-[#1B2559]">${s.sequence}</td>
+                            <td class="py-2 px-3 font-bold text-[#2B3674]">${(s.name || '').replace(/</g, '&lt;')}</td>
+                            <td class="py-2 px-3"><span class="status-badge ${badge.cls}">${badge.text}</span></td>
+                            <td class="py-2 px-3 text-xs font-bold text-[#1B2559]">${_fmtHm(s.actualArrival)}</td>
+                            <td class="py-2 px-3 text-xs font-bold text-[#1B2559]">${_fmtHm(s.actualDeparture)}</td>
+                            <td class="py-2 px-3 text-center">${okTd}</td>
+                            <td class="py-2 px-3">${obsTd}</td>
+                        </tr>`;
+                    }).join('');
+
+                    const totals = (r.stops || []).reduce((acc, s) => {
+                        if (s.status === 'COMPLETED') acc.done++;
+                        else if (s.status === 'UNDELIVERABLE') acc.failed++;
+                        else acc.pending++;
+                        return acc;
+                    }, { done: 0, failed: 0, pending: 0 });
+
+                    const startedTxt = r.actualStartTime ? `Inicio: ${_fmtHm(r.actualStartTime)}` : 'Sin iniciar';
+                    return `
+                    <details class="bg-[#F8FAFF] rounded-xl border border-[#E0E5F2] mb-3" open>
+                        <summary class="cursor-pointer p-4 flex items-center justify-between gap-3 hover:bg-[#F4F7FE] rounded-t-xl">
+                            <div class="flex items-center gap-3 flex-wrap min-w-0 flex-1">
+                                <span class="px-3 py-1 rounded-lg bg-indigo-600 text-white text-[11px] font-black uppercase tracking-widest">${(r.reparto || 'S/D').replace(/</g, '&lt;')}</span>
+                                <span class="text-[12px] font-bold text-[#1B2559] truncate">${r.driver}</span>
+                                <span class="text-[11px] font-bold text-[#A3AED0]">${r.vehicle}</span>
+                                <span class="text-[10px] font-bold text-[#A3AED0]">${startedTxt}</span>
+                            </div>
+                            <div class="flex items-center gap-2 text-[10px] font-black">
+                                <span class="px-2 py-1 rounded-md bg-emerald-50 text-emerald-700">✓ ${totals.done}</span>
+                                <span class="px-2 py-1 rounded-md bg-amber-50 text-amber-700">⏳ ${totals.pending}</span>
+                                ${totals.failed > 0 ? `<span class="px-2 py-1 rounded-md bg-rose-50 text-rose-700">✗ ${totals.failed}</span>` : ''}
+                            </div>
+                        </summary>
+                        <div class="overflow-x-auto custom-scrollbar bg-white rounded-b-xl">
+                            <table class="w-full text-left text-xs min-w-[700px]">
+                                <thead class="bg-[#F4F7FE]">
+                                    <tr class="text-[10px] uppercase text-[#A3AED0]">
+                                        <th class="py-2 px-3">#</th>
+                                        <th class="py-2 px-3">Parada</th>
+                                        <th class="py-2 px-3">Estado</th>
+                                        <th class="py-2 px-3">Llegada</th>
+                                        <th class="py-2 px-3">Salida</th>
+                                        <th class="py-2 px-3 text-center">Sin incid.</th>
+                                        <th class="py-2 px-3">Obs.</th>
+                                    </tr>
+                                </thead>
+                                <tbody>${stopRows || '<tr><td colspan="7" class="py-4 text-center text-[#A3AED0]">Sin paradas cargadas</td></tr>'}</tbody>
+                            </table>
+                        </div>
+                    </details>`;
+                }).join('');
+            } catch (e) {
+                console.error('loadAllActiveRoutesPanel:', e);
+                box.innerHTML = '<p class="text-rose-600 text-xs">No se pudo cargar la lista de viajes activos.</p>';
+            }
+        }
+
+        // Auto-refrescar el panel cada 30s mientras Torre de Control esté visible
+        let _allActiveRoutesPollId = null;
+        function startAllActiveRoutesPolling() {
+            if (_allActiveRoutesPollId) return;
+            loadAllActiveRoutesPanel();
+            _allActiveRoutesPollId = setInterval(() => {
+                const view = document.getElementById('view-control');
+                if (view && !view.classList.contains('hidden')) {
+                    loadAllActiveRoutesPanel();
+                }
+            }, 30000);
+        }
+        function stopAllActiveRoutesPolling() {
+            if (_allActiveRoutesPollId) {
+                clearInterval(_allActiveRoutesPollId);
+                _allActiveRoutesPollId = null;
+            }
         }
 
         // Carga las trazas GPS de TODAS las rutas activas simultáneamente,
@@ -13722,6 +13942,267 @@
         </div>
     </div>
 </div>
+<script>
+/* ============================================================
+ * HDR — Historial de Rutas Finalizadas
+ * ------------------------------------------------------------
+ * Vista que lista todas las rutas con status=COMPLETED y permite
+ * abrir el detalle con mapa de Google Maps + polyline del recorrido
+ * GPS real + lista de paradas con horarios.
+ * ============================================================ */
+let _hdrMap = null;
+let _hdrPolyline = null;
+let _hdrStopMarkers = [];
+let _hdrLastDetail = null;
+
+function _hdrApiUrl() {
+    return (typeof API_URL !== 'undefined') ? API_URL : '/api/v1';
+}
+
+function _hdrFmtDate(iso) {
+    if (!iso) return '--';
+    try { return new Date(iso).toLocaleDateString('es-AR'); } catch (_) { return '--'; }
+}
+function _hdrFmtTime(iso) {
+    if (!iso) return '--';
+    try { return new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }); } catch (_) { return '--'; }
+}
+function _hdrFmtDateTime(iso) {
+    if (!iso) return '--';
+    try { return new Date(iso).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: '2-digit', hour: '2-digit', minute: '2-digit' }); } catch (_) { return '--'; }
+}
+
+async function loadHdrList() {
+    const listBox = document.getElementById('hdr-list');
+    const countBox = document.getElementById('hdr-count');
+    if (!listBox) return;
+    listBox.innerHTML = '<p class="p-8 text-center text-[#A3AED0] text-xs italic">Cargando…</p>';
+
+    const from = document.getElementById('hdr-from')?.value || '';
+    const to = document.getElementById('hdr-to')?.value || '';
+    const driver = document.getElementById('hdr-driver')?.value || '';
+    const reparto = document.getElementById('hdr-reparto')?.value || '';
+
+    const qs = new URLSearchParams();
+    if (from) qs.set('from', from);
+    if (to) qs.set('to', to);
+    if (driver) qs.set('driver', driver);
+    if (reparto) qs.set('reparto', reparto);
+
+    try {
+        const res = await fetch(`${_hdrApiUrl()}/history/completed-routes?${qs}`);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        const routes = data.routes || [];
+        if (countBox) countBox.textContent = `${routes.length} ruta${routes.length === 1 ? '' : 's'}`;
+        if (routes.length === 0) {
+            listBox.innerHTML = '<p class="p-8 text-center text-[#A3AED0] text-xs italic">No hay rutas finalizadas en el rango seleccionado.</p>';
+            return;
+        }
+        listBox.innerHTML = routes.map(r => {
+            const dur = r.durationMin != null ? `${Math.floor(r.durationMin / 60)}h ${r.durationMin % 60}m` : '—';
+            const okPct = r.totalStops > 0 ? Math.round(r.completedStops * 100 / r.totalStops) : 0;
+            const escAttr = (s) => String(s || '').replace(/"/g, '&quot;');
+            return `
+            <div class="p-5 hover:bg-[#F8FAFF] transition-colors flex flex-col md:flex-row md:items-center gap-4 cursor-pointer"
+                 onclick="openHdrDetail(${r.routeId})">
+                <div class="flex items-center gap-3 flex-1 min-w-0">
+                    <div class="w-12 h-12 rounded-xl bg-indigo-100 text-indigo-600 flex items-center justify-center shrink-0">
+                        <i data-lucide="truck" class="w-6 h-6"></i>
+                    </div>
+                    <div class="min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="px-2 py-0.5 rounded-md bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest">${(r.reparto || 'S/D').replace(/</g, '&lt;')}</span>
+                            <span class="font-black text-[#1B2559] text-sm truncate">${(r.driver || 'Sin chofer').replace(/</g, '&lt;')}</span>
+                            <span class="text-[11px] font-bold text-[#A3AED0]">${(r.vehicle || '').replace(/</g, '&lt;')}</span>
+                        </div>
+                        <p class="text-[10px] text-[#A3AED0] mt-0.5">${_hdrFmtDate(r.date)} · ${_hdrFmtTime(r.actualStartTime)} → ${_hdrFmtTime(r.actualEndTime)} · ${dur}</p>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2 text-[10px] font-black">
+                    <span class="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700">✓ ${r.completedStops}/${r.totalStops} (${okPct}%)</span>
+                    ${r.failedStops > 0 ? `<span class="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700">✗ ${r.failedStops}</span>` : ''}
+                    <button onclick="event.stopPropagation();openHdrDetail(${r.routeId})" class="px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700">Ver detalle →</button>
+                </div>
+            </div>`;
+        }).join('');
+        if (typeof lucide !== 'undefined') lucide.createIcons();
+    } catch (e) {
+        console.error('loadHdrList:', e);
+        listBox.innerHTML = '<p class="p-8 text-center text-rose-600 text-xs">Error al cargar el historial.</p>';
+    }
+}
+
+async function openHdrDetail(routeId) {
+    const modal = document.getElementById('hdr-detail-modal');
+    const title = document.getElementById('hdr-detail-title');
+    const sub = document.getElementById('hdr-detail-sub');
+    const stopsBox = document.getElementById('hdr-detail-stops');
+    const statsBox = document.getElementById('hdr-detail-stats');
+    if (!modal) return;
+    modal.classList.remove('hidden');
+    if (title) title.textContent = `Ruta #${routeId} — Cargando…`;
+    if (sub) sub.textContent = '';
+    if (stopsBox) stopsBox.innerHTML = '<p class="text-[#A3AED0] text-xs italic">Cargando paradas…</p>';
+    if (statsBox) statsBox.innerHTML = '';
+    if (typeof lucide !== 'undefined') lucide.createIcons();
+
+    try {
+        const res = await fetch(`${_hdrApiUrl()}/history/routes/${routeId}`);
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        const data = await res.json();
+        _hdrLastDetail = data;
+
+        if (title) title.textContent = `${data.reparto || 'Ruta'} · ${data.driver}`;
+        if (sub) sub.textContent = `${_hdrFmtDateTime(data.actualStartTime)} → ${_hdrFmtDateTime(data.actualEndTime)} · Vehículo: ${data.vehicle || '--'}`;
+
+        // Stats
+        const total = (data.stops || []).length;
+        const done = (data.stops || []).filter(s => s.status === 'COMPLETED').length;
+        const failed = (data.stops || []).filter(s => s.status === 'UNDELIVERABLE').length;
+        if (statsBox) {
+            statsBox.innerHTML = `
+                <div class="bg-white rounded-xl p-3 text-center">
+                    <p class="text-[9px] font-black text-[#A3AED0] uppercase">Paradas</p>
+                    <p class="text-base font-black text-[#1B2559]">${done}/${total}</p>
+                </div>
+                <div class="bg-white rounded-xl p-3 text-center">
+                    <p class="text-[9px] font-black text-[#A3AED0] uppercase">Pings GPS</p>
+                    <p class="text-base font-black text-[#1B2559]">${(data.locations || []).length}</p>
+                </div>
+                <div class="bg-white rounded-xl p-3 text-center">
+                    <p class="text-[9px] font-black text-[#A3AED0] uppercase">No entregadas</p>
+                    <p class="text-base font-black ${failed > 0 ? 'text-rose-600' : 'text-[#1B2559]'}">${failed}</p>
+                </div>`;
+        }
+
+        // Stops
+        if (stopsBox) {
+            const STAT_CLR = {
+                'COMPLETED': { bg: 'bg-emerald-50', text: 'text-emerald-700', icon: '✓' },
+                'UNDELIVERABLE': { bg: 'bg-rose-50', text: 'text-rose-700', icon: '✗' },
+                'ARRIVED': { bg: 'bg-indigo-50', text: 'text-indigo-700', icon: '•' },
+                'PENDING': { bg: 'bg-amber-50', text: 'text-amber-700', icon: '⏳' }
+            };
+            stopsBox.innerHTML = (data.stops || []).map(s => {
+                const c = STAT_CLR[s.status] || { bg: 'bg-gray-50', text: 'text-gray-600', icon: '?' };
+                const obs = (s.observations || '').replace(/</g, '&lt;');
+                const photoLink = s.proofPhotoUrl ? `<a href="${s.proofPhotoUrl}" target="_blank" rel="noopener" class="text-indigo-600 underline text-[10px] font-bold">Ver foto</a>` : '';
+                return `
+                <div class="rounded-xl p-3 ${c.bg} flex gap-3 items-start">
+                    <div class="w-7 h-7 rounded-full bg-white flex items-center justify-center font-black text-[#1B2559] shrink-0">${s.sequence}</div>
+                    <div class="flex-1 min-w-0">
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span class="font-black text-[#1B2559] text-sm">${(s.name || '').replace(/</g, '&lt;')}</span>
+                            <span class="text-[10px] font-bold ${c.text}">${c.icon} ${s.status}</span>
+                        </div>
+                        ${s.address ? `<p class="text-[10px] text-[#A3AED0] mt-0.5">${(s.address || '').replace(/</g, '&lt;')}</p>` : ''}
+                        <p class="text-[11px] font-bold text-[#1B2559] mt-1">
+                            🕐 ${_hdrFmtTime(s.actualArrival)} → ${_hdrFmtTime(s.actualDeparture)}
+                            ${s.legFromPreviousMinutes != null ? ` · Tramo: ${s.legFromPreviousMinutes} min` : ''}
+                        </p>
+                        ${obs ? `<p class="text-[10px] text-[#2B3674] italic mt-1">"${obs}"</p>` : ''}
+                        ${photoLink}
+                    </div>
+                </div>`;
+            }).join('');
+        }
+
+        // Render mapa con polyline real
+        renderHdrMap(data);
+    } catch (e) {
+        console.error('openHdrDetail:', e);
+        if (stopsBox) stopsBox.innerHTML = '<p class="text-rose-600 text-xs">Error al cargar el detalle.</p>';
+    }
+}
+
+function closeHdrDetailModal() {
+    const modal = document.getElementById('hdr-detail-modal');
+    if (modal) modal.classList.add('hidden');
+}
+
+function renderHdrMap(detail) {
+    const el = document.getElementById('hdr-detail-map');
+    if (!el || !window.google?.maps) {
+        if (el) el.innerHTML = '<div class="flex items-center justify-center h-full text-[#A3AED0] text-xs p-8 text-center">Google Maps no disponible. Configurá la API key en Torre de Control.</div>';
+        return;
+    }
+
+    const locs = (detail.locations || []).filter(l => l.lat != null && l.lng != null);
+    const stops = (detail.stops || []).filter(s => s.latitude != null && s.longitude != null);
+
+    if (!_hdrMap) {
+        _hdrMap = new google.maps.Map(el, {
+            center: { lat: -34.6, lng: -58.45 },
+            zoom: 11,
+            disableDefaultUI: false,
+            streetViewControl: false,
+            mapTypeControl: false
+        });
+    }
+
+    // Limpiar polyline y markers anteriores
+    if (_hdrPolyline) { _hdrPolyline.setMap(null); _hdrPolyline = null; }
+    _hdrStopMarkers.forEach(m => { try { m.setMap(null); } catch (_) {} });
+    _hdrStopMarkers = [];
+
+    const bounds = new google.maps.LatLngBounds();
+
+    // Polyline del recorrido GPS REAL (línea naranja gruesa)
+    if (locs.length >= 2) {
+        const path = locs.map(l => ({ lat: l.lat, lng: l.lng }));
+        _hdrPolyline = new google.maps.Polyline({
+            path,
+            geodesic: true,
+            strokeColor: '#f97316',
+            strokeOpacity: 0.95,
+            strokeWeight: 4,
+            zIndex: 2,
+            map: _hdrMap
+        });
+        path.forEach(p => bounds.extend(p));
+    }
+
+    // Marker de inicio (verde) y fin (rojo)
+    if (locs.length > 0) {
+        const start = locs[0];
+        const end = locs[locs.length - 1];
+        _hdrStopMarkers.push(new google.maps.Marker({
+            position: { lat: start.lat, lng: start.lng }, map: _hdrMap,
+            title: 'Inicio',
+            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: '#10b981', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 }
+        }));
+        _hdrStopMarkers.push(new google.maps.Marker({
+            position: { lat: end.lat, lng: end.lng }, map: _hdrMap,
+            title: 'Fin',
+            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: '#dc2626', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 }
+        }));
+    }
+
+    // Markers numerados de paradas
+    stops.forEach(s => {
+        const color = s.status === 'COMPLETED' ? '#10b981' : (s.status === 'UNDELIVERABLE' ? '#dc2626' : '#6366f1');
+        const m = new google.maps.Marker({
+            position: { lat: s.latitude, lng: s.longitude },
+            map: _hdrMap,
+            title: `${s.sequence}. ${s.name}`,
+            label: { text: String(s.sequence), color: '#fff', fontSize: '11px', fontWeight: 'bold' },
+            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 13, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 }
+        });
+        _hdrStopMarkers.push(m);
+        bounds.extend({ lat: s.latitude, lng: s.longitude });
+    });
+
+    if (!bounds.isEmpty()) {
+        _hdrMap.fitBounds(bounds, 60);
+        google.maps.event.addListenerOnce(_hdrMap, 'idle', () => {
+            if (_hdrMap.getZoom() > 16) _hdrMap.setZoom(16);
+        });
+    }
+    google.maps.event.trigger(_hdrMap, 'resize');
+}
+</script>
+
 <script>
 /* ============================================================
  * FIX GLOBAL DE MODALES — cierre confiable cuando se superponen
