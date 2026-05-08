@@ -2370,7 +2370,8 @@
                             }
                         }
                     } catch (_) { /* fallback al original */ }
-                    marker.setPosition({ lat, lng });
+                    // Animar suave durante ~3s en vez de saltar (los pings llegan cada ~5s)
+                    animateMarkerTo(marker, { lat, lng }, 3000);
                 }
             }
             // Refrescar datos completos (debounced para no saturar con ráfagas de pings)
@@ -4096,6 +4097,58 @@
             }
         }
 
+        /** Anima el marker desde su posición actual hasta `targetPos` durante `durationMs`,
+         *  con easing ease-in-out. Hace que el camión "deslice" en vez de saltar de un punto
+         *  al otro cuando llega un ping nuevo (cada 5-10s). Usa requestAnimationFrame para
+         *  60fps en GPUs decentes, sin tocar el evento loop con setTimeout/setInterval.
+         *
+         *  Si ya hay una animación en curso para ese marker, la cancela y arranca una nueva
+         *  desde donde estaba (evita "saltos hacia atrás" cuando llega un ping mientras
+         *  todavía se estaba animando el anterior). */
+        function animateMarkerTo(marker, targetPos, durationMs) {
+            if (!marker || !targetPos || !window.google?.maps) return;
+            // Cancelar animación previa
+            if (marker.__animFrameId) {
+                cancelAnimationFrame(marker.__animFrameId);
+                marker.__animFrameId = null;
+            }
+            const startLatLng = marker.getPosition();
+            if (!startLatLng) {
+                marker.setPosition(targetPos);
+                return;
+            }
+            const startLat = startLatLng.lat();
+            const startLng = startLatLng.lng();
+            const dLat = targetPos.lat - startLat;
+            const dLng = targetPos.lng - startLng;
+            // Si la distancia es despreciable, no hace falta animar
+            if (Math.abs(dLat) < 1e-7 && Math.abs(dLng) < 1e-7) return;
+            // Si la distancia es enorme (>5km, ej. cambio de chofer/zona) saltar directo
+            const apxKm = Math.sqrt(dLat * dLat + dLng * dLng) * 111;
+            if (apxKm > 5) {
+                marker.setPosition(targetPos);
+                return;
+            }
+            const startTs = performance.now();
+            const dur = Math.max(300, durationMs || 3000);
+            // Easing ease-in-out (cuadrática): acelera al inicio y desacelera al final
+            const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+            const tick = (now) => {
+                const elapsed = now - startTs;
+                const t = Math.min(1, elapsed / dur);
+                const k = easeInOut(t);
+                const lat = startLat + dLat * k;
+                const lng = startLng + dLng * k;
+                try { marker.setPosition({ lat, lng }); } catch (_) {}
+                if (t < 1) {
+                    marker.__animFrameId = requestAnimationFrame(tick);
+                } else {
+                    marker.__animFrameId = null;
+                }
+            };
+            marker.__animFrameId = requestAnimationFrame(tick);
+        }
+
         /** Cache del PNG del camión como data URL (se carga una sola vez). */
         let _truckImageDataUrl = null;
         let _truckImageLoading = null;
@@ -4225,7 +4278,8 @@
                 const truckIcon = makeTruckIcon(it.reparto || it.driver || 'S/D', fillColor, bearing);
 
                 if (marker) {
-                    marker.setPosition(pos);
+                    // Animar suave durante ~3s en vez de saltar de golpe
+                    animateMarkerTo(marker, pos, 3000);
                     marker.setVisible(isVisible);
                     marker.setTitle(`${it.driver || 'SIN CHOFER'} · ${it.vehicle || 'S/D'} · ${it.reparto || '--'}`);
                     marker.setLabel(null);
@@ -4588,7 +4642,14 @@
             // Antes quedaban en memoria con sus referencias a Google Maps y al `controlMap`,
             // generando memory leak en sesiones largas que entran/salen de Torre de Control.
             try {
-                controlMarkersByTrip.forEach((m) => { try { m.setMap(null); } catch (_) {} });
+                controlMarkersByTrip.forEach((m) => {
+                    // Cancelar animación en curso si la hay (evita callbacks sobre marker null)
+                    if (m && m.__animFrameId) {
+                        try { cancelAnimationFrame(m.__animFrameId); } catch (_) {}
+                        m.__animFrameId = null;
+                    }
+                    try { m.setMap(null); } catch (_) {}
+                });
                 controlMarkersByTrip.clear();
             } catch (_) {}
         }
