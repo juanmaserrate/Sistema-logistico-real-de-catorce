@@ -230,24 +230,36 @@ async function writeStopQueue(queue: OfflineStopAction[]): Promise<void> {
   await AsyncStorage.setItem(STORAGE_KEYS.offlineStopQueue, JSON.stringify(queue.slice(-100)));
 }
 
-export async function flushStopQueue(): Promise<number> {
-  const queue = await readStopQueue();
-  if (!queue.length) return 0;
-  let sent = 0;
-  for (const action of queue) {
+// Mutex: si flushStopQueue ya está corriendo (ej. polling + AppState dispararon a la vez),
+// reusamos la misma promise. Evita que dos llamadas en paralelo lean la misma cola y manden
+// las mismas entregas DOS VECES al servidor (lo que crearía duplicados de paradas COMPLETED).
+let _stopQueueFlushing: Promise<number> | null = null;
+export function flushStopQueue(): Promise<number> {
+  if (_stopQueueFlushing) return _stopQueueFlushing;
+  _stopQueueFlushing = (async (): Promise<number> => {
     try {
-      const res = await fetch(apiUrl(`/api/v1/stops/${action.stopId}`), {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(action.body),
-      });
-      if (!res.ok) break;
-      sent++;
-    } catch { break; }
-  }
-  if (sent === queue.length) await AsyncStorage.removeItem(STORAGE_KEYS.offlineStopQueue);
-  else if (sent > 0) await writeStopQueue(queue.slice(sent));
-  return sent;
+      const queue = await readStopQueue();
+      if (!queue.length) return 0;
+      let sent = 0;
+      for (const action of queue) {
+        try {
+          const res = await fetch(apiUrl(`/api/v1/stops/${action.stopId}`), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(action.body),
+          });
+          if (!res.ok) break;
+          sent++;
+        } catch { break; }
+      }
+      if (sent === queue.length) await AsyncStorage.removeItem(STORAGE_KEYS.offlineStopQueue);
+      else if (sent > 0) await writeStopQueue(queue.slice(sent));
+      return sent;
+    } finally {
+      _stopQueueFlushing = null;
+    }
+  })();
+  return _stopQueueFlushing;
 }
 
 export async function getPendingStopCount(): Promise<number> {
@@ -483,25 +495,97 @@ async function readIncidentQueue(): Promise<OfflineIncidentAction[]> {
   } catch { return []; }
 }
 
-export async function flushIncidentQueue(): Promise<void> {
-  const queue = await readIncidentQueue();
-  if (!queue.length) return;
-  let sent = 0;
-  for (const action of queue) {
+// ─── Cola offline de FOTOS de comprobante ────────────────────────────────────
+// Cuando un chofer entrega con foto pero no tiene señal, la foto se guarda acá
+// con el stopId. Cuando vuelve la red, flushPhotoQueue() la sube y patchea el
+// stop con la URL para que figure en planificación.
+type OfflinePhoto = { stopId: number; localUri: string; queuedAt: string };
+
+async function readPhotoQueue(): Promise<OfflinePhoto[]> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.offlinePhotoQueue);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
+
+async function writePhotoQueue(q: OfflinePhoto[]): Promise<void> {
+  await AsyncStorage.setItem(STORAGE_KEYS.offlinePhotoQueue, JSON.stringify(q.slice(-50)));
+}
+
+export async function enqueueOfflinePhoto(stopId: number, localUri: string): Promise<void> {
+  const q = await readPhotoQueue();
+  q.push({ stopId, localUri, queuedAt: new Date().toISOString() });
+  await writePhotoQueue(q);
+}
+
+export async function getPendingPhotoCount(): Promise<number> {
+  const q = await readPhotoQueue();
+  return q.length;
+}
+
+let _photoQueueFlushing: Promise<void> | null = null;
+export function flushPhotoQueue(): Promise<void> {
+  if (_photoQueueFlushing) return _photoQueueFlushing;
+  _photoQueueFlushing = (async (): Promise<void> => {
     try {
-      const res = await fetch(apiUrl('/api/v1/incidents'), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
-        body: JSON.stringify(action),
-      });
-      if (!res.ok) break;
-      sent++;
-    } catch { break; }
-  }
-  if (sent === queue.length) await AsyncStorage.removeItem(STORAGE_KEYS.offlineIncidentQueue);
-  else if (sent > 0) {
-    await AsyncStorage.setItem(STORAGE_KEYS.offlineIncidentQueue, JSON.stringify(queue.slice(sent)));
-  }
+      const queue = await readPhotoQueue();
+      if (!queue.length) return;
+      const remaining: OfflinePhoto[] = [];
+      for (const p of queue) {
+        try {
+          const url = await uploadProofPhoto(p.localUri);
+          // Patcheamos el stop con la URL (idempotente: si el stop ya estaba COMPLETED,
+          // solo le agregamos la foto). Si el patch falla, mantenemos en cola.
+          const res = await fetch(apiUrl(`/api/v1/stops/${p.stopId}`), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ proofPhotoUrl: url }),
+          });
+          if (!res.ok) remaining.push(p);
+        } catch {
+          remaining.push(p);
+        }
+      }
+      if (remaining.length === 0) await AsyncStorage.removeItem(STORAGE_KEYS.offlinePhotoQueue);
+      else await writePhotoQueue(remaining);
+    } finally {
+      _photoQueueFlushing = null;
+    }
+  })();
+  return _photoQueueFlushing;
+}
+
+// Mismo mutex que flushStopQueue: evita que dos llamadas en paralelo dupliquen incidencias.
+let _incidentQueueFlushing: Promise<void> | null = null;
+export function flushIncidentQueue(): Promise<void> {
+  if (_incidentQueueFlushing) return _incidentQueueFlushing;
+  _incidentQueueFlushing = (async (): Promise<void> => {
+    try {
+      const queue = await readIncidentQueue();
+      if (!queue.length) return;
+      let sent = 0;
+      for (const action of queue) {
+        try {
+          const res = await fetch(apiUrl('/api/v1/incidents'), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+            body: JSON.stringify(action),
+          });
+          if (!res.ok) break;
+          sent++;
+        } catch { break; }
+      }
+      if (sent === queue.length) await AsyncStorage.removeItem(STORAGE_KEYS.offlineIncidentQueue);
+      else if (sent > 0) {
+        await AsyncStorage.setItem(STORAGE_KEYS.offlineIncidentQueue, JSON.stringify(queue.slice(sent)));
+      }
+    } finally {
+      _incidentQueueFlushing = null;
+    }
+  })();
+  return _incidentQueueFlushing;
 }
 
 export async function reportIncident(payload: {

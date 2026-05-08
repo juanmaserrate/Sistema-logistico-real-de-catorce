@@ -29,4 +29,5 @@ export const STORAGE_KEYS = {
   offlineLocationQueue: 'r14_offline_location_queue',
   offlineStopQueue: 'r14_offline_stop_queue',     // Cola offline de paradas pendientes
   offlineIncidentQueue: 'r14_offline_incident_queue', // Cola offline de incidencias pendientes
+  offlinePhotoQueue: 'r14_offline_photo_queue',   // Cola de fotos de comprobante pendientes (sin red al subir)
 } as const;

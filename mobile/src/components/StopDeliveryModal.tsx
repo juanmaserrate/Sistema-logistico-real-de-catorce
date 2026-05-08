@@ -16,7 +16,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import type { Stop } from '../types';
-import { patchStop, uploadProofPhoto } from '../api';
+import { patchStop, uploadProofPhoto, enqueueOfflinePhoto } from '../api';
 import { assertApiConfigured } from '../config';
 import { compressPhoto, getLiteMode } from '../utils/photoUtils';
 
@@ -97,16 +97,18 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
     if (!r.canceled && r.assets[0]?.uri) setPhotoUri(r.assets[0].uri);
   }, []);
 
-  /** Intenta subir la foto. Si falla por red, devuelve null (no rompe el flujo) y
-   *  el patchStop sigue normal — la entrega queda guardada sin foto en vez de perderse.
-   *  Devuelve { url, photoFailed }. */
-  const tryUploadPhoto = useCallback(async (): Promise<{ url: string | null; failed: boolean }> => {
+  /** Intenta subir la foto. Si falla por red, encola la foto local para que se
+   *  reintente cuando vuelva la señal (flushPhotoQueue) y devuelve null (no rompe
+   *  el flujo de la entrega). */
+  const tryUploadPhoto = useCallback(async (stopId: number): Promise<{ url: string | null; failed: boolean }> => {
     if (!photoUri) return { url: null, failed: false };
     try {
-      const url = await uploadProofPhoto(await compressPhoto(photoUri, liteMode));
+      const compressed = await compressPhoto(photoUri, liteMode);
+      const url = await uploadProofPhoto(compressed);
       return { url, failed: false };
     } catch {
-      // Sin red o error de upload: NO rompemos la entrega, solo avisamos
+      // Sin red: encolamos la foto LOCAL para reintentar en background
+      try { await enqueueOfflinePhoto(stopId, photoUri); } catch { /* */ }
       return { url: null, failed: true };
     }
   }, [photoUri, liteMode]);
@@ -116,7 +118,7 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
     setSaving(true);
     try {
       assertApiConfigured();
-      const photo = await tryUploadPhoto();
+      const photo = await tryUploadPhoto(stop.id);
       await patchStop(stop.id, {
         status: 'COMPLETED',
         actualDeparture: new Date().toISOString(),
@@ -127,7 +129,7 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
       if (photo.failed) {
         Alert.alert(
           'Sin red',
-          'La entrega se guardó. La foto no pudo subirse; intentá de nuevo cuando tengas señal desde el historial.'
+          'La entrega se guardó y la foto quedó pendiente — se va a subir sola cuando recuperes señal.'
         );
       }
       onSaved();
@@ -148,7 +150,7 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
     setSaving(true);
     try {
       assertApiConfigured();
-      const photo = await tryUploadPhoto();
+      const photo = await tryUploadPhoto(stop.id);
       await patchStop(stop.id, {
         status: 'UNDELIVERABLE',
         actualDeparture: new Date().toISOString(),
@@ -160,7 +162,7 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
       if (photo.failed) {
         Alert.alert(
           'Sin red',
-          'El estado se guardó. La foto no pudo subirse; intentá de nuevo cuando tengas señal.'
+          'El estado se guardó y la foto quedó pendiente — se va a subir sola cuando recuperes señal.'
         );
       }
       onSaved();

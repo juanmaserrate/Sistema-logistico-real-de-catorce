@@ -37,6 +37,7 @@ import {
   deactivateDevice,
   flushStopQueue,
   flushIncidentQueue,
+  flushPhotoQueue,
   getPendingStopCount,
   getPendingLocationCount,
   pingServer,
@@ -351,6 +352,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         try {
           await flushStopQueue();
           await flushIncidentQueue();
+          await flushPhotoQueue();
           const after = await getPendingStopCount();
           if (!cancelled) setPendingOffline(after);
         } catch { /* */ }
@@ -369,6 +371,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         loadRoutes({ silent: true });
         flushStopQueue().then((n) => { if (n > 0) getPendingStopCount().then(setPendingOffline); });
         flushIncidentQueue().catch(() => {});
+        flushPhotoQueue().catch(() => {});
       }
     });
     return () => sub.remove();
@@ -1013,7 +1016,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
               <Marker
                 key={`g-${s.stopId ?? s.sequence}`}
                 coordinate={{ latitude: s.lat, longitude: s.lng }}
-                title={`${s.sequence}. ${s.name}`}
+                title={`${s.sequence}. ${s.name ?? `Parada ${s.sequence}`}`}
               >
                 <View style={{ backgroundColor: s.sequence === 1 ? colors.success : colors.primary, width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}>
                   <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>{s.sequence}</Text>
