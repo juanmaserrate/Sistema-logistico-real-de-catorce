@@ -276,7 +276,17 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       setLoading(true);
     }
     try {
-      const list = await fetchRoutesToday(session.id);
+      const fullList = await fetchRoutesToday(session.id);
+      // BUG FIX: filtrar viajes ya finalizados.
+      // Cuando el operador da por finalizado el viaje en la web (Route.actualEndTime != null
+      // o Trip.status === 'COMPLETED'), la app NO debe seguir mostrando esas paradas.
+      // El historial completo (incluyendo viajes finalizados) sigue disponible en HistoryScreen.
+      const list = fullList.filter((r) => {
+        if (r.actualEndTime) return false;
+        const tripStatus = (r.trip?.status || '').toUpperCase();
+        if (tripStatus === 'COMPLETED' || tripStatus === 'RETURNED') return false;
+        return true;
+      });
       setRoutes(list);
       setSelId((prev) => {
         if (list.length === 0) return null;
@@ -1059,7 +1069,14 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           // Así el alerta de "Siguiente parada" SIEMPRE muestra la siguiente correcta.
           (async () => {
             try {
-              const freshList = await fetchRoutesToday(session.id);
+              const fullFresh = await fetchRoutesToday(session.id);
+              // Mismo filtro: descartar viajes finalizados (operador o auto-finish)
+              const freshList = fullFresh.filter((r) => {
+                if (r.actualEndTime) return false;
+                const ts = (r.trip?.status || '').toUpperCase();
+                if (ts === 'COMPLETED' || ts === 'RETURNED') return false;
+                return true;
+              });
               setRoutes(freshList);
               if (!completedStop) return;
               const freshRoute = freshList.find((r) => r.id === selId) ?? null;
