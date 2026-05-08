@@ -94,38 +94,41 @@ export async function fetchRoutesToday(driverId: string): Promise<Route[]> {
     if (!res.ok) throw new Error('No se pudieron cargar las rutas');
     const routes = (await res.json()) as Route[];
 
-    // Si el servidor devuelve vacío pero tenemos caché de hoy con rutas, preferimos caché
-    // (evita "desaparición" por respuesta vacía transitoria del backend).
-    if (routes.length === 0) {
-      try {
-        const raw = await AsyncStorage.getItem(ROUTES_CACHE_KEY);
-        if (raw) {
-          const cached = JSON.parse(raw);
-          if (
-            cached?.driverId === driverId &&
-            cached?.date === today &&
-            Array.isArray(cached.routes) &&
-            cached.routes.length > 0
-          ) {
-            return cached.routes as Route[];
-          }
-        }
-      } catch {}
-    }
+    // BUG FIX: antes este bloque preferia el cache si el server respondia [] (creyendo
+    // que era transitorio). Pero con el filtro nuevo del backend (excluye viajes
+    // finalizados), [] es la respuesta CORRECTA cuando el chofer no tiene viajes activos.
+    // Ahora SIEMPRE confiamos en la respuesta exitosa del server: la app refleja el
+    // estado real y limpia el cache si quedó stale.
 
+    // Filtrar tambien aca por si el server (version vieja) no filtra: redundancia segura
+    const filtered = routes.filter((r: any) => {
+      if (r?.actualEndTime) return false;
+      const ts = String(r?.trip?.status || '').toUpperCase();
+      if (ts === 'COMPLETED' || ts === 'RETURNED') return false;
+      return true;
+    });
+
+    // Cachear el resultado FILTRADO para futuros offline fallbacks
     AsyncStorage.setItem(
       ROUTES_CACHE_KEY,
-      JSON.stringify({ driverId, date: today, routes, ts: Date.now() })
+      JSON.stringify({ driverId, date: today, routes: filtered, ts: Date.now() })
     ).catch(() => {});
-    return routes;
+    return filtered;
   } catch (e) {
-    // Offline fallback: return cached routes if they belong to the same driver
+    // Offline fallback: return cached routes if they belong to the same driver.
+    // El cache YA esta filtrado (lo escribimos asi arriba), pero re-filtramos por seguridad.
     try {
       const raw = await AsyncStorage.getItem(ROUTES_CACHE_KEY);
       if (raw) {
         const cached = JSON.parse(raw);
         if (cached?.driverId === driverId && Array.isArray(cached.routes)) {
-          return cached.routes as Route[];
+          const cachedRoutes = cached.routes as Route[];
+          return cachedRoutes.filter((r: any) => {
+            if (r?.actualEndTime) return false;
+            const ts = String(r?.trip?.status || '').toUpperCase();
+            if (ts === 'COMPLETED' || ts === 'RETURNED') return false;
+            return true;
+          });
         }
       }
     } catch {}
