@@ -2342,15 +2342,32 @@
             }
         }
 
-        /** Recibe pings GPS en vivo vía socket y actualiza Torre de Control al instante */
-        function onLiveLocationUpdate(record) {
+        /** Recibe pings GPS en vivo vía socket y actualiza Torre de Control al instante.
+         *  Snappea el punto a la calle más cercana antes de mover el marker. */
+        async function onLiveLocationUpdate(record) {
             if (!record || !controlMap) return;
-            // Actualizar la posición del marker existente si tenemos ese trip
             const tripId = String(record.tripId || '');
             if (tripId && controlMarkersByTrip.has(tripId)) {
                 const marker = controlMarkersByTrip.get(tripId);
                 if (record.latitude != null && record.longitude != null) {
-                    marker.setPosition({ lat: Number(record.latitude), lng: Number(record.longitude) });
+                    let lat = Number(record.latitude);
+                    let lng = Number(record.longitude);
+                    // Intentar snap a calle (rápido por cache si el punto estuvo cerca antes)
+                    try {
+                        const r = await fetch(`${API_URL}/control/snap-to-roads`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ points: [{ lat, lng }] })
+                        });
+                        if (r.ok) {
+                            const data = await r.json();
+                            const sp = data?.snapped?.[0];
+                            if (sp && typeof sp.lat === 'number' && typeof sp.lng === 'number') {
+                                lat = sp.lat; lng = sp.lng;
+                            }
+                        }
+                    } catch (_) { /* fallback al original */ }
+                    marker.setPosition({ lat, lng });
                 }
             }
             // Refrescar datos completos (debounced para no saturar con ráfagas de pings)
@@ -4355,6 +4372,48 @@
 
         let _controlLoadInFlight = false;
         let _controlLoadQueued = false;
+
+        /** Snap a calles: pide al backend que proyecte cada lat/lng a la calle más cercana
+         *  (Google Roads API). Modifica las posiciones EN PLACE en `controlLiveData`. */
+        async function snapControlPositionsToRoads(items) {
+            if (!Array.isArray(items) || items.length === 0) return;
+            const indices = [];
+            const points = [];
+            for (let i = 0; i < items.length; i++) {
+                const loc = items[i]?.lastLocation;
+                if (!loc) continue;
+                const lat = Number(loc.latitude), lng = Number(loc.longitude);
+                if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+                indices.push(i);
+                points.push({ lat, lng });
+            }
+            if (points.length === 0) return;
+            try {
+                const r = await fetch(`${API_URL}/control/snap-to-roads`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ points })
+                });
+                if (!r.ok) return;
+                const data = await r.json();
+                const snapped = Array.isArray(data?.snapped) ? data.snapped : [];
+                for (let k = 0; k < indices.length; k++) {
+                    const sp = snapped[k];
+                    if (!sp || typeof sp.lat !== 'number' || typeof sp.lng !== 'number') continue;
+                    // Guardar la posición original para tooltips/diagnóstico y reemplazar en lastLocation
+                    const it = items[indices[k]];
+                    if (it.lastLocation) {
+                        it.lastLocation.rawLatitude = it.lastLocation.latitude;
+                        it.lastLocation.rawLongitude = it.lastLocation.longitude;
+                        it.lastLocation.latitude = sp.lat;
+                        it.lastLocation.longitude = sp.lng;
+                    }
+                }
+            } catch (e) {
+                console.warn('snap-to-roads:', e);
+            }
+        }
+
         async function loadControlLiveData() {
             if (_controlLoadInFlight) { _controlLoadQueued = true; return; }
             _controlLoadInFlight = true;
@@ -4362,6 +4421,8 @@
                 const res = await fetch(`${API_URL}/fleet/locations`);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 controlLiveData = await res.json();
+                // Snap-to-roads: que cada camión figure SIEMPRE en una calle, no en medio de una manzana.
+                await snapControlPositionsToRoads(controlLiveData);
                 populateControlTrailSelect();
                 renderControlFeed();
                 renderControlMap(controlLiveData);

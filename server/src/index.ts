@@ -1203,6 +1203,98 @@ app.get('/api/v1/routes/:id/live-summary', async (req, res) => {
     }
 });
 
+/** Cache en memoria para snap-to-roads (evita gastar Roads API por puntos repetidos).
+ *  Key: lat,lng redondeado a 5 decimales (~1m). TTL 10 min. */
+const _snapCache = new Map<string, { snapped: { lat: number; lng: number }; expires: number }>();
+const _SNAP_TTL = 10 * 60 * 1000;
+const _SNAP_KEY = (lat: number, lng: number) => `${lat.toFixed(5)},${lng.toFixed(5)}`;
+
+/** POST /control/snap-to-roads
+ *  Body: { points: [{lat, lng}, ...] }   (max 100 por request)
+ *  Devuelve: { snapped: [{lat, lng}, ...] } en mismo orden.
+ *  Usa Google Roads API para "snappear" cada punto a la calle más cercana.
+ *  Si Roads no encuentra calle para un punto, devuelve el original.
+ */
+app.post('/api/v1/control/snap-to-roads', async (req, res) => {
+    try {
+        const points: Array<{ lat: number; lng: number }> = Array.isArray(req.body?.points) ? req.body.points : [];
+        if (points.length === 0) return res.json({ snapped: [] });
+        if (points.length > 100) return res.status(400).json({ error: 'Max 100 puntos por request' });
+
+        const now = Date.now();
+        const result: Array<{ lat: number; lng: number }> = new Array(points.length);
+        const toSnap: number[] = [];
+
+        // 1) Resolver desde cache
+        for (let i = 0; i < points.length; i++) {
+            const p = points[i];
+            if (typeof p?.lat !== 'number' || typeof p?.lng !== 'number') {
+                result[i] = { lat: 0, lng: 0 };
+                continue;
+            }
+            const key = _SNAP_KEY(p.lat, p.lng);
+            const cached = _snapCache.get(key);
+            if (cached && cached.expires > now) {
+                result[i] = cached.snapped;
+            } else {
+                toSnap.push(i);
+            }
+        }
+
+        // 2) Llamar Roads API solo para los que no están cacheados
+        if (toSnap.length > 0) {
+            const apiKey = await resolveGoogleDirectionsApiKey();
+            if (!apiKey) {
+                // Sin API key: devolver original sin snap
+                for (const i of toSnap) result[i] = points[i];
+                return res.json({ snapped: result, snappedCount: 0, fallback: true });
+            }
+            const path = toSnap.map(i => `${points[i].lat},${points[i].lng}`).join('|');
+            const url = `https://roads.googleapis.com/v1/snapToRoads?path=${encodeURIComponent(path)}&interpolate=false&key=${apiKey}`;
+            try {
+                const r = await fetch(url);
+                const data: any = await r.json().catch(() => ({}));
+                const sps: any[] = Array.isArray(data?.snappedPoints) ? data.snappedPoints : [];
+                // Roads API puede devolver MENOS puntos que los enviados (cuando no encuentra calle).
+                // El campo originalIndex indica el índice del punto original.
+                for (const sp of sps) {
+                    const oi = sp?.originalIndex;
+                    if (typeof oi !== 'number') continue;
+                    const realIdx = toSnap[oi];
+                    if (realIdx == null) continue;
+                    const snapped = { lat: Number(sp.location?.latitude), lng: Number(sp.location?.longitude) };
+                    if (Number.isFinite(snapped.lat) && Number.isFinite(snapped.lng)) {
+                        result[realIdx] = snapped;
+                        _snapCache.set(_SNAP_KEY(points[realIdx].lat, points[realIdx].lng), {
+                            snapped,
+                            expires: now + _SNAP_TTL
+                        });
+                    }
+                }
+                // Para los que Roads no devolvió (sin calle cercana), usar original
+                for (const i of toSnap) {
+                    if (!result[i]) result[i] = points[i];
+                }
+            } catch (e) {
+                console.warn('snap-to-roads fetch:', e);
+                for (const i of toSnap) result[i] = points[i];
+            }
+        }
+
+        // Limpieza periódica del cache
+        if (_snapCache.size > 5000) {
+            for (const [k, v] of _snapCache) {
+                if (v.expires <= now) _snapCache.delete(k);
+            }
+        }
+
+        res.json({ snapped: result });
+    } catch (e: any) {
+        console.error('POST /control/snap-to-roads:', e);
+        res.status(500).json({ error: e?.message || 'Error en snap-to-roads' });
+    }
+});
+
 /** Lista las rutas/viajes ACTIVOS hoy con sus paradas y horarios reales.
  *  Usado por Torre de Control para mostrar todas las paradas a la vez sin filtrar. */
 app.get('/api/v1/control/active-routes', async (_req, res) => {
