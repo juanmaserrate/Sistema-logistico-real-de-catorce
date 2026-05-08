@@ -333,22 +333,33 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
 
   /** Monitor de conectividad: flush de colas offline al reconectarse. */
   useEffect(() => {
-    const update = (state: any) => {
-      const online = state?.isConnected ?? true;
-      setIsOnline(online);
-      if (online) {
-        // Flush ambas colas al volver a tener señal
-        flushStopQueue().then((n) => { if (n > 0) getPendingStopCount().then(setPendingOffline); });
-        flushIncidentQueue().catch(() => {});
-      }
-    };
-    // Expo SDK 54 usa @react-native-community/netinfo importado como NetInfo
-    // Como no está instalado explícitamente, lo dejamos como polling de AppState
-    const poll = setInterval(async () => {
+    // Detectamos conectividad haciendo ping al servidor cada 8s.
+    // Cuando pasamos de offline → online, vaciamos las colas pendientes (stops + incidencias).
+    // Esto reemplaza al NetInfo (no instalado) y a la función `update` huérfana que había antes.
+    let wasOnline = true;
+    let cancelled = false;
+    const tick = async () => {
       const n = await getPendingStopCount();
+      if (cancelled) return;
       setPendingOffline(n);
-    }, 5000);
-    return () => clearInterval(poll);
+      const latency = await pingServer(3500);
+      if (cancelled) return;
+      const online = latency != null;
+      setIsOnline(online);
+      if (online && !wasOnline) {
+        // Recién recuperó conectividad → sincronizar colas
+        try {
+          await flushStopQueue();
+          await flushIncidentQueue();
+          const after = await getPendingStopCount();
+          if (!cancelled) setPendingOffline(after);
+        } catch { /* */ }
+      }
+      wasOnline = online;
+    };
+    void tick();
+    const poll = setInterval(() => { void tick(); }, 8000);
+    return () => { cancelled = true; clearInterval(poll); };
   }, []);
 
   /** Al volver del escritorio / otra app: misma ruta que editó logística en la web. */
@@ -367,6 +378,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   useEffect(() => {
     if (!API_BASE) return;
     let socket: any;
+    let toastTimer: ReturnType<typeof setTimeout> | null = null;
     try {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { io } = require('socket.io-client');
@@ -383,7 +395,10 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       socket.on('route:updated', () => {
         loadRoutes({ silent: true });
         setRouteChangedToast(true);
-        setTimeout(() => setRouteChangedToast(false), 3500);
+        // Cancelar el timer anterior si todavía estaba pendiente — evita memory leak y warnings
+        // de "setState en componente desmontado" cuando el chofer cambia de pantalla.
+        if (toastTimer) clearTimeout(toastTimer);
+        toastTimer = setTimeout(() => setRouteChangedToast(false), 3500);
       });
       // Si cambia el viaje (status, horarios, chofer asignado, etc.), refrescar la ruta
       socket.on('trip:updated', () => {
@@ -401,6 +416,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       /* socket.io-client no disponible en este build */
     }
     return () => {
+      if (toastTimer) clearTimeout(toastTimer);
       try {
         if (socket) {
           socket.emit('leave:driver', session.id);
@@ -1010,11 +1026,13 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                 const la = st.client?.latitude;
                 const lo = st.client?.longitude;
                 if (la == null || lo == null) return null;
+                // Null-safe: si el cliente está roto/borrado, igual mostramos el pin con la secuencia
+                const clientName = st.client?.name ?? `Parada ${st.sequence}`;
                 return (
                   <Marker
                     key={st.id}
                     coordinate={{ latitude: la, longitude: lo }}
-                    title={`${st.sequence}. ${st.client.name}`}
+                    title={`${st.sequence}. ${clientName}`}
                   >
                     <View style={{ backgroundColor: st.sequence === 1 ? colors.success : colors.primary, width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}>
                       <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>{st.sequence}</Text>
@@ -1033,13 +1051,20 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         onSaved={() => {
           const completedStop = deliveryModalStop;
           setDeliveryModalStop(null);
-          loadRoutes({ silent: true }).then(() => {
-            // Buscar siguiente parada pendiente
-            if (!completedStop || !selected?.stops) return;
-            const nextPending = [...selected.stops]
-              .sort((a, b) => a.sequence - b.sequence)
-              .find((s) => s.status === 'PENDING' && s.id !== completedStop.id);
-            if (nextPending?.client) {
+          // BUG FIX: en lugar de leer `selected` (closure viejo) tras loadRoutes,
+          // pedimos directo al servidor las rutas frescas y operamos sobre esa data.
+          // Así el alerta de "Siguiente parada" SIEMPRE muestra la siguiente correcta.
+          (async () => {
+            try {
+              const freshList = await fetchRoutesToday(session.id);
+              setRoutes(freshList);
+              if (!completedStop) return;
+              const freshRoute = freshList.find((r) => r.id === selId) ?? null;
+              if (!freshRoute?.stops) return;
+              const nextPending = [...freshRoute.stops]
+                .sort((a, b) => a.sequence - b.sequence)
+                .find((s) => s.status === 'PENDING' && s.id !== completedStop.id);
+              if (!nextPending?.client) return;
               const name = nextPending.client.name || `Parada ${nextPending.sequence}`;
               Alert.alert(
                 'Siguiente parada',
@@ -1062,8 +1087,11 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                   },
                 ]
               );
+            } catch {
+              // Si la red falla, al menos refrescamos sin alerta
+              loadRoutes({ silent: true }).catch(() => {});
             }
-          });
+          })();
         }}
       />
 

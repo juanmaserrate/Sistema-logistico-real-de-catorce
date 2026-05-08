@@ -97,20 +97,39 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
     if (!r.canceled && r.assets[0]?.uri) setPhotoUri(r.assets[0].uri);
   }, []);
 
+  /** Intenta subir la foto. Si falla por red, devuelve null (no rompe el flujo) y
+   *  el patchStop sigue normal — la entrega queda guardada sin foto en vez de perderse.
+   *  Devuelve { url, photoFailed }. */
+  const tryUploadPhoto = useCallback(async (): Promise<{ url: string | null; failed: boolean }> => {
+    if (!photoUri) return { url: null, failed: false };
+    try {
+      const url = await uploadProofPhoto(await compressPhoto(photoUri, liteMode));
+      return { url, failed: false };
+    } catch {
+      // Sin red o error de upload: NO rompemos la entrega, solo avisamos
+      return { url: null, failed: true };
+    }
+  }, [photoUri, liteMode]);
+
   const submitDelivered = useCallback(async () => {
     if (!stop) return;
     setSaving(true);
     try {
       assertApiConfigured();
-      let proofUrl: string | null | undefined;
-      if (photoUri) proofUrl = await uploadProofPhoto(await compressPhoto(photoUri, liteMode));
+      const photo = await tryUploadPhoto();
       await patchStop(stop.id, {
         status: 'COMPLETED',
         actualDeparture: new Date().toISOString(),
         observations: observations.trim() || undefined,
-        proofPhotoUrl: proofUrl ?? undefined,
+        proofPhotoUrl: photo.url ?? undefined,
         deliveryWithoutIssues: deliveryOk ? true : null,
       });
+      if (photo.failed) {
+        Alert.alert(
+          'Sin red',
+          'La entrega se guardó. La foto no pudo subirse; intentá de nuevo cuando tengas señal desde el historial.'
+        );
+      }
       onSaved();
       onClose();
     } catch (e) {
@@ -118,7 +137,7 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
     } finally {
       setSaving(false);
     }
-  }, [deliveryOk, observations, onClose, onSaved, photoUri, stop, liteMode]);
+  }, [deliveryOk, observations, onClose, onSaved, stop, tryUploadPhoto]);
 
   const submitUndeliverable = useCallback(async () => {
     if (!stop) return;
@@ -129,16 +148,21 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
     setSaving(true);
     try {
       assertApiConfigured();
-      let proofUrl: string | null | undefined;
-      if (photoUri) proofUrl = await uploadProofPhoto(await compressPhoto(photoUri, liteMode));
+      const photo = await tryUploadPhoto();
       await patchStop(stop.id, {
         status: 'UNDELIVERABLE',
         actualDeparture: new Date().toISOString(),
         reasonCode: undeliverableReason,
         observations: observations.trim() || undefined,
-        proofPhotoUrl: proofUrl ?? undefined,
+        proofPhotoUrl: photo.url ?? undefined,
         deliveryWithoutIssues: null,
       });
+      if (photo.failed) {
+        Alert.alert(
+          'Sin red',
+          'El estado se guardó. La foto no pudo subirse; intentá de nuevo cuando tengas señal.'
+        );
+      }
       onSaved();
       onClose();
     } catch (e) {
@@ -146,7 +170,7 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
     } finally {
       setSaving(false);
     }
-  }, [observations, onClose, onSaved, photoUri, stop, undeliverableReason, liteMode]);
+  }, [observations, onClose, onSaved, stop, undeliverableReason, tryUploadPhoto]);
 
   if (!stop) return null;
   const title = stop.client?.name || `Parada ${stop.sequence}`;

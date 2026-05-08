@@ -281,9 +281,15 @@ export async function patchStop(
     flushStopQueue().catch(() => {});
     return data;
   } catch (e: any) {
-    // Network error → queue for later
-    const isNetworkError = e?.message?.includes('Network') || e?.message?.includes('fetch') || e?.message?.includes('network');
-    if (isNetworkError || !navigator.onLine) {
+    // Network error → queue for later.
+    // navigator.onLine NO existe en React Native: la única señal confiable de estar offline
+    // es que fetch lance (TypeError o AbortError). Cualquier error de red lo encolamos.
+    const msg = String(e?.message || '');
+    const isNetworkError =
+      e?.name === 'TypeError' ||
+      e?.name === 'AbortError' ||
+      /network|fetch|abort|timeout|failed to fetch/i.test(msg);
+    if (isNetworkError) {
       const queue = await readStopQueue();
       queue.push({ stopId, body, timestamp: new Date().toISOString() });
       await writeStopQueue(queue);
@@ -379,7 +385,10 @@ export async function patchRouteRecorrido(
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     const msg = (data as { error?: string }).error || '';
-    if (!msg.includes('ya fue') && !msg.includes('ya fue')) {
+    // Filtramos los avisos benignos del backend ("ya fue iniciado" / "ya fue terminado").
+    // Cualquier otro mensaje SI es un error real y se eleva al chofer.
+    const benign = /ya fue (iniciado|terminado|finalizado|comenzado)/i.test(msg);
+    if (!benign) {
       throw new Error(msg || 'Error al actualizar recorrido');
     }
   }

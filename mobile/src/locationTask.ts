@@ -149,8 +149,17 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
         ? Number(routeRaw)
         : null;
 
-    // Marca de tiempo del dispositivo (precision de milisegundos del GPS).
-    const capturedAt = new Date(loc.timestamp).toISOString();
+    // Marca de tiempo del dispositivo. Algunos Android viejos / ROMs raras devuelven
+    // valores fuera de rango (NaN, 0, o futuros lejanos) que rompen Date.toISOString().
+    // Validamos: si no es un timestamp razonable (1970-2200), usamos Date.now() del celu.
+    let capturedAt: string;
+    try {
+      const ts = Number(loc.timestamp);
+      const valid = Number.isFinite(ts) && ts > 0 && ts < 7258118400000; // < año 2200
+      capturedAt = new Date(valid ? ts : Date.now()).toISOString();
+    } catch {
+      capturedAt = new Date().toISOString();
+    }
 
     const payload: LocationPayload = {
       deviceId,
