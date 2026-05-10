@@ -3,6 +3,7 @@ import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import type { SessionUser } from './src/types';
 import { loadSession, clearSession } from './src/sessionStorage';
 import LoginScreen from './src/screens/LoginScreen';
@@ -15,6 +16,22 @@ import {
 } from './src/navigation/NavProviderGate';
 import type { RootStackParamList } from './src/navigation/types';
 import { registerPushToken } from './src/api';
+
+/** Migración one-time: cuando un chofer recibe este OTA update, limpiamos el
+ *  cache de rutas que pueda tener stale (ej. con viajes finalizados que se
+ *  quedaron atascados antes del fix de cache). Solo corre una vez por instalación
+ *  gracias al flag MIGRATION_KEY en AsyncStorage. */
+const MIGRATION_KEY = 'r14_cache_migration_v2';
+async function runOneTimeMigration() {
+  try {
+    const done = await AsyncStorage.getItem(MIGRATION_KEY);
+    if (done === '1') return;
+    // Limpiar cache de rutas (se regenera desde el server al primer fetch)
+    await AsyncStorage.removeItem('r14_routes_today_cache');
+    await AsyncStorage.setItem(MIGRATION_KEY, '1');
+    console.log('[migration] cache stale de rutas limpiado');
+  } catch { /* */ }
+}
 
 const EmbeddedNavigationScreenLazy = React.lazy(
   () => import('./src/screens/EmbeddedNavigationScreen')
@@ -40,11 +57,14 @@ export default function App() {
   const [session, setSession] = useState<SessionUser | null>(null);
 
   useEffect(() => {
-    loadSession().then(async (s) => {
+    (async () => {
+      // Limpiar cache stale de rutas en chofers que vienen de versiones anteriores
+      await runOneTimeMigration();
+      const s = await loadSession();
       setSession(s);
       setBoot(false);
       if (s) await tryRegisterPushToken(s.id);
-    });
+    })();
   }, []);
 
   if (boot) {
