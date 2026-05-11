@@ -1679,15 +1679,15 @@
                 </div>
             </div>
 
-            <!-- MODAL: Editor de flota -->
-            <div id="fleet-editor-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
+            <!-- MODAL: Editor de flota (z-[200] para estar SIEMPRE encima de la barra flotante z-40) -->
+            <div id="fleet-editor-modal" class="hidden fixed inset-0 z-[200] flex items-center justify-center p-4" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
                 <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
                     <div class="p-5 border-b border-[#F4F7FE] flex items-center justify-between bg-[#F8FAFF]">
-                        <div>
-                            <h4 id="fleet-editor-title" class="text-lg font-black text-[#1B2559]">Nueva flota</h4>
+                        <div class="flex-1 min-w-0 pr-4">
+                            <h4 id="fleet-editor-title" class="text-lg font-black text-[#1B2559] truncate">Nueva flota</h4>
                             <p class="text-[11px] text-[#A3AED0] font-medium">Los datos quedan guardados en este navegador.</p>
                         </div>
-                        <button onclick="fleetsCloseEditor()" class="text-[#A3AED0] hover:text-[#1B2559]"><i data-lucide="x" class="w-5 h-5"></i></button>
+                        <button onclick="fleetsCloseEditor()" class="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl bg-white hover:bg-rose-50 hover:text-rose-600 text-[#A3AED0] transition-colors text-2xl font-black leading-none" aria-label="Cerrar">×</button>
                     </div>
                     <div class="p-6 space-y-4 overflow-y-auto custom-scrollbar">
                         <div>
