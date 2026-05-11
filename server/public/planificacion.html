@@ -1715,6 +1715,14 @@
                                 </select>
                             </div>
                             <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Capacidad MÁX (kg)</label>
+                                <input id="fleet-max-kg" type="number" placeholder="2400" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Capacidad MÁX (pallets)</label>
+                                <input id="fleet-max-pallets" type="number" placeholder="3" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                            </div>
+                            <div>
                                 <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Cubiertas set ($)</label>
                                 <input id="fleet-tires-cost" type="number" placeholder="3000000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
                             </div>
@@ -1832,13 +1840,18 @@
                                 <button onclick="budgetOpenStopModal()" class="text-[10px] font-black text-indigo-600 hover:text-indigo-800">+ Parada</button>
                             </div>
                             <div class="mb-2">
-                                <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Origen</label>
+                                <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Origen del viaje</label>
+                                <div class="flex gap-1.5 mb-1.5">
+                                    <button type="button" id="bud-origin-mode-depot" onclick="budgetSetOriginMode('depot')" class="flex-1 px-2 py-1.5 rounded-md bg-indigo-600 text-white text-[10px] font-black uppercase tracking-widest">📦 Depósito propio</button>
+                                    <button type="button" id="bud-origin-mode-supplier" onclick="budgetSetOriginMode('supplier')" class="flex-1 px-2 py-1.5 rounded-md bg-[#F4F7FE] text-[#1B2559] text-[10px] font-black uppercase tracking-widest hover:bg-indigo-50">🏭 Retirar de proveedor</button>
+                                </div>
                                 <input id="bud-origin" type="text" value="Ombú 1269, Burzaco, Buenos Aires" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
                             </div>
-                            <span class="text-[9px] font-black text-[#A3AED0] uppercase tracking-widest">Paradas (<span id="bud-stops-count">0</span>)</span>
+                            <span class="text-[9px] font-black text-[#A3AED0] uppercase tracking-widest">Paradas (<span id="bud-stops-count">0</span>) — completá Kg/Pallets para cada una</span>
                             <div id="bud-stops-list" class="space-y-1.5 min-h-[50px] border border-dashed border-[#E0E5F2] rounded-lg p-2 mt-1">
                                 <div class="text-center text-xs text-[#A3AED0] italic py-3">Sin paradas. Apretá "+ Parada".</div>
                             </div>
+                            <div id="bud-capacity-warning" class="mt-2 hidden"></div>
                             <div class="mt-2 grid grid-cols-2 gap-2">
                                 <button onclick="budgetCalculateRoute()" class="px-3 py-2 rounded-lg bg-white border border-indigo-300 text-indigo-600 text-[10px] font-black uppercase tracking-widest hover:bg-indigo-50 flex items-center justify-center gap-1.5">
                                     <i data-lucide="map" class="w-3.5 h-3.5"></i> Km y tiempo
@@ -2026,6 +2039,27 @@
                                 </div>
                             </div>
 
+                            <!-- COMPARADOR: contra flete tercerizado -->
+                            <div class="mt-3 pt-3 border-t border-[#F4F7FE]">
+                                <details>
+                                    <summary class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest cursor-pointer hover:text-indigo-600">🔀 Comparar contra flete tercerizado (opcional)</summary>
+                                    <div class="grid grid-cols-2 gap-2 mt-2">
+                                        <div>
+                                            <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Precio flete tercerizado ($)</label>
+                                            <input id="bud-third-price" type="number" placeholder="200000" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                                        </div>
+                                        <div>
+                                            <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Con vuelta retorno ($)</label>
+                                            <input id="bud-third-roundtrip-price" type="number" placeholder="180000" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                                        </div>
+                                    </div>
+                                    <label class="flex items-center gap-2 mt-1.5 cursor-pointer">
+                                        <input id="bud-third-per-trip" type="checkbox" class="rounded border-[#E0E5F2] text-indigo-600">
+                                        <span class="text-[10px] font-bold text-[#2B3674]">El precio es POR viaje (no total). Multiplicar × cantidad de viajes.</span>
+                                    </label>
+                                </details>
+                            </div>
+
                             <div class="mt-3 pt-3 border-t border-[#F4F7FE]">
                                 <div class="flex items-center justify-between mb-2">
                                     <label class="text-[9px] font-black text-[#A3AED0] uppercase tracking-widest">Impuestos</label>
@@ -2084,9 +2118,17 @@
                                     <div class="text-[9px] font-black text-[#A3AED0] uppercase">Precio / viaje</div>
                                     <div id="bud-fb-final" class="text-base font-black text-indigo-700">—</div>
                                 </div>
+                                <div id="bud-fb-trips-needed" class="hidden bg-amber-50 rounded-lg px-2 py-1 border border-amber-300">
+                                    <div class="text-[9px] font-black text-amber-700 uppercase">⚠ Carga</div>
+                                    <div class="text-sm font-black text-amber-700"><span id="bud-fb-trips-needed-num">1</span> viajes</div>
+                                </div>
                                 <div class="bg-emerald-50 rounded-lg px-3 py-1 border border-emerald-200">
-                                    <div class="text-[9px] font-black text-emerald-700 uppercase"><span id="bud-fb-trips-count">1</span> viaje(s) en <span id="bud-fb-period-days">30</span>d</div>
+                                    <div class="text-[9px] font-black text-emerald-700 uppercase"><span id="bud-fb-trips-count">1</span>× en <span id="bud-fb-period-days">30</span>d</div>
                                     <div id="bud-fb-final-periodo" class="text-lg font-black text-emerald-700">—</div>
+                                </div>
+                                <div id="bud-fb-reco-box" class="hidden bg-indigo-50 rounded-lg px-3 py-1 border border-indigo-200">
+                                    <div id="bud-fb-reco-label" class="text-[9px] font-black text-indigo-700 uppercase">— RECOMENDADO</div>
+                                    <div id="bud-fb-reco-value" class="text-sm font-black text-indigo-700">—</div>
                                 </div>
                             </div>
                             <button onclick="budgetToggleFloatingDetail()" id="bud-fb-toggle" class="px-3 py-3 rounded-xl bg-[#F4F7FE] text-[#1B2559] text-xs font-bold hover:bg-indigo-50 whitespace-nowrap flex items-center gap-1.5">
@@ -6123,8 +6165,12 @@
             const fb = document.getElementById('bud-floating-bar');
             if (fb) fb.style.display = 'block';
             if (typeof fleetsPopulateSelectInBudget === 'function') fleetsPopulateSelectInBudget();
+            // Modo origen por defecto: depósito propio
+            if (!budgetState.originMode) budgetSetOriginMode('depot');
             // Mostrar preview de cantidad de viajes según frecuencia y período
             if (typeof budgetUpdatePeriodPreview === 'function') budgetUpdatePeriodPreview();
+            // Refrescar warning de capacidad
+            if (typeof budgetUpdateCapacityWarning === 'function') budgetUpdateCapacityWarning();
             lucide.createIcons();
             // Cargar Google Maps en segundo plano para que el buscador de paradas funcione
             if (!window.google?.maps && typeof loadGoogleMapsScript === 'function' && typeof getGoogleMapsKey === 'function') {
@@ -6163,6 +6209,31 @@
             set('bud-fb-trips-count', calc?.tripsInPeriod ?? 1);
             set('bud-fb-period-days', calc?.periodDays ?? 30);
             set('bud-fb-final-periodo', fmt(calc?.precioFinalPeriodo ?? calc?.precioFinal));
+
+            // Recomendación make-or-buy (si está configurado el comparador)
+            const recoBox = document.getElementById('bud-fb-reco-box');
+            if (recoBox && calc?.opcionRecomendada) {
+                const r = calc.opcionRecomendada;
+                const isPropio = r.tipo === 'propio';
+                recoBox.classList.remove('hidden');
+                recoBox.className = `bg-${isPropio ? 'indigo' : 'rose'}-50 rounded-lg px-3 py-1 border border-${isPropio ? 'indigo' : 'rose'}-200`;
+                set('bud-fb-reco-label', '✓ ' + (isPropio ? 'PROPIO' : (r.label || 'TERCERIZADO')));
+                set('bud-fb-reco-value', fmt(r.costo));
+            } else if (recoBox) {
+                recoBox.classList.add('hidden');
+            }
+
+            // Indicador de viajes necesarios por capacidad
+            const tripsBox = document.getElementById('bud-fb-trips-needed');
+            if (tripsBox) {
+                const n = calc?.tripsNeeded || 1;
+                if (n > 1) {
+                    tripsBox.classList.remove('hidden');
+                    set('bud-fb-trips-needed-num', n);
+                } else {
+                    tripsBox.classList.add('hidden');
+                }
+            }
         }
 
         /** Helpers de período/frecuencia para mostrar el preview en vivo */
@@ -6211,6 +6282,36 @@
             if (el) { el.value = days; budgetUpdatePeriodPreview(); }
         }
 
+        /** Origen del viaje: 'depot' (depósito propio) o 'supplier' (retirar del proveedor).
+         *  Cambia el botón activo y precarga la dirección por defecto. */
+        const BUD_DEPOT_ADDRESS = 'Ombú 1269, Burzaco, Buenos Aires';
+        function budgetSetOriginMode(mode) {
+            budgetState.originMode = mode;
+            const btnD = document.getElementById('bud-origin-mode-depot');
+            const btnS = document.getElementById('bud-origin-mode-supplier');
+            const input = document.getElementById('bud-origin');
+            const activeCls = ['bg-indigo-600', 'text-white'];
+            const inactiveCls = ['bg-[#F4F7FE]', 'text-[#1B2559]', 'hover:bg-indigo-50'];
+            const setActive = (el, on) => {
+                if (!el) return;
+                el.classList.remove(...(on ? inactiveCls : activeCls));
+                el.classList.add(...(on ? activeCls : inactiveCls));
+            };
+            setActive(btnD, mode === 'depot');
+            setActive(btnS, mode === 'supplier');
+            // Setear placeholder/default según el modo
+            if (input) {
+                if (mode === 'depot') {
+                    if (!input.value || input.dataset.lastMode === 'supplier') input.value = BUD_DEPOT_ADDRESS;
+                    input.placeholder = 'Depósito propio (ej: Ombú 1269, Burzaco)';
+                } else {
+                    if (input.value === BUD_DEPOT_ADDRESS) input.value = '';
+                    input.placeholder = 'Dirección del proveedor donde retiramos la carga';
+                }
+                input.dataset.lastMode = mode;
+            }
+        }
+
         // ════════════════════════════════════════════════════════
         // MODULO FLOTAS — datos reutilizables de cada vehículo
         // ════════════════════════════════════════════════════════
@@ -6241,12 +6342,13 @@
             if (empty) empty.classList.add('hidden');
             box.innerHTML = list.map(f => {
                 const refrigerated = f.refrigerated ? '<span class="ml-2 px-2 py-0.5 rounded-md bg-sky-100 text-sky-700 text-[9px] font-black">REFRIGERADO</span>' : '';
+                const capacityChip = (f.maxKg || f.maxPallets) ? `<span class="ml-2 px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-700 text-[9px] font-black">${f.maxPallets || '—'} PALLETS / ${f.maxKg || '—'} KG</span>` : '';
                 return `
                 <div class="card-dark p-4 hover:shadow-lg transition-shadow">
                     <div class="flex items-start justify-between mb-3">
                         <div class="flex-1 min-w-0">
                             <h5 class="text-sm font-black text-[#1B2559] truncate">${(f.name || 'Sin nombre').replace(/</g, '&lt;')}</h5>
-                            <p class="text-[10px] text-[#A3AED0] mt-0.5">${refrigerated}${f.consumption ? `${f.consumption} L/100km` : '—'}</p>
+                            <p class="text-[10px] text-[#A3AED0] mt-0.5">${refrigerated}${capacityChip}${f.consumption ? ` · ${f.consumption} L/100km` : ''}</p>
                         </div>
                         <div class="flex gap-1">
                             <button onclick="fleetsOpenEditor('${f.id}')" class="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100" title="Editar"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
@@ -6273,6 +6375,7 @@
             if (!modal) return;
             // Limpiar / cargar
             const fields = ['fleet-name','fleet-truck-value','fleet-life-km','fleet-consumption',
+                'fleet-max-kg','fleet-max-pallets',
                 'fleet-tires-cost','fleet-tires-km','fleet-maint-year','fleet-km-year',
                 'fleet-fixed-month','fleet-trips-month','fleet-notes'];
             fields.forEach(f => { const el = document.getElementById(f); if (el) el.value = ''; });
@@ -6287,6 +6390,8 @@
                     document.getElementById('fleet-life-km').value = fleet.lifeKm || '';
                     document.getElementById('fleet-consumption').value = fleet.consumption || '';
                     document.getElementById('fleet-refrigerated').value = fleet.refrigerated ? '1' : '0';
+                    document.getElementById('fleet-max-kg').value = fleet.maxKg || '';
+                    document.getElementById('fleet-max-pallets').value = fleet.maxPallets || '';
                     document.getElementById('fleet-tires-cost').value = fleet.tiresCost || '';
                     document.getElementById('fleet-tires-km').value = fleet.tiresKm || '';
                     document.getElementById('fleet-maint-year').value = fleet.maintYear || '';
@@ -6319,6 +6424,8 @@
                 lifeKm: Number(document.getElementById('fleet-life-km').value) || 0,
                 consumption: Number(document.getElementById('fleet-consumption').value) || 0,
                 refrigerated: document.getElementById('fleet-refrigerated').value === '1',
+                maxKg: Number(document.getElementById('fleet-max-kg').value) || 0,
+                maxPallets: Number(document.getElementById('fleet-max-pallets').value) || 0,
                 tiresCost: Number(document.getElementById('fleet-tires-cost').value) || 0,
                 tiresKm: Number(document.getElementById('fleet-tires-km').value) || 0,
                 maintYear: Number(document.getElementById('fleet-maint-year').value) || 0,
@@ -6383,6 +6490,8 @@
             set('bud-trips-month', fleet.tripsMonth);
             if (label) label.textContent = '✓ ' + (fleet.name || '');
             addNotification('info', 'Flota cargada', fleet.name + ' — campos del camión actualizados.');
+            // Re-evaluar capacidad (puede haber cambiado el N de viajes necesarios)
+            if (typeof budgetUpdateCapacityWarning === 'function') budgetUpdateCapacityWarning();
         }
 
         function budgetLoadDefaults() {
@@ -6572,20 +6681,38 @@
             if (counter) counter.textContent = budgetState.stops.length;
             if (!list) return;
             if (budgetState.stops.length === 0) {
-                list.innerHTML = '<div class="text-center text-xs text-[#A3AED0] italic py-4">Sin paradas. Clic en "+ Agregar parada".</div>';
+                list.innerHTML = '<div class="text-center text-xs text-[#A3AED0] italic py-4">Sin paradas. Clic en "+ Parada".</div>';
+                budgetUpdateCapacityWarning();
                 return;
             }
             list.innerHTML = budgetState.stops.map((s, i) => `
-                <div class="flex items-center gap-3 bg-white border border-[#E0E5F2] rounded-xl p-3">
-                    <i data-lucide="grip-vertical" class="w-4 h-4 text-[#A3AED0] cursor-grab"></i>
-                    <span class="w-7 h-7 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-xs font-black">${i+1}</span>
-                    <div class="flex-1 min-w-0">
-                        <div class="text-sm font-bold text-[#1B2559] truncate">${escapeHtml(s.name)}</div>
-                        <div class="text-[11px] text-[#A3AED0] truncate">${escapeHtml(s.address || '')}</div>
+                <div class="bg-white border border-[#E0E5F2] rounded-xl p-2.5">
+                    <div class="flex items-center gap-2 mb-1.5">
+                        <i data-lucide="grip-vertical" class="w-3.5 h-3.5 text-[#A3AED0] cursor-grab shrink-0"></i>
+                        <span class="w-6 h-6 rounded-full bg-indigo-100 text-indigo-700 flex items-center justify-center text-[10px] font-black shrink-0">${i+1}</span>
+                        <div class="flex-1 min-w-0">
+                            <div class="text-xs font-bold text-[#1B2559] truncate">${escapeHtml(s.name)}</div>
+                            <div class="text-[10px] text-[#A3AED0] truncate">${escapeHtml(s.address || '')}</div>
+                        </div>
+                        <button onclick="budgetRemoveStop(${i})" class="text-rose-500 hover:text-rose-700 px-1.5 shrink-0">✕</button>
                     </div>
-                    <button onclick="budgetRemoveStop(${i})" class="text-rose-500 hover:text-rose-700 px-2">✕</button>
+                    <div class="grid grid-cols-3 gap-1.5 pl-8">
+                        <div>
+                            <label class="text-[8px] font-black text-[#A3AED0] uppercase tracking-widest">Pouch / Unid.</label>
+                            <input type="number" value="${s.pouch || ''}" placeholder="0" onchange="budgetUpdateStopCargo(${i}, 'pouch', this.value)" class="w-full bg-[#F4F7FE] border-0 rounded-md p-1.5 text-xs font-bold text-[#1B2559]">
+                        </div>
+                        <div>
+                            <label class="text-[8px] font-black text-[#A3AED0] uppercase tracking-widest">Kg</label>
+                            <input type="number" value="${s.kg || ''}" placeholder="0" onchange="budgetUpdateStopCargo(${i}, 'kg', this.value)" class="w-full bg-[#F4F7FE] border-0 rounded-md p-1.5 text-xs font-bold text-[#1B2559]">
+                        </div>
+                        <div>
+                            <label class="text-[8px] font-black text-[#A3AED0] uppercase tracking-widest">Pallets</label>
+                            <input type="number" step="0.5" value="${s.pallets || ''}" placeholder="0" onchange="budgetUpdateStopCargo(${i}, 'pallets', this.value)" class="w-full bg-[#F4F7FE] border-0 rounded-md p-1.5 text-xs font-bold text-[#1B2559]">
+                        </div>
+                    </div>
                 </div>
             `).join('');
+            budgetUpdateCapacityWarning();
             // Sortable drag-and-drop
             if (window.Sortable) {
                 new Sortable(list, {
@@ -6607,6 +6734,82 @@
             budgetState.routeMinutes = 0;
             document.getElementById('bud-route-metrics')?.classList.add('hidden');
             budgetRenderStopsList();
+        }
+
+        /** Actualiza la carga (pouch/kg/pallets) de una parada específica.
+         *  Auto-deriva los otros campos si conoce el peso por pouch (400g default). */
+        function budgetUpdateStopCargo(idx, field, value) {
+            const s = budgetState.stops[idx];
+            if (!s) return;
+            const n = Number(value) || 0;
+            s[field] = n;
+            // Auto-conversiones (asumiendo 400g por pouch y 2016 pouch por pallet por defecto)
+            const pouchToKg = (p) => p * 0.4;
+            const pouchToPallets = (p) => p / 2016;
+            const kgToPouch = (kg) => Math.round(kg / 0.4);
+            const kgToPallets = (kg) => kg / 806.4; // 2016 pouch × 0.4 kg
+            if (field === 'pouch' && n > 0) {
+                if (!s.kg) s.kg = Math.round(pouchToKg(n));
+                if (!s.pallets) s.pallets = Math.round(pouchToPallets(n) * 100) / 100;
+            } else if (field === 'kg' && n > 0) {
+                if (!s.pouch) s.pouch = kgToPouch(n);
+                if (!s.pallets) s.pallets = Math.round(kgToPallets(n) * 100) / 100;
+            }
+            budgetUpdateCapacityWarning();
+        }
+
+        /** Calcula totales de carga de TODAS las paradas y muestra
+         *  cuántos viajes hacen falta según capacidad de la flota cargada. */
+        function budgetUpdateCapacityWarning() {
+            const totals = budgetState.stops.reduce((acc, s) => ({
+                pouch: acc.pouch + (Number(s.pouch) || 0),
+                kg: acc.kg + (Number(s.kg) || 0),
+                pallets: acc.pallets + (Number(s.pallets) || 0)
+            }), { pouch: 0, kg: 0, pallets: 0 });
+
+            const fleetId = document.getElementById('bud-fleet-select')?.value;
+            const fleet = fleetId ? fleetsGetAll().find(f => f.id === fleetId) : null;
+            const maxKg = fleet?.maxKg || Number(document.getElementById('bud-max-kg-manual')?.value) || 0;
+            const maxPallets = fleet?.maxPallets || Number(document.getElementById('bud-max-pallets-manual')?.value) || 0;
+
+            let viajes = 1;
+            let limitedBy = '';
+            if (maxKg > 0 && totals.kg > 0) {
+                const v1 = Math.ceil(totals.kg / maxKg);
+                if (v1 > viajes) { viajes = v1; limitedBy = 'kg'; }
+            }
+            if (maxPallets > 0 && totals.pallets > 0) {
+                const v2 = Math.ceil(totals.pallets / maxPallets);
+                if (v2 > viajes) { viajes = v2; limitedBy = 'pallets'; }
+            }
+
+            const out = document.getElementById('bud-capacity-warning');
+            if (!out) return;
+            if (totals.kg === 0 && totals.pallets === 0) {
+                out.innerHTML = '';
+                out.classList.add('hidden');
+                budgetState.tripsNeeded = 1;
+                budgetState.cargoTotals = totals;
+                return;
+            }
+            budgetState.tripsNeeded = viajes;
+            budgetState.cargoTotals = totals;
+            const ok = viajes === 1;
+            out.classList.remove('hidden');
+            out.innerHTML = `
+                <div class="rounded-lg p-3 ${ok ? 'bg-emerald-50 border border-emerald-200' : 'bg-amber-50 border border-amber-200'}">
+                    <div class="flex items-center justify-between gap-2 text-xs">
+                        <div class="font-bold ${ok ? 'text-emerald-700' : 'text-amber-700'}">
+                            ${ok ? '✓ Cabe en 1 viaje' : `⚠️ Necesita ${viajes} viajes (excede en ${limitedBy})`}
+                        </div>
+                        <div class="text-[10px] text-[#A3AED0] flex gap-3">
+                            <span>Total: <b>${totals.pouch.toLocaleString('es-AR')} pouch</b></span>
+                            <span><b>${totals.kg.toLocaleString('es-AR')} kg</b></span>
+                            <span><b>${totals.pallets.toFixed(1)} pallets</b></span>
+                        </div>
+                    </div>
+                    ${!ok && fleet ? `<div class="text-[10px] text-[#A3AED0] mt-1">Capacidad flota: ${fleet.maxPallets || '—'} pallets / ${(fleet.maxKg || 0).toLocaleString('es-AR')} kg → costo se multiplica por ${viajes}</div>` : ''}
+                </div>`;
         }
 
         function budgetOpenStopModal() {
@@ -7065,20 +7268,61 @@
                 tripsInPeriod = Math.max(1, Math.round(periodDays * freqInfo.tripsPerDay));
             }
 
-            // 6. GANANCIA + IMPUESTOS (sobre 1 viaje)
+            // 6. CAPACIDAD: cuántos viajes hacen falta según la carga total
+            // (suma de kg/pallets de todas las paradas dividido por capacidad del vehículo)
+            const tripsNeeded = Math.max(1, Number(budgetState.tripsNeeded) || 1);
+            const cargoTotals = budgetState.cargoTotals || { pouch: 0, kg: 0, pallets: 0 };
+
+            // El costo POR-RUN del vehículo se multiplica por viajes necesarios
+            // (recursos físicos: combustible, depreciación, cubiertas, mantenimiento, etc.).
+            // El personal NO se multiplica si caben en la jornada: pero como dato simple,
+            // si necesita N viajes, el chofer hace N viajes (le pagamos N veces el viaje).
+            const costoTotalPorRun = costoTotal;
+            const costoTotalConCapacidad = costoTotal * tripsNeeded;
+
+            // 7. GANANCIA + IMPUESTOS (sobre el costo TOTAL con capacidad)
             const marginPct = Number(document.getElementById('bud-margin-pct').value) || 0;
-            const margin = costoTotal * (marginPct / 100);
-            const subtotal = costoTotal + margin;
+            const margin = costoTotalConCapacidad * (marginPct / 100);
+            const subtotal = costoTotalConCapacidad + margin;
             const taxes = budgetGetTaxes().map(t => ({ ...t, monto: subtotal * (t.pct/100) }));
             const taxesTotal = taxes.reduce((a, t) => a + t.monto, 0);
             const precioFinal = subtotal + taxesTotal;
 
-            // 7. TOTALES DEL PERÍODO (precio por viaje × cantidad de viajes)
-            const costoTotalPeriodo = costoTotal * tripsInPeriod;
+            // 8. TOTALES DEL PERÍODO (precio por viaje × cantidad de viajes recurrentes en el período)
+            const costoTotalPeriodo = costoTotalConCapacidad * tripsInPeriod;
             const marginPeriodo = margin * tripsInPeriod;
             const subtotalPeriodo = subtotal * tripsInPeriod;
             const taxesTotalPeriodo = taxesTotal * tripsInPeriod;
             const precioFinalPeriodo = precioFinal * tripsInPeriod;
+
+            // 9. COMPARADOR PROPIO vs TERCERIZADO
+            const thirdPrice = Number(document.getElementById('bud-third-price')?.value) || 0;
+            const thirdRoundtripPrice = Number(document.getElementById('bud-third-roundtrip-price')?.value) || 0;
+            const thirdPerTrip = document.getElementById('bud-third-per-trip')?.checked || false;
+            const tercerizado = {
+                priceBase: thirdPrice,
+                priceRoundtrip: thirdRoundtripPrice,
+                perTrip: thirdPerTrip,
+                // Costo tercerizado para ESTA misma operación (sin recurrencia):
+                // si perTrip=true → priceBase × tripsNeeded; si no, priceBase
+                costoBase: thirdPerTrip ? thirdPrice * tripsNeeded : thirdPrice,
+                costoConVuelta: thirdRoundtripPrice > 0
+                    ? (thirdPerTrip ? thirdRoundtripPrice * tripsNeeded : thirdRoundtripPrice)
+                    : 0,
+                // Por período (multiplicado por recurrencia):
+                costoBasePeriodo: (thirdPerTrip ? thirdPrice * tripsNeeded : thirdPrice) * tripsInPeriod,
+                costoConVueltaPeriodo: thirdRoundtripPrice > 0
+                    ? (thirdPerTrip ? thirdRoundtripPrice * tripsNeeded : thirdRoundtripPrice) * tripsInPeriod
+                    : 0
+            };
+            // Ganador: el más barato entre propio (costoTotalConCapacidad) y la mejor opción tercerizada
+            const opciones = [
+                { tipo: 'propio', label: 'Flota propia', costo: costoTotalConCapacidad, precio: precioFinal }
+            ];
+            if (tercerizado.costoBase > 0) opciones.push({ tipo: 'tercerizado', label: 'Tercerizado', costo: tercerizado.costoBase, precio: tercerizado.costoBase });
+            if (tercerizado.costoConVuelta > 0) opciones.push({ tipo: 'tercerizado_vuelta', label: 'Tercerizado con vuelta', costo: tercerizado.costoConVuelta, precio: tercerizado.costoConVuelta });
+            opciones.sort((a, b) => a.costo - b.costo);
+            const opcionRecomendada = opciones[0];
 
             // Totales ítems
             const items = budgetState.items.map(it => ({
@@ -7108,6 +7352,13 @@
                 // Período del contrato
                 periodDays, tripsInPeriod,
                 costoTotalPeriodo, marginPeriodo, subtotalPeriodo, taxesTotalPeriodo, precioFinalPeriodo,
+                // Capacidad y viajes necesarios (paradas grandes que no caben en 1 viaje)
+                tripsNeeded, cargoTotals,
+                costoTotalPorRun, costoTotalConCapacidad,
+                // Origen del viaje
+                originMode: budgetState.originMode || 'depot',
+                // Comparador make-or-buy
+                tercerizado, opcionRecomendada, opciones,
                 km, hours, refrigerated,
                 socialPct, monthHours, consumption, fuelPrice,
                 truckValue, truckLifeKm, tiresCost, tiresKm, maintYear, kmYear, fixedMonth, tripsMonth,
@@ -7120,13 +7371,16 @@
             budgetRenderResult();
             // Actualizar barra flotante con los valores principales (por viaje + total del período)
             budgetUpdateFloatingSummary({
-                costoTotal,
+                costoTotal: costoTotalConCapacidad,
                 ganancia: margin,
                 impuestosTotal: taxesTotal,
                 precioFinal,
                 tripsInPeriod,
+                tripsNeeded,
                 periodDays,
-                precioFinalPeriodo
+                precioFinalPeriodo,
+                opcionRecomendada,
+                tercerizadoBest: opciones.find(o => o.tipo !== 'propio')
             });
             budgetSaveDefaults();
         }
@@ -7233,11 +7487,47 @@
                 ${costSection}
                 ${marginSection}
                 ${taxSection}
+                ${(c.tripsNeeded && c.tripsNeeded > 1) ? `
+                <div class="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                    <div class="text-[11px] font-black text-amber-700 mb-1">⚠️ La carga excede la capacidad del vehículo</div>
+                    <div class="text-[10px] text-amber-700">
+                        Total: <b>${(c.cargoTotals?.kg || 0).toLocaleString('es-AR')} kg</b> ·
+                        <b>${(c.cargoTotals?.pallets || 0).toFixed(1)} pallets</b> →
+                        Necesita <b>${c.tripsNeeded} viajes</b> con este vehículo.
+                        Costo por viaje: ${money(c.costoTotalPorRun)} → Total: ${money(c.costoTotalConCapacidad)}
+                    </div>
+                </div>` : ''}
                 <div class="mt-3 p-4 rounded-xl bg-indigo-600 text-white">
-                    <div class="text-[10px] uppercase font-black opacity-80">Precio al cliente por viaje</div>
+                    <div class="text-[10px] uppercase font-black opacity-80">Precio FLOTA PROPIA (${c.tripsNeeded || 1} viaje${(c.tripsNeeded || 1) !== 1 ? 's' : ''})</div>
                     <div class="text-2xl font-black">${money(c.precioFinal)}</div>
-                    <div class="text-[10px] opacity-80 mt-1">Costo ${money(c.costoTotal)} · Ganancia ${money(c.margin)} · Impuestos ${money(c.taxesTotal)}</div>
+                    <div class="text-[10px] opacity-80 mt-1">Costo ${money(c.costoTotalConCapacidad || c.costoTotal)} · Ganancia ${money(c.margin)} · Impuestos ${money(c.taxesTotal)}</div>
                 </div>
+                ${(c.tercerizado && (c.tercerizado.costoBase > 0 || c.tercerizado.costoConVuelta > 0)) ? `
+                <div class="mt-2 p-4 rounded-xl bg-white border-2 border-rose-200">
+                    <div class="text-[10px] uppercase font-black text-rose-600 mb-2">🔀 Comparador: propio vs tercerizado</div>
+                    <table class="w-full text-xs">
+                        <thead class="text-[#A3AED0]">
+                            <tr><th class="text-left">Opción</th><th class="text-right">Costo</th><th class="text-right">vs propio</th></tr>
+                        </thead>
+                        <tbody>
+                            ${(c.opciones || []).map((o) => {
+                                const isBest = o.tipo === c.opcionRecomendada?.tipo;
+                                const propio = c.costoTotalConCapacidad || c.costoTotal;
+                                const diff = o.costo - propio;
+                                const diffStr = diff === 0 ? '—' : (diff > 0 ? `+${money(diff)}` : `-${money(-diff)}`);
+                                const diffCls = diff < 0 ? 'text-emerald-600' : (diff > 0 ? 'text-rose-600' : 'text-[#A3AED0]');
+                                return `<tr class="${isBest ? 'bg-emerald-50' : ''}">
+                                    <td class="py-1.5 font-bold text-[#1B2559]">${isBest ? '⭐ ' : ''}${o.label}</td>
+                                    <td class="py-1.5 text-right font-black ${isBest ? 'text-emerald-700' : 'text-[#1B2559]'}">${money(o.costo)}</td>
+                                    <td class="py-1.5 text-right font-bold ${diffCls}">${diffStr}</td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                    </table>
+                    <div class="mt-2 text-[11px] font-black ${c.opcionRecomendada?.tipo === 'propio' ? 'text-indigo-600' : 'text-emerald-600'}">
+                        ✓ Recomendado: <b>${c.opcionRecomendada?.label || 'Flota propia'}</b>
+                    </div>
+                </div>` : ''}
                 ${(c.tripsInPeriod && c.tripsInPeriod > 1) ? `
                 <div class="mt-2 p-4 rounded-xl bg-emerald-600 text-white">
                     <div class="flex items-center justify-between gap-3">
