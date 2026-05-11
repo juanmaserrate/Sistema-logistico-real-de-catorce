@@ -1828,6 +1828,19 @@
                         </div>
                     </details>
 
+                    <!-- PANEL DE DESPACHOS (multi-viaje opcional) -->
+                    <div id="bud-dispatches-panel" class="card-dark p-4 bg-gradient-to-r from-violet-50 to-indigo-50 border border-indigo-100">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center"><i data-lucide="package" class="w-5 h-5"></i></div>
+                            <div class="flex-1 min-w-0">
+                                <p class="text-xs font-black text-[#1B2559] uppercase tracking-widest">Despachos del proyecto</p>
+                                <p class="text-[10px] text-[#A3AED0]" id="bud-dispatches-status">Modo simple — usá el formulario de abajo. Apretá "+ Nuevo despacho" si necesitás combinar varios viajes.</p>
+                            </div>
+                            <button onclick="budgetAddDispatch()" class="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-[11px] font-black uppercase tracking-widest hover:bg-indigo-700 whitespace-nowrap">+ Nuevo despacho</button>
+                        </div>
+                        <div id="bud-dispatches-list" class="mt-3 space-y-2 hidden"></div>
+                    </div>
+
                     <!-- LAYOUT 2 COLUMNAS: izquierda paradas+items, derecha personal+camion -->
                     <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
                     <div class="space-y-4"><!-- IZQUIERDA -->
@@ -2098,7 +2111,7 @@
                     <div class="max-w-7xl mx-auto pointer-events-auto bg-white rounded-2xl shadow-2xl shadow-indigo-900/30 border-2 border-indigo-200 overflow-hidden">
                         <!-- Modo COLAPSADO: 1 fila con resumen + botones -->
                         <div id="bud-floating-collapsed" class="flex items-center gap-3 p-3">
-                            <button id="bud-btn-calc" onclick="budgetCalculate()" class="px-5 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-700 shadow-md flex items-center gap-2 whitespace-nowrap">
+                            <button id="bud-btn-calc" onclick="budgetCalculateAll()" class="px-5 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-700 shadow-md flex items-center gap-2 whitespace-nowrap">
                                 <i data-lucide="calculator" class="w-4 h-4"></i> Calcular
                             </button>
                             <div id="bud-floating-summary" class="flex-1 flex items-center justify-around text-center text-xs gap-2 min-w-0">
@@ -6140,12 +6153,20 @@
         // ═════════════════════════════════════════════════════════════════════
         let budgetState = {
             auxiliares: [],         // [{nombre, tipo: 'MENSUAL'|'JORNAL', monto, viatico}]
-            stops: [],              // [{name, address, lat, lng, placeId}]
+            stops: [],              // [{name, address, lat, lng, placeId, kg, pallets, pouch}]
             items: [],              // [{descripcion, cantidad, unidad, pesoKg, valor}]
             routeKm: 0,             // km totales calculados por Google Directions
             routeMinutes: 0,        // tiempo total en minutos
             lastCalc: null,         // objeto con el último cálculo (para los PDFs)
             currentTab: 'calc',     // 'calc' | 'history'
+            originMode: 'depot',    // 'depot' | 'supplier'
+            // ─── MULTI-DESPACHO ────────────────────────────────────────────────────
+            // Si dispatches[] está vacío → modo simple (1 viaje con las paradas/datos
+            // del formulario actual). Si tiene elementos → modo multi-despacho:
+            // cada despacho es un "viaje" independiente con su propio origen, flota,
+            // paradas y tipo (propio/tercerizado).
+            dispatches: [],
+            activeDispatchIdx: null, // índice del despacho actualmente editado en el form
         };
 
         const BUD_KEY = 'r14_budgets_saved';
@@ -6167,6 +6188,8 @@
             if (typeof fleetsPopulateSelectInBudget === 'function') fleetsPopulateSelectInBudget();
             // Modo origen por defecto: depósito propio
             if (!budgetState.originMode) budgetSetOriginMode('depot');
+            // Renderizar despachos (vacío al inicio = modo simple)
+            if (typeof budgetRenderDispatchesList === 'function') budgetRenderDispatchesList();
             // Mostrar preview de cantidad de viajes según frecuencia y período
             if (typeof budgetUpdatePeriodPreview === 'function') budgetUpdatePeriodPreview();
             // Refrescar warning de capacidad
@@ -6280,6 +6303,213 @@
         function budgetSetPeriod(days) {
             const el = document.getElementById('bud-period-days');
             if (el) { el.value = days; budgetUpdatePeriodPreview(); }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════════
+        // MULTI-DESPACHO: cada despacho es un "viaje" independiente del proyecto
+        // Cada despacho tiene SUS paradas, SU origen, SU flota, SU tipo (propio/terc).
+        // Los datos GLOBALES (personal, combustible, params, ganancia, impuestos)
+        // siguen siendo a nivel del presupuesto entero.
+        // ═══════════════════════════════════════════════════════════════════════
+
+        /** Snapshot: toma del formulario actual los datos que pertenecen al "despacho"
+         *  (lo demás queda como datos globales del presupuesto). */
+        function budgetSnapshotDispatch() {
+            return {
+                id: 'd_' + Date.now() + '_' + Math.floor(Math.random() * 9999),
+                name: '',
+                originMode: budgetState.originMode || 'depot',
+                origin: document.getElementById('bud-origin')?.value || '',
+                fleetId: document.getElementById('bud-fleet-select')?.value || '',
+                stops: budgetState.stops.map(s => ({ ...s })), // deep copy
+                routeKm: budgetState.routeKm || 0,
+                routeMinutes: budgetState.routeMinutes || 0,
+                // Tipo del despacho: 'propio' (calcula costo completo) o 'terc' (precio fijo)
+                tipo: 'propio',
+                thirdPrice: Number(document.getElementById('bud-third-price')?.value) || 0,
+                thirdRoundtripPrice: Number(document.getElementById('bud-third-roundtrip-price')?.value) || 0,
+                thirdPerTrip: document.getElementById('bud-third-per-trip')?.checked || false,
+            };
+        }
+
+        /** Carga un despacho en el formulario para editarlo. */
+        function budgetLoadDispatchIntoForm(idx) {
+            const d = budgetState.dispatches[idx];
+            if (!d) return;
+            budgetState.activeDispatchIdx = idx;
+            budgetState.originMode = d.originMode || 'depot';
+            budgetState.stops = (d.stops || []).map(s => ({ ...s }));
+            budgetState.routeKm = d.routeKm || 0;
+            budgetState.routeMinutes = d.routeMinutes || 0;
+            // Campos del formulario
+            const origin = document.getElementById('bud-origin');
+            if (origin) origin.value = d.origin || '';
+            const fleet = document.getElementById('bud-fleet-select');
+            if (fleet) { fleet.value = d.fleetId || ''; budgetLoadFleet(d.fleetId || ''); }
+            const tp = document.getElementById('bud-third-price');
+            if (tp) tp.value = d.thirdPrice || '';
+            const tpr = document.getElementById('bud-third-roundtrip-price');
+            if (tpr) tpr.value = d.thirdRoundtripPrice || '';
+            const tpt = document.getElementById('bud-third-per-trip');
+            if (tpt) tpt.checked = !!d.thirdPerTrip;
+            // Métricas de ruta visuales
+            const km = document.getElementById('bud-km'); if (km) km.textContent = (d.routeKm || 0).toFixed(1) + ' km';
+            const tm = document.getElementById('bud-time'); if (tm) tm.textContent = (d.routeMinutes || 0) + ' min';
+            if (d.routeKm > 0) document.getElementById('bud-route-metrics')?.classList.remove('hidden');
+            budgetSetOriginMode(d.originMode || 'depot');
+            budgetRenderStopsList();
+            budgetRenderDispatchesList();
+        }
+
+        /** Guarda los datos actuales del formulario en el despacho activo. */
+        function budgetSaveActiveDispatch() {
+            const idx = budgetState.activeDispatchIdx;
+            if (idx == null) return;
+            const snap = budgetSnapshotDispatch();
+            // Mantener el id y nombre del despacho original
+            const prev = budgetState.dispatches[idx];
+            snap.id = prev.id;
+            snap.name = prev.name;
+            snap.tipo = prev.tipo;
+            budgetState.dispatches[idx] = snap;
+        }
+
+        /** Agrega un despacho nuevo. Si ya hay despachos, ofrece copiar el último. */
+        function budgetAddDispatch() {
+            const isFirst = budgetState.dispatches.length === 0;
+            if (isFirst) {
+                // Primer despacho: convertir el estado actual del formulario en Despacho 1
+                const stopsCount = budgetState.stops?.length || 0;
+                if (stopsCount > 0) {
+                    if (!confirm(`Vas a entrar al modo MULTI-DESPACHO.\n\nLas ${stopsCount} parada${stopsCount !== 1 ? 's' : ''} del formulario actual se van a convertir en el Despacho 1.\n\n¿Continuar?`)) return;
+                }
+                const d1 = budgetSnapshotDispatch();
+                d1.name = 'Despacho 1';
+                budgetState.dispatches.push(d1);
+                budgetState.activeDispatchIdx = 0;
+            }
+            // Ofrecer copiar del anterior si ya hay despachos
+            let copyFromLast = false;
+            if (budgetState.dispatches.length > 0) {
+                copyFromLast = confirm('¿Querés copiar los datos del último despacho (flota, origen, precio tercerizado)?\n\nLas paradas SIEMPRE empiezan vacías para que cargues las nuevas.');
+            }
+            // Guardar despacho activo antes de cambiar
+            if (budgetState.activeDispatchIdx != null) budgetSaveActiveDispatch();
+            // Crear el nuevo despacho
+            const newDispatch = budgetSnapshotDispatch();
+            newDispatch.name = 'Despacho ' + (budgetState.dispatches.length + 1);
+            newDispatch.stops = []; // siempre vacío
+            newDispatch.routeKm = 0;
+            newDispatch.routeMinutes = 0;
+            if (copyFromLast) {
+                const last = budgetState.dispatches[budgetState.dispatches.length - 1];
+                newDispatch.originMode = last.originMode;
+                newDispatch.origin = last.origin;
+                newDispatch.fleetId = last.fleetId;
+                newDispatch.tipo = last.tipo;
+                newDispatch.thirdPrice = last.thirdPrice;
+                newDispatch.thirdRoundtripPrice = last.thirdRoundtripPrice;
+                newDispatch.thirdPerTrip = last.thirdPerTrip;
+            } else {
+                newDispatch.stops = [];
+                newDispatch.routeKm = 0;
+                newDispatch.routeMinutes = 0;
+            }
+            budgetState.dispatches.push(newDispatch);
+            budgetState.activeDispatchIdx = budgetState.dispatches.length - 1;
+            budgetLoadDispatchIntoForm(budgetState.activeDispatchIdx);
+            addNotification('success', 'Nuevo despacho', newDispatch.name + (copyFromLast ? ' (datos copiados)' : ''));
+        }
+
+        /** Selecciona un despacho como activo y carga sus datos en el formulario. */
+        function budgetSelectDispatch(idx) {
+            if (budgetState.activeDispatchIdx != null) budgetSaveActiveDispatch();
+            budgetLoadDispatchIntoForm(idx);
+        }
+
+        /** Renombra un despacho. */
+        function budgetRenameDispatch(idx) {
+            const d = budgetState.dispatches[idx];
+            if (!d) return;
+            const nuevo = prompt('Nombre del despacho:', d.name);
+            if (nuevo && nuevo.trim()) {
+                d.name = nuevo.trim();
+                budgetRenderDispatchesList();
+            }
+        }
+
+        /** Elimina un despacho. */
+        function budgetRemoveDispatch(idx) {
+            const d = budgetState.dispatches[idx];
+            if (!d) return;
+            if (!confirm(`¿Eliminar "${d.name}"? No se puede deshacer.`)) return;
+            budgetState.dispatches.splice(idx, 1);
+            if (budgetState.dispatches.length === 0) {
+                // Volver a modo simple: limpiar el formulario
+                budgetState.activeDispatchIdx = null;
+                budgetState.stops = [];
+                budgetState.routeKm = 0;
+                budgetState.routeMinutes = 0;
+                document.getElementById('bud-route-metrics')?.classList.add('hidden');
+                budgetRenderStopsList();
+            } else {
+                // Activar el primero
+                budgetState.activeDispatchIdx = 0;
+                budgetLoadDispatchIntoForm(0);
+            }
+            budgetRenderDispatchesList();
+        }
+
+        /** Cambia el tipo (propio/tercerizado) de un despacho. */
+        function budgetToggleDispatchTipo(idx) {
+            const d = budgetState.dispatches[idx];
+            if (!d) return;
+            d.tipo = d.tipo === 'propio' ? 'terc' : 'propio';
+            budgetRenderDispatchesList();
+        }
+
+        /** Renderiza la lista de despachos del proyecto. */
+        function budgetRenderDispatchesList() {
+            const panel = document.getElementById('bud-dispatches-panel');
+            const list = document.getElementById('bud-dispatches-list');
+            const status = document.getElementById('bud-dispatches-status');
+            if (!panel || !list) return;
+            const count = budgetState.dispatches.length;
+            if (count === 0) {
+                list.classList.add('hidden');
+                if (status) status.textContent = 'Modo simple — usá el formulario de abajo. Apretá "+ Nuevo despacho" si necesitás combinar varios viajes.';
+                return;
+            }
+            list.classList.remove('hidden');
+            if (status) status.textContent = `${count} despacho${count !== 1 ? 's' : ''} cargado${count !== 1 ? 's' : ''}. Click en uno para editarlo, o "+ Nuevo despacho" para agregar otro.`;
+            list.innerHTML = budgetState.dispatches.map((d, i) => {
+                const isActive = i === budgetState.activeDispatchIdx;
+                const stops = d.stops || [];
+                const totalKg = stops.reduce((a, s) => a + (Number(s.kg) || 0), 0);
+                const totalPallets = stops.reduce((a, s) => a + (Number(s.pallets) || 0), 0);
+                const tipoBadge = d.tipo === 'terc'
+                    ? '<span class="px-2 py-0.5 rounded-md bg-rose-100 text-rose-700 text-[9px] font-black">🏭 TERCERIZADO</span>'
+                    : '<span class="px-2 py-0.5 rounded-md bg-indigo-100 text-indigo-700 text-[9px] font-black">🚚 PROPIO</span>';
+                const fleetName = d.fleetId ? (fleetsGetAll().find(f => f.id === d.fleetId)?.name || '—') : '—';
+                return `
+                <div class="rounded-xl border-2 ${isActive ? 'border-indigo-500 bg-white' : 'border-[#E0E5F2] bg-white/60 hover:bg-white'} p-3 transition-colors">
+                    <div class="flex items-center gap-2">
+                        <button onclick="budgetSelectDispatch(${i})" class="flex-1 text-left">
+                            <div class="flex items-center gap-2 mb-1">
+                                <span class="text-xs font-black text-[#1B2559]">${isActive ? '▼' : '▶'} ${escapeHtml(d.name)}</span>
+                                ${tipoBadge}
+                                ${isActive ? '<span class="text-[9px] font-bold text-indigo-600">EDITANDO</span>' : ''}
+                            </div>
+                            <div class="text-[10px] text-[#A3AED0]">
+                                ${stops.length} parada${stops.length !== 1 ? 's' : ''} · ${totalKg.toLocaleString('es-AR')} kg · ${totalPallets.toFixed(1)} pallets · ${d.tipo === 'terc' ? '$' + Number(d.thirdPrice || 0).toLocaleString('es-AR') : 'Flota: ' + fleetName}
+                            </div>
+                        </button>
+                        <button onclick="budgetToggleDispatchTipo(${i})" class="px-2 py-1 rounded-md bg-[#F4F7FE] text-[#1B2559] text-[10px] font-black hover:bg-indigo-50" title="Cambiar tipo">⇄</button>
+                        <button onclick="budgetRenameDispatch(${i})" class="px-2 py-1 rounded-md bg-[#F4F7FE] text-[#1B2559] text-[10px] font-black hover:bg-indigo-50" title="Renombrar">✎</button>
+                        <button onclick="budgetRemoveDispatch(${i})" class="px-2 py-1 rounded-md bg-rose-50 text-rose-600 text-[10px] font-black hover:bg-rose-100" title="Eliminar">✕</button>
+                    </div>
+                </div>`;
+            }).join('');
         }
 
         /** Origen del viaje: 'depot' (depósito propio) o 'supplier' (retirar del proveedor).
@@ -6734,6 +6964,11 @@
             budgetState.routeMinutes = 0;
             document.getElementById('bud-route-metrics')?.classList.add('hidden');
             budgetRenderStopsList();
+            // Si estamos en modo multi-despacho, persistir cambios en el despacho activo
+            if (budgetState.activeDispatchIdx != null) {
+                budgetSaveActiveDispatch();
+                budgetRenderDispatchesList();
+            }
         }
 
         /** Actualiza la carga (pouch/kg/pallets) de una parada específica.
@@ -6756,6 +6991,11 @@
                 if (!s.pallets) s.pallets = Math.round(kgToPallets(n) * 100) / 100;
             }
             budgetUpdateCapacityWarning();
+            // Persistir en despacho activo si estamos en modo multi
+            if (budgetState.activeDispatchIdx != null) {
+                budgetSaveActiveDispatch();
+                budgetRenderDispatchesList();
+            }
         }
 
         /** Calcula totales de carga de TODAS las paradas y muestra
@@ -7174,6 +7414,171 @@
                 if (enabled && name && pct > 0) out.push({ name, pct });
             });
             return out;
+        }
+
+        /** Orquesta el cálculo según el modo del presupuesto:
+         *  - Modo simple (sin despachos): hace 1 cálculo normal
+         *  - Modo multi-despacho: itera por cada despacho, calcula su costo,
+         *    consolida en un resultado total con desglose por despacho */
+        function budgetCalculateAll() {
+            if (!budgetState.dispatches || budgetState.dispatches.length === 0) {
+                return budgetCalculate(); // modo simple, comportamiento original
+            }
+            // Guardar el despacho activo antes de iterar
+            const originalIdx = budgetState.activeDispatchIdx;
+            if (originalIdx != null) budgetSaveActiveDispatch();
+
+            const results = [];
+            const errores = [];
+            for (let i = 0; i < budgetState.dispatches.length; i++) {
+                const d = budgetState.dispatches[i];
+                if (d.tipo === 'terc') {
+                    // Despacho tercerizado: precio fijo (o por viaje × viajes)
+                    const thirdSingle = d.thirdRoundtripPrice > 0
+                        ? Math.min(d.thirdPrice || 0, d.thirdRoundtripPrice)
+                        : (d.thirdPrice || 0);
+                    if (thirdSingle <= 0) {
+                        errores.push(`${d.name}: tercerizado pero falta precio`);
+                        continue;
+                    }
+                    results.push({
+                        idx: i, name: d.name, tipo: 'terc',
+                        stopCount: (d.stops || []).length,
+                        thirdSingle,
+                        costo: thirdSingle,
+                        precio: thirdSingle  // no se le aplica margen/impuestos del operador
+                    });
+                } else {
+                    // Despacho propio: cargar en form y calcular como un viaje normal
+                    budgetLoadDispatchIntoForm(i);
+                    if ((d.routeKm || 0) <= 0) {
+                        errores.push(`${d.name}: falta calcular km (apretá "Km y tiempo" para este despacho)`);
+                        continue;
+                    }
+                    try {
+                        budgetCalculate(); // pone el resultado en budgetState.lastCalc
+                        const calc = budgetState.lastCalc;
+                        if (!calc) continue;
+                        results.push({
+                            idx: i, name: d.name, tipo: 'propio',
+                            stopCount: (d.stops || []).length,
+                            costo: calc.costoTotalConCapacidad || calc.costoTotal,
+                            precio: calc.precioFinal,
+                            tripsNeeded: calc.tripsNeeded || 1,
+                            calc: { ...calc }
+                        });
+                    } catch (e) {
+                        errores.push(`${d.name}: error al calcular (${e.message || e})`);
+                    }
+                }
+            }
+            // Restaurar despacho activo original
+            if (originalIdx != null) budgetLoadDispatchIntoForm(originalIdx);
+
+            if (errores.length > 0) {
+                addNotification('warning', 'Algunos despachos no se calcularon', errores.join('. '));
+            }
+            if (results.length === 0) {
+                addNotification('warning', 'Sin resultados', 'No se pudo calcular ningún despacho.');
+                return;
+            }
+
+            // Consolidar totales
+            const totalCosto = results.reduce((a, r) => a + (r.costo || 0), 0);
+            const totalPrecio = results.reduce((a, r) => a + (r.precio || 0), 0);
+
+            // Aplicar período al total (si es recurrente)
+            const periodDays = Math.max(1, Number(document.getElementById('bud-period-days')?.value) || 30);
+            const freqKey = document.getElementById('bud-frequency')?.value || 'unico';
+            const freqTpdMap = { unico: null, diario: 5/7, semanal1: 1/7, semanal2: 2/7, semanal3: 4/7, quincenal: 1/15, mensual: 1/30, trimestral: 1/90 };
+            const tpd = freqTpdMap[freqKey];
+            const tripsInPeriod = tpd == null ? 1 : Math.max(1, Math.round(periodDays * tpd));
+            const precioFinalPeriodo = totalPrecio * tripsInPeriod;
+
+            // Guardar resultado consolidado en lastCalc para PDFs/exports
+            budgetState.lastCalc = {
+                ...budgetState.lastCalc,
+                isMultiDispatch: true,
+                dispatchResults: results,
+                totalCosto, totalPrecio,
+                periodDays, tripsInPeriod, precioFinalPeriodo,
+                destinatario: budgetReadDestinatario(),
+                fecha: new Date().toLocaleDateString('es-AR'),
+                fechaISO: new Date().toISOString(),
+            };
+
+            // Render del resultado consolidado
+            budgetRenderMultiResult();
+
+            // Barra flotante
+            budgetUpdateFloatingSummary({
+                costoTotal: totalCosto,
+                ganancia: 0,
+                impuestosTotal: 0,
+                precioFinal: totalPrecio,
+                tripsInPeriod,
+                periodDays,
+                precioFinalPeriodo,
+                tripsNeeded: results.reduce((a, r) => a + (r.tripsNeeded || 1), 0)
+            });
+        }
+
+        /** Renderiza el resultado consolidado de múltiples despachos */
+        function budgetRenderMultiResult() {
+            const out = document.getElementById('bud-result');
+            const actions = document.getElementById('bud-result-actions');
+            const calc = budgetState.lastCalc;
+            if (!out || !calc || !calc.isMultiDispatch) return;
+            const money = (n) => '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+
+            const rows = calc.dispatchResults.map((r, i) => {
+                const badge = r.tipo === 'terc'
+                    ? '<span class="px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 text-[9px] font-black">🏭 TERC</span>'
+                    : '<span class="px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 text-[9px] font-black">🚚 PROPIO</span>';
+                const extra = r.tipo === 'propio' && r.tripsNeeded > 1
+                    ? `<span class="text-[9px] text-amber-600 font-bold">(${r.tripsNeeded} viajes)</span>` : '';
+                return `
+                <tr class="border-t border-[#F4F7FE]">
+                    <td class="py-2 font-bold text-[#1B2559]">${i+1}. ${escapeHtml(r.name)} ${badge}</td>
+                    <td class="py-2 text-center text-[10px] text-[#A3AED0]">${r.stopCount} paradas ${extra}</td>
+                    <td class="py-2 text-right font-bold text-[#1B2559]">${money(r.costo)}</td>
+                    <td class="py-2 text-right font-black text-indigo-700">${money(r.precio)}</td>
+                </tr>`;
+            }).join('');
+
+            out.innerHTML = `
+                <div class="space-y-3">
+                    <div class="rounded-xl bg-white border border-indigo-200 overflow-hidden">
+                        <div class="p-3 bg-indigo-50 border-b border-indigo-100">
+                            <h5 class="text-xs font-black text-indigo-700 uppercase tracking-widest">📦 Resumen multi-despacho · ${calc.dispatchResults.length} despachos</h5>
+                        </div>
+                        <table class="w-full text-xs">
+                            <thead class="bg-[#F8FAFF] text-[#A3AED0] text-[9px] uppercase">
+                                <tr>
+                                    <th class="px-3 py-2 text-left">Despacho</th>
+                                    <th class="px-3 py-2 text-center">Detalle</th>
+                                    <th class="px-3 py-2 text-right">Costo</th>
+                                    <th class="px-3 py-2 text-right">Precio</th>
+                                </tr>
+                            </thead>
+                            <tbody>${rows}</tbody>
+                            <tfoot class="border-t-2 border-indigo-300 bg-indigo-50">
+                                <tr>
+                                    <td colspan="2" class="px-3 py-3 font-black text-indigo-700 text-sm">TOTAL DEL PROYECTO</td>
+                                    <td class="px-3 py-3 text-right font-black text-[#1B2559]">${money(calc.totalCosto)}</td>
+                                    <td class="px-3 py-3 text-right font-black text-indigo-700 text-base">${money(calc.totalPrecio)}</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    ${calc.tripsInPeriod > 1 ? `
+                    <div class="rounded-xl bg-emerald-600 text-white p-4">
+                        <div class="text-[10px] uppercase font-black opacity-80">Total del período</div>
+                        <div class="text-2xl font-black">${money(calc.precioFinalPeriodo)}</div>
+                        <div class="text-[10px] opacity-80 mt-1">${calc.tripsInPeriod} ejecuciones del proyecto en ${calc.periodDays} días</div>
+                    </div>` : ''}
+                </div>`;
+            if (actions) actions.classList.remove('hidden');
         }
 
         function budgetCalculate() {
