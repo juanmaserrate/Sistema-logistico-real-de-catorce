@@ -84,7 +84,7 @@ export default function LoginScreen({ onLoggedIn }: Props) {
           placeholderTextColor={colors.textMuted}
         />
 
-        <Text style={styles.label}>CONTRASE\u00d1A</Text>
+        <Text style={styles.label}>CONTRASEÑA</Text>
         <TextInput
           style={[styles.input, passFocused && styles.inputFocused]}
           value={password}
@@ -92,7 +92,7 @@ export default function LoginScreen({ onLoggedIn }: Props) {
           onFocus={() => setPassFocused(true)}
           onBlur={() => setPassFocused(false)}
           secureTextEntry
-          placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+          placeholder="••••••••"
           placeholderTextColor={colors.textMuted}
         />
 

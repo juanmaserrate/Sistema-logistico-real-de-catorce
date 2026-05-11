@@ -100,11 +100,23 @@ export async function fetchRoutesToday(driverId: string): Promise<Route[]> {
     // Ahora SIEMPRE confiamos en la respuesta exitosa del server: la app refleja el
     // estado real y limpia el cache si quedó stale.
 
-    // Filtrar tambien aca por si el server (version vieja) no filtra: redundancia segura
+    // Filtrar tambien aca por si el server (version vieja) no filtra: redundancia segura.
+    // Triple filtro:
+    //  1. Solo del DIA ACTUAL del celular (anti-zona-horaria: si el server manda
+    //     viajes de mañana por desfase de TZ, los filtramos).
+    //  2. Sin actualEndTime (viaje no cerrado).
+    //  3. Trip no esta en estado final.
     const filtered = routes.filter((r: any) => {
       if (r?.actualEndTime) return false;
       const ts = String(r?.trip?.status || '').toUpperCase();
       if (ts === 'COMPLETED' || ts === 'RETURNED') return false;
+      // Verificar que la fecha del viaje sea HOY en la zona local del celu
+      if (r?.date) {
+        try {
+          const routeYmd = localYmd(new Date(r.date));
+          if (routeYmd !== today) return false;
+        } catch { /* si el parseo falla, dejamos pasar */ }
+      }
       return true;
     });
 

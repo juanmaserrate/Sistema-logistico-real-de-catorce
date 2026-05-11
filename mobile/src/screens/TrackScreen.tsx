@@ -1078,14 +1078,29 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         onClose={() => setDeliveryModalStop(null)}
         onSaved={() => {
           const completedStop = deliveryModalStop;
+          // OPTIMISTIC UPDATE: actualizar el state local del stop ANTES del refresh.
+          // Antes el chofer veia "Finalizar entrega" persistir hasta que llegara el
+          // refresh del server (que a veces no actualizaba bien por el cache).
+          // Ahora marcamos el stop como COMPLETED al instante y despues confirmamos
+          // con el server.
+          if (completedStop && selId != null) {
+            setRoutes((prev) => prev.map((r) => {
+              if (r.id !== selId) return r;
+              return {
+                ...r,
+                stops: r.stops.map((s) =>
+                  s.id === completedStop.id
+                    ? { ...s, status: 'COMPLETED', actualDeparture: new Date().toISOString() }
+                    : s
+                )
+              };
+            }));
+          }
           setDeliveryModalStop(null);
-          // BUG FIX: en lugar de leer `selected` (closure viejo) tras loadRoutes,
-          // pedimos directo al servidor las rutas frescas y operamos sobre esa data.
-          // Así el alerta de "Siguiente parada" SIEMPRE muestra la siguiente correcta.
+          // Refrescar del server. El cartel "Siguiente parada" fue removido a pedido del usuario.
           (async () => {
             try {
               const fullFresh = await fetchRoutesToday(session.id);
-              // Mismo filtro: descartar viajes finalizados (operador o auto-finish)
               const freshList = fullFresh.filter((r) => {
                 if (r.actualEndTime) return false;
                 const ts = (r.trip?.status || '').toUpperCase();
@@ -1093,37 +1108,8 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                 return true;
               });
               setRoutes(freshList);
-              if (!completedStop) return;
-              const freshRoute = freshList.find((r) => r.id === selId) ?? null;
-              if (!freshRoute?.stops) return;
-              const nextPending = [...freshRoute.stops]
-                .sort((a, b) => a.sequence - b.sequence)
-                .find((s) => s.status === 'PENDING' && s.id !== completedStop.id);
-              if (!nextPending?.client) return;
-              const name = nextPending.client.name || `Parada ${nextPending.sequence}`;
-              Alert.alert(
-                'Siguiente parada',
-                `${name}\n${nextPending.client.address || ''}`,
-                [
-                  { text: 'Ver lista', style: 'cancel' },
-                  {
-                    text: 'Navegar',
-                    onPress: () => {
-                      if (nextPending.client?.latitude != null && nextPending.client?.longitude != null && selId != null) {
-                        navigation.navigate('EmbeddedNav', {
-                          routeId: selId,
-                          stopId: nextPending.id,
-                          destLat: nextPending.client.latitude,
-                          destLng: nextPending.client.longitude,
-                          title: nextPending.client.name,
-                        });
-                      }
-                    },
-                  },
-                ]
-              );
             } catch {
-              // Si la red falla, al menos refrescamos sin alerta
+              // Si la red falla, mantenemos el optimistic update
               loadRoutes({ silent: true }).catch(() => {});
             }
           })();
