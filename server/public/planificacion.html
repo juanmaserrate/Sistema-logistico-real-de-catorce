@@ -1996,17 +1996,33 @@
                                 </div>
                                 <div>
                                     <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Frecuencia</label>
-                                    <select id="bud-frequency" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
-                                        <option value="unico">Único (1.00)</option>
-                                        <option value="semanal1">Semanal 1 vez (1.00)</option>
-                                        <option value="semanal2">Semanal 2 veces (0.98)</option>
-                                        <option value="semanal3">Semanal 3-5 (0.95)</option>
-                                        <option value="diario">Diario (0.92)</option>
+                                    <select id="bud-frequency" onchange="budgetOnFrequencyChange()" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                                        <option value="unico">Único (1 viaje)</option>
+                                        <option value="diario">Diario (días hábiles)</option>
+                                        <option value="semanal1">Semanal · 1 vez</option>
+                                        <option value="semanal2">Semanal · 2 veces</option>
+                                        <option value="semanal3">Semanal · 3-5 veces</option>
+                                        <option value="quincenal">Quincenal · 1 vez</option>
+                                        <option value="mensual">Mensual · 1 vez</option>
+                                        <option value="trimestral">Trimestral · 1 vez</option>
                                     </select>
                                 </div>
                                 <div>
                                     <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Ganancia %</label>
                                     <input id="bud-margin-pct" type="number" value="25" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                                </div>
+                                <div class="col-span-2" id="bud-period-wrap">
+                                    <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Período del contrato (días)</label>
+                                    <div class="flex gap-2 items-center">
+                                        <input id="bud-period-days" type="number" value="30" min="1" max="3650" oninput="budgetOnPeriodChange()" class="flex-1 bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                                        <div class="flex gap-1">
+                                            <button type="button" onclick="budgetSetPeriod(30)" class="px-2 py-1.5 rounded-md bg-[#F4F7FE] hover:bg-indigo-100 text-[10px] font-black text-[#1B2559]">30d</button>
+                                            <button type="button" onclick="budgetSetPeriod(90)" class="px-2 py-1.5 rounded-md bg-[#F4F7FE] hover:bg-indigo-100 text-[10px] font-black text-[#1B2559]">90d</button>
+                                            <button type="button" onclick="budgetSetPeriod(180)" class="px-2 py-1.5 rounded-md bg-[#F4F7FE] hover:bg-indigo-100 text-[10px] font-black text-[#1B2559]">6m</button>
+                                            <button type="button" onclick="budgetSetPeriod(365)" class="px-2 py-1.5 rounded-md bg-[#F4F7FE] hover:bg-indigo-100 text-[10px] font-black text-[#1B2559]">1a</button>
+                                        </div>
+                                    </div>
+                                    <div id="bud-period-preview" class="mt-1.5 text-[10px] text-indigo-600 font-bold"></div>
                                 </div>
                             </div>
 
@@ -2053,7 +2069,7 @@
                             </button>
                             <div id="bud-floating-summary" class="flex-1 flex items-center justify-around text-center text-xs gap-2 min-w-0">
                                 <div class="hidden sm:block">
-                                    <div class="text-[9px] font-black text-[#A3AED0] uppercase">Costo</div>
+                                    <div class="text-[9px] font-black text-[#A3AED0] uppercase">Costo / viaje</div>
                                     <div id="bud-fb-costo" class="text-sm font-black text-[#1B2559]">—</div>
                                 </div>
                                 <div class="hidden md:block">
@@ -2064,9 +2080,13 @@
                                     <div class="text-[9px] font-black text-[#A3AED0] uppercase">Impuestos</div>
                                     <div id="bud-fb-impuestos" class="text-sm font-black text-amber-600">—</div>
                                 </div>
-                                <div>
-                                    <div class="text-[9px] font-black text-[#A3AED0] uppercase">Precio Final</div>
-                                    <div id="bud-fb-final" class="text-lg font-black text-indigo-700">—</div>
+                                <div class="border-l border-r border-[#E0E5F2] px-3">
+                                    <div class="text-[9px] font-black text-[#A3AED0] uppercase">Precio / viaje</div>
+                                    <div id="bud-fb-final" class="text-base font-black text-indigo-700">—</div>
+                                </div>
+                                <div class="bg-emerald-50 rounded-lg px-3 py-1 border border-emerald-200">
+                                    <div class="text-[9px] font-black text-emerald-700 uppercase"><span id="bud-fb-trips-count">1</span> viaje(s) en <span id="bud-fb-period-days">30</span>d</div>
+                                    <div id="bud-fb-final-periodo" class="text-lg font-black text-emerald-700">—</div>
                                 </div>
                             </div>
                             <button onclick="budgetToggleFloatingDetail()" id="bud-fb-toggle" class="px-3 py-3 rounded-xl bg-[#F4F7FE] text-[#1B2559] text-xs font-bold hover:bg-indigo-50 whitespace-nowrap flex items-center gap-1.5">
@@ -6103,6 +6123,8 @@
             const fb = document.getElementById('bud-floating-bar');
             if (fb) fb.style.display = 'block';
             if (typeof fleetsPopulateSelectInBudget === 'function') fleetsPopulateSelectInBudget();
+            // Mostrar preview de cantidad de viajes según frecuencia y período
+            if (typeof budgetUpdatePeriodPreview === 'function') budgetUpdatePeriodPreview();
             lucide.createIcons();
             // Cargar Google Maps en segundo plano para que el buscador de paradas funcione
             if (!window.google?.maps && typeof loadGoogleMapsScript === 'function' && typeof getGoogleMapsKey === 'function') {
@@ -6132,14 +6154,61 @@
         /** Actualiza los valores resumen de la barra flotante */
         function budgetUpdateFloatingSummary(calc) {
             const fmt = (n) => '$ ' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 });
-            const costo = document.getElementById('bud-fb-costo');
-            const ganancia = document.getElementById('bud-fb-ganancia');
-            const impuestos = document.getElementById('bud-fb-impuestos');
-            const final = document.getElementById('bud-fb-final');
-            if (costo) costo.textContent = fmt(calc?.costoTotal);
-            if (ganancia) ganancia.textContent = fmt(calc?.ganancia);
-            if (impuestos) impuestos.textContent = fmt(calc?.impuestosTotal);
-            if (final) final.textContent = fmt(calc?.precioFinal);
+            const set = (id, txt) => { const el = document.getElementById(id); if (el) el.textContent = txt; };
+            set('bud-fb-costo', fmt(calc?.costoTotal));
+            set('bud-fb-ganancia', fmt(calc?.ganancia));
+            set('bud-fb-impuestos', fmt(calc?.impuestosTotal));
+            set('bud-fb-final', fmt(calc?.precioFinal));
+            // Período: cantidad de viajes y total acumulado
+            set('bud-fb-trips-count', calc?.tripsInPeriod ?? 1);
+            set('bud-fb-period-days', calc?.periodDays ?? 30);
+            set('bud-fb-final-periodo', fmt(calc?.precioFinalPeriodo ?? calc?.precioFinal));
+        }
+
+        /** Helpers de período/frecuencia para mostrar el preview en vivo */
+        function budgetGetTripsInPeriod() {
+            const freqMap = {
+                unico:      null,
+                diario:     5/7,
+                semanal1:   1/7,
+                semanal2:   2/7,
+                semanal3:   4/7,
+                quincenal:  1/15,
+                mensual:    1/30,
+                trimestral: 1/90
+            };
+            const freqKey = document.getElementById('bud-frequency')?.value || 'unico';
+            const tpd = freqMap[freqKey];
+            const periodDays = Math.max(1, Number(document.getElementById('bud-period-days')?.value) || 30);
+            if (tpd == null) return { trips: 1, periodDays, isOneTime: true };
+            return { trips: Math.max(1, Math.round(periodDays * tpd)), periodDays, isOneTime: false };
+        }
+
+        /** Refresca el cartelito de preview "= X viajes en N días" debajo del campo período */
+        function budgetUpdatePeriodPreview() {
+            const wrap = document.getElementById('bud-period-wrap');
+            const preview = document.getElementById('bud-period-preview');
+            if (!preview) return;
+            const { trips, periodDays, isOneTime } = budgetGetTripsInPeriod();
+            if (isOneTime) {
+                preview.textContent = 'Único: 1 viaje (no se aplica el período)';
+                // Para frecuencia "único" deshabilitamos el campo periodo visualmente
+                if (wrap) wrap.style.opacity = '0.5';
+            } else {
+                preview.textContent = `≈ ${trips} viaje${trips !== 1 ? 's' : ''} en ${periodDays} día${periodDays !== 1 ? 's' : ''}`;
+                if (wrap) wrap.style.opacity = '1';
+            }
+            // Actualizar también los chips de la barra flotante (preview)
+            const tripsEl = document.getElementById('bud-fb-trips-count');
+            const periodEl = document.getElementById('bud-fb-period-days');
+            if (tripsEl) tripsEl.textContent = trips;
+            if (periodEl) periodEl.textContent = periodDays;
+        }
+        function budgetOnFrequencyChange() { budgetUpdatePeriodPreview(); }
+        function budgetOnPeriodChange() { budgetUpdatePeriodPreview(); }
+        function budgetSetPeriod(days) {
+            const el = document.getElementById('bud-period-days');
+            if (el) { el.value = days; budgetUpdatePeriodPreview(); }
         }
 
         // ════════════════════════════════════════════════════════
@@ -6971,19 +7040,45 @@
             const overhead = subCostDirect * (overheadPct / 100);
 
             // 5. FRECUENCIA
-            const freqMap = { unico: 1, semanal1: 1, semanal2: 0.98, semanal3: 0.95, diario: 0.92 };
+            // Tabla de frecuencias: cada una tiene un factor de descuento por volumen
+            // y un "trips per day" para calcular cantidad de viajes en un período.
+            const freqMap = {
+                unico:      { factor: 1.00, tripsPerDay: null }, // null = único, no recurrente
+                diario:     { factor: 0.92, tripsPerDay: 5/7 },  // días hábiles
+                semanal1:   { factor: 1.00, tripsPerDay: 1/7 },
+                semanal2:   { factor: 0.98, tripsPerDay: 2/7 },
+                semanal3:   { factor: 0.95, tripsPerDay: 4/7 },  // promedio 3-5
+                quincenal:  { factor: 1.00, tripsPerDay: 1/15 },
+                mensual:    { factor: 1.00, tripsPerDay: 1/30 },
+                trimestral: { factor: 1.00, tripsPerDay: 1/90 }
+            };
             const freqKey = document.getElementById('bud-frequency').value;
-            const freqFactor = freqMap[freqKey] ?? 1;
+            const freqInfo = freqMap[freqKey] ?? freqMap.unico;
+            const freqFactor = freqInfo.factor;
             const costoSinFreq = subCostDirect + overhead;
             const costoTotal = costoSinFreq * freqFactor;
 
-            // 6. GANANCIA + IMPUESTOS
+            // Período del contrato (en días) → cantidad de viajes
+            const periodDays = Math.max(1, Number(document.getElementById('bud-period-days')?.value) || 30);
+            let tripsInPeriod = 1; // Por defecto, 1 viaje (caso "único")
+            if (freqInfo.tripsPerDay != null) {
+                tripsInPeriod = Math.max(1, Math.round(periodDays * freqInfo.tripsPerDay));
+            }
+
+            // 6. GANANCIA + IMPUESTOS (sobre 1 viaje)
             const marginPct = Number(document.getElementById('bud-margin-pct').value) || 0;
             const margin = costoTotal * (marginPct / 100);
             const subtotal = costoTotal + margin;
             const taxes = budgetGetTaxes().map(t => ({ ...t, monto: subtotal * (t.pct/100) }));
             const taxesTotal = taxes.reduce((a, t) => a + t.monto, 0);
             const precioFinal = subtotal + taxesTotal;
+
+            // 7. TOTALES DEL PERÍODO (precio por viaje × cantidad de viajes)
+            const costoTotalPeriodo = costoTotal * tripsInPeriod;
+            const marginPeriodo = margin * tripsInPeriod;
+            const subtotalPeriodo = subtotal * tripsInPeriod;
+            const taxesTotalPeriodo = taxesTotal * tripsInPeriod;
+            const precioFinalPeriodo = precioFinal * tripsInPeriod;
 
             // Totales ítems
             const items = budgetState.items.map(it => ({
@@ -7010,6 +7105,9 @@
                 overhead, freqFactor, freqKey,
                 costoSinFreq, costoTotal,
                 marginPct, margin, subtotal, taxes, taxesTotal, precioFinal,
+                // Período del contrato
+                periodDays, tripsInPeriod,
+                costoTotalPeriodo, marginPeriodo, subtotalPeriodo, taxesTotalPeriodo, precioFinalPeriodo,
                 km, hours, refrigerated,
                 socialPct, monthHours, consumption, fuelPrice,
                 truckValue, truckLifeKm, tiresCost, tiresKm, maintYear, kmYear, fixedMonth, tripsMonth,
@@ -7020,12 +7118,15 @@
                 fechaISO: new Date().toISOString(),
             };
             budgetRenderResult();
-            // Actualizar barra flotante con los valores principales
+            // Actualizar barra flotante con los valores principales (por viaje + total del período)
             budgetUpdateFloatingSummary({
                 costoTotal,
                 ganancia: margin,
                 impuestosTotal: taxesTotal,
-                precioFinal
+                precioFinal,
+                tripsInPeriod,
+                periodDays,
+                precioFinalPeriodo
             });
             budgetSaveDefaults();
         }
@@ -7133,10 +7234,29 @@
                 ${marginSection}
                 ${taxSection}
                 <div class="mt-3 p-4 rounded-xl bg-indigo-600 text-white">
-                    <div class="text-[10px] uppercase font-black opacity-80">Precio al cliente</div>
+                    <div class="text-[10px] uppercase font-black opacity-80">Precio al cliente por viaje</div>
                     <div class="text-2xl font-black">${money(c.precioFinal)}</div>
                     <div class="text-[10px] opacity-80 mt-1">Costo ${money(c.costoTotal)} · Ganancia ${money(c.margin)} · Impuestos ${money(c.taxesTotal)}</div>
                 </div>
+                ${(c.tripsInPeriod && c.tripsInPeriod > 1) ? `
+                <div class="mt-2 p-4 rounded-xl bg-emerald-600 text-white">
+                    <div class="flex items-center justify-between gap-3">
+                        <div>
+                            <div class="text-[10px] uppercase font-black opacity-80">Total del período</div>
+                            <div class="text-2xl font-black">${money(c.precioFinalPeriodo)}</div>
+                            <div class="text-[10px] opacity-80 mt-1">${c.tripsInPeriod} viajes en ${c.periodDays} días (${c.freqKey})</div>
+                        </div>
+                        <div class="text-right">
+                            <div class="text-[10px] uppercase font-black opacity-80">Por viaje</div>
+                            <div class="text-base font-bold">${money(c.precioFinal)}</div>
+                        </div>
+                    </div>
+                    <div class="mt-2 pt-2 border-t border-emerald-500/50 grid grid-cols-3 gap-2 text-[10px]">
+                        <div><span class="opacity-80">Costo total:</span> ${money(c.costoTotalPeriodo)}</div>
+                        <div><span class="opacity-80">Ganancia total:</span> ${money(c.marginPeriodo)}</div>
+                        <div><span class="opacity-80">Impuestos total:</span> ${money(c.taxesTotalPeriodo)}</div>
+                    </div>
+                </div>` : ''}
                 ${compact ? '' : `
                 <div class="mt-2 text-[10px] text-[#A3AED0] space-y-0.5">
                     <div>Costo por parada: ${money(c.costoTotal / Math.max(c.stops.length, 1))}</div>
