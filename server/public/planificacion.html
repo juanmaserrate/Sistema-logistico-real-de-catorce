@@ -7324,6 +7324,61 @@
             opciones.sort((a, b) => a.costo - b.costo);
             const opcionRecomendada = opciones[0];
 
+            // 10. PLAN OPTIMIZADO POR PARADA (despacho mixto: propio para las chicas,
+            //     tercerizado para las grandes que requieren muchos viajes propios)
+            // Solo se calcula si hay precio tercerizado configurado y hay carga por parada.
+            let optPlan = null;
+            const stopsWithCargo = budgetState.stops.filter(s => (s.kg > 0 || s.pallets > 0));
+            const fleetIdActive = document.getElementById('bud-fleet-select')?.value;
+            const fleetActive = fleetIdActive ? fleetsGetAll().find(f => f.id === fleetIdActive) : null;
+            const _maxKgActive = fleetActive?.maxKg || 0;
+            const _maxPalletsActive = fleetActive?.maxPallets || 0;
+            const thirdAvailable = (tercerizado.priceBase > 0 || tercerizado.priceRoundtrip > 0);
+            if (stopsWithCargo.length >= 2 && thirdAvailable && costoTotalPorRun > 0) {
+                // Precio terc. por parada: si "perTrip" está activo, es priceBase × viajes
+                // necesarios para esa parada. Si no, es priceBase fijo POR parada.
+                // Tomamos el menor entre priceBase y priceRoundtrip (si existe vuelta).
+                const thirdSingle = tercerizado.priceRoundtrip > 0
+                    ? Math.min(tercerizado.priceBase, tercerizado.priceRoundtrip)
+                    : tercerizado.priceBase;
+
+                const allocations = stopsWithCargo.map((s, i) => {
+                    // Viajes propios necesarios SOLO para esta parada
+                    let viajesPropio = 1;
+                    if (_maxKgActive > 0 && s.kg > 0) viajesPropio = Math.max(viajesPropio, Math.ceil(s.kg / _maxKgActive));
+                    if (_maxPalletsActive > 0 && s.pallets > 0) viajesPropio = Math.max(viajesPropio, Math.ceil(s.pallets / _maxPalletsActive));
+                    const costoPropio = costoTotalPorRun * viajesPropio;
+                    const costoTerc = tercerizado.perTrip ? thirdSingle * viajesPropio : thirdSingle;
+                    const mejor = costoPropio <= costoTerc ? 'propio' : 'tercerizado';
+                    return {
+                        name: s.name,
+                        address: s.address || '',
+                        kg: Number(s.kg) || 0,
+                        pallets: Number(s.pallets) || 0,
+                        viajesPropio,
+                        costoPropio,
+                        costoTerc,
+                        mejor,
+                        costoElegido: mejor === 'propio' ? costoPropio : costoTerc
+                    };
+                });
+                const totalAllPropio = allocations.reduce((a, x) => a + x.costoPropio, 0);
+                const totalAllTerc = allocations.reduce((a, x) => a + x.costoTerc, 0);
+                const totalMix = allocations.reduce((a, x) => a + x.costoElegido, 0);
+                const ahorroVsPropio = totalAllPropio - totalMix;
+                const ahorroVsTerc = totalAllTerc - totalMix;
+                optPlan = {
+                    allocations,
+                    totalAllPropio,
+                    totalAllTerc,
+                    totalMix,
+                    ahorroVsPropio,
+                    ahorroVsTerc,
+                    ahorroPctVsPropio: totalAllPropio > 0 ? Math.round((ahorroVsPropio / totalAllPropio) * 100) : 0,
+                    thirdSingle
+                };
+            }
+
             // Totales ítems
             const items = budgetState.items.map(it => ({
                 descripcion: it.descripcion || '',
@@ -7359,6 +7414,8 @@
                 originMode: budgetState.originMode || 'depot',
                 // Comparador make-or-buy
                 tercerizado, opcionRecomendada, opciones,
+                // Plan optimizado de despacho por parada (mix propio/tercerizado)
+                optPlan,
                 km, hours, refrigerated,
                 socialPct, monthHours, consumption, fuelPrice,
                 truckValue, truckLifeKm, tiresCost, tiresKm, maintYear, kmYear, fixedMonth, tripsMonth,
@@ -7527,6 +7584,54 @@
                     <div class="mt-2 text-[11px] font-black ${c.opcionRecomendada?.tipo === 'propio' ? 'text-indigo-600' : 'text-emerald-600'}">
                         ✓ Recomendado: <b>${c.opcionRecomendada?.label || 'Flota propia'}</b>
                     </div>
+                </div>` : ''}
+                ${c.optPlan ? `
+                <div class="mt-2 p-4 rounded-xl bg-gradient-to-br from-emerald-50 via-white to-amber-50 border-2 border-emerald-300">
+                    <div class="text-[10px] uppercase font-black text-emerald-700 mb-2">🎯 Plan optimizado de despacho — mezcla la mejor opción por parada</div>
+                    <table class="w-full text-[11px]">
+                        <thead class="text-[#A3AED0]">
+                            <tr>
+                                <th class="text-left py-1">Parada</th>
+                                <th class="text-right py-1">Carga</th>
+                                <th class="text-center py-1">Propio</th>
+                                <th class="text-center py-1">Terc.</th>
+                                <th class="text-right py-1">Mejor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${c.optPlan.allocations.map((a) => {
+                                const isPropio = a.mejor === 'propio';
+                                return `<tr class="border-t border-emerald-100">
+                                    <td class="py-1.5 font-bold text-[#1B2559]">${escapeHtml(a.name)}</td>
+                                    <td class="py-1.5 text-right text-[#A3AED0]">${a.pallets.toFixed(1)}p / ${a.kg.toLocaleString('es-AR')}kg</td>
+                                    <td class="py-1.5 text-center ${isPropio ? 'text-emerald-700 font-black' : 'text-[#A3AED0]'}">${isPropio ? '✓' : '○'} ${money(a.costoPropio)}${a.viajesPropio > 1 ? ` <span class="text-[9px]">(${a.viajesPropio}v)</span>` : ''}</td>
+                                    <td class="py-1.5 text-center ${!isPropio ? 'text-emerald-700 font-black' : 'text-[#A3AED0]'}">${!isPropio ? '✓' : '○'} ${money(a.costoTerc)}</td>
+                                    <td class="py-1.5 text-right font-black ${isPropio ? 'text-indigo-700' : 'text-rose-700'}">${isPropio ? '🚚 Propio' : '🏭 Terc.'}</td>
+                                </tr>`;
+                            }).join('')}
+                        </tbody>
+                        <tfoot class="border-t-2 border-emerald-300">
+                            <tr>
+                                <td colspan="2" class="py-1.5 text-[#A3AED0] text-[10px] uppercase">Todo propio (sin mix)</td>
+                                <td colspan="3" class="py-1.5 text-right font-bold text-[#1B2559]">${money(c.optPlan.totalAllPropio)}</td>
+                            </tr>
+                            <tr>
+                                <td colspan="2" class="py-1.5 text-[#A3AED0] text-[10px] uppercase">Todo tercerizado</td>
+                                <td colspan="3" class="py-1.5 text-right font-bold text-[#1B2559]">${money(c.optPlan.totalAllTerc)}</td>
+                            </tr>
+                            <tr class="bg-emerald-100">
+                                <td colspan="2" class="py-2 font-black text-emerald-700 text-[11px]">🎯 MEZCLA ÓPTIMA</td>
+                                <td colspan="3" class="py-2 text-right font-black text-emerald-700 text-base">${money(c.optPlan.totalMix)}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                    ${c.optPlan.ahorroVsPropio > 0 ? `
+                    <div class="mt-2 text-[10px] font-bold text-emerald-700 text-center bg-white rounded-md py-1.5 border border-emerald-200">
+                        💰 Ahorrás ${money(c.optPlan.ahorroVsPropio)} (${c.optPlan.ahorroPctVsPropio}%) vs hacer todo con flota propia
+                    </div>` : c.optPlan.ahorroVsTerc > 0 ? `
+                    <div class="mt-2 text-[10px] font-bold text-emerald-700 text-center bg-white rounded-md py-1.5 border border-emerald-200">
+                        💰 Ahorrás ${money(c.optPlan.ahorroVsTerc)} vs tercerizar todo
+                    </div>` : ''}
                 </div>` : ''}
                 ${(c.tripsInPeriod && c.tripsInPeriod > 1) ? `
                 <div class="mt-2 p-4 rounded-xl bg-emerald-600 text-white">
