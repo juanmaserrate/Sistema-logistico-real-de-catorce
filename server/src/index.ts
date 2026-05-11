@@ -1205,6 +1205,105 @@ app.get('/api/v1/routes/:id/live-summary', async (req, res) => {
     }
 });
 
+/** A) ENDPOINT DE DIAGNOSTICO
+ *  GET /api/v1/admin/diagnose-driver/:driverId
+ *  Devuelve TODA la info que el operador necesita para entender que esta viendo el chofer:
+ *  - Rutas asignadas hoy segun la BD
+ *  - Status de cada ruta y trip
+ *  - Stops con sus status y horarios
+ *  - Que devuelve el endpoint /api/v1/routes (con y sin filtro)
+ *  - Fecha local del server vs UTC
+ *  Util para confirmar si el problema es server-side o cache-side.
+ */
+app.get('/api/v1/admin/diagnose-driver/:driverId', async (req, res) => {
+    try {
+        const driverId = String(req.params.driverId || '').trim();
+        if (!driverId) return res.status(400).json({ error: 'driverId requerido' });
+
+        const now = new Date();
+        const dayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+        const dayEnd = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+        // Ver TODAS las rutas del chofer hoy (sin filtros)
+        const allRoutes = await prisma.route.findMany({
+            where: { driverId, date: { gte: dayStart, lte: dayEnd } },
+            include: {
+                stops: { orderBy: { sequence: 'asc' }, include: { client: { select: { id: true, name: true } } } },
+                trip: { select: { id: true, status: true, completedAt: true, businessUnit: true, reparto: true } }
+            },
+            orderBy: { id: 'asc' }
+        });
+
+        // Aplicar el MISMO filtro que aplica /api/v1/routes con excludeFinished=true (default)
+        const routesFiltered = allRoutes.filter((r: any) => {
+            if (r.actualEndTime) return false;
+            const ts = String(r.trip?.status || '').toUpperCase();
+            if (ts === 'COMPLETED' || ts === 'RETURNED') return false;
+            return true;
+        });
+
+        const driver = await prisma.user.findUnique({
+            where: { id: driverId },
+            select: { id: true, username: true, fullName: true, role: true }
+        });
+
+        res.json({
+            now: now.toISOString(),
+            serverLocalDay: `${dayStart.toISOString()} → ${dayEnd.toISOString()}`,
+            driver,
+            summary: {
+                rutasAsignadasHoy: allRoutes.length,
+                rutasQueRecibeApp: routesFiltered.length,
+                rutasFiltradas: allRoutes.length - routesFiltered.length
+            },
+            allRoutesInDB: allRoutes.map((r: any) => ({
+                routeId: r.id,
+                tripId: r.tripId,
+                date: r.date,
+                status: r.status,
+                actualStartTime: r.actualStartTime,
+                actualEndTime: r.actualEndTime,
+                tripStatus: r.trip?.status,
+                tripCompletedAt: r.trip?.completedAt,
+                reparto: r.trip?.reparto || r.trip?.businessUnit,
+                stops: r.stops.map((s: any) => ({
+                    id: s.id, sequence: s.sequence, status: s.status,
+                    clientName: s.client?.name,
+                    actualArrival: s.actualArrival, actualDeparture: s.actualDeparture
+                })),
+                _willBeFilteredOut: !routesFiltered.find((x: any) => x.id === r.id),
+                _reasonIfFiltered: r.actualEndTime ? 'actualEndTime != null' :
+                    (r.trip?.status === 'COMPLETED' ? 'trip.status = COMPLETED' :
+                     r.trip?.status === 'RETURNED' ? 'trip.status = RETURNED' : null)
+            }))
+        });
+    } catch (e: any) {
+        console.error('GET /admin/diagnose-driver:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** B1) ENDPOINT FORCE REFRESH
+ *  POST /api/v1/admin/force-refresh/:driverId
+ *  Emite un evento socket `cache:invalidate` al chofer especifico para que su app
+ *  borre el cache local y refresque desde el server. Util cuando el chofer tiene
+ *  cache stale y no quiere/puede cerrar y abrir la app.
+ */
+app.post('/api/v1/admin/force-refresh/:driverId', async (req, res) => {
+    try {
+        const driverId = String(req.params.driverId || '').trim();
+        if (!driverId) return res.status(400).json({ error: 'driverId requerido' });
+        // Emitir al room del chofer y tambien broadcast (por compatibilidad si el chofer no joineo)
+        io.to(`driver:${driverId}`).emit('cache:invalidate', { driverId, ts: Date.now() });
+        io.emit('cache:invalidate', { driverId, ts: Date.now() });
+        console.log(`[admin] cache:invalidate emitido para driver ${driverId}`);
+        res.json({ ok: true, driverId, emittedAt: new Date().toISOString() });
+    } catch (e: any) {
+        console.error('POST /admin/force-refresh:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Cache en memoria para snap-to-roads (evita gastar Roads API por puntos repetidos).
  *  Key exacta: lat,lng redondeado a 5 decimales (~1m). TTL 10 min. */
 const _snapCache = new Map<string, { snapped: { lat: number; lng: number }; expires: number }>();

@@ -3425,6 +3425,14 @@
                         <button onclick="resetUserPassword('${u.id}', '${(u.username || '').replace(/'/g, "\\'")}')" class="px-4 py-2 rounded-xl bg-indigo-600 text-white text-xs font-bold hover:bg-indigo-700 transition-all">
                             Guardar contraseña
                         </button>
+                        ${String(u.role || '').toUpperCase() === 'DRIVER' ? `
+                        <button onclick="forceRefreshDriverApp('${u.id}', '${(u.fullName || u.username || '').replace(/'/g, "\\'")}')" class="ml-2 px-4 py-2 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-bold hover:bg-emerald-200 transition-all" title="Limpia el cache local de la app del chofer y la fuerza a recargar las rutas desde el server">
+                            Forzar refresh app
+                        </button>
+                        <button onclick="diagnoseDriver('${u.id}', '${(u.fullName || u.username || '').replace(/'/g, "\\'")}')" class="ml-2 px-4 py-2 rounded-xl bg-sky-100 text-sky-800 text-xs font-bold hover:bg-sky-200 transition-all" title="Ver qué rutas tiene asignadas y cuáles está recibiendo la app">
+                            Diagnóstico
+                        </button>
+                        ` : ''}
                         <button onclick="toggleUserBlocked('${u.id}', '${(u.username || '').replace(/'/g, "\\'")}', '${String(u.role || '').toUpperCase()}')" class="ml-2 px-4 py-2 rounded-xl bg-amber-100 text-amber-800 text-xs font-bold hover:bg-amber-200 transition-all">
                             ${String(u.role || '').toUpperCase() === 'BLOCKED' ? 'Desbloquear' : 'Bloquear'}
                         </button>
@@ -3533,6 +3541,110 @@
                 await loadUsers();
             } catch (e) {
                 notifyUsers(`Error al eliminar usuario: ${e?.message || e}`, 'warning');
+            }
+        }
+
+        /** Fuerza al chofer a limpiar su cache local y refrescar las rutas.
+         *  Emite un evento socket `cache:invalidate` que la app movil escucha. */
+        async function forceRefreshDriverApp(driverId, driverName) {
+            if (!confirm(`¿Forzar a la app de "${driverName}" a refrescar sus rutas?\n\nEsto va a limpiar el cache local del celular y volver a pedir todo al servidor. Útil cuando la app muestra viajes que ya no deberían estar.`)) return;
+            try {
+                const res = await fetch(`${API_URL}/admin/force-refresh/${driverId}`, {
+                    method: 'POST',
+                    headers: getActorHeaders()
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data?.error || 'No se pudo enviar la orden');
+                notifyUsers(`Orden de refresh enviada a "${driverName}". La app se actualiza en 1-2 seg si esta abierta.`, 'success');
+            } catch (e) {
+                notifyUsers(`Error al forzar refresh: ${e?.message || e}`, 'warning');
+            }
+        }
+
+        /** Diagnostica que rutas tiene asignadas el chofer segun el server y
+         *  cuales esta recibiendo la app movil (con el filtro aplicado). */
+        async function diagnoseDriver(driverId, driverName) {
+            try {
+                const res = await fetch(`${API_URL}/admin/diagnose-driver/${driverId}`, { headers: getActorHeaders() });
+                if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                const data = await res.json();
+                const summary = data.summary || {};
+                const routes = data.allRoutesInDB || [];
+
+                let html = `
+                    <div class="space-y-3 text-xs">
+                        <div class="bg-[#F4F7FE] rounded-xl p-3">
+                            <p class="font-black text-[#1B2559] mb-1">Diagnóstico de ${driverName}</p>
+                            <p class="text-[#A3AED0]">Hora del server: ${new Date(data.now).toLocaleString('es-AR')}</p>
+                        </div>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div class="bg-indigo-50 rounded-xl p-3 text-center">
+                                <p class="text-2xl font-black text-indigo-700">${summary.rutasAsignadasHoy ?? 0}</p>
+                                <p class="text-[10px] font-bold text-indigo-700">Asignadas hoy</p>
+                            </div>
+                            <div class="bg-emerald-50 rounded-xl p-3 text-center">
+                                <p class="text-2xl font-black text-emerald-700">${summary.rutasQueRecibeApp ?? 0}</p>
+                                <p class="text-[10px] font-bold text-emerald-700">Recibe la app</p>
+                            </div>
+                            <div class="bg-rose-50 rounded-xl p-3 text-center">
+                                <p class="text-2xl font-black text-rose-700">${summary.rutasFiltradas ?? 0}</p>
+                                <p class="text-[10px] font-bold text-rose-700">Filtradas (cerradas)</p>
+                            </div>
+                        </div>
+                        <div class="space-y-2">
+                `;
+                for (const r of routes) {
+                    const colorClass = r._willBeFilteredOut ? 'bg-rose-50 border-rose-200' : 'bg-emerald-50 border-emerald-200';
+                    const finalizada = r._willBeFilteredOut
+                        ? `<span class="text-rose-700 text-[10px] font-black">FILTRADA — ${r._reasonIfFiltered}</span>`
+                        : `<span class="text-emerald-700 text-[10px] font-black">ACTIVA — la app la recibe</span>`;
+                    const stopsHtml = (r.stops || []).map(s => `
+                        <div class="text-[10px] flex items-center justify-between border-t border-white pt-1 mt-1">
+                            <span class="font-bold">#${s.sequence} ${(s.clientName || 'Sin cliente').replace(/</g, '&lt;')}</span>
+                            <span class="px-2 py-0.5 rounded-md ${s.status === 'COMPLETED' ? 'bg-emerald-200 text-emerald-800' : s.status === 'UNDELIVERABLE' ? 'bg-rose-200 text-rose-800' : s.status === 'ARRIVED' ? 'bg-indigo-200 text-indigo-800' : 'bg-amber-200 text-amber-800'} font-black">${s.status}</span>
+                        </div>
+                    `).join('');
+                    html += `
+                        <div class="border rounded-xl p-3 ${colorClass}">
+                            <div class="flex items-center justify-between mb-2">
+                                <p class="font-black text-[#1B2559]">Route #${r.routeId} · ${(r.reparto || '').replace(/</g, '&lt;')}</p>
+                                ${finalizada}
+                            </div>
+                            <div class="grid grid-cols-2 gap-2 text-[10px] mb-2">
+                                <p><span class="text-[#A3AED0]">Status ruta:</span> <b>${r.status || '-'}</b></p>
+                                <p><span class="text-[#A3AED0]">Status trip:</span> <b>${r.tripStatus || '-'}</b></p>
+                                <p><span class="text-[#A3AED0]">Inicio:</span> ${r.actualStartTime ? new Date(r.actualStartTime).toLocaleTimeString('es-AR') : '-'}</p>
+                                <p><span class="text-[#A3AED0]">Fin:</span> ${r.actualEndTime ? new Date(r.actualEndTime).toLocaleTimeString('es-AR') : '-'}</p>
+                            </div>
+                            <div class="bg-white rounded-md p-2">${stopsHtml}</div>
+                        </div>
+                    `;
+                }
+                if (routes.length === 0) {
+                    html += `<p class="text-center text-[#A3AED0] italic py-4">No tiene rutas asignadas hoy.</p>`;
+                }
+                html += `</div></div>`;
+
+                // Mostrar en un modal nuevo
+                const existingModal = document.getElementById('diagnose-modal');
+                if (existingModal) existingModal.remove();
+                const modal = document.createElement('div');
+                modal.id = 'diagnose-modal';
+                modal.className = 'fixed inset-0 z-[100] flex items-center justify-center p-4';
+                modal.style.background = 'rgba(15, 23, 42, 0.72)';
+                modal.style.backdropFilter = 'blur(8px)';
+                modal.innerHTML = `
+                    <div class="bg-white rounded-3xl w-full max-w-3xl max-h-[90vh] shadow-2xl overflow-hidden flex flex-col">
+                        <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center bg-[#F8FAFF]">
+                            <h3 class="font-black text-[#1B2559] uppercase tracking-widest text-sm">Diagnóstico Chofer</h3>
+                            <button onclick="document.getElementById('diagnose-modal').remove()" class="text-[#A3AED0] hover:text-[#1B2559] transition-colors text-2xl font-black w-9 h-9 flex items-center justify-center rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8]">×</button>
+                        </div>
+                        <div class="overflow-y-auto custom-scrollbar p-6 flex-1">${html}</div>
+                    </div>
+                `;
+                document.body.appendChild(modal);
+            } catch (e) {
+                notifyUsers(`Error en diagnóstico: ${e?.message || e}`, 'warning');
             }
         }
 

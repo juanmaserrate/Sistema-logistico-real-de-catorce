@@ -425,6 +425,21 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       socket.on('stop:updated', () => {
         loadRoutes({ silent: true });
       });
+      // FORCE REFRESH desde la web admin: limpia el cache local y vuelve a pedir
+      // todo fresco al server. Solo actua si el driverId del evento coincide con el
+      // de esta sesion (o si el evento no trae driverId = es broadcast general).
+      socket.on('cache:invalidate', (payload: any) => {
+        const targetDriverId = payload?.driverId;
+        if (targetDriverId && targetDriverId !== session.id) return;
+        (async () => {
+          try {
+            // eslint-disable-next-line @typescript-eslint/no-var-requires
+            const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+            await AsyncStorage.removeItem('r14_routes_today_cache');
+          } catch { /* */ }
+          loadRoutes({ silent: true });
+        })();
+      });
     } catch {
       /* socket.io-client no disponible en este build */
     }
