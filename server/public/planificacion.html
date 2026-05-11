@@ -144,6 +144,9 @@
                         <i data-lucide="users-2" class="w-4 h-4"></i> Personal
                     </a>
                     <!-- Salarios ahora integrado dentro de Personal -->
+                    <a href="#fleets" id="btn-fleets" class="header-nav-item">
+                        <i data-lucide="truck" class="w-4 h-4"></i> Flotas
+                    </a>
                     <a href="#schools" id="btn-schools" class="header-nav-item">
                         <i data-lucide="graduation-cap" class="w-4 h-4"></i> Escuelas
                     </a>
@@ -1658,321 +1661,445 @@
             </div>
 
             <!-- ═══ PRESUPUESTAR ═══ -->
-            <div id="view-budget" class="hidden view-animate space-y-6">
-                <!-- Header -->
-                <div class="card-dark p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
+            <!-- ═══ FLOTAS ═══ -->
+            <div id="view-fleets" class="hidden view-animate space-y-6">
+                <div class="card-dark p-6 flex flex-col md:flex-row md:items-center justify-between gap-4">
                     <div>
-                        <h3 class="text-2xl font-bold text-[#1B2559]">Presupuestar Viaje</h3>
-                        <p class="text-sm text-[#A3AED0] font-medium">Calculadora de costos + margen + impuestos. Todos los datos los ingresás a mano.</p>
+                        <h3 class="text-xl font-bold text-[#1B2559]">Flotas</h3>
+                        <p class="text-xs text-[#A3AED0] font-medium">Configurá los datos de cada camión una sola vez y reusalos en cada presupuesto.</p>
                     </div>
-                    <div class="flex items-center gap-3">
-                        <div class="inline-flex rounded-2xl bg-[#F4F7FE] p-1" role="tablist">
-                            <button id="bud-tab-calc-btn" onclick="budgetShowTab('calc')" class="px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest bg-indigo-600 text-white shadow">Calculadora</button>
-                            <button id="bud-tab-history-btn" onclick="budgetShowTab('history')" class="px-5 py-2 rounded-xl text-xs font-black uppercase tracking-widest text-[#A3AED0] hover:text-[#1B2559]">Historial <span id="bud-history-count" class="ml-1 inline-block min-w-[1.2rem] px-1 rounded-full bg-[#E0E5F2] text-[#1B2559]">0</span></button>
+                    <button onclick="fleetsOpenEditor()" class="px-5 py-3 bg-indigo-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-2">
+                        <i data-lucide="plus" class="w-4 h-4"></i> Nueva flota
+                    </button>
+                </div>
+
+                <div id="fleets-list" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4"></div>
+                <div id="fleets-empty" class="hidden text-center text-sm italic text-[#A3AED0] py-12">
+                    Todavía no creaste ninguna flota. Apretá "Nueva flota" para empezar.
+                </div>
+            </div>
+
+            <!-- MODAL: Editor de flota -->
+            <div id="fleet-editor-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-4" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
+                <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl max-h-[92vh] overflow-hidden flex flex-col">
+                    <div class="p-5 border-b border-[#F4F7FE] flex items-center justify-between bg-[#F8FAFF]">
+                        <div>
+                            <h4 id="fleet-editor-title" class="text-lg font-black text-[#1B2559]">Nueva flota</h4>
+                            <p class="text-[11px] text-[#A3AED0] font-medium">Los datos quedan guardados en este navegador.</p>
                         </div>
-                        <button id="bud-btn-clear" onclick="budgetClearAll()" class="px-5 py-3 bg-white text-rose-600 border-2 border-rose-500 rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-rose-50">Limpiar todo</button>
-                        <button id="bud-btn-calc" onclick="budgetCalculate()" class="px-6 py-4 bg-indigo-600 text-white rounded-2xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-2">
-                            <i data-lucide="calculator" class="w-4 h-4"></i> Calcular
-                        </button>
+                        <button onclick="fleetsCloseEditor()" class="text-[#A3AED0] hover:text-[#1B2559]"><i data-lucide="x" class="w-5 h-5"></i></button>
+                    </div>
+                    <div class="p-6 space-y-4 overflow-y-auto custom-scrollbar">
+                        <div>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Nombre / Patente</label>
+                            <input id="fleet-name" type="text" placeholder="Ej: Iveco Daily AC123XY" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Valor nuevo ($)</label>
+                                <input id="fleet-truck-value" type="number" placeholder="50000000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Km vida útil</label>
+                                <input id="fleet-life-km" type="number" placeholder="500000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Consumo (L/100 km)</label>
+                                <input id="fleet-consumption" type="number" step="0.1" placeholder="25" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Refrigerado</label>
+                                <select id="fleet-refrigerated" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                    <option value="0">No</option>
+                                    <option value="1">Sí (+15% combustible)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Cubiertas set ($)</label>
+                                <input id="fleet-tires-cost" type="number" placeholder="3000000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Cubiertas duración (km)</label>
+                                <input id="fleet-tires-km" type="number" placeholder="80000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Mantenimiento ($/año)</label>
+                                <input id="fleet-maint-year" type="number" placeholder="3000000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Km al año</label>
+                                <input id="fleet-km-year" type="number" placeholder="60000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Seguro+Pat+VTV ($/mes)</label>
+                                <input id="fleet-fixed-month" type="number" placeholder="150000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Viajes promedio/mes</label>
+                                <input id="fleet-trips-month" type="number" placeholder="22" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                            </div>
+                        </div>
+                        <div class="border-t border-[#F4F7FE] pt-3">
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Notas (opcional)</label>
+                            <input id="fleet-notes" type="text" placeholder="Comentarios internos sobre esta flota" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                        </div>
+                    </div>
+                    <div class="p-4 border-t border-[#F4F7FE] flex justify-end gap-2 bg-[#F8FAFF]">
+                        <button onclick="fleetsCloseEditor()" class="px-4 py-2.5 rounded-xl text-sm font-bold text-[#A3AED0] hover:text-[#1B2559]">Cancelar</button>
+                        <button onclick="fleetsSave()" class="px-6 py-2.5 rounded-xl bg-indigo-600 text-white text-sm font-bold hover:bg-indigo-700">Guardar flota</button>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-budget" class="hidden view-animate space-y-4 pb-32">
+                <!-- Header compacto -->
+                <div class="card-dark p-5 flex flex-col md:flex-row md:items-center justify-between gap-3">
+                    <div>
+                        <h3 class="text-xl font-bold text-[#1B2559]">Presupuestar Viaje</h3>
+                        <p class="text-xs text-[#A3AED0] font-medium">Elegí flota, cargá paradas y calculá. El resultado aparece flotando abajo.</p>
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div class="inline-flex rounded-xl bg-[#F4F7FE] p-1" role="tablist">
+                            <button id="bud-tab-calc-btn" onclick="budgetShowTab('calc')" class="px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest bg-indigo-600 text-white shadow">Calculadora</button>
+                            <button id="bud-tab-history-btn" onclick="budgetShowTab('history')" class="px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest text-[#A3AED0] hover:text-[#1B2559]">Historial <span id="bud-history-count" class="ml-1 inline-block min-w-[1.2rem] px-1 rounded-full bg-[#E0E5F2] text-[#1B2559]">0</span></button>
+                        </div>
+                        <button id="bud-btn-clear" onclick="budgetClearAll()" class="px-3 py-2 bg-white text-rose-600 border border-rose-300 rounded-xl font-bold text-[10px] uppercase tracking-widest hover:bg-rose-50">Limpiar</button>
                     </div>
                 </div>
 
-                <div id="bud-pane-calc" class="grid grid-cols-1 xl:grid-cols-3 gap-6">
-                    <!-- Columna izquierda: formulario -->
-                    <div class="xl:col-span-2 space-y-6">
+                <!-- SELECTOR DE FLOTA: la pieza clave del rediseño -->
+                <div id="bud-fleet-selector-wrap" class="card-dark p-4 flex flex-col md:flex-row md:items-center gap-3 bg-gradient-to-r from-indigo-50 to-white border border-indigo-100">
+                    <div class="flex items-center gap-3 shrink-0">
+                        <div class="w-10 h-10 rounded-xl bg-indigo-600 text-white flex items-center justify-center"><i data-lucide="truck" class="w-5 h-5"></i></div>
+                        <div>
+                            <p class="text-xs font-black text-[#1B2559] uppercase tracking-widest">Cargar desde flota</p>
+                            <p class="text-[10px] text-[#A3AED0]">Auto-rellena valor, consumo, gastos y mantenimiento</p>
+                        </div>
+                    </div>
+                    <select id="bud-fleet-select" onchange="budgetLoadFleet(this.value)" class="flex-1 bg-white border border-[#E0E5F2] rounded-xl px-4 py-3 text-sm font-bold text-[#1B2559] outline-none focus:border-indigo-500">
+                        <option value="">— Cargar manualmente (sin flota) —</option>
+                    </select>
+                    <a href="#fleets" class="px-4 py-2.5 rounded-xl bg-white border border-indigo-200 text-indigo-600 text-[11px] font-black uppercase tracking-widest hover:bg-indigo-50 whitespace-nowrap">Administrar →</a>
+                </div>
 
-                        <!-- 0. DESTINATARIO -->
-                        <div class="card-dark p-6">
-                            <div class="flex items-center gap-3 mb-5">
-                                <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">0</div>
-                                <h4 class="text-lg font-bold text-[#1B2559]">Destinatario</h4>
-                                <span class="text-[10px] font-bold text-[#A3AED0]">A quién va dirigido el presupuesto</span>
+                <div id="bud-pane-calc" class="space-y-4">
+
+                    <!-- 0. DESTINATARIO (compacto, colapsable) -->
+                    <details class="card-dark p-5" open>
+                        <summary class="flex items-center gap-3 cursor-pointer list-none">
+                            <div class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center font-black text-xs">A</div>
+                            <h4 class="text-base font-bold text-[#1B2559] flex-1">Destinatario</h4>
+                            <span class="text-[10px] font-bold text-[#A3AED0]">A quién va dirigido</span>
+                            <i data-lucide="chevron-down" class="w-4 h-4 text-[#A3AED0]"></i>
+                        </summary>
+                        <div class="mt-4 grid grid-cols-1 md:grid-cols-4 gap-2">
+                            <div class="md:col-span-2">
+                                <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Razón social / Nombre</label>
+                                <input id="bud-dest-name" type="text" placeholder="Ej: Escuelas R14 SA" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
                             </div>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">CUIT / DNI</label>
+                                <input id="bud-dest-cuit" type="text" placeholder="30-12345678-9" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                            </div>
+                            <div>
+                                <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Teléfono</label>
+                                <input id="bud-dest-phone" type="text" placeholder="+54 11 1234-5678" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                            </div>
+                            <div class="md:col-span-2">
+                                <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Email</label>
+                                <input id="bud-dest-email" type="email" placeholder="contacto@empresa.com" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                            </div>
+                            <div class="md:col-span-2">
+                                <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Dirección</label>
+                                <input id="bud-dest-address" type="text" placeholder="Calle 123, Ciudad, Prov." class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                            </div>
+                            <div class="md:col-span-4">
+                                <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Notas / referencia interna</label>
+                                <input id="bud-dest-notes" type="text" placeholder="Contacto: Juan Pérez" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                            </div>
+                        </div>
+                    </details>
+
+                    <!-- LAYOUT 2 COLUMNAS: izquierda paradas+items, derecha personal+camion -->
+                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-4">
+                    <div class="space-y-4"><!-- IZQUIERDA -->
+
+                        <!-- 4. PARADAS (en columna izquierda, prominente) -->
+                        <div class="card-dark p-5">
+                            <div class="flex items-center gap-2 mb-3">
+                                <div class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center font-black text-xs">📍</div>
+                                <h4 class="text-base font-bold text-[#1B2559] flex-1">Paradas del viaje</h4>
+                                <button onclick="budgetOpenStopModal()" class="text-[10px] font-black text-indigo-600 hover:text-indigo-800">+ Parada</button>
+                            </div>
+                            <div class="mb-2">
+                                <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Origen</label>
+                                <input id="bud-origin" type="text" value="Ombú 1269, Burzaco, Buenos Aires" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                            </div>
+                            <span class="text-[9px] font-black text-[#A3AED0] uppercase tracking-widest">Paradas (<span id="bud-stops-count">0</span>)</span>
+                            <div id="bud-stops-list" class="space-y-1.5 min-h-[50px] border border-dashed border-[#E0E5F2] rounded-lg p-2 mt-1">
+                                <div class="text-center text-xs text-[#A3AED0] italic py-3">Sin paradas. Apretá "+ Parada".</div>
+                            </div>
+                            <div class="mt-2 grid grid-cols-2 gap-2">
+                                <button onclick="budgetCalculateRoute()" class="px-3 py-2 rounded-lg bg-white border border-indigo-300 text-indigo-600 text-[10px] font-black uppercase tracking-widest hover:bg-indigo-50 flex items-center justify-center gap-1.5">
+                                    <i data-lucide="map" class="w-3.5 h-3.5"></i> Km y tiempo
+                                </button>
+                                <button onclick="budgetOptimizeRoute()" class="px-3 py-2 rounded-lg bg-white border border-emerald-300 text-emerald-600 text-[10px] font-black uppercase tracking-widest hover:bg-emerald-50 flex items-center justify-center gap-1.5">
+                                    <i data-lucide="zap" class="w-3.5 h-3.5"></i> Optimizar
+                                </button>
+                            </div>
+                            <div id="bud-route-metrics" class="hidden mt-2 p-2 rounded-lg bg-indigo-50 border border-indigo-100 flex justify-around text-center">
                                 <div>
-                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Razón social / Nombre</label>
-                                    <input id="bud-dest-name" type="text" placeholder="Ej: Escuelas R14 SA" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                    <div class="text-[9px] font-black text-[#A3AED0] uppercase">Dist.</div>
+                                    <div id="bud-km" class="text-base font-black text-indigo-700">0 km</div>
                                 </div>
                                 <div>
-                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">CUIT / DNI</label>
-                                    <input id="bud-dest-cuit" type="text" placeholder="30-12345678-9" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
-                                </div>
-                                <div>
-                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Email</label>
-                                    <input id="bud-dest-email" type="email" placeholder="contacto@empresa.com" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
-                                </div>
-                                <div>
-                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Teléfono</label>
-                                    <input id="bud-dest-phone" type="text" placeholder="+54 11 1234-5678" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
-                                </div>
-                                <div class="md:col-span-2">
-                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Dirección</label>
-                                    <input id="bud-dest-address" type="text" placeholder="Calle 123, Ciudad, Prov." class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
-                                </div>
-                                <div class="md:col-span-2">
-                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Notas / referencia interna</label>
-                                    <input id="bud-dest-notes" type="text" placeholder="Contacto: Juan Pérez (operaciones)" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                    <div class="text-[9px] font-black text-[#A3AED0] uppercase">Tiempo</div>
+                                    <div id="bud-time" class="text-base font-black text-indigo-700">0 min</div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- 1. PERSONAL -->
-                        <div class="card-dark p-6">
-                            <div class="flex items-center gap-3 mb-5">
-                                <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">1</div>
-                                <h4 class="text-lg font-bold text-[#1B2559]">Personal</h4>
+                        <!-- 4B. QUÉ LLEVA (en columna izquierda) -->
+                        <div class="card-dark p-5">
+                            <div class="flex items-center gap-2 mb-3">
+                                <div class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center font-black text-xs">📦</div>
+                                <h4 class="text-base font-bold text-[#1B2559] flex-1">Qué lleva</h4>
+                                <button onclick="budgetAddItem()" class="text-[10px] font-black text-indigo-600 hover:text-indigo-800">+ Ítem</button>
                             </div>
-
-                            <div class="mb-4">
-                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Chofer</label>
-                                <div class="grid grid-cols-1 md:grid-cols-4 gap-2">
-                                    <input id="bud-driver-name" type="text" placeholder="Nombre" class="bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
-                                    <select id="bud-driver-type" class="bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
-                                        <option value="MENSUAL">Sueldo mensual</option>
-                                        <option value="JORNAL">Jornal por día</option>
-                                    </select>
-                                    <input id="bud-driver-amount" type="number" placeholder="Monto $" class="bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
-                                    <input id="bud-driver-viatico" type="number" placeholder="Viático $" class="bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
-                                </div>
+                            <span class="text-[9px] font-black text-[#A3AED0] uppercase tracking-widest">Ítems (<span id="bud-items-count">0</span>)</span>
+                            <div id="bud-items-list" class="space-y-1.5 min-h-[50px] border border-dashed border-[#E0E5F2] rounded-lg p-2 mt-1">
+                                <div class="text-center text-xs text-[#A3AED0] italic py-3">Sin ítems. Apretá "+ Ítem".</div>
                             </div>
-
-                            <div class="mb-4">
-                                <div class="flex justify-between items-center mb-2">
-                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Auxiliares</label>
-                                    <button onclick="budgetAddAux()" class="text-xs font-black text-indigo-600 hover:text-indigo-800">+ Agregar auxiliar</button>
-                                </div>
-                                <div id="bud-aux-list" class="space-y-2"></div>
-                            </div>
-
-                            <div class="grid grid-cols-2 gap-3 pt-3 border-t border-[#F4F7FE]">
+                            <div id="bud-items-totals" class="hidden mt-2 p-2 rounded-lg bg-indigo-50 border border-indigo-100 grid grid-cols-3 gap-2 text-center">
                                 <div>
-                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Horas laborales del mes</label>
-                                    <input id="bud-month-hours" type="number" value="176" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                    <div class="text-[9px] font-black text-[#A3AED0] uppercase">Bultos</div>
+                                    <div id="bud-items-qty" class="text-sm font-black text-indigo-700">0</div>
                                 </div>
                                 <div>
-                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Cargas sociales (%)</label>
-                                    <input id="bud-social-pct" type="number" value="30" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                    <div class="text-[9px] font-black text-[#A3AED0] uppercase">Peso</div>
+                                    <div id="bud-items-weight" class="text-sm font-black text-indigo-700">0 kg</div>
+                                </div>
+                                <div>
+                                    <div class="text-[9px] font-black text-[#A3AED0] uppercase">Valor</div>
+                                    <div id="bud-items-value" class="text-sm font-black text-indigo-700">$ 0</div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- 2. CAMIÓN -->
-                        <div class="card-dark p-6">
-                            <div class="flex items-center gap-3 mb-5">
-                                <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">2</div>
-                                <h4 class="text-lg font-bold text-[#1B2559]">Camión</h4>
+                    </div><!-- /IZQUIERDA -->
+
+                    <div class="space-y-4"><!-- DERECHA -->
+
+                        <!-- 1. PERSONAL (compacto) -->
+                        <div class="card-dark p-5">
+                            <div class="flex items-center gap-2 mb-3">
+                                <div class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center font-black text-xs">👤</div>
+                                <h4 class="text-base font-bold text-[#1B2559] flex-1">Personal</h4>
                             </div>
-                            <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+
+                            <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Chofer</label>
+                            <div class="grid grid-cols-2 gap-2">
+                                <input id="bud-driver-name" type="text" placeholder="Nombre" class="bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                                <select id="bud-driver-type" class="bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                                    <option value="MENSUAL">Sueldo mensual</option>
+                                    <option value="JORNAL">Jornal por día</option>
+                                </select>
+                                <input id="bud-driver-amount" type="number" placeholder="Monto $" class="bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                                <input id="bud-driver-viatico" type="number" placeholder="Viático $" class="bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                            </div>
+
+                            <div class="flex justify-between items-center mt-3 mb-1">
+                                <label class="text-[9px] font-black text-[#A3AED0] uppercase tracking-widest">Auxiliares</label>
+                                <button onclick="budgetAddAux()" class="text-[10px] font-black text-indigo-600 hover:text-indigo-800">+ Auxiliar</button>
+                            </div>
+                            <div id="bud-aux-list" class="space-y-1.5"></div>
+
+                            <div class="grid grid-cols-2 gap-2 mt-3 pt-3 border-t border-[#F4F7FE]">
                                 <div>
-                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Valor nuevo $</label>
-                                    <input id="bud-truck-value" type="number" placeholder="50000000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                    <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Hs/mes</label>
+                                    <input id="bud-month-hours" type="number" value="176" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
                                 </div>
                                 <div>
-                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Km vida útil</label>
-                                    <input id="bud-truck-life-km" type="number" placeholder="500000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
-                                </div>
-                                <div>
-                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Consumo L/100 km</label>
-                                    <input id="bud-consumption" type="number" placeholder="25" step="0.1" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                    <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Cargas soc. (%)</label>
+                                    <input id="bud-social-pct" type="number" value="30" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
                                 </div>
                             </div>
-                            <label class="flex items-center gap-2 mt-3 cursor-pointer">
-                                <input id="bud-refrigerated" type="checkbox" class="rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500">
-                                <span class="text-xs font-bold text-[#2B3674]">Camión refrigerado (+15% combustible)</span>
+                        </div>
+
+                        <!-- 2. CAMIÓN (compacto) -->
+                        <div class="card-dark p-5">
+                            <div class="flex items-center gap-2 mb-3">
+                                <div class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center font-black text-xs">🚚</div>
+                                <h4 class="text-base font-bold text-[#1B2559] flex-1">Camión</h4>
+                                <span class="text-[9px] font-bold text-[#A3AED0]" id="bud-fleet-active-label"></span>
+                            </div>
+                            <div class="grid grid-cols-3 gap-2">
+                                <div>
+                                    <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Valor nuevo $</label>
+                                    <input id="bud-truck-value" type="number" placeholder="50000000" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                                </div>
+                                <div>
+                                    <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Vida útil km</label>
+                                    <input id="bud-truck-life-km" type="number" placeholder="500000" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                                </div>
+                                <div>
+                                    <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Consumo L/100</label>
+                                    <input id="bud-consumption" type="number" placeholder="25" step="0.1" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                                </div>
+                            </div>
+                            <label class="flex items-center gap-2 mt-2 cursor-pointer">
+                                <input id="bud-refrigerated" type="checkbox" class="rounded border-[#E0E5F2] text-indigo-600">
+                                <span class="text-[10px] font-bold text-[#2B3674]">Refrigerado (+15% combustible)</span>
                             </label>
-
-                            <div class="mt-4 pt-3 border-t border-[#F4F7FE]">
-                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Gastos anuales del camión</label>
-                                <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
-                                    <div>
-                                        <label class="text-[10px] font-bold text-[#A3AED0] mb-1 block">Cubiertas (set) $</label>
-                                        <input id="bud-tires-cost" type="number" placeholder="3000000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
-                                        <label class="text-[9px] text-[#A3AED0] mt-1 block">Duración (km)</label>
-                                        <input id="bud-tires-km" type="number" placeholder="80000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-2 text-xs font-bold text-[#1B2559] mt-1">
-                                    </div>
-                                    <div>
-                                        <label class="text-[10px] font-bold text-[#A3AED0] mb-1 block">Mantenimiento/año $</label>
-                                        <input id="bud-maint-year" type="number" placeholder="3000000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
-                                        <label class="text-[9px] text-[#A3AED0] mt-1 block">Km que hace al año</label>
-                                        <input id="bud-km-year" type="number" placeholder="60000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-2 text-xs font-bold text-[#1B2559] mt-1">
-                                    </div>
-                                    <div>
-                                        <label class="text-[10px] font-bold text-[#A3AED0] mb-1 block">Seguro+Pat+VTV $/mes</label>
-                                        <input id="bud-fixed-month" type="number" placeholder="150000" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
-                                        <label class="text-[9px] text-[#A3AED0] mt-1 block">Viajes promedio/mes</label>
-                                        <input id="bud-trips-month" type="number" value="22" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-2 text-xs font-bold text-[#1B2559] mt-1">
-                                    </div>
+                            <div class="mt-3 pt-3 border-t border-[#F4F7FE] grid grid-cols-3 gap-2">
+                                <div>
+                                    <label class="text-[9px] font-bold text-[#A3AED0] mb-1 block">Cubiertas $</label>
+                                    <input id="bud-tires-cost" type="number" placeholder="3000000" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2 text-xs font-bold text-[#1B2559]">
+                                </div>
+                                <div>
+                                    <label class="text-[9px] font-bold text-[#A3AED0] mb-1 block">Dur. km</label>
+                                    <input id="bud-tires-km" type="number" placeholder="80000" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2 text-xs font-bold text-[#1B2559]">
+                                </div>
+                                <div>
+                                    <label class="text-[9px] font-bold text-[#A3AED0] mb-1 block">Mant./año $</label>
+                                    <input id="bud-maint-year" type="number" placeholder="3000000" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2 text-xs font-bold text-[#1B2559]">
+                                </div>
+                                <div>
+                                    <label class="text-[9px] font-bold text-[#A3AED0] mb-1 block">Km/año</label>
+                                    <input id="bud-km-year" type="number" placeholder="60000" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2 text-xs font-bold text-[#1B2559]">
+                                </div>
+                                <div>
+                                    <label class="text-[9px] font-bold text-[#A3AED0] mb-1 block">Fijo $/mes</label>
+                                    <input id="bud-fixed-month" type="number" placeholder="150000" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2 text-xs font-bold text-[#1B2559]">
+                                </div>
+                                <div>
+                                    <label class="text-[9px] font-bold text-[#A3AED0] mb-1 block">Viajes/mes</label>
+                                    <input id="bud-trips-month" type="number" value="22" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2 text-xs font-bold text-[#1B2559]">
                                 </div>
                             </div>
                         </div>
 
-                        <!-- 3. COMBUSTIBLE -->
-                        <div class="card-dark p-6">
-                            <div class="flex items-center gap-3 mb-5">
-                                <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">3</div>
-                                <h4 class="text-lg font-bold text-[#1B2559]">Combustible</h4>
+                        <!-- 3. COMBUSTIBLE + FRECUENCIA + GANANCIA (compactos juntos) -->
+                        <div class="card-dark p-5">
+                            <div class="flex items-center gap-2 mb-3">
+                                <div class="w-8 h-8 rounded-lg bg-indigo-100 text-indigo-600 flex items-center justify-center font-black text-xs">⛽</div>
+                                <h4 class="text-base font-bold text-[#1B2559] flex-1">Parámetros</h4>
                             </div>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div class="grid grid-cols-2 gap-2">
                                 <div>
-                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Precio del litro $</label>
-                                    <input id="bud-fuel-price" type="number" placeholder="1200" step="0.01" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 4. PARADAS -->
-                        <div class="card-dark p-6">
-                            <div class="flex items-center gap-3 mb-5">
-                                <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">4</div>
-                                <h4 class="text-lg font-bold text-[#1B2559]">Paradas del viaje</h4>
-                            </div>
-                            <div class="mb-3">
-                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Origen</label>
-                                <input id="bud-origin" type="text" value="Ombú 1269, Burzaco, Buenos Aires" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
-                            </div>
-                            <div class="flex items-center justify-between mb-2">
-                                <span class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Paradas (<span id="bud-stops-count">0</span>)</span>
-                                <button onclick="budgetOpenStopModal()" class="text-xs font-black text-indigo-600 hover:text-indigo-800">+ Agregar parada</button>
-                            </div>
-                            <div id="bud-stops-list" class="space-y-2 min-h-[60px] border border-dashed border-[#E0E5F2] rounded-xl p-3">
-                                <div class="text-center text-xs text-[#A3AED0] italic py-4">Sin paradas. Clic en "+ Agregar parada".</div>
-                            </div>
-
-                            <div class="mt-4 grid grid-cols-2 gap-3">
-                                <button onclick="budgetCalculateRoute()" class="px-4 py-3 rounded-xl bg-white border-2 border-indigo-500 text-indigo-600 text-xs font-black uppercase tracking-widest hover:bg-indigo-50 flex items-center justify-center gap-2">
-                                    <i data-lucide="map" class="w-4 h-4"></i> Calcular km y tiempo
-                                </button>
-                                <button onclick="budgetOptimizeRoute()" class="px-4 py-3 rounded-xl bg-white border-2 border-emerald-500 text-emerald-600 text-xs font-black uppercase tracking-widest hover:bg-emerald-50 flex items-center justify-center gap-2">
-                                    <i data-lucide="zap" class="w-4 h-4"></i> Optimizar orden
-                                </button>
-                            </div>
-
-                            <div id="bud-route-metrics" class="hidden mt-4 p-3 rounded-xl bg-indigo-50 border border-indigo-100 flex justify-around text-center">
-                                <div>
-                                    <div class="text-[10px] font-black text-[#A3AED0] uppercase">Distancia</div>
-                                    <div id="bud-km" class="text-lg font-black text-indigo-700">0 km</div>
+                                    <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Precio litro $</label>
+                                    <input id="bud-fuel-price" type="number" placeholder="1200" step="0.01" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
                                 </div>
                                 <div>
-                                    <div class="text-[10px] font-black text-[#A3AED0] uppercase">Tiempo</div>
-                                    <div id="bud-time" class="text-lg font-black text-indigo-700">0 min</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 4B. QUÉ LLEVA -->
-                        <div class="card-dark p-6">
-                            <div class="flex items-center gap-3 mb-5">
-                                <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">📦</div>
-                                <h4 class="text-lg font-bold text-[#1B2559]">Qué lleva</h4>
-                                <span class="text-[10px] font-bold text-[#A3AED0]">Detalle de la carga</span>
-                            </div>
-                            <div class="flex items-center justify-between mb-2">
-                                <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Ítems (<span id="bud-items-count">0</span>)</label>
-                                <button onclick="budgetAddItem()" class="text-xs font-black text-indigo-600 hover:text-indigo-800">+ Agregar ítem</button>
-                            </div>
-                            <div id="bud-items-list" class="space-y-2 min-h-[60px] border border-dashed border-[#E0E5F2] rounded-xl p-3">
-                                <div class="text-center text-xs text-[#A3AED0] italic py-4">Sin ítems. Clic en "+ Agregar ítem".</div>
-                            </div>
-                            <div id="bud-items-totals" class="hidden mt-3 p-3 rounded-xl bg-indigo-50 border border-indigo-100 flex justify-around text-center">
-                                <div>
-                                    <div class="text-[10px] font-black text-[#A3AED0] uppercase">Bultos</div>
-                                    <div id="bud-items-qty" class="text-lg font-black text-indigo-700">0</div>
+                                    <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Overhead %</label>
+                                    <input id="bud-overhead-pct" type="number" value="10" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
                                 </div>
                                 <div>
-                                    <div class="text-[10px] font-black text-[#A3AED0] uppercase">Peso total</div>
-                                    <div id="bud-items-weight" class="text-lg font-black text-indigo-700">0 kg</div>
-                                </div>
-                                <div>
-                                    <div class="text-[10px] font-black text-[#A3AED0] uppercase">Valor declarado</div>
-                                    <div id="bud-items-value" class="text-lg font-black text-indigo-700">$ 0</div>
-                                </div>
-                            </div>
-                        </div>
-
-                        <!-- 5. FRECUENCIA + OFICINA -->
-                        <div class="card-dark p-6">
-                            <div class="flex items-center gap-3 mb-5">
-                                <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">5</div>
-                                <h4 class="text-lg font-bold text-[#1B2559]">Frecuencia y oficina</h4>
-                            </div>
-                            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Frecuencia</label>
-                                    <select id="bud-frequency" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                    <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Frecuencia</label>
+                                    <select id="bud-frequency" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
                                         <option value="unico">Único (1.00)</option>
                                         <option value="semanal1">Semanal 1 vez (1.00)</option>
                                         <option value="semanal2">Semanal 2 veces (0.98)</option>
-                                        <option value="semanal3">Semanal 3-5 veces (0.95)</option>
+                                        <option value="semanal3">Semanal 3-5 (0.95)</option>
                                         <option value="diario">Diario (0.92)</option>
                                     </select>
                                 </div>
                                 <div>
-                                    <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Overhead oficina (%)</label>
-                                    <input id="bud-overhead-pct" type="number" value="10" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                    <label class="text-[9px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Ganancia %</label>
+                                    <input id="bud-margin-pct" type="number" value="25" class="w-full bg-[#F4F7FE] border-0 rounded-lg p-2.5 text-sm font-bold text-[#1B2559]">
+                                </div>
+                            </div>
+
+                            <div class="mt-3 pt-3 border-t border-[#F4F7FE]">
+                                <div class="flex items-center justify-between mb-2">
+                                    <label class="text-[9px] font-black text-[#A3AED0] uppercase tracking-widest">Impuestos</label>
+                                    <button onclick="budgetAddTax()" class="text-[10px] font-black text-indigo-600 hover:text-indigo-800">+ Impuesto</button>
+                                </div>
+                                <div id="bud-tax-list" class="space-y-1.5">
+                                    <div class="flex items-center gap-1.5 bg-[#F4F7FE] rounded-lg p-1.5">
+                                        <input type="checkbox" class="bud-tax-enabled rounded border-[#E0E5F2] text-indigo-600" checked>
+                                        <input type="text" value="IVA" class="bud-tax-name flex-1 bg-white border-0 rounded-md p-1.5 text-xs font-bold text-[#1B2559]">
+                                        <input type="number" value="21" class="bud-tax-pct w-14 bg-white border-0 rounded-md p-1.5 text-xs font-bold text-[#1B2559] text-right">
+                                        <span class="text-[10px] font-black text-[#A3AED0]">%</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5 bg-[#F4F7FE] rounded-lg p-1.5">
+                                        <input type="checkbox" class="bud-tax-enabled rounded border-[#E0E5F2] text-indigo-600" checked>
+                                        <input type="text" value="Ingresos Brutos" class="bud-tax-name flex-1 bg-white border-0 rounded-md p-1.5 text-xs font-bold text-[#1B2559]">
+                                        <input type="number" value="3" class="bud-tax-pct w-14 bg-white border-0 rounded-md p-1.5 text-xs font-bold text-[#1B2559] text-right">
+                                        <span class="text-[10px] font-black text-[#A3AED0]">%</span>
+                                    </div>
+                                    <div class="flex items-center gap-1.5 bg-[#F4F7FE] rounded-lg p-1.5">
+                                        <input type="checkbox" class="bud-tax-enabled rounded border-[#E0E5F2] text-indigo-600">
+                                        <input type="text" value="Ganancias" class="bud-tax-name flex-1 bg-white border-0 rounded-md p-1.5 text-xs font-bold text-[#1B2559]">
+                                        <input type="number" value="0" class="bud-tax-pct w-14 bg-white border-0 rounded-md p-1.5 text-xs font-bold text-[#1B2559] text-right">
+                                        <span class="text-[10px] font-black text-[#A3AED0]">%</span>
+                                    </div>
                                 </div>
                             </div>
                         </div>
 
-                        <!-- 6. GANANCIA + IMPUESTOS -->
-                        <div class="card-dark p-6">
-                            <div class="flex items-center gap-3 mb-5">
-                                <div class="w-9 h-9 rounded-full bg-indigo-100 text-indigo-600 flex items-center justify-center font-black">6</div>
-                                <h4 class="text-lg font-bold text-[#1B2559]">Ganancia e impuestos</h4>
-                            </div>
-                            <div class="mb-4">
-                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Ganancia deseada (%)</label>
-                                <input id="bud-margin-pct" type="number" value="25" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
-                            </div>
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-2 block tracking-widest">Impuestos (opcionales)</label>
-                            <div id="bud-tax-list" class="space-y-2">
-                                <div class="flex items-center gap-2 bg-[#F4F7FE] rounded-xl p-2">
-                                    <input type="checkbox" class="bud-tax-enabled rounded border-[#E0E5F2] text-indigo-600" checked>
-                                    <input type="text" value="IVA" class="bud-tax-name flex-1 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]">
-                                    <input type="number" value="21" class="bud-tax-pct w-20 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559] text-right">
-                                    <span class="text-xs font-black text-[#A3AED0]">%</span>
-                                </div>
-                                <div class="flex items-center gap-2 bg-[#F4F7FE] rounded-xl p-2">
-                                    <input type="checkbox" class="bud-tax-enabled rounded border-[#E0E5F2] text-indigo-600" checked>
-                                    <input type="text" value="Ingresos Brutos" class="bud-tax-name flex-1 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]">
-                                    <input type="number" value="3" class="bud-tax-pct w-20 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559] text-right">
-                                    <span class="text-xs font-black text-[#A3AED0]">%</span>
-                                </div>
-                                <div class="flex items-center gap-2 bg-[#F4F7FE] rounded-xl p-2">
-                                    <input type="checkbox" class="bud-tax-enabled rounded border-[#E0E5F2] text-indigo-600">
-                                    <input type="text" value="Ganancias" class="bud-tax-name flex-1 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]">
-                                    <input type="number" value="0" class="bud-tax-pct w-20 bg-white border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559] text-right">
-                                    <span class="text-xs font-black text-[#A3AED0]">%</span>
-                                </div>
-                            </div>
-                            <button onclick="budgetAddTax()" class="mt-2 text-xs font-black text-indigo-600 hover:text-indigo-800">+ Agregar impuesto</button>
-                        </div>
-                    </div>
+                    </div><!-- /DERECHA -->
+                    </div><!-- /grid 2 col -->
 
-                    <!-- Columna derecha: resultado -->
-                    <div class="xl:col-span-1">
-                        <div class="card-dark p-6 sticky top-6">
-                            <h4 class="text-lg font-bold text-[#1B2559] mb-4 flex items-center gap-2">
-                                <i data-lucide="receipt" class="w-5 h-5 text-indigo-600"></i> Resultado
-                            </h4>
-                            <div id="bud-result" class="text-sm text-[#2B3674]">
-                                <div class="text-center text-[#A3AED0] italic py-10">
-                                    Completá los datos y apretá <b>Calcular</b> para ver el presupuesto.
+                </div><!-- /bud-pane-calc -->
+
+                <!-- BARRA FLOTANTE STICKY: resultado siempre visible -->
+                <div id="bud-floating-bar" class="fixed bottom-0 left-0 right-0 z-40 pointer-events-none px-4 pb-4" style="display: none;">
+                    <div class="max-w-7xl mx-auto pointer-events-auto bg-white rounded-2xl shadow-2xl shadow-indigo-900/30 border-2 border-indigo-200 overflow-hidden">
+                        <!-- Modo COLAPSADO: 1 fila con resumen + botones -->
+                        <div id="bud-floating-collapsed" class="flex items-center gap-3 p-3">
+                            <button id="bud-btn-calc" onclick="budgetCalculate()" class="px-5 py-3 bg-indigo-600 text-white rounded-xl font-bold text-xs uppercase tracking-widest hover:bg-indigo-700 shadow-md flex items-center gap-2 whitespace-nowrap">
+                                <i data-lucide="calculator" class="w-4 h-4"></i> Calcular
+                            </button>
+                            <div id="bud-floating-summary" class="flex-1 flex items-center justify-around text-center text-xs gap-2 min-w-0">
+                                <div class="hidden sm:block">
+                                    <div class="text-[9px] font-black text-[#A3AED0] uppercase">Costo</div>
+                                    <div id="bud-fb-costo" class="text-sm font-black text-[#1B2559]">—</div>
+                                </div>
+                                <div class="hidden md:block">
+                                    <div class="text-[9px] font-black text-[#A3AED0] uppercase">Ganancia</div>
+                                    <div id="bud-fb-ganancia" class="text-sm font-black text-emerald-600">—</div>
+                                </div>
+                                <div class="hidden md:block">
+                                    <div class="text-[9px] font-black text-[#A3AED0] uppercase">Impuestos</div>
+                                    <div id="bud-fb-impuestos" class="text-sm font-black text-amber-600">—</div>
+                                </div>
+                                <div>
+                                    <div class="text-[9px] font-black text-[#A3AED0] uppercase">Precio Final</div>
+                                    <div id="bud-fb-final" class="text-lg font-black text-indigo-700">—</div>
                                 </div>
                             </div>
-                            <div id="bud-result-actions" class="hidden mt-5 space-y-2">
-                                <input id="bud-client-name" type="text" placeholder="Nombre del cliente (opcional)" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
-                                <button onclick="budgetOpenExportModal('presupuesto')" class="w-full px-4 py-3 rounded-xl bg-indigo-600 text-white text-xs font-black uppercase tracking-widest hover:bg-indigo-700 flex items-center justify-center gap-2">
+                            <button onclick="budgetToggleFloatingDetail()" id="bud-fb-toggle" class="px-3 py-3 rounded-xl bg-[#F4F7FE] text-[#1B2559] text-xs font-bold hover:bg-indigo-50 whitespace-nowrap flex items-center gap-1.5">
+                                <i data-lucide="chevron-up" class="w-4 h-4" id="bud-fb-toggle-icon"></i>
+                                <span class="hidden sm:inline">Detalle</span>
+                            </button>
+                            <button onclick="budgetOpenExportModal('presupuesto')" id="bud-fb-export" class="hidden lg:flex px-4 py-3 rounded-xl bg-white border-2 border-indigo-500 text-indigo-600 text-xs font-black uppercase tracking-widest hover:bg-indigo-50 items-center gap-1.5 whitespace-nowrap">
+                                <i data-lucide="file-down" class="w-4 h-4"></i> PDF
+                            </button>
+                            <button onclick="budgetSave()" id="bud-fb-save" class="hidden lg:flex px-4 py-3 rounded-xl bg-emerald-600 text-white text-xs font-black uppercase tracking-widest hover:bg-emerald-700 items-center gap-1.5 whitespace-nowrap">
+                                <i data-lucide="save" class="w-4 h-4"></i> Guardar
+                            </button>
+                        </div>
+                        <!-- Modo EXPANDIDO: detalle completo del cálculo -->
+                        <div id="bud-floating-detail" class="hidden border-t border-[#F4F7FE] bg-[#F8FAFF] max-h-[60vh] overflow-y-auto custom-scrollbar">
+                            <div id="bud-result" class="text-sm text-[#2B3674] p-5">
+                                <div class="text-center text-[#A3AED0] italic py-6">
+                                    Completá los datos y apretá <b>Calcular</b> para ver el detalle del presupuesto.
+                                </div>
+                            </div>
+                            <div id="bud-result-actions" class="hidden p-4 border-t border-[#F4F7FE] flex flex-wrap gap-2 bg-white">
+                                <input id="bud-client-name" type="text" placeholder="Nombre del cliente (opcional)" class="flex-1 min-w-[200px] bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                                <button onclick="budgetOpenExportModal('presupuesto')" class="px-4 py-3 rounded-xl bg-indigo-600 text-white text-xs font-black uppercase tracking-widest hover:bg-indigo-700 flex items-center gap-2">
                                     <i data-lucide="file-down" class="w-4 h-4"></i> Exportar presupuesto
                                 </button>
-                                <button onclick="budgetOpenExportModal('cuenta')" class="w-full px-4 py-3 rounded-xl bg-white border-2 border-emerald-500 text-emerald-600 text-xs font-black uppercase tracking-widest hover:bg-emerald-50 flex items-center justify-center gap-2">
+                                <button onclick="budgetOpenExportModal('cuenta')" class="px-4 py-3 rounded-xl bg-white border-2 border-emerald-500 text-emerald-600 text-xs font-black uppercase tracking-widest hover:bg-emerald-50 flex items-center gap-2">
                                     <i data-lucide="sigma" class="w-4 h-4"></i> Exportar cuenta
                                 </button>
-                                <button onclick="budgetSave()" class="w-full px-4 py-3 rounded-xl bg-white border-2 border-indigo-500 text-indigo-600 text-xs font-black uppercase tracking-widest hover:bg-indigo-50 flex items-center justify-center gap-2">
-                                    <i data-lucide="save" class="w-4 h-4"></i> Guardar presupuesto
+                                <button onclick="budgetSave()" class="px-4 py-3 rounded-xl bg-emerald-600 text-white text-xs font-black uppercase tracking-widest hover:bg-emerald-700 flex items-center gap-2">
+                                    <i data-lucide="save" class="w-4 h-4"></i> Guardar
                                 </button>
                             </div>
                         </div>
-
                     </div>
                 </div>
 
@@ -2752,8 +2879,8 @@
 
         // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
         const ACCESS_PROFILES = {
-            SUPERADMIN: ['control','hdr','weekly','dashboard','vrp','costs','budget','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'],
-            TRAFICO: ['control','hdr','weekly','dashboard','vrp','budget','maintenance','routes','users','employees','schools','reports','incidents'],
+            SUPERADMIN: ['control','hdr','weekly','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'],
+            TRAFICO: ['control','hdr','weekly','dashboard','vrp','budget','fleets','maintenance','routes','users','employees','schools','reports','incidents'],
             RRHH: ['salaries','employees'],
             ADMINISTRACION: ['weekly','dashboard','budget','salaries','schools','reports']
         };
@@ -2789,7 +2916,7 @@
             }
 
             // Hide/show nav buttons based on access
-            const allSections = ['control','hdr','weekly','dashboard','vrp','costs','budget','maintenance','routes','users','employees','salaries','schools','reports'];
+            const allSections = ['control','hdr','weekly','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports'];
             allSections.forEach(sec => {
                 const btn = document.getElementById('btn-' + sec);
                 if (btn) {
@@ -2923,7 +3050,7 @@
             return { ...stored, ...hardcoded };
         }
 
-        const ALL_MODULES = ['control','hdr','weekly','dashboard','vrp','costs','budget','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'];
+        const ALL_MODULES = ['control','hdr','weekly','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'];
 
         function renderProfileAssignments() {
             const tbody = document.getElementById('profile-assignments-body');
@@ -3052,6 +3179,7 @@
             const titles = {
                 control: 'Torre de Control / En Vivo',
                 hdr: 'Historial de Rutas (HDR)',
+                fleets: 'Flotas — Datos de vehículos',
                 weekly: 'Planificación Semanal',
                 dashboard: 'Dashboard logístico',
                 vrp: 'Optimizador de Rutas',
@@ -3070,6 +3198,7 @@
             const descs = {
                 control: 'Monitoreo en tiempo real de operaciones y estados de tránsito',
                 hdr: 'Recorridos finalizados con paradas, horarios y trazado GPS de la flota',
+                fleets: 'Configuración de cada camión reutilizable en presupuestos (valor, consumo, mantenimiento, etc.)',
                 weekly: 'Gestión centralizada de la operación logística de Real de Catorce',
                 dashboard: 'Costos propio vs tercerizado y distribución por unidad, zona y localidad',
                 vrp: 'Asignación inteligente de paradas y optimización de secuencias',
@@ -3111,8 +3240,12 @@
             if(id === 'users') { loadUsers(); renderProfileAssignments(); }
             if(id === 'reports') initReportFilters();
             if(id === 'budget') { budgetInit(); }
+            if(id === 'fleets') { if (typeof fleetsLoadList === 'function') fleetsLoadList(); }
             if(id === 'incidents') loadIncidents();
             if(id === 'audit') loadAuditLog();
+            // Mostrar/ocultar la barra flotante de resultado de Presupuestar
+            const fb = document.getElementById('bud-floating-bar');
+            if (fb) fb.style.display = (id === 'budget') ? 'block' : 'none';
         }
 
         // ─── REPORTS MODULE ─────────────────────────────────────────────────
@@ -5966,6 +6099,10 @@
             budgetRenderAuxList();
             budgetRenderStopsList();
             budgetRenderItemsList();
+            // Mostrar la barra flotante de resultado + popular selector de flotas
+            const fb = document.getElementById('bud-floating-bar');
+            if (fb) fb.style.display = 'block';
+            if (typeof fleetsPopulateSelectInBudget === 'function') fleetsPopulateSelectInBudget();
             lucide.createIcons();
             // Cargar Google Maps en segundo plano para que el buscador de paradas funcione
             if (!window.google?.maps && typeof loadGoogleMapsScript === 'function' && typeof getGoogleMapsKey === 'function') {
@@ -5974,6 +6111,209 @@
                     if (key) await loadGoogleMapsScript(key);
                 } catch (e) { console.warn('[budget] No se pudo cargar Google Maps:', e); }
             }
+        }
+
+        /** Toggle expandido/colapsado de la barra flotante del resultado */
+        function budgetToggleFloatingDetail() {
+            const det = document.getElementById('bud-floating-detail');
+            const icon = document.getElementById('bud-fb-toggle-icon');
+            if (!det) return;
+            const isHidden = det.classList.contains('hidden');
+            if (isHidden) {
+                det.classList.remove('hidden');
+                if (icon) icon.setAttribute('data-lucide', 'chevron-down');
+            } else {
+                det.classList.add('hidden');
+                if (icon) icon.setAttribute('data-lucide', 'chevron-up');
+            }
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        /** Actualiza los valores resumen de la barra flotante */
+        function budgetUpdateFloatingSummary(calc) {
+            const fmt = (n) => '$ ' + Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 0 });
+            const costo = document.getElementById('bud-fb-costo');
+            const ganancia = document.getElementById('bud-fb-ganancia');
+            const impuestos = document.getElementById('bud-fb-impuestos');
+            const final = document.getElementById('bud-fb-final');
+            if (costo) costo.textContent = fmt(calc?.costoTotal);
+            if (ganancia) ganancia.textContent = fmt(calc?.ganancia);
+            if (impuestos) impuestos.textContent = fmt(calc?.impuestosTotal);
+            if (final) final.textContent = fmt(calc?.precioFinal);
+        }
+
+        // ════════════════════════════════════════════════════════
+        // MODULO FLOTAS — datos reutilizables de cada vehículo
+        // ════════════════════════════════════════════════════════
+        const FLEETS_KEY = 'r14_fleets_v1';
+
+        function fleetsGetAll() {
+            try {
+                const raw = localStorage.getItem(FLEETS_KEY);
+                if (!raw) return [];
+                const arr = JSON.parse(raw);
+                return Array.isArray(arr) ? arr : [];
+            } catch { return []; }
+        }
+        function fleetsSaveAll(list) {
+            try { localStorage.setItem(FLEETS_KEY, JSON.stringify(list)); }
+            catch (e) { addNotification('warning', 'Almacenamiento lleno', 'No se pudo guardar la flota'); }
+        }
+        function fleetsLoadList() {
+            const box = document.getElementById('fleets-list');
+            const empty = document.getElementById('fleets-empty');
+            if (!box) return;
+            const list = fleetsGetAll();
+            if (list.length === 0) {
+                box.innerHTML = '';
+                if (empty) empty.classList.remove('hidden');
+                return;
+            }
+            if (empty) empty.classList.add('hidden');
+            box.innerHTML = list.map(f => {
+                const refrigerated = f.refrigerated ? '<span class="ml-2 px-2 py-0.5 rounded-md bg-sky-100 text-sky-700 text-[9px] font-black">REFRIGERADO</span>' : '';
+                return `
+                <div class="card-dark p-4 hover:shadow-lg transition-shadow">
+                    <div class="flex items-start justify-between mb-3">
+                        <div class="flex-1 min-w-0">
+                            <h5 class="text-sm font-black text-[#1B2559] truncate">${(f.name || 'Sin nombre').replace(/</g, '&lt;')}</h5>
+                            <p class="text-[10px] text-[#A3AED0] mt-0.5">${refrigerated}${f.consumption ? `${f.consumption} L/100km` : '—'}</p>
+                        </div>
+                        <div class="flex gap-1">
+                            <button onclick="fleetsOpenEditor('${f.id}')" class="p-1.5 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100" title="Editar"><i data-lucide="pencil" class="w-3.5 h-3.5"></i></button>
+                            <button onclick="fleetsDelete('${f.id}')" class="p-1.5 rounded-lg bg-rose-50 text-rose-600 hover:bg-rose-100" title="Eliminar"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
+                        </div>
+                    </div>
+                    <div class="grid grid-cols-2 gap-2 text-[11px]">
+                        <div><span class="text-[#A3AED0]">Valor:</span> <b class="text-[#1B2559]">$${Number(f.truckValue || 0).toLocaleString('es-AR')}</b></div>
+                        <div><span class="text-[#A3AED0]">Vida útil:</span> <b class="text-[#1B2559]">${Number(f.lifeKm || 0).toLocaleString('es-AR')} km</b></div>
+                        <div><span class="text-[#A3AED0]">Mant./año:</span> <b class="text-[#1B2559]">$${Number(f.maintYear || 0).toLocaleString('es-AR')}</b></div>
+                        <div><span class="text-[#A3AED0]">Fijo/mes:</span> <b class="text-[#1B2559]">$${Number(f.fixedMonth || 0).toLocaleString('es-AR')}</b></div>
+                    </div>
+                    ${f.notes ? `<p class="mt-2 text-[10px] italic text-[#A3AED0] truncate">${f.notes.replace(/</g, '&lt;')}</p>` : ''}
+                </div>`;
+            }).join('');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        let _editingFleetId = null;
+        function fleetsOpenEditor(id) {
+            _editingFleetId = id || null;
+            const modal = document.getElementById('fleet-editor-modal');
+            const title = document.getElementById('fleet-editor-title');
+            if (!modal) return;
+            // Limpiar / cargar
+            const fields = ['fleet-name','fleet-truck-value','fleet-life-km','fleet-consumption',
+                'fleet-tires-cost','fleet-tires-km','fleet-maint-year','fleet-km-year',
+                'fleet-fixed-month','fleet-trips-month','fleet-notes'];
+            fields.forEach(f => { const el = document.getElementById(f); if (el) el.value = ''; });
+            const refr = document.getElementById('fleet-refrigerated');
+            if (refr) refr.value = '0';
+            if (id) {
+                const fleet = fleetsGetAll().find(f => f.id === id);
+                if (fleet) {
+                    title.textContent = `Editar: ${fleet.name || ''}`;
+                    document.getElementById('fleet-name').value = fleet.name || '';
+                    document.getElementById('fleet-truck-value').value = fleet.truckValue || '';
+                    document.getElementById('fleet-life-km').value = fleet.lifeKm || '';
+                    document.getElementById('fleet-consumption').value = fleet.consumption || '';
+                    document.getElementById('fleet-refrigerated').value = fleet.refrigerated ? '1' : '0';
+                    document.getElementById('fleet-tires-cost').value = fleet.tiresCost || '';
+                    document.getElementById('fleet-tires-km').value = fleet.tiresKm || '';
+                    document.getElementById('fleet-maint-year').value = fleet.maintYear || '';
+                    document.getElementById('fleet-km-year').value = fleet.kmYear || '';
+                    document.getElementById('fleet-fixed-month').value = fleet.fixedMonth || '';
+                    document.getElementById('fleet-trips-month').value = fleet.tripsMonth || '';
+                    document.getElementById('fleet-notes').value = fleet.notes || '';
+                }
+            } else {
+                title.textContent = 'Nueva flota';
+            }
+            modal.classList.remove('hidden');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+        function fleetsCloseEditor() {
+            const modal = document.getElementById('fleet-editor-modal');
+            if (modal) modal.classList.add('hidden');
+            _editingFleetId = null;
+        }
+        function fleetsSave() {
+            const name = (document.getElementById('fleet-name').value || '').trim();
+            if (!name) {
+                addNotification('warning', 'Falta nombre', 'Ponele un nombre o patente a la flota.');
+                return;
+            }
+            const obj = {
+                id: _editingFleetId || ('fl_' + Date.now()),
+                name,
+                truckValue: Number(document.getElementById('fleet-truck-value').value) || 0,
+                lifeKm: Number(document.getElementById('fleet-life-km').value) || 0,
+                consumption: Number(document.getElementById('fleet-consumption').value) || 0,
+                refrigerated: document.getElementById('fleet-refrigerated').value === '1',
+                tiresCost: Number(document.getElementById('fleet-tires-cost').value) || 0,
+                tiresKm: Number(document.getElementById('fleet-tires-km').value) || 0,
+                maintYear: Number(document.getElementById('fleet-maint-year').value) || 0,
+                kmYear: Number(document.getElementById('fleet-km-year').value) || 0,
+                fixedMonth: Number(document.getElementById('fleet-fixed-month').value) || 0,
+                tripsMonth: Number(document.getElementById('fleet-trips-month').value) || 0,
+                notes: (document.getElementById('fleet-notes').value || '').trim()
+            };
+            const list = fleetsGetAll();
+            if (_editingFleetId) {
+                const idx = list.findIndex(f => f.id === _editingFleetId);
+                if (idx >= 0) list[idx] = obj;
+            } else {
+                list.unshift(obj);
+            }
+            fleetsSaveAll(list);
+            fleetsCloseEditor();
+            fleetsLoadList();
+            addNotification('success', 'Flota guardada', obj.name);
+        }
+        function fleetsDelete(id) {
+            if (!confirm('¿Eliminar esta flota? No se puede deshacer.')) return;
+            const list = fleetsGetAll().filter(f => f.id !== id);
+            fleetsSaveAll(list);
+            fleetsLoadList();
+        }
+        /** Popula el <select> de flotas en Presupuestar */
+        function fleetsPopulateSelectInBudget() {
+            const sel = document.getElementById('bud-fleet-select');
+            if (!sel) return;
+            const prev = sel.value;
+            const list = fleetsGetAll();
+            sel.innerHTML = '<option value="">— Cargar manualmente (sin flota) —</option>' +
+                list.map(f => `<option value="${f.id}">${(f.name || 'Sin nombre').replace(/"/g, '&quot;')}</option>`).join('');
+            if (prev && list.find(f => f.id === prev)) sel.value = prev;
+        }
+        /** Cuando el usuario elige una flota en Presupuestar, autocompleta los campos */
+        function budgetLoadFleet(fleetId) {
+            const label = document.getElementById('bud-fleet-active-label');
+            if (!fleetId) {
+                if (label) label.textContent = '';
+                return;
+            }
+            const fleet = fleetsGetAll().find(f => f.id === fleetId);
+            if (!fleet) return;
+            const set = (id, val) => {
+                const el = document.getElementById(id);
+                if (el) {
+                    if (el.type === 'checkbox') el.checked = !!val;
+                    else el.value = val ?? '';
+                }
+            };
+            set('bud-truck-value', fleet.truckValue);
+            set('bud-truck-life-km', fleet.lifeKm);
+            set('bud-consumption', fleet.consumption);
+            set('bud-refrigerated', fleet.refrigerated);
+            set('bud-tires-cost', fleet.tiresCost);
+            set('bud-tires-km', fleet.tiresKm);
+            set('bud-maint-year', fleet.maintYear);
+            set('bud-km-year', fleet.kmYear);
+            set('bud-fixed-month', fleet.fixedMonth);
+            set('bud-trips-month', fleet.tripsMonth);
+            if (label) label.textContent = '✓ ' + (fleet.name || '');
+            addNotification('info', 'Flota cargada', fleet.name + ' — campos del camión actualizados.');
         }
 
         function budgetLoadDefaults() {
@@ -6680,6 +7020,13 @@
                 fechaISO: new Date().toISOString(),
             };
             budgetRenderResult();
+            // Actualizar barra flotante con los valores principales
+            budgetUpdateFloatingSummary({
+                costoTotal,
+                ganancia: margin,
+                impuestosTotal: taxesTotal,
+                precioFinal
+            });
             budgetSaveDefaults();
         }
 
