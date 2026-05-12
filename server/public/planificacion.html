@@ -4705,7 +4705,9 @@
                 return hay.includes(query);
             });
 
-            const inCourse = list.filter(it => it.status === 'OUT_OF_PLANT' || it.status === 'PENDING').length;
+            // EN CURSO = viajes realmente en camino (salieron del depósito y todavía no completaron).
+            // Los PENDING no se cuentan acá porque todavía no arrancaron.
+            const inCourse = list.filter(it => it.status === 'OUT_OF_PLANT').length;
             const completed = list.filter(it => it.status === 'COMPLETED').length;
             const delayed = list.filter(it => {
                 const ts = it.lastLocation?.timestamp ? new Date(it.lastLocation.timestamp).getTime() : 0;
