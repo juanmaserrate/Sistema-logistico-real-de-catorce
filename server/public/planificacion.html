@@ -608,6 +608,12 @@
                                         </div>
                                     </th>
                                     <th class="relative">
+                                        <div class="inline-flex items-center gap-1 cursor-pointer" onclick="toggleHeaderFilter('usuario-app', this)">
+                                            <span>Usuario App</span>
+                                            <i data-lucide="chevron-down" class="w-3 h-3 text-[#A3AED0]"></i>
+                                        </div>
+                                    </th>
+                                    <th class="relative">
                                         <div class="inline-flex items-center gap-1 cursor-pointer" onclick="toggleHeaderFilter('bu', this)">
                                             <span>Unidad Negocio</span>
                                             <i data-lucide="chevron-down" class="w-3 h-3 text-[#A3AED0]"></i>
@@ -2998,6 +3004,11 @@
                     btn.style.display = currentUserModules.includes(sec) ? '' : 'none';
                 }
             });
+
+            // Aplicar permisos de columnas guardados para este usuario
+            if (typeof applyUserColumnPermissions === 'function') {
+                try { applyUserColumnPermissions(); } catch(_) {}
+            }
 
             // Update user avatar and name
             const username = localStorage.getItem('r14.loggedUser') || 'Admin';
@@ -10274,6 +10285,7 @@
                             ${(t.auxiliar2 || t.auxiliar3) ? `<div class="text-[9px] text-[#A3AED0] font-bold">${[t.auxiliar2, t.auxiliar3].filter(Boolean).join(', ')}</div>` : ''}
                         </td>
                         <td class="font-bold text-[#2B3674]">${t.tripType || t.reparto || '--'}</td>
+                        <td class="font-bold text-[#2B3674]">${(t.assignedMobileUser || '--').toString().toUpperCase()}</td>
                         <td><div class="text-[10px] text-amber-600 font-bold uppercase">${formatBusinessUnit(t.businessUnit)}</div></td>
                         <td>
                             <span class="status-badge ${isPropio ? 'bg-indigo-100 text-indigo-600' : 'bg-indigo-100 text-indigo-600'}">
@@ -10315,7 +10327,7 @@
                         </td>
                     </tr>
                     <tr id="weekly-detail-${t.id}" class="hidden bg-[#F8FAFF]/90">
-                        <td colspan="14" class="p-0 border-b border-[#E0E5F2] align-top">
+                        <td colspan="15" class="p-0 border-b border-[#E0E5F2] align-top">
                             <div id="weekly-stops-wrap-${t.id}" class="px-4 py-3 sm:px-6 sm:py-4">
                                 <p class="text-[11px] text-[#A3AED0]">Usá la flecha para cargar los puntos.</p>
                             </div>
@@ -10328,7 +10340,7 @@
             if (data.length === 0) {
                 body.innerHTML = `
                     <tr>
-                        <td colspan="14" class="py-20 text-center">
+                        <td colspan="15" class="py-20 text-center">
                             <div class="flex flex-col items-center opacity-30">
                                 <i data-lucide="package-search" class="w-12 h-12 mb-4"></i>
                                 <span class="text-sm font-bold uppercase tracking-widest">No se encontraron viajes para este período</span>
@@ -10585,6 +10597,7 @@
             { id: 'chofer', label: 'Chofer', visible: true },
             { id: 'auxiliares', label: 'Auxiliar(es)', visible: true },
             { id: 'reparto', label: 'Reparto', visible: true },
+            { id: 'usuario-app', label: 'Usuario App', visible: true },
             { id: 'bu', label: 'Unidad Negocio', visible: true },
             { id: 'contrato', label: 'Contrato', visible: true },
             { id: 'vuelta', label: 'Vuelta', visible: true },
@@ -10975,6 +10988,10 @@
                             tripValue = t.tripType || t.reparto || '--';
                             matches = selectedValues.has(tripValue);
                             break;
+                        case 'usuario-app':
+                            tripValue = (t.assignedMobileUser || '--').toString().trim().toUpperCase();
+                            matches = selectedValues.has(tripValue);
+                            break;
                         case 'bu':
                             tripValue = formatBusinessUnit(t.businessUnit);
                             matches = selectedValues.has(tripValue);
@@ -11033,19 +11050,101 @@
             renderPlanningTable(filteredPlanning);
         }
 
-        // ─── COLUMN VISIBILITY & FILTERING ────────────────────────────────────
+        // ─── COLUMN VISIBILITY (POR USUARIO) ──────────────────────────────────
+        // Cada usuario controla su propia vista de columnas. Persistencia en localStorage.
+        // IMPORTANTE: esto es solo UI. No afecta a la API ni al envío/recepción de viajes
+        // con la app móvil. Los campos en la base de datos siguen siendo los mismos.
+        const COL_VIS_LS_KEY = 'r14.user_column_visibility';
+
+        function _getLoggedUsername() {
+            return (localStorage.getItem('r14.loggedUsername') || '').toLowerCase().trim();
+        }
+
+        function _readAllColumnPerms() {
+            try {
+                const raw = localStorage.getItem(COL_VIS_LS_KEY);
+                return raw ? JSON.parse(raw) : {};
+            } catch (_) { return {}; }
+        }
+
+        function _writeAllColumnPerms(obj) {
+            try { localStorage.setItem(COL_VIS_LS_KEY, JSON.stringify(obj)); } catch (_) {}
+        }
+
+        function getColumnPermissionsFor(username) {
+            const u = (username || '').toLowerCase().trim();
+            if (!u) return null;
+            const all = _readAllColumnPerms();
+            return all[u] || null;
+        }
+
+        function setColumnPermissionsFor(username, perms) {
+            const u = (username || '').toLowerCase().trim();
+            if (!u) return;
+            const all = _readAllColumnPerms();
+            all[u] = perms;
+            _writeAllColumnPerms(all);
+        }
+
+        function applyUserColumnPermissions() {
+            // Carga los permisos del usuario logueado y los aplica al array weeklyColumns
+            const perms = getColumnPermissionsFor(_getLoggedUsername());
+            if (perms && typeof perms === 'object') {
+                weeklyColumns.forEach(col => {
+                    if (perms.hasOwnProperty(col.id)) {
+                        col.visible = !!perms[col.id];
+                    }
+                });
+                // Si la tabla ya está en DOM, aplicar la CSS inmediatamente para que
+                // las columnas se oculten aunque todavía no se haya re-renderizado la tabla.
+                _updateColumnVisibilityCss();
+            }
+        }
+
+        function _updateColumnVisibilityCss() {
+            // Generar/actualizar el <style> que oculta las columnas según weeklyColumns
+            let styleId = 'weekly-column-visibility-style';
+            let style = document.getElementById(styleId);
+            if (!style) {
+                style = document.createElement('style');
+                style.id = styleId;
+                document.head.appendChild(style);
+            }
+            const rules = weeklyColumns
+                .map((col, idx) => {
+                    if (!col.visible) {
+                        const nthChild = idx + 1;
+                        return `
+                            #weekly-table-body tr > td:nth-child(${nthChild}) { display: none; }
+                            thead tr > th:nth-child(${nthChild}) { display: none; }
+                            #weekly-detail-row tr > td:nth-child(${nthChild}) { display: none; }
+                        `;
+                    }
+                    return '';
+                })
+                .filter(Boolean)
+                .join('\n');
+            style.textContent = rules;
+        }
+
         function openColumnSettingsModal() {
             const modal = document.getElementById('column-settings-modal');
             const list = document.getElementById('column-settings-list');
 
+            // Cada usuario configura solo su vista
+            const username = _getLoggedUsername();
+            const savedPerms = getColumnPermissionsFor(username) || {};
+
             list.innerHTML = weeklyColumns.map(col => {
-                // No permitir ocultar Seleccionar y Acciones
+                // No permitir ocultar Seleccionar y Acciones (rompe la UI)
                 const isLocked = col.id === 'checkbox' || col.id === 'acciones';
+                // Estado actual: priorizar lo guardado para este usuario, si no usar default
+                const isVisible = savedPerms.hasOwnProperty(col.id) ? !!savedPerms[col.id] : col.visible;
                 return `
                     <label class="flex items-center gap-3 p-3 rounded-xl bg-[#F8FAFF] hover:bg-[#F4F7FE] cursor-pointer transition-all ${isLocked ? 'opacity-60 cursor-not-allowed' : ''}">
                         <input type="checkbox" class="column-visibility-checkbox rounded border-[#E0E5F2] text-indigo-600"
                                data-column-id="${col.id}"
-                               ${col.visible ? 'checked' : ''}
+                               ${isVisible ? 'checked' : ''}
                                ${isLocked ? 'disabled' : ''}
                                onchange="toggleColumnVisibility('${col.id}')" />
                         <span class="text-[11px] font-bold text-[#1B2559]">${col.label}</span>
@@ -11059,11 +11158,28 @@
 
         function closeColumnSettingsModal() {
             document.getElementById('column-settings-modal').classList.add('hidden');
+            // Reaplicar permisos por si hubo cambios y refrescar la tabla
+            applyUserColumnPermissions();
+            filterWeeklyData();
         }
 
         function toggleColumnVisibility(columnId) {
+            const username = _getLoggedUsername();
+            if (!username) return;
+
+            // Tomar permisos actuales (o seedearlos con la visibilidad actual)
+            const perms = getColumnPermissionsFor(username) || {};
+            weeklyColumns.forEach(c => {
+                if (!perms.hasOwnProperty(c.id)) perms[c.id] = c.visible;
+            });
+
+            // Toggle la columna específica y guardar
+            perms[columnId] = !perms[columnId];
+            setColumnPermissionsFor(username, perms);
+
+            // Aplicar inmediatamente en la vista actual
             const col = weeklyColumns.find(c => c.id === columnId);
-            if (col) col.visible = !col.visible;
+            if (col) col.visible = perms[columnId];
             filterWeeklyData();
         }
 
@@ -11091,6 +11207,9 @@
                         return;
                     case 'reparto':
                         val = (trip.tripType || trip.reparto || '--').trim();
+                        break;
+                    case 'usuario-app':
+                        val = (trip.assignedMobileUser || '--').toString().trim().toUpperCase();
                         break;
                     case 'bu':
                         val = formatBusinessUnit(trip.businessUnit);
@@ -11379,9 +11498,16 @@
         }
 
         function resetColumnVisibility() {
+            // Reset visualmente y limpiar la entrada guardada del usuario
             weeklyColumns.forEach(col => {
                 col.visible = !['checkbox', 'acciones'].includes(col.id) ? true : col.visible;
             });
+            const username = _getLoggedUsername();
+            if (username) {
+                const all = _readAllColumnPerms();
+                delete all[username];
+                _writeAllColumnPerms(all);
+            }
             openColumnSettingsModal(); // Reload the UI
             filterWeeklyData();
         }
@@ -11391,32 +11517,17 @@
         }
 
         function applyColumnVisibility() {
-            // Generate CSS to hide/show columns based on visibility state
-            let styleId = 'weekly-column-visibility-style';
-            let style = document.getElementById(styleId);
-            if (!style) {
-                style = document.createElement('style');
-                style.id = styleId;
-                document.head.appendChild(style);
+            // Asegurar que los permisos guardados por usuario estén aplicados en weeklyColumns
+            // (defensivo: por si alguien llama applyColumnVisibility sin pasar primero por applyUserColumnPermissions)
+            const perms = getColumnPermissionsFor(_getLoggedUsername());
+            if (perms && typeof perms === 'object') {
+                weeklyColumns.forEach(col => {
+                    if (perms.hasOwnProperty(col.id)) col.visible = !!perms[col.id];
+                });
             }
 
-            // Build CSS rules to hide hidden columns
-            const rules = weeklyColumns
-                .map((col, idx) => {
-                    if (!col.visible) {
-                        const nthChild = idx + 1; // nth-child is 1-indexed
-                        return `
-                            #weekly-table-body tr > td:nth-child(${nthChild}) { display: none; }
-                            thead tr > th:nth-child(${nthChild}) { display: none; }
-                            #weekly-detail-row tr > td:nth-child(${nthChild}) { display: none; }
-                        `;
-                    }
-                    return '';
-                })
-                .filter(Boolean)
-                .join('\n');
-
-            style.textContent = rules;
+            // Generar la CSS para ocultar/mostrar columnas
+            _updateColumnVisibilityCss();
 
             // Update colspan for detail rows
             const detailRows = document.querySelectorAll('[id^="weekly-detail-"]');
@@ -14395,7 +14506,7 @@
                 repartoSelect.innerHTML = placeholder + rtOptions + '<option value="LIBRE">LIBRE / OTRO</option>';
             }
 
-            // Chofer (App Móvil): los usuarios con rol DRIVER reciben el viaje en la app.
+            // Usuario App: los usuarios con rol DRIVER reciben el viaje en la app móvil.
             const mobileUserSelect = document.getElementById('new-trip-mobile-user');
             if (mobileUserSelect) {
                 const mobileOptions = repartoUsersFromDb
@@ -15563,7 +15674,7 @@
                           <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Elige la ruta para cargar paradas predefinidas.</p>
                      </div>
                      <div>
-                          <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Chofer (App Móvil)</label>
+                          <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Usuario App</label>
                           <select id="new-trip-mobile-user" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                                <!-- Injected by JS -->
                           </select>
