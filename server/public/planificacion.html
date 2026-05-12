@@ -2801,8 +2801,16 @@
             const buSel = document.getElementById('new-trip-bu');
             if (!buSel) return;
             const dynamic = [...new Set((planningData || []).map(t => normalizeBusinessUnit(t.businessUnit)).filter(Boolean))];
-            const list = saveBusinessUnitsCatalog([...getBusinessUnitsCatalog(), ...dynamic]);
-            const wanted = normalizeBusinessUnit(selectedValue) || normalizeBusinessUnit(buSel.value) || 'DMC';
+            // Bug fix: si el viaje editado tiene una BU que no está en el catálogo
+            // (ej. importada de un Excel viejo), antes quedaba vacía al editar.
+            // Ahora aseguramos que la BU deseada esté en el catálogo antes de armar el select.
+            const wantedRaw = normalizeBusinessUnit(selectedValue) || normalizeBusinessUnit(buSel.value);
+            const list = saveBusinessUnitsCatalog([
+                ...getBusinessUnitsCatalog(),
+                ...dynamic,
+                ...(wantedRaw ? [wantedRaw] : [])
+            ]);
+            const wanted = wantedRaw || 'DMC';
             buSel.innerHTML = list.map(bu => `<option value="${bu}">${bu}</option>`).join('');
             buSel.value = list.includes(wanted) ? wanted : (list.includes('DMC') ? 'DMC' : list[0] || '');
         }
@@ -3089,6 +3097,11 @@
         }
 
         function handleLogout() {
+            // Bug fix: antes los timers de polling (Torre Control, alertas, etc.) seguían
+            // corriendo después del logout — fetches al backend cada 10-30s sin sesión.
+            // Ahora los frenamos todos antes de mostrar el login gate.
+            try { if (typeof stopAllActiveRoutesPolling === 'function') stopAllActiveRoutesPolling(); } catch (_) {}
+            try { if (typeof _r14ClearAllTimers === 'function') _r14ClearAllTimers(); } catch (_) {}
             localStorage.removeItem('r14.loggedUser');
             localStorage.removeItem('r14.loggedUsername');
             localStorage.removeItem('r14.loggedUserId');
@@ -4103,10 +4116,22 @@
         }
 
         function clearControlTrailPolylines() {
+            // Bug fix: además del array legacy controlTrailPolylines, también iteramos el
+            // Map controlTrailByRouteId. Si por alguna race condition una polyline se
+            // creó solo en el Map (ej. desde socket sin pasar por loadControlTrailAllActive),
+            // antes quedaba huérfana en el mapa al cambiar de día/sesión.
             controlTrailPolylines.forEach((layer) => {
                 try { if (controlMap) layer.setMap(null); } catch (_) {}
             });
             controlTrailPolylines = [];
+            try {
+                if (typeof controlTrailByRouteId !== 'undefined' && controlTrailByRouteId && controlTrailByRouteId.forEach) {
+                    controlTrailByRouteId.forEach((entry) => {
+                        try { if (entry?.polyline && controlMap) entry.polyline.setMap(null); } catch (_) {}
+                    });
+                    controlTrailByRouteId.clear();
+                }
+            } catch (_) {}
         }
 
         function clearControlMarkers() {
@@ -4709,7 +4734,10 @@
             // Los PENDING no se cuentan acá porque todavía no arrancaron.
             const inCourse = list.filter(it => it.status === 'OUT_OF_PLANT').length;
             const completed = list.filter(it => it.status === 'COMPLETED').length;
+            // Bug fix: antes contaba como "retrasado" cualquier viaje con timestamp > 45min,
+            // incluso si ya estaba COMPLETED/CANCELLED. Ahora excluimos estados terminales.
             const delayed = list.filter(it => {
+                if (it.status === 'COMPLETED' || it.status === 'CANCELLED' || it.status === 'CANCELADO') return false;
                 const ts = it.lastLocation?.timestamp ? new Date(it.lastLocation.timestamp).getTime() : 0;
                 return ts > 0 && (Date.now() - ts) > (45 * 60 * 1000);
             }).length;
@@ -9797,25 +9825,43 @@
             return employee ? (Number(employee.Jornal || 0) > 0) : false;
         }
 
+        // Bug fix: antes isFirstTurn filtraba planningData en cada llamada — O(N²) al
+        // renderizar el dashboard mensual con 500+ viajes. Ahora cacheamos por plate+date
+        // y solo recalculamos cuando planningData cambia (detectado por length).
+        let _isFirstTurnCache = { len: -1, idsByKey: new Map() };
         function isFirstTurn(t) {
             const plate = resolveTripPlate(t);
             if (!plate || plate === 'S/D') return true;
             const tripDate = new Date(t.date).toDateString();
-            
-            const dayTrips = planningData.filter(x => 
-                resolveTripPlate(x) === plate && 
-                new Date(x.date).toDateString() === tripDate
-            );
-            
-            if (dayTrips.length <= 1) return true;
-            
-            dayTrips.sort((a, b) => {
-                const timeA = a.exitTime || a.departureTime || '00:00';
-                const timeB = b.exitTime || b.departureTime || '00:00';
-                return timeA.localeCompare(timeB);
-            });
-            
-            return dayTrips[0].id === t.id;
+
+            // Reconstruir cache si planningData cambió
+            const len = (planningData || []).length;
+            if (_isFirstTurnCache.len !== len) {
+                const groups = new Map();
+                for (const x of planningData) {
+                    const p = resolveTripPlate(x);
+                    if (!p || p === 'S/D') continue;
+                    const d = new Date(x.date).toDateString();
+                    const key = `${p}|${d}`;
+                    if (!groups.has(key)) groups.set(key, []);
+                    groups.get(key).push(x);
+                }
+                const firsts = new Map();
+                groups.forEach((arr, key) => {
+                    if (arr.length === 1) { firsts.set(key, arr[0].id); return; }
+                    arr.sort((a, b) => {
+                        const tA = a.exitTime || a.departureTime || '00:00';
+                        const tB = b.exitTime || b.departureTime || '00:00';
+                        return String(tA).localeCompare(String(tB));
+                    });
+                    firsts.set(key, arr[0].id);
+                });
+                _isFirstTurnCache = { len, idsByKey: firsts };
+            }
+
+            const key = `${plate}|${tripDate}`;
+            const firstId = _isFirstTurnCache.idsByKey.get(key);
+            return firstId == null ? true : firstId === t.id;
         }
 
         function formatVueltaLabel(t) {
@@ -9823,9 +9869,14 @@
             if (raw != null && raw !== '') {
                 const n = Number(raw);
                 if (Number.isFinite(n)) {
+                    // Bug fix: antes 3, 4, 5... colapsaban a "3ª+", pero el select del modal solo
+                    // tenía opciones 1, 2, 3 → al editar un viaje con vuelta=4 se guardaba como 3.
+                    // Ahora mostramos el número real (3ª, 4ª, 5ª...) y el select acepta hasta 5.
                     if (n <= 1) return '1ª';
                     if (n === 2) return '2ª';
-                    return '3ª+';
+                    if (n === 3) return '3ª';
+                    if (n === 4) return '4ª';
+                    return `${n}ª`;
                 }
             }
             return 'Auto';
@@ -9905,12 +9956,16 @@
         }
 
         function getTripDurationHours(t, fallbackHours = 8) {
+            // Bug fix: antes el límite era diff < 24 — eso descartaba viajes reales largos
+            // (overnight, interprovinciales) y caía al fallback de 8h, subestimando el costo
+            // logístico de viajes propios. Subimos el techo a 72h para cubrir viajes
+            // legítimos largos sin meter datos corruptos del 1970.
             if (t?.routeActualStart && t?.routeActualEnd) {
                 try {
                     const start = new Date(t.routeActualStart);
                     const end = new Date(t.routeActualEnd);
                     const diff = (end - start) / (1000 * 60 * 60);
-                    if (!isNaN(diff) && diff > 0 && diff < 24) return diff;
+                    if (!isNaN(diff) && diff > 0 && diff < 72) return diff;
                 } catch (e) {}
             }
             if (t && t.exitTime && t.returnTime) {
@@ -9918,7 +9973,7 @@
                     const start = new Date(t.exitTime);
                     const end = new Date(t.returnTime);
                     const diff = (end - start) / (1000 * 60 * 60);
-                    if (!isNaN(diff) && diff > 0 && diff < 24) return diff;
+                    if (!isNaN(diff) && diff > 0 && diff < 72) return diff;
                 } catch (e) {}
             }
             if (t && typeof t.exitTime === 'string' && typeof t.returnTime === 'string') {
@@ -10361,17 +10416,28 @@
 
         // --- Autocomplete Logic ---
         function searchDrivers(el) {
-            const query = el.value.toLowerCase();
+            const query = (el.value || '').toLowerCase().trim();
             const results = document.getElementById('driver-results');
+            if (!results) return;
             if (query.length < 2) { results.classList.add('hidden'); return; }
-            
-            // Simulación o busqueda en lista de choferes registrados
-            const matches = ['Juan Pérez', 'Marcos Gómez', 'Roberto Sánchez', 'Luis Fernández']
-                .filter(d => d.toLowerCase().includes(query));
-            
+
+            // Bug fix: antes era una lista hardcoded de 4 nombres ficticios ("Juan Pérez"...).
+            // Ahora buscamos en los choferes reales cargados (empChoferData), con fallback a
+            // los nombres únicos de planningData si todavía no se inicializó el catálogo.
+            const fromCatalog = (typeof empChoferData !== 'undefined' && Array.isArray(empChoferData))
+                ? empChoferData.map(c => c.fullName || c.name || c.username).filter(Boolean)
+                : [];
+            const fromTrips = (typeof planningData !== 'undefined' && Array.isArray(planningData))
+                ? [...new Set(planningData.map(t => t.driver).filter(Boolean))]
+                : [];
+            const pool = [...new Set([...fromCatalog, ...fromTrips])];
+            const matches = pool
+                .filter(d => d.toLowerCase().includes(query))
+                .slice(0, 10);
+
             if (matches.length > 0) {
                 results.innerHTML = matches.map(m => `
-                    <div onclick="selectAutocomplete('manual-driver', '${m}', 'driver-results')" class="p-3 hover:bg-[#F4F7FE] cursor-pointer text-sm border-b border-[#F4F7FE]">${m}</div>
+                    <div onclick="selectAutocomplete('manual-driver', '${m.replace(/'/g, "\\'")}', 'driver-results')" class="p-3 hover:bg-[#F4F7FE] cursor-pointer text-sm border-b border-[#F4F7FE]">${m}</div>
                 `).join('');
                 results.classList.remove('hidden');
             } else { results.classList.add('hidden'); }
@@ -10434,11 +10500,22 @@
                         btn.disabled = false;
                         lucide.createIcons();
                     }, 1500);
+                } else {
+                    // Bug fix: antes si res.ok era false (400/500) el botón quedaba colgado en
+                    // "PROCESANDO..." y deshabilitado indefinidamente. Ahora restauramos el
+                    // botón y notificamos al usuario con el detalle del error.
+                    const errMsg = await res.json().catch(() => null).then(b => b?.error || `Error ${res.status}`);
+                    addNotification('error', 'No se pudo crear la ruta', errMsg);
+                    btn.innerHTML = originalHTML;
+                    btn.disabled = false;
+                    lucide.createIcons();
                 }
-            } catch (e) { 
+            } catch (e) {
                 console.error(e);
-                btn.innerHTML = 'ERROR';
+                addNotification('error', 'Error de red', e?.message || 'No se pudo conectar con el servidor');
+                btn.innerHTML = originalHTML;
                 btn.disabled = false;
+                lucide.createIcons();
             }
         }
 
@@ -10664,15 +10741,21 @@
             if (ids.length === 0) return;
             if (!confirm(`¿Eliminar ${ids.length} viaje(s) seleccionados? Esta acción no se puede deshacer.`)) return;
 
+            // Bug fix: antes se borraban del UI TODOS los selectedTripIds aunque algunos
+            // hayan fallado en el backend → el usuario veía que "desaparecieron" pero al
+            // refrescar reaparecían. Ahora solo quitamos del UI los que efectivamente
+            // se borraron en el server.
             let ok = 0, fail = 0;
+            const okIds = [];
             for (const id of ids) {
                 try {
                     const res = await fetch(`${API_URL}/trips/${id}`, { method: 'DELETE', headers: getActorHeaders() });
-                    if (res.ok) { ok++; } else { fail++; }
+                    if (res.ok) { ok++; okIds.push(id); } else { fail++; }
                 } catch (_) { fail++; }
             }
 
-            planningData = planningData.filter(t => !selectedTripIds.has(t.id));
+            const okIdSet = new Set(okIds);
+            planningData = planningData.filter(t => !okIdSet.has(t.id));
             clearTripSelection();
             filterWeeklyData();
 
@@ -10798,21 +10881,24 @@
                 return;
             }
 
+            // Bug fix: antes la exportación usaba nombres de campos inexistentes
+            // (t.contract, t.plate, t.auxiliar1, t.horaSalida, t.localidad...) y exportaba
+            // columnas siempre vacías. Ahora mapeamos a los campos REALES del modelo.
             const rows = data.map(t => ({
                 'Fecha': t.date || '',
                 'Chofer': t.driver || '',
                 'Zona': t.zone || '',
-                'Localidad': t.localidad || '',
-                'Reparto': t.reparto || '',
+                'Localidad': (typeof getLocalidadFromZone === 'function' ? getLocalidadFromZone(t.zone) : '') || '',
+                'Reparto': t.tripType || t.reparto || '',
                 'Unidad Negocio': t.businessUnit || '',
-                'Contrato': t.contract || '',
-                'Patente': t.plate || '',
-                'Auxiliar 1': t.auxiliar1 || '',
+                'Contrato': t.contractType || '',
+                'Patente': (typeof resolveTripPlate === 'function' ? resolveTripPlate(t) : '') || t.vehicle || '',
+                'Auxiliar 1': t.auxiliar || '',
                 'Auxiliar 2': t.auxiliar2 || '',
                 'Auxiliar 3': t.auxiliar3 || '',
                 'Vuelta': t.vuelta || '1',
-                'Hora Salida': t.horaSalida || '',
-                'Hora Llegada': t.horaLlegada || '',
+                'Hora Salida': t.exitTime || t.departureTime || '',
+                'Hora Llegada': t.returnTime || t.arrivalTime || '',
                 'Costo ($)': typeof getTripCalculatedCost === 'function' ? getTripCalculatedCost(t) : (Number(t.value) || 0),
                 'Proveedor': t.provider || '',
                 'Estado': t.status || '',
@@ -11025,7 +11111,10 @@
                     const planningMonth = document.getElementById('planning-month-select');
                     const month = planningMonth ? planningMonth.value : 'enero';
                     const monthMap = {0:'enero',1:'febrero',2:'marzo',3:'abril',4:'mayo',5:'junio',6:'julio',7:'agosto',8:'septiembre',9:'octubre',10:'noviembre',11:'diciembre'};
-                    return monthMap[d.getMonth()] === month || monthMap[d.getUTCMonth()] === month;
+                    // Bug fix: antes usaba getMonth() OR getUTCMonth() — un viaje del 31 mar 22:00 BA
+                    // tenía getMonth()=2 (marzo) y getUTCMonth()=3 (abril), pasaba el filtro de AMBOS
+                    // meses y aparecía duplicado en métricas. Ahora solo cuenta el mes LOCAL.
+                    return monthMap[d.getMonth()] === month;
                 }
 
                 if (mode === 'dia') {
@@ -12405,8 +12494,16 @@
             vrpSchoolInfoWindow.open({ anchor, map: vrpMap });
         }
 
+        // Bug fix: guard contra ejecuciones concurrentes. Si loadVrpMarkers se llama dos
+        // veces seguidas (ej. showSection('vrp') + ResizeObserver), la primera podía
+        // estar todavía creando markers cuando la segunda limpiaba el Map → markers
+        // duplicados con dobles click handlers.
+        let _vrpLoadInFlight = false;
         async function loadVrpMarkers() {
             if (!vrpMap || !window.google?.maps) return;
+            if (_vrpLoadInFlight) return;
+            _vrpLoadInFlight = true;
+            try {
             if (vrpMarkerClusterer) {
                 try { vrpMarkerClusterer.clearMarkers(); } catch (_) {}
                 try { vrpMarkerClusterer.setMap(null); } catch (_) {}
@@ -12417,7 +12514,7 @@
                 m.setMap(null);
             });
             vrpMarkersByClientId.clear();
-            
+
             if (allSchools.length === 0) {
                 try {
                     const res = await fetch(`${API_URL}/clients`);
@@ -12488,6 +12585,9 @@
             batch.forEach((m) => { m.__vrpMapShown = true; });
             populateVrpMapFilters();
             updateVrpMarkersStatus();
+            } finally {
+                _vrpLoadInFlight = false;
+            }
         }
 
         async function initVrpMap() {
@@ -12856,12 +12956,39 @@
 
         let maintenanceCache = { vehicles: {}, records: {} };
 
+        // Bug fix: antes setMaintenanceData NO persistía y los datos editados
+        // (VTV, bromatología, vencimientos) se perdían al refrescar la página.
+        // Ahora persistimos a localStorage para conservar los cambios entre sesiones.
+        function loadMaintenanceFromStorage() {
+            try {
+                const raw = localStorage.getItem(MAINT_STORAGE_KEY);
+                if (raw) {
+                    const parsed = JSON.parse(raw);
+                    if (parsed && typeof parsed === 'object') {
+                        maintenanceCache = {
+                            vehicles: parsed.vehicles || {},
+                            records: parsed.records || {}
+                        };
+                    }
+                }
+            } catch (e) {
+                console.warn('Maintenance storage load:', e);
+            }
+        }
+        // Cargar al inicializar
+        loadMaintenanceFromStorage();
+
         function getMaintenanceData() {
             return maintenanceCache;
         }
 
         async function setMaintenanceData(data) {
             maintenanceCache = data;
+            try {
+                localStorage.setItem(MAINT_STORAGE_KEY, JSON.stringify(data));
+            } catch (e) {
+                console.warn('Maintenance storage save:', e);
+            }
         }
 
         function applyExcelMaintenanceSeed() {
@@ -13794,9 +13921,10 @@
                 const cleanDate = t.date.includes(' ') ? t.date.replace(/ /g, 'T') : t.date;
                 const tripDate = new Date(cleanDate);
                 if (isNaN(tripDate.getTime())) return false;
-                const localMonthNum = tripDate.getMonth();
-                const utcMonthNum = tripDate.getUTCMonth();
-                return DASH_MONTH_MAP[localMonthNum] === month || DASH_MONTH_MAP[utcMonthNum] === month;
+                // Bug fix: antes era `local === month || utc === month` y un viaje nocturno
+                // de fin de mes (ej. 31 mar 22:00 BA) cumplía las dos condiciones y se
+                // contaba duplicado en el dashboard. Ahora usamos solo el mes LOCAL.
+                return DASH_MONTH_MAP[tripDate.getMonth()] === month;
             });
         }
 
@@ -14629,10 +14757,23 @@
                 const rv = trip.vuelta;
                 if (rv == null || rv === '') vueltaSel.value = 'auto';
                 else {
+                    // Bug fix: antes vuelta 4, 5, 6... colapsaban a "3" al editar (porque el
+                    // select solo tenía esa opción), así que al guardar se persistía vuelta=3.
+                    // Ahora si la opción exacta existe en el select la usamos; si no, la creamos
+                    // dinámicamente para preservar el valor real.
                     const n = Number(rv);
                     if (!Number.isFinite(n) || n <= 1) vueltaSel.value = '1';
-                    else if (n === 2) vueltaSel.value = '2';
-                    else vueltaSel.value = '3';
+                    else {
+                        const wanted = String(Math.max(1, Math.min(99, Math.round(n))));
+                        const exists = Array.from(vueltaSel.options).some(o => o.value === wanted);
+                        if (!exists) {
+                            const opt = document.createElement('option');
+                            opt.value = wanted;
+                            opt.textContent = `${wanted}ª vuelta`;
+                            vueltaSel.appendChild(opt);
+                        }
+                        vueltaSel.value = wanted;
+                    }
                 }
             }
 
@@ -14719,9 +14860,11 @@
                 tripData.returnTime = d.toISOString();
             }
                     applyVueltaFromModalToPayload(tripData);
+                    // Bug fix: antes este PUT no mandaba headers de auth (X-Actor-Id, etc.),
+                    // bypaseando la auditoría. Ahora usamos getActorHeaders() como POST/DELETE.
                     const res = await fetch(`${API_URL}/trips/${id}`, {
                         method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getActorHeaders(),
                     body: JSON.stringify(tripData)
                 });
                     if (!res.ok) throw new Error('Error al actualizar el viaje');
