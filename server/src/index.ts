@@ -4071,7 +4071,12 @@ app.get('/api/v1/fleet/locations', async (req, res) => {
             const routesToday = await prisma.route.findMany({
                 where: {
                     driverId: { in: Array.from(inferredDriverIds) },
-                    date: { gte: dayStart, lte: dayEnd }
+                    date: { gte: dayStart, lte: dayEnd },
+                    // Solo rutas que NO han finalizado: si la ruta ya cerró (actualEndTime != null)
+                    // o está marcada COMPLETED, no la asociamos al GPS — así el mapa deja de
+                    // dibujar la polilínea cuando el chofer terminó su recorrido.
+                    actualEndTime: null,
+                    NOT: { status: 'COMPLETED' }
                 },
                 orderBy: { id: 'desc' }
             });
@@ -4083,11 +4088,37 @@ app.get('/api/v1/fleet/locations', async (req, res) => {
             }
         }
 
+        // Si el dispositivo trae r.routeId fijo (no inferido), verificamos también que
+        // esa ruta no esté completada — sino no la usamos como plannedRouteId.
+        const explicitRouteIds = [
+            ...new Set(
+                deviceLookup
+                    .map((d) => d.r.routeId)
+                    .filter((id): id is number => id != null && Number.isFinite(Number(id)))
+            )
+        ];
+        const completedExplicitRouteIds = new Set<number>();
+        if (explicitRouteIds.length > 0) {
+            const explicitRoutes = await prisma.route.findMany({
+                where: { id: { in: explicitRouteIds } },
+                select: { id: true, status: true, actualEndTime: true }
+            });
+            for (const er of explicitRoutes) {
+                if (er.status === 'COMPLETED' || er.actualEndTime != null) {
+                    completedExplicitRouteIds.add(er.id);
+                }
+            }
+        }
+
         for (const { r, uidFromLabel, uidFromR } of deviceLookup) {
             let inferredRouteId: number | null = null;
             if (uidFromLabel) inferredRouteId = routeByDriverId.get(uidFromLabel) ?? null;
             if (inferredRouteId == null && uidFromR) inferredRouteId = routeByDriverId.get(uidFromR) ?? null;
-            const plannedRouteId = r.routeId != null ? r.routeId : inferredRouteId;
+            // Si r.routeId apunta a una ruta completada, lo ignoramos.
+            const rawExplicit = r.routeId != null ? Number(r.routeId) : null;
+            const explicitRouteId =
+                rawExplicit != null && !completedExplicitRouteIds.has(rawExplicit) ? rawExplicit : null;
+            const plannedRouteId = explicitRouteId != null ? explicitRouteId : inferredRouteId;
             result.push({
                 tripId: `gps-${r.deviceId}`,
                 driver: r.deviceLabel || r.deviceId,
