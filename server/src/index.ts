@@ -1740,18 +1740,42 @@ function normalizeForMatch(s: string): string {
         .replace(/\s+/g, ' ');
 }
 
+// Bug fix: el matching por "diferencia de longitud" era demasiado laxo — devolvía
+// CUALQUIER cliente cuya longitud difiriera <=10 caracteres, sin chequear similitud
+// real. Ej.: "EP 25" y "EP 26" podían matchear al mismo Client.
+// Ahora exigimos similitud real: o coincide exactamente, o uno es substring del otro
+// (con normalización), o pasamos un umbral de tokens compartidos.
 function findBestMatchingClient(excelName: string, clients: { id: string; name: string }[]): { id: string; name: string } | null {
     if (!excelName || clients.length === 0) return null;
     const normExcel = normalizeForMatch(excelName);
+    if (!normExcel) return null;
+
+    // 1) Match exacto (normalizado)
     const exact = clients.find(c => normalizeForMatch(c.name) === normExcel);
     if (exact) return exact;
-    const contains = clients.find(c => normalizeForMatch(c.name).includes(normExcel) || normExcel.includes(normalizeForMatch(c.name)));
+
+    // 2) Substring exacto en cualquiera de los dos sentidos
+    const contains = clients.find(c => {
+        const n = normalizeForMatch(c.name);
+        return n.length > 0 && (n.includes(normExcel) || normExcel.includes(n));
+    });
     if (contains) return contains;
-    const byLength = clients
-        .map(c => ({ c, norm: normalizeForMatch(c.name), len: Math.abs(normalizeForMatch(c.name).length - normExcel.length) }))
-        .filter(x => x.norm.length > 0 && normExcel.length > 0);
-    byLength.sort((a, b) => a.len - b.len);
-    if (byLength[0] && byLength[0].len <= 10) return byLength[0].c;
+
+    // 3) Similitud por tokens: el % de palabras compartidas debe ser >= 70%
+    //    (umbral conservador para no mappear escuelas distintas que comparten 1 palabra)
+    const tokensExcel = new Set(normExcel.split(' ').filter(t => t.length >= 3));
+    if (tokensExcel.size === 0) return null;
+    let best: { c: { id: string; name: string }; score: number } | null = null;
+    for (const c of clients) {
+        const nClient = normalizeForMatch(c.name);
+        const tokensClient = new Set(nClient.split(' ').filter(t => t.length >= 3));
+        if (tokensClient.size === 0) continue;
+        const shared = [...tokensExcel].filter(t => tokensClient.has(t)).length;
+        const total = Math.max(tokensExcel.size, tokensClient.size);
+        const score = shared / total;
+        if (!best || score > best.score) best = { c, score };
+    }
+    if (best && best.score >= 0.7) return best.c;
     return null;
 }
 
@@ -1837,12 +1861,42 @@ async function syncRepartosFromExcel(): Promise<void> {
     }
 }
 
+// Bug fix: antes este GET ejecutaba syncRepartosFromExcel() en CADA request, lo que
+// genera race conditions si dos clientes (o dos pestañas) llaman al mismo tiempo:
+// uno borra mientras el otro crea → datos parciales o constraint violation.
+// Ahora usamos un mutex global para serializar el sync, y solo ejecutamos si pasó
+// al menos REPARTO_SYNC_MIN_INTERVAL_MS desde el último sync exitoso.
+let _repartoSyncInFlight: Promise<void> | null = null;
+let _repartoSyncLastRun = 0;
+const REPARTO_SYNC_MIN_INTERVAL_MS = 5 * 60 * 1000; // 5 minutos
+
+async function ensureRepartosSynced(force = false): Promise<void> {
+    const excelPath = getRepartosExcelPath();
+    if (!excelPath) return;
+    if (!force && Date.now() - _repartoSyncLastRun < REPARTO_SYNC_MIN_INTERVAL_MS) {
+        return; // Skip: sync reciente, los datos están al día
+    }
+    if (_repartoSyncInFlight) {
+        // Hay un sync en curso — esperamos a que termine en vez de lanzar otro
+        await _repartoSyncInFlight;
+        return;
+    }
+    _repartoSyncInFlight = (async () => {
+        try {
+            await syncRepartosFromExcel();
+            _repartoSyncLastRun = Date.now();
+        } finally {
+            _repartoSyncInFlight = null;
+        }
+    })();
+    await _repartoSyncInFlight;
+}
+
 app.get('/api/v1/repartos', async (req, res) => {
     try {
-        const excelPath = getRepartosExcelPath();
-        if (excelPath) {
-            await syncRepartosFromExcel();
-        }
+        // Forzar resync si el cliente lo pide explícitamente (?refresh=1)
+        const force = String(req.query.refresh || '') === '1';
+        await ensureRepartosSynced(force);
         const repartos = await prisma.reparto.findMany({
             where: { tenantId: 'default-tenant' },
             include: { stops: { orderBy: { sequence: 'asc' } } },
@@ -2083,8 +2137,21 @@ app.post('/api/v1/sync-deep', async (req, res) => {
 
             for (const t of trips) {
                 const driverName = (t.driver || '').trim().toUpperCase();
-                const user = allUsers.find(u => u.fullName.includes(driverName) || driverName.includes(u.fullName));
-                
+                // Bug fix: antes usaba .includes() en ambos sentidos, lo que confundia
+                // "MARTIN GARCIA" con "MARTIN LOPEZ". Ahora intenta match exacto primero
+                // y solo cae al fuzzy si el exacto no aparece.
+                const user =
+                    allUsers.find(u => (u.fullName || '').trim().toUpperCase() === driverName) ||
+                    allUsers.find(u => (u.username || '').trim().toUpperCase() === driverName) ||
+                    allUsers.find(u => {
+                        const fn = (u.fullName || '').trim().toUpperCase();
+                        // fuzzy match estricto: el nombre buscado tiene que ser una palabra completa
+                        // del fullName (separada por espacios) o coincidir exactamente con un token.
+                        if (!fn || !driverName) return false;
+                        const tokens = fn.split(/\s+/);
+                        return tokens.includes(driverName) || fn === driverName;
+                    });
+
                 // Si el viaje ya existe como "Trip", lo actualizamos
                 await prisma.trip.upsert({
                     where: { id: t.id || -1 },
@@ -2095,16 +2162,18 @@ app.post('/api/v1/sync-deep', async (req, res) => {
                 // Si tiene chofer identificado, le creamos una "Route" base si es para hoy o futuro
                 if (user && user.role === 'DRIVER') {
                     const vehicle = await prisma.vehicle.findFirst({ where: { driverName: { contains: driverName } } });
-                    
-                    // Verificamos si ya existe una ruta para ese chofer y fecha
+
+                    // Bug fix: antes hacia `new Date(tripDate.setHours(0,..))` y luego
+                    // `new Date(tripDate.setHours(23,..))` sobre el MISMO objeto tripDate.
+                    // setHours muta in-place: ambos quedaban con 23:59 → rango vacio →
+                    // existingRoute siempre null → duplicabamos Routes.
                     const tripDate = new Date(t.date);
+                    const dayStart = new Date(tripDate); dayStart.setHours(0, 0, 0, 0);
+                    const dayEnd = new Date(tripDate); dayEnd.setHours(23, 59, 59, 999);
                     const existingRoute = await prisma.route.findFirst({
                         where: {
                             driverId: user.id,
-                            date: {
-                                gte: new Date(tripDate.setHours(0,0,0,0)),
-                                lte: new Date(tripDate.setHours(23,59,59,999))
-                            }
+                            date: { gte: dayStart, lte: dayEnd }
                         }
                     });
 
@@ -2293,19 +2362,20 @@ app.get('/api/v1/routes', async (req, res) => {
         }
         if (Object.keys(dateRange).length > 0) where.date = dateRange;
     }
-    // FIX: si la query trae driverId+date (uso tipico de la app movil en TrackScreen),
-    // NO devolver viajes finalizados. Antes la app recibia rutas con actualEndTime != null
-    // o trip.status === 'COMPLETED' y las mostraba como "VIAJE CONCLUIDO" sin desaparecer.
-    // Para el historial de chofer (HistoryScreen) se usa days/fromDate/toDate sin date,
-    // o se manda excludeFinished=false explicitamente.
+    // Bug fix: antes solo aplicaba excludeFinished cuando había driverId Y date exacto.
+    // Si la app pedía rutas por driverId+fromDate (sin date), o por days, NO filtraba
+    // y mostraba rutas COMPLETED como activas. Ahora excludeFinished se aplica por defecto
+    // (a menos que se mande `excludeFinished=false` explícito), independientemente de
+    // qué combinación de filtros venga. El historial sigue funcionando porque HistoryScreen
+    // pasa excludeFinished=false.
     const shouldExcludeFinished =
-        String(excludeFinished || '').toLowerCase() !== 'false' &&
-        !!driverId && !!date;
+        String(excludeFinished || '').toLowerCase() !== 'false';
     if (shouldExcludeFinished) {
         where.actualEndTime = null;
         where.NOT = [
             { trip: { status: 'COMPLETED' } },
-            { trip: { status: 'RETURNED' } }
+            { trip: { status: 'RETURNED' } },
+            { status: 'COMPLETED' }
         ];
     }
     const routes = await prisma.route.findMany({
@@ -2394,11 +2464,23 @@ app.patch('/api/v1/routes/:id/recorrido', async (req, res) => {
                     error: 'Iniciá el recorrido o completá todas las paradas antes de cerrar'
                 });
             }
+            // Bug fix: si una parada tenía timestamp corrupto (ej. 1970 por carga manual mal hecha),
+            // el min() daba un startAt absurdo y la duración salía en millones de minutos. Ahora
+            // solo aceptamos timestamps dentro de un rango razonable (mismo día +/- 36h del now/route.date).
             const inferStart = (): Date => {
+                const refMs = (route.date instanceof Date ? route.date.getTime() : new Date(route.date as any).getTime()) || now.getTime();
+                const lowerBound = Math.min(refMs, now.getTime()) - 36 * 3600 * 1000; // 36h antes
+                const upperBound = now.getTime() + 1000; // ahora
                 const ms: number[] = [];
                 for (const s of stopsRows) {
-                    if (s.actualArrival) ms.push(new Date(s.actualArrival).getTime());
-                    if (s.actualDeparture) ms.push(new Date(s.actualDeparture).getTime());
+                    if (s.actualArrival) {
+                        const t = new Date(s.actualArrival).getTime();
+                        if (t >= lowerBound && t <= upperBound) ms.push(t);
+                    }
+                    if (s.actualDeparture) {
+                        const t = new Date(s.actualDeparture).getTime();
+                        if (t >= lowerBound && t <= upperBound) ms.push(t);
+                    }
                 }
                 return ms.length > 0 ? new Date(Math.min(...ms)) : now;
             };
@@ -2669,38 +2751,11 @@ setInterval(() => {
     }
 }, 5 * 60 * 1000);
 
-/** Cron de limpieza de DeviceLocation: borra pings GPS de mas de 30 dias.
- *
- *  Por que: con 30 choferes activos generamos ~200k filas/dia. En 30 dias son ~6M
- *  filas. Postgres aguanta bien gracias al @@index([timestamp]), pero crecer mas
- *  alla pone lentas las queries de HDR. 30 dias preserva el modulo HDR completo
- *  (mapa con polyline GPS del recorrido) para todos los viajes del ultimo mes.
- *
- *  Si en el futuro se necesita historial mas largo, se puede:
- *    a) Subir el retention a 60-90 dias (Postgres aguanta ~13-20M filas)
- *    b) Hacer thinning: dejar todos los puntos de 0-7 dias y 1 cada 5 puntos
- *       para 7-30 dias (reduce 80% el storage manteniendo la polyline visible)
- *
- *  Frecuencia: cada hora. La query corre en background y no bloquea requests.
- *  Si falla (p.ej. la BD esta sobrecargada), no rompe nada — se reintenta en 1h.
- */
+// Bug fix: este cron borraba DeviceLocations >30d cada 1h, pero más abajo `cleanupOldData`
+// también borra DeviceLocations >30d cada 24h. Dos jobs paralelos hacían el mismo delete.
+// Eliminamos el duplicado — el cleanup unificado (cleanupOldData) cubre GPS + AuditLog + Alerts.
+// Se mantiene la constante por si se referencia en otros lugares.
 const DEVICE_LOCATION_RETENTION_MS = 30 * 24 * 60 * 60 * 1000;
-async function cleanupOldDeviceLocations() {
-    try {
-        const cutoff = new Date(Date.now() - DEVICE_LOCATION_RETENTION_MS);
-        const result = await prisma.deviceLocation.deleteMany({
-            where: { timestamp: { lt: cutoff } }
-        });
-        if (result.count > 0) {
-            console.log(`[cleanup] Borrados ${result.count} DeviceLocation de mas de 30 dias`);
-        }
-    } catch (e: any) {
-        console.warn('[cleanup] cleanupOldDeviceLocations:', e?.message || e);
-    }
-}
-// Correr una vez al startup (despues de 1 min para no bloquear el boot) y luego cada hora.
-setTimeout(() => { void cleanupOldDeviceLocations(); }, 60_000);
-setInterval(() => { void cleanupOldDeviceLocations(); }, 60 * 60 * 1000);
 
 /** Incluye coords y sequence para invalidar caché si cambia el cliente o el orden (sin depender de PATCH explícitos) */
 function routeGeometryCacheKey(routeId: number, validStops: Array<{ id: number; sequence: number; client: { latitude: unknown; longitude: unknown } }>): string {
@@ -3041,32 +3096,41 @@ app.get('/api/v1/routes/:id/navigation-to-next', async (req, res) => {
 });
 
 app.patch('/api/v1/stops/:id', async (req, res) => {
-    const { id } = req.params;
-    const body = req.body;
-    const data: any = {};
-    if (body.actualArrival != null) data.actualArrival = new Date(body.actualArrival);
-    if (body.actualDeparture != null) data.actualDeparture = new Date(body.actualDeparture);
-    if (body.status != null) data.status = String(body.status);
-    if (body.observations != null) data.observations = String(body.observations);
-    if (body.reasonCode != null) data.reasonCode = String(body.reasonCode);
-    if (body.proofPhotoUrl !== undefined) {
-        const v = body.proofPhotoUrl;
-        data.proofPhotoUrl = v == null || v === '' ? null : String(v);
-    }
-    if (body.deliveryWithoutIssues !== undefined) {
-        const v = body.deliveryWithoutIssues;
-        data.deliveryWithoutIssues = v === null ? null : Boolean(v);
-    }
-    const stop = await prisma.stop.update({
-        where: { id: Number(id) },
-        data,
-        include: { route: { select: { id: true, tripId: true, driverId: true, actualEndTime: true, actualStartTime: true } } }
-    });
-    io.emit('stop:updated', { stop });
-    // Notificar a Torre de Control y a la app del chofer
-    if (stop.route?.driverId) {
-        io.to(`driver:${stop.route.driverId}`).emit('route:updated', { routeId: stop.route.id, type: 'stop_status' });
-    }
+    // Bug fix: antes prisma.stop.update y el resto del handler estaban fuera de try/catch.
+    // Si Prisma rechazaba (id inexistente, datos inválidos), la promesa burbujeaba
+    // y el chofer recibía un 500 sin mensaje útil.
+    try {
+        const { id } = req.params;
+        const stopId = Number(id);
+        if (!Number.isFinite(stopId)) {
+            res.status(400).json({ error: 'ID de stop inválido' });
+            return;
+        }
+        const body = req.body;
+        const data: any = {};
+        if (body.actualArrival != null) data.actualArrival = new Date(body.actualArrival);
+        if (body.actualDeparture != null) data.actualDeparture = new Date(body.actualDeparture);
+        if (body.status != null) data.status = String(body.status);
+        if (body.observations != null) data.observations = String(body.observations);
+        if (body.reasonCode != null) data.reasonCode = String(body.reasonCode);
+        if (body.proofPhotoUrl !== undefined) {
+            const v = body.proofPhotoUrl;
+            data.proofPhotoUrl = v == null || v === '' ? null : String(v);
+        }
+        if (body.deliveryWithoutIssues !== undefined) {
+            const v = body.deliveryWithoutIssues;
+            data.deliveryWithoutIssues = v === null ? null : Boolean(v);
+        }
+        const stop = await prisma.stop.update({
+            where: { id: stopId },
+            data,
+            include: { route: { select: { id: true, tripId: true, driverId: true, actualEndTime: true, actualStartTime: true } } }
+        });
+        io.emit('stop:updated', { stop });
+        // Notificar a Torre de Control y a la app del chofer
+        if (stop.route?.driverId) {
+            io.to(`driver:${stop.route.driverId}`).emit('route:updated', { routeId: stop.route.id, type: 'stop_status' });
+        }
 
     // === AUTO-FINALIZACION DE RUTA ===
     // Si el stop quedo en estado FINAL (COMPLETED o UNDELIVERABLE) y la ruta no esta cerrada,
@@ -3120,7 +3184,12 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
                 console.log(`[auto-finish] Ruta ${stop.route.id} cerrada automaticamente (${allStops.length} paradas finalizadas)`);
                 // Avisar a Torre de Control y a la app
                 io.emit('route:updated', { routeId: stop.route.id, type: 'auto_finished' });
-                io.emit('trip:updated', { tripId: stop.route.tripId });
+                // Bug fix: emitir trip:updated SOLO si la ruta tiene tripId. Rutas creadas
+                // via routes-direct pueden no tener trip linkeado, y emitir con tripId null
+                // hacía que clientes recibieran un evento inválido.
+                if (stop.route.tripId) {
+                    io.emit('trip:updated', { tripId: stop.route.tripId });
+                }
             }
         }
     } catch (e: any) {
@@ -3128,7 +3197,14 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
         console.warn('[auto-finish] Error chequeando auto-finalizacion:', e?.message || e);
     }
 
-    res.json(stop);
+        res.json(stop);
+    } catch (e: any) {
+        console.error('PATCH /api/v1/stops/:id:', e);
+        const msg = e?.code === 'P2025'
+            ? 'La parada no existe o ya fue eliminada'
+            : (e?.message || 'Error actualizando la parada');
+        res.status(500).json({ error: msg });
+    }
 });
 
 // ── Reordenamiento de paradas por el chofer ───────────────────────────────────
@@ -3152,11 +3228,50 @@ app.post('/api/v1/routes/:id/stops/reorder', async (req, res) => {
         });
         const currentMap = new Map(currentStops.map(s => [s.id, s]));
 
+        // Bug fix: antes no se validaba nada del payload. Un cliente malformado podía:
+        //  - mover paradas que NO pertenecen a este routeId (cross-route corruption),
+        //  - dejar dos paradas con la misma sequence,
+        //  - omitir paradas de la ruta (queda gap en la numeración).
+        // Validamos pertenencia, unicidad de stopId, unicidad de sequence y cobertura completa.
+        const orderedIds = newOrder.map(o => Number(o.stopId)).filter(Number.isFinite);
+        if (orderedIds.length !== newOrder.length) {
+            res.status(400).json({ error: 'newOrder contiene stopId no numéricos' });
+            return;
+        }
+        if (new Set(orderedIds).size !== orderedIds.length) {
+            res.status(400).json({ error: 'newOrder contiene stopIds duplicados' });
+            return;
+        }
+        const validStopIds = new Set(currentStops.map(s => s.id));
+        const foreign = orderedIds.filter(id => !validStopIds.has(id));
+        if (foreign.length > 0) {
+            res.status(400).json({ error: `stopIds no pertenecen a la ruta ${routeId}: ${foreign.join(', ')}` });
+            return;
+        }
+        if (orderedIds.length !== currentStops.length) {
+            res.status(400).json({
+                error: `newOrder debe incluir las ${currentStops.length} paradas de la ruta (recibidas: ${orderedIds.length})`
+            });
+            return;
+        }
+        const sequences = newOrder.map(o => Number(o.sequence));
+        if (sequences.some(s => !Number.isFinite(s))) {
+            res.status(400).json({ error: 'sequence inválida en newOrder' });
+            return;
+        }
+        if (new Set(sequences).size !== sequences.length) {
+            res.status(400).json({ error: 'sequence duplicada en newOrder' });
+            return;
+        }
+
         // Actualizar secuencias en transacción
         await prisma.$transaction(
             newOrder.map(item =>
                 prisma.stop.update({
-                    where: { id: item.stopId },
+                    // FIX: where compuesto: además de id, exigimos que pertenezca al routeId
+                    // del param. Si por alguna race condition la parada cambió de ruta entre
+                    // la validación y el update, Prisma tira P2025 en lugar de pisar otra ruta.
+                    where: { id: item.stopId, routeId },
                     data: {
                         sequence: item.sequence,
                         // Guardar secuencia original solo la primera vez que se reordena
@@ -3314,17 +3429,40 @@ app.post('/api/v1/vrp/live-optimize', async (req, res) => {
         let trafficLive = false;
         let routingData: any;
 
+        // Bug fix: antes el try externo único enmascaraba qué proveedor falló — el operador
+        // recibía un genérico "No se pudo optimizar la ruta con tráfico" sin saber si era
+        // Mapbox o OSRM. Ahora si ambos fallan, devolvemos 503 con el detalle.
+        let mapboxError: any = null;
+        let osrmError: any = null;
         if (mapboxToken) {
             try {
                 routingData = await requestOptimizedTripFromMapbox(coords, mapboxToken);
                 provider = 'mapbox';
                 trafficLive = true;
             } catch (e) {
+                mapboxError = e;
                 console.warn('Mapbox traffic optimize failed, using OSRM fallback:', e);
-                routingData = await requestOptimizedTripFromOsrm(coords);
+                try {
+                    routingData = await requestOptimizedTripFromOsrm(coords);
+                } catch (e2) {
+                    osrmError = e2;
+                }
             }
         } else {
-            routingData = await requestOptimizedTripFromOsrm(coords);
+            try {
+                routingData = await requestOptimizedTripFromOsrm(coords);
+            } catch (e) {
+                osrmError = e;
+            }
+        }
+        if (!routingData) {
+            return res.status(503).json({
+                error: 'No se pudo optimizar la ruta con tráfico',
+                detail: {
+                    mapbox: mapboxError ? (mapboxError?.message || String(mapboxError)) : null,
+                    osrm: osrmError ? (osrmError?.message || String(osrmError)) : null
+                }
+            });
         }
 
         const tripData = routingData.trips?.[0];
@@ -3403,20 +3541,34 @@ app.get('/api/v1/trips', async (req, res) => {
     const monthIdx = monthKey ? monthMap[monthKey] : undefined;
     const yearNum = year ? Number(year) : undefined;
 
+    // Bug fix: antes el filtro mes/año se aplicaba en memoria DESPUÉS de take: 2000.
+    // Con más de 2000 viajes en la base, los meses viejos quedaban fuera del slice
+    // y devolvían VACIO. Ahora aplicamos el rango directo al `where` de Prisma.
+    if (monthIdx !== undefined || yearNum) {
+        const yForRange = yearNum || new Date().getFullYear();
+        if (monthIdx !== undefined) {
+            // Mes específico (con año explícito o asumiendo año actual)
+            where.date = {
+                gte: new Date(yForRange, monthIdx, 1, 0, 0, 0, 0),
+                lte: new Date(yForRange, monthIdx + 1, 0, 23, 59, 59, 999)
+            };
+        } else if (yearNum) {
+            // Solo año, sin mes
+            where.date = {
+                gte: new Date(yearNum, 0, 1, 0, 0, 0, 0),
+                lte: new Date(yearNum, 11, 31, 23, 59, 59, 999)
+            };
+        }
+    }
+
     const trips = await prisma.trip.findMany({
         where,
         include: { stops: { orderBy: { sequence: 'asc' } } },
         orderBy: { date: 'desc' },
-        take: 2000 
+        take: 2000
     });
-    const filteredTrips = trips.filter((t: any) => {
-        if (!monthKey && !yearNum) return true;
-        const tripDate = new Date(t.date);
-        if (Number.isNaN(tripDate.getTime())) return false;
-        if (monthIdx !== undefined && tripDate.getMonth() !== monthIdx) return false;
-        if (yearNum && tripDate.getFullYear() !== yearNum) return false;
-        return true;
-    });
+    // Ya filtrado en la query, mantenemos `filteredTrips` para no romper el resto del handler.
+    const filteredTrips = trips;
 
     let minD: Date | null = null;
     let maxD: Date | null = null;
@@ -3573,7 +3725,7 @@ function parseTripDurationHrs(t: any): number {
 
 app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
     try {
-        const { month, costsParams, salariesData } = req.body || {};
+        const { month, year: yearArg, costsParams, salariesData } = req.body || {};
         if (!month || !costsParams) return res.status(400).json({ error: 'Faltan month o costsParams' });
 
         const monthNum = MONTH_TO_NUM[month.toLowerCase()];
@@ -3597,7 +3749,10 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
         const vehicleHourlyRate = (totalFijo + totalVar) / horasReales;
 
         // 3. Traer todos los viajes propios del mes
-        const year = new Date().getFullYear();
+        // Bug fix: antes el año estaba hardcodeado a new Date().getFullYear() (año actual del server).
+        // Eso impedía recalcular meses de años pasados y, peor, sobreescribia trip.value usando
+        // el año equivocado. Ahora aceptamos `year` desde el body, con fallback al actual.
+        const year = Number(yearArg) > 0 ? Number(yearArg) : new Date().getFullYear();
         const startDate = new Date(year, monthNum, 1);
         const endDate = new Date(year, monthNum + 1, 0, 23, 59, 59);
 
@@ -3620,9 +3775,11 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
         }
 
         // 5. Para cada auxiliar único en todos los viajes del mes, sumar horas totales
+        // Bug fix: antes se leian t.assistant / t.assistant2 / t.assistant3 que NO existen
+        // en el modelo Trip (solo auxiliar / auxiliar2 / auxiliar3). Siempre eran undefined.
         const auxNames = new Set<string>();
         trips.forEach((t: any) => {
-            [t.auxiliar, t.auxiliar2, t.auxiliar3, t.assistant, t.assistant2, t.assistant3]
+            [t.auxiliar, t.auxiliar2, t.auxiliar3]
                 .filter(Boolean)
                 .flatMap((a: string) => a.toString().split(',').map((n: string) => n.trim()))
                 .filter((n: string) => n && n !== '--' && n !== 'N/A' && n !== 'SIN AUXILIAR')
@@ -3632,7 +3789,7 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
         const auxTotalHours: Record<string, number> = {};
         auxNames.forEach(name => {
             auxTotalHours[name] = trips.reduce((sum: number, t: any) => {
-                const auxList = [t.auxiliar, t.auxiliar2, t.auxiliar3, t.assistant, t.assistant2, t.assistant3]
+                const auxList = [t.auxiliar, t.auxiliar2, t.auxiliar3]
                     .filter(Boolean)
                     .flatMap((a: string) => a.toString().split(',').map((n: string) => n.trim()));
                 if (auxList.includes(name)) {
@@ -3648,7 +3805,7 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
             const durHrs = parseTripDurationHrs(t);
             let tripCost = durHrs * vehicleHourlyRate;
 
-            const auxList = [t.auxiliar, t.auxiliar2, t.auxiliar3, t.assistant, t.assistant2, t.assistant3]
+            const auxList = [t.auxiliar, t.auxiliar2, t.auxiliar3]
                 .filter(Boolean)
                 .flatMap((a: string) => a.toString().split(',').map((n: string) => n.trim()))
                 .filter((n: string) => n && n !== '--' && n !== 'N/A' && n !== 'SIN AUXILIAR');
@@ -3660,7 +3817,9 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
             });
 
             const value = Math.round(tripCost);
-            await prisma.trip.update({ where: { id: t.id }, data: { value: String(value) } });
+            // Bug fix: trip.value es columna Decimal — antes se guardaba como String("123")
+            // creando tipos inconsistentes con otros endpoints que insertan number directamente.
+            await prisma.trip.update({ where: { id: t.id }, data: { value } });
             updates.push({ id: t.id, value, durHrs: Math.round(durHrs * 100) / 100 });
         }
 
@@ -3851,11 +4010,22 @@ app.patch('/api/v1/trips/:tripId/recorrido-operador', async (req, res) => {
                     error: 'Iniciá el viaje o completá todas las paradas antes de cerrar'
                 });
             }
+            // Bug fix: filtramos timestamps fuera de rango razonable para evitar startAt = 1970
+            // por una parada con dato corrupto, lo que producía duraciones de millones de minutos.
             const inferStart = (): Date => {
+                const refMs = (route.date instanceof Date ? route.date.getTime() : new Date(route.date as any).getTime()) || now.getTime();
+                const lowerBound = Math.min(refMs, now.getTime()) - 36 * 3600 * 1000;
+                const upperBound = now.getTime() + 1000;
                 const ms: number[] = [];
                 for (const s of stopsRows) {
-                    if (s.actualArrival) ms.push(new Date(s.actualArrival).getTime());
-                    if (s.actualDeparture) ms.push(new Date(s.actualDeparture).getTime());
+                    if (s.actualArrival) {
+                        const t = new Date(s.actualArrival).getTime();
+                        if (t >= lowerBound && t <= upperBound) ms.push(t);
+                    }
+                    if (s.actualDeparture) {
+                        const t = new Date(s.actualDeparture).getTime();
+                        if (t >= lowerBound && t <= upperBound) ms.push(t);
+                    }
                 }
                 return ms.length > 0 ? new Date(Math.min(...ms)) : now;
             };
