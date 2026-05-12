@@ -11055,9 +11055,20 @@
         // IMPORTANTE: esto es solo UI. No afecta a la API ni al envío/recepción de viajes
         // con la app móvil. Los campos en la base de datos siguen siendo los mismos.
         const COL_VIS_LS_KEY = 'r14.user_column_visibility';
+        const COL_VIS_DEBUG = true; // poner false para silenciar
+
+        function _colVisLog() {
+            if (!COL_VIS_DEBUG) return;
+            try { console.log.apply(console, ['[ColVis]'].concat(Array.from(arguments))); } catch(_) {}
+        }
 
         function _getLoggedUsername() {
-            return (localStorage.getItem('r14.loggedUsername') || '').toLowerCase().trim();
+            // Fallback: si no hay loggedUsername, intentar con loggedUser
+            const u1 = (localStorage.getItem('r14.loggedUsername') || '').toLowerCase().trim();
+            if (u1) return u1;
+            const u2 = (localStorage.getItem('r14.loggedUser') || '').toLowerCase().trim();
+            if (u2) return u2;
+            return '__anon__'; // siempre devolver algo para no perder la config
         }
 
         function _readAllColumnPerms() {
@@ -11072,23 +11083,24 @@
         }
 
         function getColumnPermissionsFor(username) {
-            const u = (username || '').toLowerCase().trim();
-            if (!u) return null;
+            const u = (username || '').toLowerCase().trim() || '__anon__';
             const all = _readAllColumnPerms();
             return all[u] || null;
         }
 
         function setColumnPermissionsFor(username, perms) {
-            const u = (username || '').toLowerCase().trim();
-            if (!u) return;
+            const u = (username || '').toLowerCase().trim() || '__anon__';
             const all = _readAllColumnPerms();
             all[u] = perms;
             _writeAllColumnPerms(all);
+            _colVisLog('saved for', u, perms);
         }
 
         function applyUserColumnPermissions() {
             // Carga los permisos del usuario logueado y los aplica al array weeklyColumns
-            const perms = getColumnPermissionsFor(_getLoggedUsername());
+            const username = _getLoggedUsername();
+            const perms = getColumnPermissionsFor(username);
+            _colVisLog('applyUserColumnPermissions', 'user=', username, 'perms=', perms);
             if (perms && typeof perms === 'object') {
                 weeklyColumns.forEach(col => {
                     if (perms.hasOwnProperty(col.id)) {
@@ -11164,8 +11176,7 @@
         }
 
         function toggleColumnVisibility(columnId) {
-            const username = _getLoggedUsername();
-            if (!username) return;
+            const username = _getLoggedUsername(); // siempre devuelve algo (fallback __anon__)
 
             // Tomar permisos actuales (o seedearlos con la visibilidad actual)
             const perms = getColumnPermissionsFor(username) || {};
@@ -11176,6 +11187,7 @@
             // Toggle la columna específica y guardar
             perms[columnId] = !perms[columnId];
             setColumnPermissionsFor(username, perms);
+            _colVisLog('toggle', columnId, '→', perms[columnId], 'user:', username);
 
             // Aplicar inmediatamente en la vista actual
             const col = weeklyColumns.find(c => c.id === columnId);
@@ -15271,6 +15283,19 @@
 
         checkExistingSession();
         setTimeout(renderNotifications, 500);
+
+        // Safety net: aplicar permisos de columnas en cuanto el DOM esté listo,
+        // por si checkExistingSession no se ejecutó (ej. el usuario no estaba logueado pero
+        // tenía perms guardados de antes).
+        if (typeof applyUserColumnPermissions === 'function') {
+            try { applyUserColumnPermissions(); } catch(_) {}
+        }
+        // Y una vez más cuando termina de cargar todo
+        document.addEventListener('DOMContentLoaded', function() {
+            if (typeof applyUserColumnPermissions === 'function') {
+                try { applyUserColumnPermissions(); } catch(_) {}
+            }
+        });
     </script>
 
     <!-- MODAL: EDICIÓN SALARIO -->
