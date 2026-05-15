@@ -3132,69 +3132,66 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
             io.to(`driver:${stop.route.driverId}`).emit('route:updated', { routeId: stop.route.id, type: 'stop_status' });
         }
 
-    // === AUTO-FINALIZACION DE RUTA ===
-    // Si el stop quedo en estado FINAL (COMPLETED o UNDELIVERABLE) y la ruta no esta cerrada,
-    // chequeamos si TODAS las paradas estan finalizadas. Si si, cerramos la ruta automaticamente.
-    // Asi el chofer no tiene que apretar "Fichar salida" — el viaje se cierra solo al terminar.
-    try {
-        const newStatus = String(stop.status || '').toUpperCase();
-        const isFinalState = newStatus === 'COMPLETED' || newStatus === 'UNDELIVERABLE';
-        if (isFinalState && stop.route && !stop.route.actualEndTime) {
-            const allStops = await prisma.stop.findMany({
-                where: { routeId: stop.route.id },
-                select: { id: true, status: true, actualArrival: true, actualDeparture: true }
-            });
-            const allFinal = allStops.length > 0 && allStops.every((s) => {
-                const st = String(s.status || '').toUpperCase();
-                return st === 'COMPLETED' || st === 'UNDELIVERABLE';
-            });
-            if (allFinal) {
-                const now = new Date();
-                // Si por algun motivo no se ficho entrada (actualStartTime null), inferir desde
-                // el primer actualArrival/Departure de las paradas
-                let startAt = stop.route.actualStartTime;
-                if (!startAt) {
-                    const ms: number[] = [];
-                    for (const s of allStops) {
-                        if (s.actualArrival) ms.push(new Date(s.actualArrival).getTime());
-                        if (s.actualDeparture) ms.push(new Date(s.actualDeparture).getTime());
-                    }
-                    startAt = ms.length > 0 ? new Date(Math.min(...ms)) : now;
-                }
-                await prisma.route.update({
-                    where: { id: stop.route.id },
-                    data: {
-                        actualStartTime: startAt,
-                        actualEndTime: now,
-                        status: 'COMPLETED'
-                    }
+    // === AUTO-FINALIZACION DE RUTA — DESACTIVADO ===
+    // Antes: al marcar todas las paradas como COMPLETED/UNDELIVERABLE, la ruta y el trip
+    // se cerraban automaticamente. El problema: si por sync offline, paradas duplicadas
+    // o reemplazo de paradas (PUT delivery-stops), todas las paradas quedaban en estado
+    // final accidentalmente, el viaje se finalizaba solo y el chofer perdia la vista de
+    // la ruta a mitad de la jornada.
+    //
+    // Ahora: el viaje SOLO se cierra cuando el chofer aprieta "Finalizar viaje" en la app
+    // movil (que llama a /api/v1/trips/:id/recorrido-operador con action:'end') o cuando
+    // el operador lo cierra desde la web. Asi no hay sorpresas.
+    //
+    // Para reactivar el auto-finish, controlar via env var AUTO_FINISH_ROUTE_ON_LAST_STOP.
+    if (process.env.AUTO_FINISH_ROUTE_ON_LAST_STOP === 'true') {
+        try {
+            const newStatus = String(stop.status || '').toUpperCase();
+            const isFinalState = newStatus === 'COMPLETED' || newStatus === 'UNDELIVERABLE';
+            if (isFinalState && stop.route && !stop.route.actualEndTime) {
+                const allStops = await prisma.stop.findMany({
+                    where: { routeId: stop.route.id },
+                    select: { id: true, status: true, actualArrival: true, actualDeparture: true }
                 });
-                // Si la ruta tiene un Trip linkeado, marcarlo tambien como COMPLETED
-                if (stop.route.tripId) {
-                    await prisma.trip.update({
-                        where: { id: stop.route.tripId },
-                        data: { status: 'COMPLETED', completedAt: now }
-                    }).catch(() => {});
-                }
-                // Marcar pings GPS como inactivos (no aparecen mas en mapa en vivo)
-                await prisma.deviceLocation.updateMany({
-                    where: { routeId: stop.route.id, isActive: true },
-                    data: { isActive: false }
+                const allFinal = allStops.length > 0 && allStops.every((s) => {
+                    const st = String(s.status || '').toUpperCase();
+                    return st === 'COMPLETED' || st === 'UNDELIVERABLE';
                 });
-                console.log(`[auto-finish] Ruta ${stop.route.id} cerrada automaticamente (${allStops.length} paradas finalizadas)`);
-                // Avisar a Torre de Control y a la app
-                io.emit('route:updated', { routeId: stop.route.id, type: 'auto_finished' });
-                // Bug fix: emitir trip:updated SOLO si la ruta tiene tripId. Rutas creadas
-                // via routes-direct pueden no tener trip linkeado, y emitir con tripId null
-                // hacía que clientes recibieran un evento inválido.
-                if (stop.route.tripId) {
-                    io.emit('trip:updated', { tripId: stop.route.tripId });
+                if (allFinal) {
+                    const now = new Date();
+                    let startAt = stop.route.actualStartTime;
+                    if (!startAt) {
+                        const ms: number[] = [];
+                        for (const s of allStops) {
+                            if (s.actualArrival) ms.push(new Date(s.actualArrival).getTime());
+                            if (s.actualDeparture) ms.push(new Date(s.actualDeparture).getTime());
+                        }
+                        startAt = ms.length > 0 ? new Date(Math.min(...ms)) : now;
+                    }
+                    await prisma.route.update({
+                        where: { id: stop.route.id },
+                        data: { actualStartTime: startAt, actualEndTime: now, status: 'COMPLETED' }
+                    });
+                    if (stop.route.tripId) {
+                        await prisma.trip.update({
+                            where: { id: stop.route.tripId },
+                            data: { status: 'COMPLETED', completedAt: now }
+                        }).catch(() => {});
+                    }
+                    await prisma.deviceLocation.updateMany({
+                        where: { routeId: stop.route.id, isActive: true },
+                        data: { isActive: false }
+                    });
+                    console.log(`[auto-finish] Ruta ${stop.route.id} cerrada automaticamente (${allStops.length} paradas finalizadas)`);
+                    io.emit('route:updated', { routeId: stop.route.id, type: 'auto_finished' });
+                    if (stop.route.tripId) {
+                        io.emit('trip:updated', { tripId: stop.route.tripId });
+                    }
                 }
             }
+        } catch (e: any) {
+            console.warn('[auto-finish] Error chequeando auto-finalizacion:', e?.message || e);
         }
-    } catch (e: any) {
-        // No queremos romper el PATCH del stop si el auto-finish falla — solo logueamos
-        console.warn('[auto-finish] Error chequeando auto-finalizacion:', e?.message || e);
     }
 
         res.json(stop);
