@@ -2439,82 +2439,44 @@ app.patch('/api/v1/routes/:id/recorrido', async (req, res) => {
         }
         const now = new Date();
         if (action === 'start') {
-            if (route.actualEndTime) {
-                return res.status(400).json({ error: 'El recorrido ya fue finalizado' });
-            }
-            if (route.actualStartTime) {
-                return res.status(400).json({ error: 'El recorrido ya fue iniciado' });
+            // Si la ruta ya está iniciada o cerrada, devolvemos OK silencioso (no rompemos al chofer)
+            if (route.actualStartTime || route.actualEndTime) {
+                return res.json(route);
             }
             const updated = await prisma.route.update({
                 where: { id: routeId },
                 data: { actualStartTime: now, status: 'IN_PROGRESS' }
             });
+            // Avisar a Torre de Control que el chofer arrancó
+            try {
+                io.emit('route:updated', { routeId, type: 'driver_started' });
+                if (route.tripId) io.emit('trip:updated', { tripId: route.tripId });
+            } catch (_) { /* */ }
             return res.json(updated);
         }
-        if (route.actualEndTime) {
-            return res.status(400).json({ error: 'El recorrido ya fue finalizado' });
-        }
-        const stopsRows = await prisma.stop.findMany({ where: { routeId } });
-        const allStopsCompleted =
-            stopsRows.length > 0 && stopsRows.every((s) => s.status === 'COMPLETED');
-
-        // FIX: el chofer NO puede cerrar la ruta sin completar todas las paradas.
-        // Antes: con solo apretar "Fichar salida" se cerraba la ruta aunque hubiera
-        // paradas pendientes (rama actualStartTime != null). Eso producía el bug de
-        // viajes que se finalizaban "solos" cuando el chofer fichaba por error o el
-        // celular generaba un toque accidental.
-        if (!allStopsCompleted) {
-            const pending = stopsRows.filter(
-                (s) => s.status !== 'COMPLETED' && s.status !== 'UNDELIVERABLE'
-            ).length;
-            return res.status(400).json({
-                error: `Tenés ${pending} parada(s) sin completar. Completá todas las paradas antes de fichar salida.`,
-                pendingStops: pending
-            });
-        }
-
-        if (!route.actualStartTime) {
-            // Bug fix: si una parada tenía timestamp corrupto (ej. 1970 por carga manual mal hecha),
-            // el min() daba un startAt absurdo y la duración salía en millones de minutos. Ahora
-            // solo aceptamos timestamps dentro de un rango razonable (mismo día +/- 36h del now/route.date).
-            const inferStart = (): Date => {
-                const refMs = (route.date instanceof Date ? route.date.getTime() : new Date(route.date as any).getTime()) || now.getTime();
-                const lowerBound = Math.min(refMs, now.getTime()) - 36 * 3600 * 1000; // 36h antes
-                const upperBound = now.getTime() + 1000; // ahora
-                const ms: number[] = [];
-                for (const s of stopsRows) {
-                    if (s.actualArrival) {
-                        const t = new Date(s.actualArrival).getTime();
-                        if (t >= lowerBound && t <= upperBound) ms.push(t);
-                    }
-                    if (s.actualDeparture) {
-                        const t = new Date(s.actualDeparture).getTime();
-                        if (t >= lowerBound && t <= upperBound) ms.push(t);
-                    }
-                }
-                return ms.length > 0 ? new Date(Math.min(...ms)) : now;
-            };
-            const startAt = inferStart();
-            const updated = await prisma.route.update({
-                where: { id: routeId },
-                data: { actualStartTime: startAt, actualEndTime: now, status: 'COMPLETED' }
-            });
-            await prisma.deviceLocation.updateMany({
-                where: { routeId, isActive: true },
-                data: { isActive: false }
-            });
-            return res.json(updated);
-        }
-        const updated = await prisma.route.update({
-            where: { id: routeId },
-            data: { actualEndTime: now, status: 'COMPLETED' }
+        // ─── action === 'end' (CHOFER ficha salida) ───
+        // POLÍTICA: el chofer NO finaliza el viaje fichando salida. El viaje SOLO se
+        // cierra cuando el OPERADOR aprieta "Finalizar" desde la web. La fichada del
+        // chofer es un registro de evento (para auditoría/historial) pero no afecta
+        // status ni actualEndTime de la ruta ni del trip.
+        //
+        // Esto evita los bugs históricos:
+        //   1. Toque accidental "Fichar salida" cerraba la ruta sin querer
+        //   2. Última parada completada disparaba auto-finish y la app perdía la vista
+        //   3. Reordenamientos o cambios de paradas dejaban estados COMPLETED zombie
+        //      que cerraban el viaje
+        try {
+            io.emit('route:updated', { routeId, type: 'driver_punch_out_attempt' });
+            if (route.tripId) {
+                io.emit('trip:updated', { tripId: route.tripId, hint: 'driver_punch_out' });
+            }
+        } catch (_) { /* */ }
+        return res.json({
+            ...route,
+            // Devolvemos info de que la fichada se registró sin cerrar
+            __driverPunchOutAt: now.toISOString(),
+            __routeStillOpen: true
         });
-        // Marcar DeviceLocations del recorrido como inactivas (conservar para historial)
-        await prisma.deviceLocation.updateMany({
-            where: { routeId, isActive: true },
-            data: { isActive: false }
-        });
-        return res.json(updated);
     } catch (e: any) {
         console.error('PATCH /routes/:id/recorrido:', e);
         return res.status(500).json({ error: e?.message || 'Error al actualizar recorrido' });
