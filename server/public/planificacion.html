@@ -627,6 +627,13 @@
                                         </div>
                                     </th>
                                     <th>Vuelta</th>
+                                    <th class="relative">
+                                        <div class="inline-flex items-center gap-1 cursor-pointer" onclick="toggleHeaderFilter('refrigerado', this)">
+                                            <span>Refrigerado</span>
+                                            <i data-lucide="chevron-down" class="w-3 h-3 text-[#A3AED0]"></i>
+                                        </div>
+                                    </th>
+                                    <th>Temperatura</th>
                                     <th>Costo ($)</th>
                                     <th>Unidad</th>
                                     <th>Recorrido real (app)</th>
@@ -10364,6 +10371,14 @@
                                 ${formatVueltaLabel(t)}
                             </span>
                         </td>
+                        <td class="text-center">
+                            ${t.isRefrigerated
+                                ? '<span class="status-badge bg-sky-100 text-sky-700 text-[10px]">SÍ</span>'
+                                : '<span class="status-badge bg-[#F4F7FE] text-[#A3AED0] text-[10px]">NO</span>'}
+                        </td>
+                        <td class="text-center text-[11px] font-bold text-[#2B3674]">
+                            ${t.isRefrigerated ? (t.temperature ? `${t.temperature}°` : '<span class="text-[#A3AED0]">--</span>') : '<span class="text-[#A3AED0]">--</span>'}
+                        </td>
                         <td class="text-xs font-black ${isPropio ? 'text-indigo-600' : 'text-indigo-600'}">
                             ${isPropio && !hasStoredValue
                                 ? `<span class="status-badge bg-amber-100 text-amber-700 text-[9px]">PENDIENTE</span>`
@@ -10394,7 +10409,7 @@
                         </td>
                     </tr>
                     <tr id="weekly-detail-${t.id}" class="hidden bg-[#F8FAFF]/90">
-                        <td colspan="15" class="p-0 border-b border-[#E0E5F2] align-top">
+                        <td colspan="17" class="p-0 border-b border-[#E0E5F2] align-top">
                             <div id="weekly-stops-wrap-${t.id}" class="px-4 py-3 sm:px-6 sm:py-4">
                                 <p class="text-[11px] text-[#A3AED0]">Usá la flecha para cargar los puntos.</p>
                             </div>
@@ -10407,7 +10422,7 @@
             if (data.length === 0) {
                 body.innerHTML = `
                     <tr>
-                        <td colspan="15" class="py-20 text-center">
+                        <td colspan="17" class="py-20 text-center">
                             <div class="flex flex-col items-center opacity-30">
                                 <i data-lucide="package-search" class="w-12 h-12 mb-4"></i>
                                 <span class="text-sm font-bold uppercase tracking-widest">No se encontraron viajes para este período</span>
@@ -10690,6 +10705,8 @@
             { id: 'bu', label: 'Unidad Negocio', visible: true },
             { id: 'contrato', label: 'Contrato', visible: true },
             { id: 'vuelta', label: 'Vuelta', visible: true },
+            { id: 'refrigerado', label: 'Refrigerado', visible: true },
+            { id: 'temperatura', label: 'Temperatura', visible: true },
             { id: 'costo', label: 'Costo ($)', visible: true },
             { id: 'unidad', label: 'Unidad', visible: true },
             { id: 'recorrido', label: 'Recorrido real (app)', visible: true },
@@ -14707,9 +14724,24 @@
             document.getElementById('new-trip-bu').value = document.getElementById('new-trip-bu').value || 'DMC';
             document.getElementById('new-trip-exit').value = '';
             document.getElementById('new-trip-return').value = '';
+            // Refrigerado default = No, temperatura vacía y deshabilitada
+            const refSelNew = document.getElementById('new-trip-refrigerated');
+            const tempInpNew = document.getElementById('new-trip-temperature');
+            if (refSelNew) refSelNew.value = 'no';
+            if (tempInpNew) { tempInpNew.value = ''; tempInpNew.disabled = true; }
             const vueltaSel = document.getElementById('new-trip-vuelta');
             if (vueltaSel) vueltaSel.value = '1';
             resetTripDeliveryPanelForNewTrip();
+        }
+
+        // Habilita/deshabilita el input de temperatura según el valor de "Refrigerado"
+        function onNewTripRefrigeratedChange() {
+            const refSel = document.getElementById('new-trip-refrigerated');
+            const tempInp = document.getElementById('new-trip-temperature');
+            if (!refSel || !tempInp) return;
+            const isRefrig = (refSel.value || '').toLowerCase() === 'si';
+            tempInp.disabled = !isRefrig;
+            if (!isRefrig) tempInp.value = '';
         }
 
         function applyVueltaFromModalToPayload(tripData) {
@@ -14770,6 +14802,13 @@
             document.getElementById('new-trip-reparto').value = (trip.reparto || trip.tripType || '').toUpperCase();
             if (document.getElementById('new-trip-mobile-user'))
                 document.getElementById('new-trip-mobile-user').value = (trip.assignedMobileUser || '').toUpperCase();
+
+            // Refrigerado + Temperatura
+            const refSel = document.getElementById('new-trip-refrigerated');
+            const tempInp = document.getElementById('new-trip-temperature');
+            if (refSel) refSel.value = trip.isRefrigerated ? 'si' : 'no';
+            if (tempInp) tempInp.value = trip.temperature != null ? String(trip.temperature) : '';
+            if (typeof onNewTripRefrigeratedChange === 'function') onNewTripRefrigeratedChange();
             
             if (trip.exitTime) {
                 const exitD = new Date(trip.exitTime);
@@ -14854,6 +14893,10 @@
 
             const repartoValue = document.getElementById('new-trip-reparto').value || null;
             const mobileUserValue = document.getElementById('new-trip-mobile-user').value || null;
+            // Refrigerado: default 'no'. Temperatura: solo si refrigerado === 'si'
+            const refrigeratedValue = (document.getElementById('new-trip-refrigerated')?.value || 'no').toLowerCase() === 'si';
+            const tempRaw = (document.getElementById('new-trip-temperature')?.value || '').toString().trim();
+            const temperatureValue = refrigeratedValue && tempRaw !== '' ? tempRaw : null;
             const baseTripData = {
                 businessUnit: document.getElementById('new-trip-bu').value,
                 driver: document.getElementById('new-trip-driver').value,
@@ -14867,6 +14910,8 @@
                 assignedMobileUser: mobileUserValue,
                 contractType: document.getElementById('new-trip-contract').value,
                 provider: document.getElementById('new-trip-contract').value === 'Propio' ? 'R14 LOG' : 'EXTERNO',
+                isRefrigerated: refrigeratedValue,
+                temperature: temperatureValue,
                 status: 'PENDING',
                 priority: '1'
             };
@@ -15888,6 +15933,22 @@
                      <div>
                          <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Hora Llegada</label>
                          <input type="time" id="new-trip-return" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                     </div>
+                 </div>
+
+                 <div class="grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
+                     <div>
+                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Refrigerado</label>
+                         <select id="new-trip-refrigerated" onchange="onNewTripRefrigeratedChange()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                             <option value="no" selected>No</option>
+                             <option value="si">Sí</option>
+                         </select>
+                         <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Activá para registrar temperatura de cadena de frío.</p>
+                     </div>
+                     <div>
+                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Temperatura (°C)</label>
+                         <input type="number" step="0.1" id="new-trip-temperature" disabled placeholder="Ej: 4" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                         <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Solo editable si el viaje es refrigerado.</p>
                      </div>
                  </div>
 
