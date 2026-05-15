@@ -587,19 +587,16 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     }
   };
 
+  // Fichar entrada: solo activa el seguimiento GPS. Ya NO requiere tener una ruta
+  // seleccionada — el chofer puede arrancar el tracking aunque todavía no haya
+  // mirado los viajes. Si tiene una ruta seleccionada, los pings GPS se asocian
+  // a esa ruta para el mapa de Torre de Control. Si no, los pings se mandan sin
+  // routeId (siguen sirviendo para ver al chofer en el mapa por su deviceLabel).
   const startTracking = () => {
-    if (routes.length > 0 && selId == null) {
-      Alert.alert('Ruta', 'Seleccioná una ruta en la lista de arriba antes de fichar entrada.');
-      return;
-    }
     void doStartTracking();
   };
 
   const doStartTracking = async () => {
-    if (routes.length > 0 && selId == null) {
-      Alert.alert('Ruta', 'Seleccioná una ruta en la lista de arriba antes de fichar entrada.');
-      return;
-    }
     const fg = await Location.requestForegroundPermissionsAsync();
     if (fg.status !== 'granted') {
       Alert.alert('Ubicación', 'Se necesita permiso de ubicación para el seguimiento.');
@@ -612,9 +609,11 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         'Sin permiso «siempre», el envío puede pausarse al minimizar. Podés activarlo en Ajustes del sistema.'
       );
     }
-    const routeForPing = selId;
+    const routeForPing = selId; // puede ser null — está permitido
     await setActiveRouteId(routeForPing);
     await sendOnePing(routeForPing);
+    // El start sobre /routes/:id/recorrido sigue mandándose si hay ruta seleccionada,
+    // pero ya NO afecta el cierre/finalización del viaje (eso es solo del operador).
     if (routeForPing != null) {
       await patchRouteRecorrido(routeForPing, session.id, 'start').catch(() => {});
     }
@@ -635,8 +634,13 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     setTracking(true);
   };
 
+  // Fichar salida: solo apaga el seguimiento GPS. NO cierra el viaje. El chofer
+  // sigue viendo la lista de paradas y puede continuar registrando entregas si
+  // hay otra ruta para hoy. El viaje solo se finaliza cuando el operador aprieta
+  // "Finalizar" desde la web.
   const stopTracking = async () => {
     if (selId != null) {
+      // Notificación al backend (no cierra el viaje, solo registra el evento)
       await patchRouteRecorrido(selId, session.id, 'end').catch(() => {});
     }
     try {
@@ -645,7 +649,6 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     } catch {
       /* */
     }
-    // Notificar al servidor que el dispositivo ya no está en ruta
     if (deviceIdRef.current) {
       await deactivateDevice(deviceIdRef.current);
     }
@@ -653,9 +656,17 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     setTracking(false);
   };
 
+  // Cambiar de viaje: si el chofer está trackeando, el GPS sigue activo y los
+  // próximos pings se asocian a la nueva ruta seleccionada — no hay que detener
+  // ni re-fichar. También intentamos disparar 'start' silencioso por si la ruta
+  // nueva todavía no estaba registrada como iniciada en el backend.
   const onChangeRoute = async (id: number) => {
     setSelId(id);
-    if (tracking) await setActiveRouteId(id);
+    if (tracking) {
+      await setActiveRouteId(id);
+      // Best-effort: marcar la nueva ruta como iniciada (silencioso si ya estaba)
+      void patchRouteRecorrido(id, session.id, 'start').catch(() => {});
+    }
   };
 
   const lineCoords = useMemo(
