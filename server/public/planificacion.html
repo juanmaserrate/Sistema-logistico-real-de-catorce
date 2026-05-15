@@ -11059,33 +11059,58 @@
                 return;
             }
 
-            // Bug fix: antes la exportación usaba nombres de campos inexistentes
-            // (t.contract, t.plate, t.auxiliar1, t.horaSalida, t.localidad...) y exportaba
-            // columnas siempre vacías. Ahora mapeamos a los campos REALES del modelo.
+            // ── Helpers locales ────────────────────────────────────────
+            const fmtHora = (iso) => {
+                if (!iso) return '';
+                try {
+                    return new Date(iso).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+                } catch(_) { return ''; }
+            };
+            const fmtDuracion = (t) => {
+                if (!t?.routeActualStart || !t?.routeActualEnd) return '';
+                try {
+                    return formatDurationFromMs(new Date(t.routeActualEnd) - new Date(t.routeActualStart)) || '';
+                } catch(_) { return ''; }
+            };
+            const estadoTexto = (t) => {
+                const started = !!t.routeActualStart;
+                const ended = !!t.routeActualEnd;
+                if (ended) return 'Finalizado';
+                if (started) return 'En camino';
+                return 'Pendiente';
+            };
+
+            // ── Exporta TODAS las columnas de la vista de Logística Semanal ──
+            //   - ID y Fecha → columnas separadas
+            //   - Auxiliares → 3 columnas separadas (en la tabla siguen unidos con /)
+            //   - Recorrido real → 3 columnas: inicio, fin, duración total
             const rows = data.map(t => ({
+                'ID': t.id || '',
                 'Fecha': t.date || '',
-                'Chofer': t.driver || '',
                 'Zona': t.zone || '',
                 'Localidad': (typeof getLocalidadFromZone === 'function' ? getLocalidadFromZone(t.zone) : '') || '',
-                'Reparto': t.tripType || t.reparto || '',
-                'Unidad Negocio': t.businessUnit || '',
-                'Contrato': t.contractType || '',
-                'Patente': (typeof resolveTripPlate === 'function' ? resolveTripPlate(t) : '') || t.vehicle || '',
+                'Chofer': t.driver || '',
                 'Auxiliar 1': t.auxiliar || '',
                 'Auxiliar 2': t.auxiliar2 || '',
                 'Auxiliar 3': t.auxiliar3 || '',
-                'Vuelta': t.vuelta || '1',
-                'Hora Salida': t.exitTime || t.departureTime || '',
-                'Hora Llegada': t.returnTime || t.arrivalTime || '',
+                'Reparto': t.tripType || t.reparto || '',
+                'Usuario App': t.assignedMobileUser || '',
+                'Unidad Negocio': (typeof formatBusinessUnit === 'function' ? formatBusinessUnit(t.businessUnit) : (t.businessUnit || '')),
+                'Contrato': t.contractType || '',
+                'Vuelta': t.vuelta || t.roundNumber || 1,
+                'Refrigerado': t.isRefrigerated ? 'Sí' : 'No',
+                'Temperatura': t.isRefrigerated ? (t.temperature ?? '') : '',
                 'Costo ($)': typeof getTripCalculatedCost === 'function' ? getTripCalculatedCost(t) : (Number(t.value) || 0),
-                'Proveedor': t.provider || '',
-                'Estado': t.status || '',
-                'Observaciones': t.observations || ''
+                'Unidad': (typeof resolveTripPlate === 'function' ? resolveTripPlate(t) : '') || t.vehicle || '',
+                'Hora Inicio Recorrido': fmtHora(t.routeActualStart),
+                'Hora Fin Recorrido': fmtHora(t.routeActualEnd),
+                'Duración Recorrido': fmtDuracion(t),
+                'Estado': estadoTexto(t)
             }));
 
             const ws = XLSX.utils.json_to_sheet(rows);
 
-            // Style header row width
+            // Ancho de columnas — un poco más para fechas y nombres largos
             const colWidths = Object.keys(rows[0] || {}).map(k => ({ wch: Math.max(k.length + 2, 14) }));
             ws['!cols'] = colWidths;
 
