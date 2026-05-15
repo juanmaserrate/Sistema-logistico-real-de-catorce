@@ -455,7 +455,8 @@
 
                         <!-- Toggle modo de fecha -->
                         <div class="flex bg-white rounded-2xl p-1 shadow-sm">
-                            <button id="date-mode-mes" onclick="setDateFilterMode('mes')" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold transition-all bg-indigo-600 text-white">Mes</button>
+                            <button id="date-mode-hoy" onclick="setDateFilterMode('hoy')" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold transition-all bg-indigo-600 text-white">Hoy</button>
+                            <button id="date-mode-mes" onclick="setDateFilterMode('mes')" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold transition-all text-[#1B2559] hover:bg-[#F4F7FE]">Mes</button>
                             <button id="date-mode-dia" onclick="setDateFilterMode('dia')" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold transition-all text-[#1B2559] hover:bg-[#F4F7FE]">Día</button>
                             <button id="date-mode-rango" onclick="setDateFilterMode('rango')" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold transition-all text-[#1B2559] hover:bg-[#F4F7FE]">Rango</button>
                         </div>
@@ -3316,6 +3317,15 @@
             document.getElementById('header-desc').innerText = descs[id] || '';
 
             if(id === 'weekly') {
+                // Aplicar modo de filtro de fechas: respeta la última preferencia del usuario,
+                // por defecto 'hoy' (muestra solo los viajes del día actual).
+                try {
+                    const saved = localStorage.getItem('r14.weekly_date_filter_mode');
+                    const mode = (saved === 'hoy' || saved === 'mes' || saved === 'dia' || saved === 'rango')
+                        ? saved
+                        : 'hoy';
+                    if (typeof setDateFilterMode === 'function') setDateFilterMode(mode);
+                } catch(_) { /* */ }
                 loadWeeklyData();
             }
             if(id === 'schools') loadSchools();
@@ -11001,25 +11011,35 @@
             reader.readAsArrayBuffer(file);
         }
 
-        let activeDateFilterMode = 'mes'; // 'mes' | 'dia' | 'rango'
+        let activeDateFilterMode = 'hoy'; // 'hoy' | 'mes' | 'dia' | 'rango' — default = 'hoy'
 
         function setDateFilterMode(mode) {
             activeDateFilterMode = mode;
-            // Toggle botones
-            ['mes','dia','rango'].forEach(m => {
+            // Persistir preferencia del usuario para que la próxima carga la respete
+            try { localStorage.setItem('r14.weekly_date_filter_mode', mode); } catch(_) {}
+
+            // Toggle botones (incluye 'hoy', que no tiene panel propio)
+            ['hoy','mes','dia','rango'].forEach(m => {
                 const btn = document.getElementById(`date-mode-${m}`);
+                if (btn) {
+                    if (m === mode) {
+                        btn.classList.add('bg-indigo-600','text-white');
+                        btn.classList.remove('text-[#1B2559]','hover:bg-[#F4F7FE]');
+                    } else {
+                        btn.classList.remove('bg-indigo-600','text-white');
+                        btn.classList.add('text-[#1B2559]','hover:bg-[#F4F7FE]');
+                    }
+                }
+                // Solo mes/dia/rango tienen panel asociado
                 const panel = document.getElementById(`date-filter-${m}`);
-                if (!btn || !panel) return;
-                if (m === mode) {
-                    btn.classList.add('bg-indigo-600','text-white');
-                    btn.classList.remove('text-[#1B2559]','hover:bg-[#F4F7FE]');
-                    panel.classList.remove('hidden');
-                    if (m === 'rango') panel.classList.add('flex');
-                } else {
-                    btn.classList.remove('bg-indigo-600','text-white');
-                    btn.classList.add('text-[#1B2559]','hover:bg-[#F4F7FE]');
-                    panel.classList.add('hidden');
-                    if (m === 'rango') panel.classList.remove('flex');
+                if (panel) {
+                    if (m === mode) {
+                        panel.classList.remove('hidden');
+                        if (m === 'rango') panel.classList.add('flex');
+                    } else {
+                        panel.classList.add('hidden');
+                        if (m === 'rango') panel.classList.remove('flex');
+                    }
                 }
             });
             filterWeeklyData();
@@ -11106,6 +11126,14 @@
             const matchesDate = (t) => {
                 const d = getTripDateOnly(t);
                 if (!d) return false;
+
+                if (mode === 'hoy') {
+                    // Filtro automático: viajes con fecha = HOY (zona local del navegador)
+                    const today = new Date();
+                    return d.getFullYear() === today.getFullYear()
+                        && d.getMonth() === today.getMonth()
+                        && d.getDate() === today.getDate();
+                }
 
                 if (mode === 'mes') {
                     const planningMonth = document.getElementById('planning-month-select');
