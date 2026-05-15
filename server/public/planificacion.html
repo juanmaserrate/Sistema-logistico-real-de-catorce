@@ -10359,9 +10359,18 @@
                             <div class="text-[10px] text-[#A3AED0] font-bold uppercase">${getLocalidadFromZone(t.zone)}</div>
                         </td>
                         <td class="font-bold text-[#1B2559]">${t.driver || 'N/A'}</td>
-                        <td class="text-[#A3AED0]">
-                            <div class="text-[11px] font-bold text-[#2B3674]">${t.auxiliar || '--'}</div>
-                            ${(t.auxiliar2 || t.auxiliar3) ? `<div class="text-[9px] text-[#A3AED0] font-bold">${[t.auxiliar2, t.auxiliar3].filter(Boolean).join(', ')}</div>` : ''}
+                        <td class="text-[#A3AED0] aux-cell">
+                            ${(() => {
+                                // Tomar todos los auxiliares, separar por '/' (caso "NOMBRE1/NOMBRE2")
+                                // y mostrar uno por línea para ahorrar ancho horizontal.
+                                const auxAll = [t.auxiliar, t.auxiliar2, t.auxiliar3]
+                                    .filter(Boolean)
+                                    .flatMap(s => String(s).split('/').map(p => p.trim()).filter(Boolean));
+                                if (auxAll.length === 0) return '<div class="text-[11px] font-bold text-[#A3AED0]">--</div>';
+                                return auxAll.map((name, i) => `
+                                    <div class="${i === 0 ? 'text-[11px] font-bold text-[#2B3674]' : 'text-[10px] text-[#A3AED0] font-bold'}">${name}</div>
+                                `).join('');
+                            })()}
                         </td>
                         <td class="font-bold text-[#2B3674]">${t.tripType || t.reparto || '--'}</td>
                         <td class="font-bold text-[#2B3674]">${(t.assignedMobileUser || '--').toString().toUpperCase()}</td>

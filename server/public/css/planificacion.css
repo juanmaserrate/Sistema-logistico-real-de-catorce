@@ -208,6 +208,13 @@ h1, h2, h3, h4, h5, h6,
 #view-weekly tbody td {
     white-space: nowrap;
 }
+/* La celda de auxiliares SÍ permite múltiples líneas (uno por nombre) */
+#view-weekly tbody td.aux-cell {
+    white-space: normal;
+    line-height: 1.25;
+    min-width: 110px;
+    max-width: 160px;
+}
 
 /* View containers */
 #main-view > [id^="view-"] { min-width: 0; max-width: 100%; box-sizing: border-box; }
