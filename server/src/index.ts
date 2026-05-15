@@ -2458,12 +2458,22 @@ app.patch('/api/v1/routes/:id/recorrido', async (req, res) => {
         const allStopsCompleted =
             stopsRows.length > 0 && stopsRows.every((s) => s.status === 'COMPLETED');
 
+        // FIX: el chofer NO puede cerrar la ruta sin completar todas las paradas.
+        // Antes: con solo apretar "Fichar salida" se cerraba la ruta aunque hubiera
+        // paradas pendientes (rama actualStartTime != null). Eso producía el bug de
+        // viajes que se finalizaban "solos" cuando el chofer fichaba por error o el
+        // celular generaba un toque accidental.
+        if (!allStopsCompleted) {
+            const pending = stopsRows.filter(
+                (s) => s.status !== 'COMPLETED' && s.status !== 'UNDELIVERABLE'
+            ).length;
+            return res.status(400).json({
+                error: `Tenés ${pending} parada(s) sin completar. Completá todas las paradas antes de fichar salida.`,
+                pendingStops: pending
+            });
+        }
+
         if (!route.actualStartTime) {
-            if (!allStopsCompleted) {
-                return res.status(400).json({
-                    error: 'Iniciá el recorrido o completá todas las paradas antes de cerrar'
-                });
-            }
             // Bug fix: si una parada tenía timestamp corrupto (ej. 1970 por carga manual mal hecha),
             // el min() daba un startAt absurdo y la duración salía en millones de minutos. Ahora
             // solo aceptamos timestamps dentro de un rango razonable (mismo día +/- 36h del now/route.date).
