@@ -583,7 +583,12 @@
                             <thead>
                                 <tr>
                                     <th class="sticky-col z-20 w-12"><input type="checkbox" id="weekly-select-all" onchange="toggleSelectAllTrips(this.checked)" class="rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500 cursor-pointer"></th>
-                                    <th class="sticky-col z-20">ID / Fecha</th>
+                                    <th class="sticky-col z-20 relative">
+                                        <div class="inline-flex items-center gap-1 cursor-pointer" onclick="toggleHeaderFilter('id-fecha', this)">
+                                            <span>ID / Fecha</span>
+                                            <i data-lucide="chevron-down" class="w-3 h-3 text-[#A3AED0]"></i>
+                                        </div>
+                                    </th>
                                     <th class="relative">
                                         <div class="inline-flex items-center gap-1 cursor-pointer" onclick="toggleHeaderFilter('zona-localidad', this)">
                                             <span>Zona / Localidad</span>
@@ -626,17 +631,42 @@
                                             <i data-lucide="chevron-down" class="w-3 h-3 text-[#A3AED0]"></i>
                                         </div>
                                     </th>
-                                    <th>Vuelta</th>
+                                    <th class="relative">
+                                        <div class="inline-flex items-center gap-1 cursor-pointer" onclick="toggleHeaderFilter('vuelta', this)">
+                                            <span>Vuelta</span>
+                                            <i data-lucide="chevron-down" class="w-3 h-3 text-[#A3AED0]"></i>
+                                        </div>
+                                    </th>
                                     <th class="relative">
                                         <div class="inline-flex items-center gap-1 cursor-pointer" onclick="toggleHeaderFilter('refrigerado', this)">
                                             <span>Refrigerado</span>
                                             <i data-lucide="chevron-down" class="w-3 h-3 text-[#A3AED0]"></i>
                                         </div>
                                     </th>
-                                    <th>Temperatura</th>
-                                    <th>Costo ($)</th>
-                                    <th>Unidad</th>
-                                    <th>Recorrido real (app)</th>
+                                    <th class="relative">
+                                        <div class="inline-flex items-center gap-1 cursor-pointer" onclick="toggleHeaderFilter('temperatura', this)">
+                                            <span>Temperatura</span>
+                                            <i data-lucide="chevron-down" class="w-3 h-3 text-[#A3AED0]"></i>
+                                        </div>
+                                    </th>
+                                    <th class="relative">
+                                        <div class="inline-flex items-center gap-1 cursor-pointer" onclick="toggleHeaderFilter('costo', this)">
+                                            <span>Costo ($)</span>
+                                            <i data-lucide="chevron-down" class="w-3 h-3 text-[#A3AED0]"></i>
+                                        </div>
+                                    </th>
+                                    <th class="relative">
+                                        <div class="inline-flex items-center gap-1 cursor-pointer" onclick="toggleHeaderFilter('unidad', this)">
+                                            <span>Unidad</span>
+                                            <i data-lucide="chevron-down" class="w-3 h-3 text-[#A3AED0]"></i>
+                                        </div>
+                                    </th>
+                                    <th class="relative">
+                                        <div class="inline-flex items-center gap-1 cursor-pointer" onclick="toggleHeaderFilter('recorrido', this)">
+                                            <span>Recorrido real (app)</span>
+                                            <i data-lucide="chevron-down" class="w-3 h-3 text-[#A3AED0]"></i>
+                                        </div>
+                                    </th>
                                     <th class="relative">
                                         <div class="inline-flex items-center gap-1 cursor-pointer" onclick="toggleHeaderFilter('estado', this)">
                                             <span>Estado</span>
@@ -10728,6 +10758,113 @@
             { id: 'acciones', label: 'Acciones', visible: true }
         ];
         let weeklyColumnFilters = {}; // { 'chofer': ['Juan', 'Carlos'], ... }
+        // Ordenamiento por columna — un solo criterio activo a la vez
+        let weeklySortColumn = null;   // 'chofer' | 'reparto' | etc | null
+        let weeklySortDir = null;      // 'asc' | 'desc' | null
+
+        // Devuelve el valor comparable de una columna para un viaje (para ordenar)
+        function getSortValueForColumn(t, columnId) {
+            switch(columnId) {
+                case 'id-fecha':
+                    // Ordena por fecha del viaje (timestamp). Si no hay, usa id como fallback.
+                    {
+                        const d = getTripDateOnly(t);
+                        return d ? d.getTime() : (t.id || 0);
+                    }
+                case 'zona-localidad':
+                    return (t.zone || 'BS AS').toString().toLowerCase();
+                case 'chofer':
+                    return (t.driver || '').toString().toLowerCase();
+                case 'auxiliares':
+                    return [t.auxiliar, t.auxiliar2, t.auxiliar3].filter(Boolean).join(' / ').toLowerCase();
+                case 'reparto':
+                    return (t.tripType || t.reparto || '').toString().toLowerCase();
+                case 'usuario-app':
+                    return (t.assignedMobileUser || '').toString().toLowerCase();
+                case 'bu':
+                    return formatBusinessUnit(t.businessUnit).toLowerCase();
+                case 'contrato':
+                    return (t.contractType || 'Externo').toString().toLowerCase();
+                case 'vuelta':
+                    return Number(t.vuelta || t.roundNumber || 0);
+                case 'refrigerado':
+                    return t.isRefrigerated ? 1 : 0;
+                case 'temperatura':
+                    return Number(t.temperature || 0);
+                case 'costo':
+                    return Number(t.cost || 0);
+                case 'unidad':
+                    return (t.vehicle || '').toString().toLowerCase();
+                case 'recorrido':
+                    return Number(t.totalDistance || t.routeDistance || 0);
+                case 'estado':
+                    {
+                        const started = !!t.routeActualStart;
+                        const ended = !!t.routeActualEnd;
+                        // Orden lógico: Pendiente(0) < En camino(1) < Finalizado(2)
+                        return ended ? 2 : (started ? 1 : 0);
+                    }
+                default:
+                    return '';
+            }
+        }
+
+        // Aplica el orden actualmente activo (si hay) a un array de viajes
+        function applyWeeklySort(arr) {
+            if (!weeklySortColumn || !weeklySortDir) return arr;
+            const col = weeklySortColumn;
+            const mul = weeklySortDir === 'asc' ? 1 : -1;
+            return arr.slice().sort((a, b) => {
+                const va = getSortValueForColumn(a, col);
+                const vb = getSortValueForColumn(b, col);
+                if (typeof va === 'number' && typeof vb === 'number') {
+                    return (va - vb) * mul;
+                }
+                const sa = (va ?? '').toString();
+                const sb = (vb ?? '').toString();
+                return sa.localeCompare(sb, 'es', { sensitivity: 'base', numeric: true }) * mul;
+            });
+        }
+
+        // Fija el ordenamiento activo y refresca la tabla
+        function setWeeklySort(columnId, dir) {
+            // Si vuelven a apretar el mismo modo, se desactiva el orden
+            if (weeklySortColumn === columnId && weeklySortDir === dir) {
+                weeklySortColumn = null;
+                weeklySortDir = null;
+            } else {
+                weeklySortColumn = columnId;
+                weeklySortDir = dir;
+            }
+            closeHeaderFilter();
+            filterWeeklyData();
+            _updateSortIndicators();
+        }
+
+        function clearWeeklySort() {
+            weeklySortColumn = null;
+            weeklySortDir = null;
+            closeHeaderFilter();
+            filterWeeklyData();
+            _updateSortIndicators();
+        }
+
+        // Pinta una flecha al lado del nombre de la columna ordenada
+        function _updateSortIndicators() {
+            document.querySelectorAll('[data-sort-indicator]').forEach(el => el.remove());
+            if (!weeklySortColumn || !weeklySortDir) return;
+            const triggers = document.querySelectorAll('[onclick*="toggleHeaderFilter"]');
+            triggers.forEach(trg => {
+                const m = (trg.getAttribute('onclick') || '').match(/toggleHeaderFilter\('([^']+)'/);
+                if (m && m[1] === weeklySortColumn) {
+                    const ind = document.createElement('span');
+                    ind.setAttribute('data-sort-indicator', '1');
+                    ind.className = 'text-[10px] text-indigo-600 font-black ml-0.5';
+                    ind.textContent = weeklySortDir === 'asc' ? '↑' : '↓';
+                    trg.appendChild(ind);
+                }
+            });
+        }
 
         // ─── TRIP SELECTION & BULK ACTIONS ─────────────────────────────────
         let selectedTripIds = new Set();
@@ -11197,7 +11334,11 @@
             };
 
             filteredPlanning = planningData.filter(t => matchesSearch(t) && matchesContract(t) && matchesDate(t) && matchesColumnFilters(t));
+            // Aplica orden activo (si lo hay) antes de renderizar
+            filteredPlanning = applyWeeklySort(filteredPlanning);
             renderPlanningTable(filteredPlanning);
+            // Refrescar flechita ↑/↓ en el header (se redibuja tras cada render)
+            try { _updateSortIndicators(); } catch(_) {}
         }
 
         // ─── COLUMN VISIBILITY (POR USUARIO) ──────────────────────────────────
@@ -11535,71 +11676,119 @@
             const dropdown = document.createElement('div');
             dropdown.id = 'header-filter-dropdown';
             dropdown.dataset.col = columnId;
-            dropdown.className = 'absolute left-0 top-full mt-1 z-50 bg-white rounded-xl border border-[#E0E5F2] min-w-[220px] max-h-[320px] overflow-hidden';
+            dropdown.className = 'absolute left-0 top-full mt-1 z-50 bg-white rounded-xl border border-[#E0E5F2] min-w-[220px] max-h-[420px] overflow-hidden';
             dropdown.style.cssText = 'box-shadow: 0 12px 36px rgba(0,0,0,0.15);';
 
-            // Header
-            const header = document.createElement('div');
-            header.className = 'p-3 border-b border-[#F4F7FE] flex justify-between items-center';
-            header.innerHTML = '<span class="text-[10px] font-black text-[#A3AED0] uppercase">Filtrar</span>';
-            const clearBtn = document.createElement('button');
-            clearBtn.className = 'text-[9px] font-bold text-indigo-600 hover:underline';
-            clearBtn.textContent = hasFilters ? 'Limpiar' : 'Seleccionar todo';
-            clearBtn.addEventListener('click', function(e) {
+            // ── ORDEN (asc/desc) ────────────────────────────────────────
+            // Se muestra al tope del MISMO dropdown que ya tenía el filtro,
+            // así el usuario tiene filtro + orden en un solo lugar.
+            const sortWrap = document.createElement('div');
+            sortWrap.className = 'p-2 border-b border-[#F4F7FE] bg-[#F8FAFF]';
+            sortWrap.innerHTML = '<div class="text-[10px] font-black text-[#A3AED0] uppercase px-1 pb-1.5">Ordenar</div>';
+
+            const sortIsAsc = (weeklySortColumn === columnId && weeklySortDir === 'asc');
+            const sortIsDesc = (weeklySortColumn === columnId && weeklySortDir === 'desc');
+
+            const ascBtn = document.createElement('button');
+            ascBtn.className = 'w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-[11px] font-bold transition-all ' +
+                (sortIsAsc ? 'bg-indigo-600 text-white' : 'text-[#2B3674] hover:bg-white');
+            ascBtn.innerHTML = '<span>↑ Ascendente (A → Z)</span>' + (sortIsAsc ? '<span class="text-[10px]">●</span>' : '');
+            ascBtn.addEventListener('click', function(e) {
                 e.stopPropagation();
-                if (hasFilters) {
-                    delete weeklyColumnFilters[columnId];
-                } else {
-                    weeklyColumnFilters[columnId] = new Set(uniqueValues);
-                }
-                closeHeaderFilter();
-                filterWeeklyData();
+                setWeeklySort(columnId, 'asc');
             });
-            header.appendChild(clearBtn);
-            dropdown.appendChild(header);
 
-            // Values list
-            const listWrap = document.createElement('div');
-            listWrap.className = 'overflow-y-auto max-h-[260px] p-2 space-y-1';
+            const descBtn = document.createElement('button');
+            descBtn.className = 'w-full flex items-center justify-between px-2 py-1.5 rounded-lg text-[11px] font-bold transition-all mt-1 ' +
+                (sortIsDesc ? 'bg-indigo-600 text-white' : 'text-[#2B3674] hover:bg-white');
+            descBtn.innerHTML = '<span>↓ Descendente (Z → A)</span>' + (sortIsDesc ? '<span class="text-[10px]">●</span>' : '');
+            descBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                setWeeklySort(columnId, 'desc');
+            });
 
-            uniqueValues.forEach(function(val, idx) {
-                const label = document.createElement('label');
-                label.className = 'flex items-center gap-2 px-2 py-1.5 hover:bg-[#F8FAFF] rounded-lg cursor-pointer';
+            sortWrap.appendChild(ascBtn);
+            sortWrap.appendChild(descBtn);
 
-                const cb = document.createElement('input');
-                cb.type = 'checkbox';
-                cb.className = 'rounded border-[#E0E5F2] text-indigo-600 w-3.5 h-3.5';
-                cb.checked = currentFilters.has(val);
-                cb.dataset.idx = idx;
-
-                cb.addEventListener('change', function(e) {
+            if (sortIsAsc || sortIsDesc) {
+                const clearSortBtn = document.createElement('button');
+                clearSortBtn.className = 'w-full text-left px-2 py-1 rounded-lg text-[10px] font-bold text-indigo-600 hover:underline mt-1';
+                clearSortBtn.textContent = 'Quitar orden';
+                clearSortBtn.addEventListener('click', function(e) {
                     e.stopPropagation();
-                    const value = _headerFilterValues[this.dataset.idx];
-                    if (!weeklyColumnFilters[columnId]) {
-                        weeklyColumnFilters[columnId] = new Set();
-                    }
-                    if (this.checked) {
-                        weeklyColumnFilters[columnId].add(value);
+                    clearWeeklySort();
+                });
+                sortWrap.appendChild(clearSortBtn);
+            }
+            dropdown.appendChild(sortWrap);
+
+            // Header — solo si hay valores únicos para filtrar
+            const supportsFilter = uniqueValues.length > 0;
+            if (supportsFilter) {
+                const header = document.createElement('div');
+                header.className = 'p-3 border-b border-[#F4F7FE] flex justify-between items-center';
+                header.innerHTML = '<span class="text-[10px] font-black text-[#A3AED0] uppercase">Filtrar</span>';
+                const clearBtn = document.createElement('button');
+                clearBtn.className = 'text-[9px] font-bold text-indigo-600 hover:underline';
+                clearBtn.textContent = hasFilters ? 'Limpiar' : 'Seleccionar todo';
+                clearBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    if (hasFilters) {
+                        delete weeklyColumnFilters[columnId];
                     } else {
-                        weeklyColumnFilters[columnId].delete(value);
-                        if (weeklyColumnFilters[columnId].size === 0) {
-                            delete weeklyColumnFilters[columnId];
-                        }
+                        weeklyColumnFilters[columnId] = new Set(uniqueValues);
                     }
+                    closeHeaderFilter();
                     filterWeeklyData();
-                    updateActiveFiltersBar();
+                });
+                header.appendChild(clearBtn);
+                dropdown.appendChild(header);
+            }
+
+            // Values list — solo si la columna soporta filtro
+            if (supportsFilter) {
+                const listWrap = document.createElement('div');
+                listWrap.className = 'overflow-y-auto max-h-[260px] p-2 space-y-1';
+
+                uniqueValues.forEach(function(val, idx) {
+                    const label = document.createElement('label');
+                    label.className = 'flex items-center gap-2 px-2 py-1.5 hover:bg-[#F8FAFF] rounded-lg cursor-pointer';
+
+                    const cb = document.createElement('input');
+                    cb.type = 'checkbox';
+                    cb.className = 'rounded border-[#E0E5F2] text-indigo-600 w-3.5 h-3.5';
+                    cb.checked = currentFilters.has(val);
+                    cb.dataset.idx = idx;
+
+                    cb.addEventListener('change', function(e) {
+                        e.stopPropagation();
+                        const value = _headerFilterValues[this.dataset.idx];
+                        if (!weeklyColumnFilters[columnId]) {
+                            weeklyColumnFilters[columnId] = new Set();
+                        }
+                        if (this.checked) {
+                            weeklyColumnFilters[columnId].add(value);
+                        } else {
+                            weeklyColumnFilters[columnId].delete(value);
+                            if (weeklyColumnFilters[columnId].size === 0) {
+                                delete weeklyColumnFilters[columnId];
+                            }
+                        }
+                        filterWeeklyData();
+                        updateActiveFiltersBar();
+                    });
+
+                    const span = document.createElement('span');
+                    span.className = 'text-[11px] font-bold text-[#2B3674] truncate';
+                    span.textContent = val;
+
+                    label.appendChild(cb);
+                    label.appendChild(span);
+                    listWrap.appendChild(label);
                 });
 
-                const span = document.createElement('span');
-                span.className = 'text-[11px] font-bold text-[#2B3674] truncate';
-                span.textContent = val;
-
-                label.appendChild(cb);
-                label.appendChild(span);
-                listWrap.appendChild(label);
-            });
-
-            dropdown.appendChild(listWrap);
+                dropdown.appendChild(listWrap);
+            }
             th.appendChild(dropdown);
             _activeHeaderFilter = dropdown;
 
