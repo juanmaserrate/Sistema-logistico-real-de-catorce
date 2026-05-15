@@ -10186,8 +10186,9 @@
         }
 
         async function weeklyStopsPopulateAddSelect(tripId) {
-            const sel = document.getElementById('weekly-stops-add-' + tripId);
-            if (!sel) return;
+            const inp = document.getElementById('weekly-stops-search-' + tripId);
+            if (!inp) return;
+            // Asegurar lista cargada
             if (!allSchools.length) {
                 try {
                     const res = await fetch(`${API_URL}/clients`);
@@ -10196,29 +10197,148 @@
                     console.warn(e);
                 }
             }
-            const used = new Set((weeklyTripStopsBuffers[tripId] || []).map((r) => r.clientId));
-            const opts = allSchools
-                .filter((s) => !used.has(s.id))
-                .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'));
-            sel.innerHTML =
-                '<option value="">+ Agregar cliente / escuela…</option>' +
-                opts.map((s) => `<option value="${s.id}">${escapeHtmlWeekly(s.name || s.id)}</option>`).join('');
+            // Render inicial (sin query muestra todos los disponibles)
+            weeklyStopsRenderSearchResults(tripId, '');
         }
 
-        function weeklyStopsOnAdd(tripId) {
-            const sel = document.getElementById('weekly-stops-add-' + tripId);
-            if (!sel || !sel.value) return;
-            const id = sel.value;
-            const s = allSchools.find((x) => x.id === id);
+        // Normalizador: minúsculas, sin acentos, espacios colapsados
+        function _wsNorm(s) {
+            return String(s || '')
+                .normalize('NFD')
+                .replace(/[\u0300-\u036f]/g, '')
+                .toLowerCase()
+                .replace(/\s+/g, ' ')
+                .trim();
+        }
+
+        // Filtra escuelas/clientes según el query del usuario.
+        // Match por: nombre, dirección, zona, barrio, localidad, id.
+        // Bonus fuzzy: si el query contiene números, las escuelas que tengan los mismos
+        // números en el nombre suben (típico "Esc N°5"/"E5"/"Escuela 5").
+        function weeklyStopsSearchClients(tripId, query) {
+            const used = new Set((weeklyTripStopsBuffers[tripId] || []).map((r) => r.clientId));
+            const pool = (allSchools || []).filter((s) => !used.has(s.id));
+            const q = _wsNorm(query);
+            if (!q) {
+                // Sin query → todos los disponibles, alfabéticos
+                return pool.slice().sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'));
+            }
+            const tokens = q.split(' ').filter(Boolean);
+            const queryNums = (q.match(/\d+/g) || []);
+            const scored = [];
+            for (const s of pool) {
+                const fields = {
+                    name: _wsNorm(s.name),
+                    address: _wsNorm(s.address),
+                    zone: _wsNorm(s.zone),
+                    barrio: _wsNorm(s.barrio),
+                    locality: _wsNorm(s.locality || s.localidad),
+                    id: _wsNorm(s.id)
+                };
+                const blob = Object.values(fields).join(' ');
+                // Match exacto del query completo (case/acentos-insensitive)
+                let score = 0;
+                if (blob.includes(q)) score += 100;
+                // Match de cada token por separado (busca varios términos)
+                let tokenHits = 0;
+                tokens.forEach(tk => { if (blob.includes(tk)) tokenHits++; });
+                if (tokenHits === tokens.length) score += 60;
+                else if (tokenHits > 0) score += 10 * tokenHits;
+                // Bonus si el match es en el inicio del nombre
+                if (fields.name.startsWith(q)) score += 40;
+                // Bonus por números coincidentes (escuela 5, escuela n°5, etc.)
+                if (queryNums.length) {
+                    const nameNums = (fields.name.match(/\d+/g) || []);
+                    if (queryNums.every(n => nameNums.includes(n))) score += 50;
+                }
+                if (score > 0) scored.push({ s, score });
+            }
+            scored.sort((a, b) => {
+                if (b.score !== a.score) return b.score - a.score;
+                return (a.s.name || '').localeCompare(b.s.name || '', 'es');
+            });
+            return scored.map(x => x.s);
+        }
+
+        // Pinta la lista de resultados en el dropdown del buscador
+        function weeklyStopsRenderSearchResults(tripId, query) {
+            const list = document.getElementById('weekly-stops-results-' + tripId);
+            if (!list) return;
+            const results = weeklyStopsSearchClients(tripId, query);
+            const MAX = 50; // límite de visibles para no congelar la UI
+            const trimmed = results.slice(0, MAX);
+            if (trimmed.length === 0) {
+                list.innerHTML = '<div class="px-3 py-2 text-[11px] text-[#A3AED0] italic">Sin coincidencias.</div>';
+                return;
+            }
+            list.innerHTML = trimmed.map(s => {
+                const subline = [s.zone, s.locality || s.localidad, s.barrio, s.address]
+                    .map(x => (x || '').toString().trim())
+                    .filter(Boolean)
+                    .join(' · ');
+                // Pasamos el id por JSON.stringify para escapar comillas correctamente
+                const idArg = JSON.stringify(String(s.id)).replace(/"/g, '&quot;');
+                return `
+                    <div class="weekly-stop-result px-3 py-2 hover:bg-[#F4F7FE] cursor-pointer border-b border-[#F4F7FE] last:border-b-0"
+                         onmousedown="event.preventDefault();"
+                         onclick="weeklyStopsPickResult(${tripId}, ${idArg})">
+                        <div class="text-[12px] font-bold text-[#1B2559] truncate">${escapeHtmlWeekly(s.name || s.id)}</div>
+                        ${subline ? `<div class="text-[10px] text-[#A3AED0] font-bold truncate">${escapeHtmlWeekly(subline)}</div>` : ''}
+                    </div>
+                `;
+            }).join('') + (results.length > MAX
+                ? `<div class="px-3 py-1.5 text-[10px] text-[#A3AED0] italic">+${results.length - MAX} más — afiná la búsqueda</div>`
+                : '');
+        }
+
+        // onInput del buscador — corre sin enter, en tiempo real
+        function weeklyStopsOnSearchInput(tripId, ev) {
+            const q = (ev && ev.target && ev.target.value) || '';
+            // Mostrar dropdown al escribir
+            const wrap = document.getElementById('weekly-stops-results-wrap-' + tripId);
+            if (wrap) wrap.classList.remove('hidden');
+            weeklyStopsRenderSearchResults(tripId, q);
+        }
+
+        // Mostrar/ocultar la lista al focus / blur
+        function weeklyStopsOnSearchFocus(tripId) {
+            const wrap = document.getElementById('weekly-stops-results-wrap-' + tripId);
+            if (wrap) wrap.classList.remove('hidden');
+            const inp = document.getElementById('weekly-stops-search-' + tripId);
+            weeklyStopsRenderSearchResults(tripId, inp ? inp.value : '');
+        }
+        function weeklyStopsOnSearchBlur(tripId) {
+            // Pequeño delay para que se dispare el click del item antes del blur
+            setTimeout(() => {
+                const wrap = document.getElementById('weekly-stops-results-wrap-' + tripId);
+                if (wrap) wrap.classList.add('hidden');
+            }, 180);
+        }
+
+        // Selección de un resultado → lo agrega y limpia el buscador
+        function weeklyStopsPickResult(tripId, clientId) {
+            const s = (allSchools || []).find(x => String(x.id) === String(clientId));
             if (!s) return;
             if (!weeklyTripStopsBuffers[tripId]) weeklyTripStopsBuffers[tripId] = [];
-            weeklyTripStopsBuffers[tripId].push({
-                clientId: s.id,
-                name: s.name || s.id,
-                address: s.address || ''
-            });
-            sel.value = '';
+            // Evitar duplicados
+            const already = weeklyTripStopsBuffers[tripId].some(r => String(r.clientId) === String(s.id));
+            if (!already) {
+                weeklyTripStopsBuffers[tripId].push({
+                    clientId: s.id,
+                    name: s.name || s.id,
+                    address: s.address || ''
+                });
+            }
+            // Limpiar input + re-render del panel
+            const inp = document.getElementById('weekly-stops-search-' + tripId);
+            if (inp) inp.value = '';
             renderWeeklyTripStopsPanel(tripId);
+        }
+
+        // Conservada por compatibilidad (cualquier código viejo que la llame no rompe)
+        function weeklyStopsOnAdd(tripId) {
+            const inp = document.getElementById('weekly-stops-search-' + tripId);
+            if (inp) inp.focus();
         }
 
         async function weeklyStopsSave(tripId) {
@@ -10301,10 +10421,24 @@
                 </ul>
                 ${
                     rows.length === 0
-                        ? '<p class="text-[11px] text-[#A3AED0] py-2">Sin paradas. Agregá desde el desplegable o «Desde plantilla».</p>'
+                        ? '<p class="text-[11px] text-[#A3AED0] py-2">Sin paradas. Buscá una escuela/cliente abajo o usá «Desde plantilla».</p>'
                         : ''
                 }
-                <select id="weekly-stops-add-${tripId}" onchange="weeklyStopsOnAdd(${tripId})" class="mt-3 w-full max-w-md bg-white border border-[#E0E5F2] rounded-xl px-3 py-2 text-sm font-bold text-[#2B3674]"></select>
+                <!-- Buscador en tiempo real: nombre, zona, localidad, dirección, fuzzy -->
+                <div class="relative mt-3 w-full max-w-md">
+                    <div class="flex items-center gap-2 bg-white border border-[#E0E5F2] rounded-xl px-3 py-2">
+                        <i data-lucide="search" class="w-4 h-4 text-[#A3AED0] shrink-0"></i>
+                        <input id="weekly-stops-search-${tripId}" type="text" autocomplete="off"
+                               placeholder="Buscar por nombre, zona, localidad o dirección…"
+                               oninput="weeklyStopsOnSearchInput(${tripId}, event)"
+                               onfocus="weeklyStopsOnSearchFocus(${tripId})"
+                               onblur="weeklyStopsOnSearchBlur(${tripId})"
+                               class="flex-1 min-w-0 text-sm font-bold text-[#2B3674] outline-none bg-transparent" />
+                    </div>
+                    <div id="weekly-stops-results-wrap-${tripId}" class="hidden absolute left-0 right-0 mt-1 z-40 bg-white border border-[#E0E5F2] rounded-xl shadow-xl max-h-[300px] overflow-y-auto">
+                        <div id="weekly-stops-results-${tripId}"></div>
+                    </div>
+                </div>
                 <!-- Incidencias del viaje -->
                 <div id="weekly-incidents-${tripId}" class="mt-4 border-t border-[#F4F7FE] pt-3">
                     <div class="flex items-center justify-between mb-2">
