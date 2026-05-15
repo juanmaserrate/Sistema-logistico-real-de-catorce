@@ -3333,7 +3333,12 @@
                         : 'hoy';
                     if (typeof setDateFilterMode === 'function') setDateFilterMode(mode);
                 } catch(_) { /* */ }
+                // Tabla con 17 columnas: reducir padding lateral del main para más ancho útil
+                document.getElementById('main-view')?.classList.add('compact-main');
                 loadWeeklyData();
+            } else {
+                // Otras vistas: padding lateral normal
+                document.getElementById('main-view')?.classList.remove('compact-main');
             }
             if(id === 'schools') loadSchools();
             if(id === 'salaries') loadSalariesTable();

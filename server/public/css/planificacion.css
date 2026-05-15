@@ -173,6 +173,42 @@ h1, h2, h3, h4, h5, h6,
 #view-weekly .table-container { overflow: visible; }
 #view-weekly .table-container > div.overflow-x-auto { overflow-x: auto; overflow-y: visible; }
 
+/* Logística Semanal: tabla más compacta para que entren las 17 columnas sin scroll.
+   Reduce el padding interno y el font-size de las celdas. */
+#view-weekly thead th {
+    padding: 10px 8px;
+    font-size: 10px;
+    letter-spacing: 0.02em;
+}
+#view-weekly tbody td {
+    padding: 10px 8px;
+    font-size: 12px;
+}
+#view-weekly .status-badge {
+    padding: 3px 8px;
+    font-size: 10px;
+}
+/* Sticky columns más estrechas en Log Semanal */
+#view-weekly thead th.sticky-col,
+#view-weekly tbody td.sticky-col {
+    padding-left: 8px;
+    padding-right: 8px;
+}
+
+/* Padding lateral más chico cuando hay tablas anchas (Log Semanal con 17 columnas).
+   La clase .compact-main se agrega via JS cuando se navega a #view-weekly. */
+@media (min-width: 1024px) {
+    #main-view.compact-main {
+        padding-left: 12px !important;
+        padding-right: 12px !important;
+    }
+}
+/* Tabla de Log Semanal: prevenir wrap del texto en las celdas para que respete su tamaño */
+#view-weekly thead th,
+#view-weekly tbody td {
+    white-space: nowrap;
+}
+
 /* View containers */
 #main-view > [id^="view-"] { min-width: 0; max-width: 100%; box-sizing: border-box; }
 
