@@ -2591,17 +2591,41 @@
             }
         }
 
+        /** Almacena el último punto snapeado por viaje, para detectar "congelados"
+         *  y animar con GPS crudo cuando el snap devuelve el mismo punto. */
+        const _lastSnappedByTrip = new Map();
+
+        /** Distancia haversine simple (metros) entre dos puntos lat/lng. */
+        function _distMeters(a, b) {
+            if (!a || !b) return Infinity;
+            const R = 6371000;
+            const toRad = (d) => d * Math.PI / 180;
+            const dLat = toRad(b.lat - a.lat);
+            const dLng = toRad(b.lng - a.lng);
+            const sLat = Math.sin(dLat / 2);
+            const sLng = Math.sin(dLng / 2);
+            const h = sLat * sLat + Math.cos(toRad(a.lat)) * Math.cos(toRad(b.lat)) * sLng * sLng;
+            return 2 * R * Math.asin(Math.sqrt(h));
+        }
+
         /** Recibe pings GPS en vivo vía socket y actualiza Torre de Control al instante.
-         *  Snappea el punto a la calle más cercana antes de mover el marker. */
+         *  Estrategia: snap a calle, pero si el snap quedó "congelado" (mismo punto que
+         *  antes), animar el marker hacia el GPS crudo para que se vea movimiento
+         *  continuo aunque el cache reuse el snap anterior. */
         async function onLiveLocationUpdate(record) {
             if (!record || !controlMap) return;
             const tripId = String(record.tripId || '');
             if (tripId && controlMarkersByTrip.has(tripId)) {
                 const marker = controlMarkersByTrip.get(tripId);
                 if (record.latitude != null && record.longitude != null) {
-                    let lat = Number(record.latitude);
-                    let lng = Number(record.longitude);
-                    // Intentar snap a calle (rápido por cache si el punto estuvo cerca antes)
+                    const rawLat = Number(record.latitude);
+                    const rawLng = Number(record.longitude);
+                    // Descartar pings con accuracy mala (>50m) si la app la envía
+                    const acc = Number(record.accuracy);
+                    if (Number.isFinite(acc) && acc > 50) return;
+
+                    let lat = rawLat;
+                    let lng = rawLng;
                     try {
                         const r = await fetch(`${API_URL}/control/snap-to-roads`, {
                             method: 'POST',
@@ -2616,12 +2640,27 @@
                             }
                         }
                     } catch (_) { /* fallback al original */ }
-                    // Animar suave durante ~3s en vez de saltar (los pings llegan cada ~5s)
-                    animateMarkerTo(marker, { lat, lng }, 3000);
+
+                    // Si el snap quedó "congelado" (mismo punto que el último, dentro
+                    // de ~5m), interpolar hacia el GPS crudo para mostrar movimiento real.
+                    const lastSnap = _lastSnappedByTrip.get(tripId);
+                    const snappedPoint = { lat, lng };
+                    const isFrozen = lastSnap && _distMeters(lastSnap, snappedPoint) < 5;
+                    let target = snappedPoint;
+                    if (isFrozen) {
+                        // Usamos el GPS crudo como target — el marker se mueve aunque
+                        // el snap devuelva el mismo punto cacheado.
+                        target = { lat: rawLat, lng: rawLng };
+                    } else {
+                        _lastSnappedByTrip.set(tripId, snappedPoint);
+                    }
+
+                    // Animar suave durante ~4.5s (los pings llegan cada ~5s, así nunca
+                    // se "completa" la animación y se ve flow continuo).
+                    animateMarkerTo(marker, target, 4500);
                     // Extender la polyline de la traza GPS de esa ruta con el punto nuevo
-                    // → la línea del recorrido CRECE en tiempo real, sin esperar al refresh.
                     if (record.routeId != null && typeof appendPointToTrail === 'function') {
-                        appendPointToTrail(record.routeId, lat, lng);
+                        appendPointToTrail(record.routeId, target.lat, target.lng);
                     }
                 }
             }
@@ -5328,12 +5367,33 @@
                 const hist = histRes.ok ? await histRes.json() : { points: [] };
                 const summary = sumRes.ok ? await sumRes.json() : null;
                 const pts = Array.isArray(hist.points) ? hist.points : [];
+                // Adelgazar a ~85 puntos (Mapbox Map Matching limita a 100 por llamada,
+                // dejamos margen). Esto es suficiente para una ruta urbana de ~8h.
                 const thin = thinRoutePointsForMap(
                     pts.map((p) => ({ lat: p.latitude, lng: p.longitude })),
-                    900
+                    85
                 );
-                if (controlMap && thin.length >= 2) {
-                    const path = thin.map((p) => ({ lat: p.lat, lng: p.lng }));
+
+                // Intentar map-matching contra Mapbox para obtener la polyline REAL
+                // (puntos pegados a las calles), si no se pudo, caer al raw GPS.
+                let path = thin.map((p) => ({ lat: p.lat, lng: p.lng }));
+                if (thin.length >= 2) {
+                    try {
+                        const mm = await fetch(`${API_URL}/control/map-matching-batch`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ points: thin })
+                        });
+                        if (mm.ok) {
+                            const dm = await mm.json();
+                            if (Array.isArray(dm?.geometry) && dm.geometry.length >= 2) {
+                                path = dm.geometry.map((p) => ({ lat: p.lat, lng: p.lng }));
+                            }
+                        }
+                    } catch (_) { /* fallback al raw GPS */ }
+                }
+
+                if (controlMap && path.length >= 2) {
                     const poly = new google.maps.Polyline({
                         path,
                         geodesic: true,

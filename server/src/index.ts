@@ -1310,24 +1310,89 @@ const _snapCache = new Map<string, { snapped: { lat: number; lng: number }; expi
 const _SNAP_TTL = 10 * 60 * 1000;
 const _SNAP_KEY = (lat: number, lng: number) => `${lat.toFixed(5)},${lng.toFixed(5)}`;
 
-/** OPTIMIZACIÓN COSTOS: cache espacial con grilla de ~50m.
- *  Si un punto cae cerca (<50m) de uno ya snappeado, reusamos su snap sin
- *  llamar a Roads API. Reduce drasticamente el costo cuando el chofer
- *  avanza poco entre pings (ej. en ciudad densa o stopped).
- *  Cell-size: 50m / 111km/grado = 0.00045 grados.
- *  Key = floor(lat/0.00045),floor(lng/0.00045) — colisionan los puntos
- *  dentro del mismo cuadrado de ~50x50m. */
-const _SNAP_GRID_SIZE = 0.00045;  // ~50m en latitud (lng tambien aprox a 35° latitud)
-const _SNAP_GRID_TTL = 5 * 60 * 1000;  // 5 min para grilla — mas corto, más conservador
+/** Cache espacial con grilla más chica (~10m) — antes era 50m pero el marker
+ *  quedaba "congelado" mientras el chofer avanzaba dentro del cuadrante.
+ *  Con Mapbox (100k req/mes gratis) tenemos margen para snapear más seguido.
+ *  Cell-size: 10m / 111km/grado ≈ 0.00009 grados. */
+const _SNAP_GRID_SIZE = 0.00009;  // ~10m
+const _SNAP_GRID_TTL = 5 * 60 * 1000;
 const _snapGridCache = new Map<string, { snapped: { lat: number; lng: number }; expires: number }>();
 const _SNAP_GRID_KEY = (lat: number, lng: number) =>
     `${Math.floor(lat / _SNAP_GRID_SIZE)},${Math.floor(lng / _SNAP_GRID_SIZE)}`;
 
+/** Llama a Mapbox Map Matching API (modo "matching/v5") con un set de puntos.
+ *  Devuelve los puntos snappeados en el mismo orden (o null si no hay match).
+ *  Mapbox Map Matching: $0/mes los primeros 100k, después $0.50/1000.
+ *  Free tier suele alcanzar para ~50 choferes activos. */
+async function mapboxSnapPoints(
+    points: Array<{ lat: number; lng: number }>,
+    token: string
+): Promise<Array<{ lat: number; lng: number } | null>> {
+    if (points.length === 0) return [];
+    // Map Matching requiere al menos 2 puntos. Para 1 punto, repetimos el mismo
+    // dos veces (Mapbox lo acepta y devuelve la calle más cercana).
+    const coords = points.length === 1
+        ? `${points[0].lng},${points[0].lat};${points[0].lng},${points[0].lat}`
+        : points.map(p => `${p.lng},${p.lat}`).join(';');
+    const radiuses = points.length === 1
+        ? '25;25'
+        : new Array(points.length).fill('25').join(';');
+    const url = `https://api.mapbox.com/matching/v5/mapbox/driving/${coords}` +
+        `?geometries=geojson&overview=full&radiuses=${radiuses}&tidy=true&access_token=${token}`;
+    try {
+        const r = await fetchWithTimeout(url, {}, 6000);
+        const data: any = await r.json().catch(() => ({}));
+        // Mapbox devuelve tracepoints (uno por cada punto de entrada).
+        // Algunos pueden ser null si no encontró calle.
+        const tps: any[] = Array.isArray(data?.tracepoints) ? data.tracepoints : [];
+        const out: Array<{ lat: number; lng: number } | null> = [];
+        const n = points.length;
+        for (let i = 0; i < n; i++) {
+            const tp = tps[i];
+            if (tp && tp.location && Array.isArray(tp.location)) {
+                out.push({ lat: Number(tp.location[1]), lng: Number(tp.location[0]) });
+            } else {
+                out.push(null);
+            }
+        }
+        return out;
+    } catch (e) {
+        console.warn('mapbox match fetch:', e);
+        return points.map(() => null);
+    }
+}
+
+/** Fallback a Google Roads API (Snap to Roads). */
+async function googleSnapPoints(
+    points: Array<{ lat: number; lng: number }>,
+    apiKey: string
+): Promise<Array<{ lat: number; lng: number } | null>> {
+    const path = points.map(p => `${p.lat},${p.lng}`).join('|');
+    const url = `https://roads.googleapis.com/v1/snapToRoads?path=${encodeURIComponent(path)}&interpolate=false&key=${apiKey}`;
+    try {
+        const r = await fetchWithTimeout(url, {}, 6000);
+        const data: any = await r.json().catch(() => ({}));
+        const sps: any[] = Array.isArray(data?.snappedPoints) ? data.snappedPoints : [];
+        const out: Array<{ lat: number; lng: number } | null> = points.map(() => null);
+        for (const sp of sps) {
+            const oi = sp?.originalIndex;
+            if (typeof oi !== 'number') continue;
+            const snapped = { lat: Number(sp.location?.latitude), lng: Number(sp.location?.longitude) };
+            if (Number.isFinite(snapped.lat) && Number.isFinite(snapped.lng)) {
+                out[oi] = snapped;
+            }
+        }
+        return out;
+    } catch (e) {
+        console.warn('google snap fetch:', e);
+        return points.map(() => null);
+    }
+}
+
 /** POST /control/snap-to-roads
  *  Body: { points: [{lat, lng}, ...] }   (max 100 por request)
  *  Devuelve: { snapped: [{lat, lng}, ...] } en mismo orden.
- *  Usa Google Roads API para "snappear" cada punto a la calle más cercana.
- *  Si Roads no encuentra calle para un punto, devuelve el original.
+ *  Provider: Mapbox primero (free tier 100k/mes); si falla → Google Roads como fallback.
  */
 app.post('/api/v1/control/snap-to-roads', async (req, res) => {
     try {
@@ -1339,78 +1404,76 @@ app.post('/api/v1/control/snap-to-roads', async (req, res) => {
         const result: Array<{ lat: number; lng: number }> = new Array(points.length);
         const toSnap: number[] = [];
 
-        // 1) Resolver desde cache: primero exacto (~1m), después espacial (~50m)
+        // 1) Resolver desde cache: primero exacto (~1m), después espacial (~10m)
         for (let i = 0; i < points.length; i++) {
             const p = points[i];
             if (typeof p?.lat !== 'number' || typeof p?.lng !== 'number') {
                 result[i] = { lat: 0, lng: 0 };
                 continue;
             }
-            // Cache EXACTO (~1m precision) — el mismo punto exacto se repite raro
             const exactKey = _SNAP_KEY(p.lat, p.lng);
             const exact = _snapCache.get(exactKey);
             if (exact && exact.expires > now) {
                 result[i] = exact.snapped;
                 continue;
             }
-            // Cache ESPACIAL (~50m grilla) — si el chofer avanza poco entre pings,
-            // su nuevo punto cae en la misma celda y reusamos el snap anterior.
-            // Esta es LA optimización clave: reduce ~70% las llamadas a Roads API.
             const gridKey = _SNAP_GRID_KEY(p.lat, p.lng);
             const grid = _snapGridCache.get(gridKey);
             if (grid && grid.expires > now) {
                 result[i] = grid.snapped;
-                // Memoizar también en exacto para próximas idénticas
                 _snapCache.set(exactKey, { snapped: grid.snapped, expires: now + _SNAP_TTL });
                 continue;
             }
             toSnap.push(i);
         }
 
-        // 2) Llamar Roads API solo para los que no están cacheados
+        // 2) Llamar al provider para los no cacheados
+        let providerUsed = 'cache';
         if (toSnap.length > 0) {
-            const apiKey = await resolveGoogleDirectionsApiKey();
-            if (!apiKey) {
-                // Sin API key: devolver original sin snap
-                for (const i of toSnap) result[i] = points[i];
-                return res.json({ snapped: result, snappedCount: 0, fallback: true });
+            const pendingPoints = toSnap.map(i => points[i]);
+            let snapped: Array<{ lat: number; lng: number } | null> = [];
+
+            // 2a) Intentar Mapbox primero
+            const mapboxToken = await resolveMapboxAccessToken();
+            if (mapboxToken) {
+                snapped = await mapboxSnapPoints(pendingPoints, mapboxToken);
+                providerUsed = 'mapbox';
             }
-            const path = toSnap.map(i => `${points[i].lat},${points[i].lng}`).join('|');
-            const url = `https://roads.googleapis.com/v1/snapToRoads?path=${encodeURIComponent(path)}&interpolate=false&key=${apiKey}`;
-            try {
-                const r = await fetchWithTimeout(url, {}, 6000);
-                const data: any = await r.json().catch(() => ({}));
-                const sps: any[] = Array.isArray(data?.snappedPoints) ? data.snappedPoints : [];
-                // Roads API puede devolver MENOS puntos que los enviados (cuando no encuentra calle).
-                // El campo originalIndex indica el índice del punto original.
-                for (const sp of sps) {
-                    const oi = sp?.originalIndex;
-                    if (typeof oi !== 'number') continue;
-                    const realIdx = toSnap[oi];
-                    if (realIdx == null) continue;
-                    const snapped = { lat: Number(sp.location?.latitude), lng: Number(sp.location?.longitude) };
-                    if (Number.isFinite(snapped.lat) && Number.isFinite(snapped.lng)) {
-                        result[realIdx] = snapped;
-                        // Guardar en AMBOS caches: exacto + grilla de 50m
-                        const origLat = points[realIdx].lat;
-                        const origLng = points[realIdx].lng;
-                        _snapCache.set(_SNAP_KEY(origLat, origLng), {
-                            snapped,
-                            expires: now + _SNAP_TTL
-                        });
-                        _snapGridCache.set(_SNAP_GRID_KEY(origLat, origLng), {
-                            snapped,
-                            expires: now + _SNAP_GRID_TTL
-                        });
+
+            // 2b) Para los que Mapbox no resolvió (o si no hay token), intentar Google
+            const stillUnresolved: number[] = [];
+            for (let i = 0; i < pendingPoints.length; i++) {
+                if (!snapped[i]) stillUnresolved.push(i);
+            }
+            if (stillUnresolved.length > 0) {
+                const googleKey = await resolveGoogleDirectionsApiKey();
+                if (googleKey) {
+                    const remaining = stillUnresolved.map(i => pendingPoints[i]);
+                    const googleResult = await googleSnapPoints(remaining, googleKey);
+                    for (let k = 0; k < stillUnresolved.length; k++) {
+                        if (googleResult[k]) snapped[stillUnresolved[k]] = googleResult[k];
                     }
+                    if (providerUsed === 'cache') providerUsed = 'google';
+                    else providerUsed = 'mapbox+google';
                 }
-                // Para los que Roads no devolvió (sin calle cercana), usar original
-                for (const i of toSnap) {
-                    if (!result[i]) result[i] = points[i];
+            }
+
+            // 2c) Guardar resultados en caches y construir result
+            for (let i = 0; i < pendingPoints.length; i++) {
+                const realIdx = toSnap[i];
+                const sp = snapped[i];
+                if (sp) {
+                    result[realIdx] = sp;
+                    _snapCache.set(_SNAP_KEY(pendingPoints[i].lat, pendingPoints[i].lng), {
+                        snapped: sp, expires: now + _SNAP_TTL
+                    });
+                    _snapGridCache.set(_SNAP_GRID_KEY(pendingPoints[i].lat, pendingPoints[i].lng), {
+                        snapped: sp, expires: now + _SNAP_GRID_TTL
+                    });
+                } else {
+                    // Fallback: usar el punto original sin snap
+                    result[realIdx] = pendingPoints[i];
                 }
-            } catch (e) {
-                console.warn('snap-to-roads fetch:', e);
-                for (const i of toSnap) result[i] = points[i];
             }
         }
 
@@ -1421,10 +1484,71 @@ app.post('/api/v1/control/snap-to-roads', async (req, res) => {
             }
         }
 
-        res.json({ snapped: result });
+        res.json({ snapped: result, provider: providerUsed });
     } catch (e: any) {
         console.error('POST /control/snap-to-roads:', e);
         res.status(500).json({ error: e?.message || 'Error en snap-to-roads' });
+    }
+});
+
+/** POST /control/map-matching-batch
+ *  Body: { points: [{lat,lng,timestamp?}, ...] }  (max 100 puntos)
+ *  Devuelve: { geometry: [{lat,lng}, ...], confidence, provider }
+ *  Toma una secuencia de pings GPS y devuelve la POLYLINE REAL del recorrido,
+ *  con los puntos pegados a la red de calles. Usado para pintar el camino
+ *  histórico que hizo el chofer durante el día.
+ */
+app.post('/api/v1/control/map-matching-batch', async (req, res) => {
+    try {
+        const pts: Array<{ lat: number; lng: number }> =
+            Array.isArray(req.body?.points) ? req.body.points : [];
+        if (pts.length < 2) {
+            return res.json({ geometry: pts.map(p => ({ lat: p.lat, lng: p.lng })), confidence: 0, provider: 'none' });
+        }
+        if (pts.length > 100) {
+            return res.status(400).json({ error: 'Max 100 puntos por request' });
+        }
+        const valid = pts.filter(p =>
+            typeof p?.lat === 'number' && typeof p?.lng === 'number' &&
+            Number.isFinite(p.lat) && Number.isFinite(p.lng)
+        );
+        if (valid.length < 2) {
+            return res.json({ geometry: valid, confidence: 0, provider: 'none' });
+        }
+
+        const mapboxToken = await resolveMapboxAccessToken();
+        if (mapboxToken) {
+            const coords = valid.map(p => `${p.lng},${p.lat}`).join(';');
+            const radiuses = new Array(valid.length).fill('25').join(';');
+            const url = `https://api.mapbox.com/matching/v5/mapbox/driving/${coords}` +
+                `?geometries=geojson&overview=full&radiuses=${radiuses}&tidy=true&access_token=${mapboxToken}`;
+            try {
+                const r = await fetchWithTimeout(url, {}, 8000);
+                const data: any = await r.json().catch(() => ({}));
+                const match = Array.isArray(data?.matchings) ? data.matchings[0] : null;
+                if (match?.geometry?.coordinates?.length) {
+                    const coordsArr: Array<[number, number]> = match.geometry.coordinates;
+                    const geometry = coordsArr.map(c => ({ lat: Number(c[1]), lng: Number(c[0]) }));
+                    return res.json({
+                        geometry,
+                        confidence: Number(match.confidence ?? 0),
+                        provider: 'mapbox'
+                    });
+                }
+            } catch (e) {
+                console.warn('mapbox map-matching batch:', e);
+            }
+        }
+
+        // Fallback: devolver los puntos crudos como geometría
+        return res.json({
+            geometry: valid.map(p => ({ lat: p.lat, lng: p.lng })),
+            confidence: 0,
+            provider: 'raw'
+        });
+    } catch (e: any) {
+        console.error('POST /control/map-matching-batch:', e);
+        res.status(500).json({ error: e?.message || 'Error en map-matching' });
     }
 });
 
@@ -2550,6 +2674,7 @@ function decodeGooglePolyline(encoded: string): Array<{ lat: number; lng: number
 }
 
 const APP_SETTINGS_GOOGLE_SERVER_KEY = 'google_maps_api_key_server';
+const APP_SETTINGS_MAPBOX_TOKEN = 'mapbox_access_token';
 
 function getGoogleDirectionsApiKeyFromEnv(): string | null {
     const k =
@@ -2567,6 +2692,31 @@ async function resolveGoogleDirectionsApiKey(): Promise<string | null> {
     if (fromEnv) return fromEnv;
     try {
         const row = await prisma.appSettings.findUnique({ where: { key: APP_SETTINGS_GOOGLE_SERVER_KEY } });
+        if (!row?.value) return null;
+        const parsed = JSON.parse(row.value) as unknown;
+        if (typeof parsed === 'string' && parsed.trim()) return parsed.trim();
+        return null;
+    } catch {
+        return null;
+    }
+}
+
+/** Token de Mapbox (Map Matching API). Provider preferido para snap/matching
+ *  porque tiene 100k requests/mes gratis (Google cobra $10/1000). */
+function getMapboxTokenFromEnv(): string | null {
+    const k =
+        process.env.MAPBOX_ACCESS_TOKEN ||
+        process.env.MAPBOX_TOKEN ||
+        '';
+    const t = k.trim();
+    return t || null;
+}
+
+async function resolveMapboxAccessToken(): Promise<string | null> {
+    const fromEnv = getMapboxTokenFromEnv();
+    if (fromEnv) return fromEnv;
+    try {
+        const row = await prisma.appSettings.findUnique({ where: { key: APP_SETTINGS_MAPBOX_TOKEN } });
         if (!row?.value) return null;
         const parsed = JSON.parse(row.value) as unknown;
         if (typeof parsed === 'string' && parsed.trim()) return parsed.trim();
