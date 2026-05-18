@@ -151,7 +151,7 @@
                         <i data-lucide="truck" class="w-4 h-4"></i> Flotas
                     </a>
                     <a href="#schools" id="btn-schools" class="header-nav-item">
-                        <i data-lucide="graduation-cap" class="w-4 h-4"></i> Escuelas
+                        <i data-lucide="users-round" class="w-4 h-4"></i> Clientes
                     </a>
                     <span class="nav-section-divider" aria-hidden="true"></span>
                     <span class="nav-section-label">Reportes</span>
@@ -959,14 +959,14 @@
                 <div class="card-dark p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div class="flex-1 relative w-full">
                         <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3AED0]"></i>
-                        <input type="text" id="school-search" oninput="filterSchoolsDebounced()" placeholder="Buscar escuela por nombre, barrio o zona..." class="w-full bg-[#F4F7FE] border-0 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium text-[#1B2559] outline-none">
+                        <input type="text" id="school-search" oninput="filterSchoolsDebounced()" placeholder="Buscar cliente por nombre, barrio o zona..." class="w-full bg-[#F4F7FE] border-0 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium text-[#1B2559] outline-none">
                     </div>
                     <div class="flex flex-wrap items-center gap-3">
                         <select id="school-zone-filter" onchange="filterSchools()" class="bg-[#F4F7FE] border-0 rounded-2xl py-3.5 px-4 text-xs font-bold text-[#1B2559] outline-none min-w-[160px]">
                             <option value="">Todas las zonas</option>
                         </select>
                         <button id="btn-delete-selected-schools" onclick="deleteSelectedSchools()" class="hidden px-4 py-3 rounded-2xl bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-bold transition-all whitespace-nowrap">
-                            Eliminar seleccionadas
+                            Eliminar seleccionados
                         </button>
                         <div class="text-xs font-bold text-indigo-600 bg-indigo-50 px-6 py-4 rounded-2xl whitespace-nowrap uppercase tracking-widest">
                             <span id="school-count" class="text-lg mr-1">0</span> <span id="school-count-label">Clientes</span>
@@ -1451,7 +1451,7 @@
                                     <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Usuarios</th>
                                     <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Personal</th>
                                     <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Salarios</th>
-                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Escuelas</th>
+                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Clientes</th>
                                     <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Reportes</th>
                                     <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Inciden.</th>
                                     <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Auditoría</th>
@@ -3504,7 +3504,7 @@
                 employees: 'Gestión de Personal',
                 users: 'Gestión de Usuarios',
                 salaries: 'Liquidación de Sueldos',
-                schools: 'Base de Clientes',
+                schools: 'Clientes',
                 routes: 'Editor de Rutas',
                 reports: 'Reportes y Análisis',
                 incidents: 'Incidencias de Choferes',
@@ -3524,7 +3524,7 @@
                 employees: 'Acceso unificado a legajos de choferes, auxiliares y liquidaciones',
                 users: 'Administración manual de credenciales para choferes y administradores',
                 salaries: 'Nómina detallada con cálculo de adicionales, jornales y brutos',
-                schools: 'Directorio Maestro de Clientes, ubicaciones y zonas logísticas',
+                schools: 'Directorio Maestro de Clientes, ubicaciones y zonas',
                 routes: 'Diseño y estructuración de recorridos predefinidos',
                 reports: 'Informes detallados de paradas, rutas y operaciones por chofer y reparto',
                 incidents: 'Incidencias reportadas por choferes desde la app móvil',
