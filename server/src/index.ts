@@ -841,6 +841,64 @@ app.get('/api/v1/clients', async (req, res) => {
     res.json(await prisma.client.findMany({ where: { tenantId: 'default-tenant' } }));
 });
 
+/** POST /api/v1/admin/merge-clients
+ *  Body: { sourceId, targetId }
+ *  Mueve todas las paradas (Stop), TripStop, EstablishmentMapping del cliente
+ *  `source` al cliente `target`, y después borra el source. Útil para resolver
+ *  duplicados que tienen paradas vinculadas. */
+app.post('/api/v1/admin/merge-clients', async (req, res) => {
+    try {
+        const sourceId = String(req.body?.sourceId || '').trim();
+        const targetId = String(req.body?.targetId || '').trim();
+        if (!sourceId || !targetId) return res.status(400).json({ error: 'sourceId y targetId son obligatorios' });
+        if (sourceId === targetId) return res.status(400).json({ error: 'source y target no pueden ser el mismo' });
+
+        const source = await prisma.client.findUnique({ where: { id: sourceId } });
+        const target = await prisma.client.findUnique({ where: { id: targetId } });
+        if (!source) return res.status(404).json({ error: 'source no encontrado' });
+        if (!target) return res.status(404).json({ error: 'target no encontrado' });
+
+        // Reasignar paradas (Stop) del source al target
+        const movedStops = await prisma.stop.updateMany({
+            where: { clientId: sourceId },
+            data: { clientId: targetId }
+        });
+
+        // Reasignar TripStop (si tiene el clientId)
+        const movedTripStops = await (prisma as any).tripStop.updateMany({
+            where: { clientId: sourceId },
+            data: { clientId: targetId }
+        });
+
+        // Reasignar EstablishmentMapping (algunos pueden generar conflictos por excelName único)
+        try {
+            await (prisma as any).establishmentMapping.updateMany({
+                where: { clientId: sourceId },
+                data: { clientId: targetId }
+            });
+        } catch (e) {
+            // ignoramos conflictos — los mappings ya pueden existir
+        }
+
+        // Borrar el source
+        await prisma.client.delete({ where: { id: sourceId } });
+        await logAction(req, 'DELETE', 'client', sourceId, source.name, source, null);
+        await logAction(req, 'UPDATE', 'client', targetId, target.name, null,
+            { mergedFrom: source.name, movedStops: movedStops.count, movedTripStops: movedTripStops.count });
+
+        res.json({
+            success: true,
+            movedStops: movedStops.count,
+            movedTripStops: movedTripStops.count,
+            deletedSourceName: source.name,
+            targetName: target.name
+        });
+    } catch (e: any) {
+        console.error('merge-clients:', e);
+        res.status(500).json({ error: e?.message || 'Error al hacer merge' });
+    }
+});
+
 app.delete('/api/v1/clients/:id', async (req, res) => {
     try {
         const { id } = req.params;
