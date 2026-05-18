@@ -1404,6 +1404,7 @@
                                     <th class="px-4 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest bg-[#F8FAFF] sticky left-0 z-10">Usuario</th>
                                     <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Torre Control</th>
                                     <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Logística</th>
+                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Pagos</th>
                                     <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Dashboard</th>
                                     <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Mapa/Ruteo</th>
                                     <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Costos</th>
@@ -3123,10 +3124,10 @@
 
         // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
         const ACCESS_PROFILES = {
-            SUPERADMIN: ['control','hdr','weekly','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'],
-            TRAFICO: ['control','hdr','weekly','dashboard','vrp','budget','fleets','maintenance','routes','users','employees','schools','reports','incidents'],
+            SUPERADMIN: ['control','hdr','weekly','payments','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'],
+            TRAFICO: ['control','hdr','weekly','payments','dashboard','vrp','budget','fleets','maintenance','routes','users','employees','schools','reports','incidents'],
             RRHH: ['salaries','employees'],
-            ADMINISTRACION: ['weekly','dashboard','budget','salaries','schools','reports']
+            ADMINISTRACION: ['weekly','payments','dashboard','budget','salaries','schools','reports']
         };
 
         const USER_PROFILES = {
@@ -3160,7 +3161,7 @@
             }
 
             // Hide/show nav buttons based on access
-            const allSections = ['control','hdr','weekly','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports'];
+            const allSections = ['control','hdr','weekly','payments','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports'];
             allSections.forEach(sec => {
                 const btn = document.getElementById('btn-' + sec);
                 if (btn) {
@@ -3290,7 +3291,29 @@
         function getStoredProfiles() {
             try {
                 const raw = localStorage.getItem('r14.user_profiles');
-                return raw ? JSON.parse(raw) : {};
+                const parsed = raw ? JSON.parse(raw) : {};
+                // Auto-migrate: si hay módulos nuevos y un usuario tiene array fijo,
+                // agregarle el módulo nuevo automáticamente (solo si todos los otros
+                // están habilitados → asumimos perfil completo).
+                let migrated = false;
+                const newModules = ['payments'];
+                for (const [user, perms] of Object.entries(parsed)) {
+                    if (Array.isArray(perms)) {
+                        for (const nm of newModules) {
+                            if (!perms.includes(nm)) {
+                                // Solo agregar si ya tiene >= 10 módulos (perfil "completo")
+                                if (perms.length >= 10) {
+                                    perms.push(nm);
+                                    migrated = true;
+                                }
+                            }
+                        }
+                    }
+                }
+                if (migrated) {
+                    try { localStorage.setItem('r14.user_profiles', JSON.stringify(parsed)); } catch(_) {}
+                }
+                return parsed;
             } catch(_) { return {}; }
         }
 
@@ -3304,7 +3327,7 @@
             return { ...stored, ...hardcoded };
         }
 
-        const ALL_MODULES = ['control','hdr','weekly','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'];
+        const ALL_MODULES = ['control','hdr','weekly','payments','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'];
 
         function renderProfileAssignments() {
             const tbody = document.getElementById('profile-assignments-body');
