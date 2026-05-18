@@ -26,10 +26,32 @@ model User {
   role         String     @default("DRIVER")
   payType      String?    // "FIJO" | "JORNAL" para CHOFER/AUXILIAR (impacta costo logistico)
   pushToken    String?    // Token Expo para notificaciones push
+  /// Si tiene un proveedor asignado, sus viajes se consideran Tercerizados.
+  /// Si es null, sus viajes son Propios.
+  providerId   String?
   createdAt    DateTime   @default(now())
   driverRoutes Route[]    @relation("DriverRoutes")
   tenant       Tenant     @relation(fields: [tenantId], references: [id])
+  provider     Provider?  @relation(fields: [providerId], references: [id])
   incidents    Incident[]
+
+  @@index([providerId])
+}
+
+/// Proveedores tercerizados (transportistas externos).
+/// Un chofer/auxiliar con providerId asignado realiza viajes Tercerizados de ese proveedor.
+model Provider {
+  id        String   @id @default(uuid())
+  tenantId  String   @default("default-tenant")
+  name      String   @unique
+  cuit      String?
+  phone     String?
+  email     String?
+  notes     String?
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  users     User[]
 }
 
 model Vehicle {

@@ -4496,13 +4496,105 @@ app.get('/api/v1/users', async (req, res) => {
                 { fullName: { contains: q } }
             ];
         }
-        const users = await prisma.user.findMany({
+        const users = await (prisma as any).user.findMany({
             where,
             orderBy: [{ role: 'asc' }, { username: 'asc' }],
-            select: { id: true, username: true, fullName: true, role: true, payType: true, tenantId: true, createdAt: true }
+            select: {
+                id: true, username: true, fullName: true, role: true,
+                payType: true, tenantId: true, createdAt: true,
+                providerId: true,
+                provider: { select: { id: true, name: true } }
+            }
         });
         res.json(users);
     } catch (e: any) {
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+// ── PROVIDERS API ────────────────────────────────────────────────────────
+/** Lista todos los proveedores tercerizados. */
+app.get('/api/v1/providers', async (_req, res) => {
+    try {
+        const providers = await (prisma as any).provider.findMany({
+            where: { tenantId: 'default-tenant' },
+            orderBy: { name: 'asc' },
+            include: {
+                _count: { select: { users: true } }
+            }
+        });
+        res.json(providers);
+    } catch (e: any) {
+        console.error('GET /providers:', e);
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+app.post('/api/v1/providers', async (req, res) => {
+    try {
+        const name = String(req.body?.name || '').trim().toUpperCase();
+        if (!name) return res.status(400).json({ error: 'name es obligatorio' });
+        await prisma.tenant.upsert({
+            where: { id: 'default-tenant' },
+            update: {},
+            create: { id: 'default-tenant', name: 'Real de Catorce' }
+        });
+        const data: any = {
+            tenantId: 'default-tenant',
+            name,
+            active: true,
+        };
+        if (req.body?.cuit) data.cuit = String(req.body.cuit).trim();
+        if (req.body?.phone) data.phone = String(req.body.phone).trim();
+        if (req.body?.email) data.email = String(req.body.email).trim();
+        if (req.body?.notes) data.notes = String(req.body.notes).trim();
+        const created = await (prisma as any).provider.create({ data });
+        await logAction(req, 'CREATE', 'provider', created.id, created.name, null, created);
+        res.status(201).json(created);
+    } catch (e: any) {
+        if (e?.code === 'P2002') return res.status(409).json({ error: 'Ya existe un proveedor con ese nombre' });
+        console.error('POST /providers:', e);
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+app.patch('/api/v1/providers/:id', async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!id) return res.status(400).json({ error: 'id es obligatorio' });
+        const data: any = {};
+        if (req.body?.name !== undefined) {
+            const name = String(req.body.name || '').trim().toUpperCase();
+            if (!name) return res.status(400).json({ error: 'name no puede estar vacío' });
+            data.name = name;
+        }
+        if (req.body?.cuit !== undefined) data.cuit = req.body.cuit ? String(req.body.cuit).trim() : null;
+        if (req.body?.phone !== undefined) data.phone = req.body.phone ? String(req.body.phone).trim() : null;
+        if (req.body?.email !== undefined) data.email = req.body.email ? String(req.body.email).trim() : null;
+        if (req.body?.notes !== undefined) data.notes = req.body.notes ? String(req.body.notes).trim() : null;
+        if (req.body?.active !== undefined) data.active = Boolean(req.body.active);
+        if (Object.keys(data).length === 0) return res.status(400).json({ error: 'Sin cambios' });
+        const updated = await (prisma as any).provider.update({ where: { id }, data });
+        await logAction(req, 'UPDATE', 'provider', id, updated.name, null, updated);
+        res.json(updated);
+    } catch (e: any) {
+        if (e?.code === 'P2025') return res.status(404).json({ error: 'Proveedor no encontrado' });
+        if (e?.code === 'P2002') return res.status(409).json({ error: 'Ya existe un proveedor con ese nombre' });
+        res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+app.delete('/api/v1/providers/:id', async (req, res) => {
+    try {
+        const id = String(req.params.id || '').trim();
+        if (!id) return res.status(400).json({ error: 'id es obligatorio' });
+        // Si tiene choferes/auxiliares asignados, primero los desasociamos
+        await (prisma as any).user.updateMany({ where: { providerId: id }, data: { providerId: null } });
+        const deleted = await (prisma as any).provider.delete({ where: { id } });
+        await logAction(req, 'DELETE', 'provider', id, deleted.name, deleted, null);
+        res.json({ success: true });
+    } catch (e: any) {
+        if (e?.code === 'P2025') return res.status(404).json({ error: 'Proveedor no encontrado' });
         res.status(500).json({ error: (e as Error).message });
     }
 });
@@ -4605,12 +4697,21 @@ app.patch('/api/v1/users/:id', async (req, res) => {
                 data.payType = pt;
             }
         }
+        if (req.body?.providerId !== undefined) {
+            const raw = req.body.providerId;
+            data.providerId = (raw == null || raw === '') ? null : String(raw).trim();
+        }
         if (Object.keys(data).length === 0) return res.status(400).json({ error: 'Sin cambios para actualizar' });
 
-        const user = await prisma.user.update({
+        const user = await (prisma as any).user.update({
             where: { id },
             data,
-            select: { id: true, username: true, fullName: true, role: true, payType: true, tenantId: true, createdAt: true }
+            select: {
+                id: true, username: true, fullName: true, role: true,
+                payType: true, tenantId: true, createdAt: true,
+                providerId: true,
+                provider: { select: { id: true, name: true } }
+            }
         });
         res.json(user);
     } catch (e: any) {
