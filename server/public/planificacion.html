@@ -15109,7 +15109,10 @@
             const daysPanel = document.getElementById('new-trip-days-panel');
             if (daysPanel) daysPanel.classList.add('hidden');
             document.getElementById('new-trip-contract').value = 'Propio';
-            toggleVehicleTypeField(); // Hide vehicle by default for Propio
+            // Reset valor tercerizado (oculto por default cuando es Propio)
+            const valInp = document.getElementById('new-trip-value');
+            if (valInp) valInp.value = '';
+            toggleVehicleTypeField(); // Hide vehicle + valor cuando es Propio
 
             document.getElementById('new-trip-loc').value = '';
             document.getElementById('new-trip-bu').value = document.getElementById('new-trip-bu').value || 'DMC';
@@ -15146,11 +15149,19 @@
         function toggleVehicleTypeField() {
             const contract = document.getElementById('new-trip-contract').value;
             const container = document.getElementById('new-trip-vehicle-container');
+            const valueContainer = document.getElementById('new-trip-value-container');
+            const isTerc = contract !== 'Propio';
             if (container) {
-                if (contract === 'Propio') {
-                    container.classList.add('hidden');
-                } else {
-                    container.classList.remove('hidden');
+                if (isTerc) container.classList.remove('hidden');
+                else container.classList.add('hidden');
+            }
+            if (valueContainer) {
+                if (isTerc) valueContainer.classList.remove('hidden');
+                else {
+                    valueContainer.classList.add('hidden');
+                    // Limpiar el valor si vuelve a Propio
+                    const valInp = document.getElementById('new-trip-value');
+                    if (valInp) valInp.value = '';
                 }
             }
         }
@@ -15180,6 +15191,12 @@
             }
             document.getElementById('new-trip-contract').value = trip.contractType || 'Propio';
             toggleVehicleTypeField();
+            // Precargar el valor tercerizado si existe (solo se muestra si Contract = Tercerizado)
+            const valInpEdit = document.getElementById('new-trip-value');
+            if (valInpEdit) {
+                const v = Number(trip.value);
+                valInpEdit.value = (Number.isFinite(v) && v > 0) ? String(Math.round(v)) : '';
+            }
             ensureBusinessUnitInCatalog(trip.businessUnit || 'DMC');
             populateBusinessUnitSelect(trip.businessUnit || 'DMC');
             document.getElementById('new-trip-bu').value = normalizeBusinessUnit(trip.businessUnit || 'DMC');
@@ -15288,6 +15305,16 @@
             const refrigeratedValue = (document.getElementById('new-trip-refrigerated')?.value || 'no').toLowerCase() === 'si';
             const tempRaw = (document.getElementById('new-trip-temperature')?.value || '').toString().trim();
             const temperatureValue = refrigeratedValue && tempRaw !== '' ? tempRaw : null;
+            const contractValue = document.getElementById('new-trip-contract').value;
+            const isTercerizado = contractValue !== 'Propio';
+            // Para Tercerizado: tomar el valor que ingresó el operador
+            // Para Propio: dejar value=0 (lo calcula el motor de costos)
+            let tripValue = 0;
+            if (isTercerizado) {
+                const valRaw = (document.getElementById('new-trip-value')?.value || '').toString().trim();
+                const parsed = parseFloat(valRaw.replace(/[^0-9.\-]/g, ''));
+                tripValue = Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
+            }
             const baseTripData = {
                 businessUnit: document.getElementById('new-trip-bu').value,
                 driver: document.getElementById('new-trip-driver').value,
@@ -15299,8 +15326,9 @@
                 reparto: repartoValue,
                 tripType: repartoValue,
                 assignedMobileUser: mobileUserValue,
-                contractType: document.getElementById('new-trip-contract').value,
-                provider: document.getElementById('new-trip-contract').value === 'Propio' ? 'R14 LOG' : 'EXTERNO',
+                contractType: contractValue,
+                provider: isTercerizado ? 'EXTERNO' : 'R14 LOG',
+                value: tripValue,
                 isRefrigerated: refrigeratedValue,
                 temperature: temperatureValue,
                 status: 'PENDING',
@@ -16190,6 +16218,12 @@
                             <option value="Propio">Propio</option>
                             <option value="Tercerizado">Tercerizado</option>
                         </select>
+                    </div>
+                    <div id="new-trip-value-container" class="hidden">
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Valor tercerizado ($)</label>
+                        <input type="number" id="new-trip-value" placeholder="Ej. 251500" min="0" step="1"
+                               class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                        <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Costo que cobra el transportista externo por este viaje. Editable después.</p>
                     </div>
                     <div>
                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Unidad de Negocio</label>
