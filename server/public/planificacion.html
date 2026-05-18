@@ -15109,10 +15109,12 @@
             const daysPanel = document.getElementById('new-trip-days-panel');
             if (daysPanel) daysPanel.classList.add('hidden');
             document.getElementById('new-trip-contract').value = 'Propio';
-            // Reset valor tercerizado (oculto por default cuando es Propio)
+            // Reset campos tercerizado (ocultos por default cuando es Propio)
             const valInp = document.getElementById('new-trip-value');
             if (valInp) valInp.value = '';
-            toggleVehicleTypeField(); // Hide vehicle + valor cuando es Propio
+            const provInp = document.getElementById('new-trip-provider');
+            if (provInp) provInp.value = '';
+            toggleVehicleTypeField(); // Hide vehicle + proveedor + valor cuando es Propio
 
             document.getElementById('new-trip-loc').value = '';
             document.getElementById('new-trip-bu').value = document.getElementById('new-trip-bu').value || 'DMC';
@@ -15150,10 +15152,20 @@
             const contract = document.getElementById('new-trip-contract').value;
             const container = document.getElementById('new-trip-vehicle-container');
             const valueContainer = document.getElementById('new-trip-value-container');
+            const providerContainer = document.getElementById('new-trip-provider-container');
             const isTerc = contract !== 'Propio';
             if (container) {
                 if (isTerc) container.classList.remove('hidden');
                 else container.classList.add('hidden');
+            }
+            if (providerContainer) {
+                if (isTerc) providerContainer.classList.remove('hidden');
+                else {
+                    providerContainer.classList.add('hidden');
+                    // Limpiar el proveedor si vuelve a Propio
+                    const provInp = document.getElementById('new-trip-provider');
+                    if (provInp) provInp.value = '';
+                }
             }
             if (valueContainer) {
                 if (isTerc) valueContainer.classList.remove('hidden');
@@ -15196,6 +15208,13 @@
             if (valInpEdit) {
                 const v = Number(trip.value);
                 valInpEdit.value = (Number.isFinite(v) && v > 0) ? String(Math.round(v)) : '';
+            }
+            // Precargar Proveedor — si está en EXTERNO/R14 LOG genéricos los dejamos vacíos
+            const provInpEdit = document.getElementById('new-trip-provider');
+            if (provInpEdit) {
+                const p = (trip.provider || '').toString().trim();
+                const generic = ['EXTERNO', 'R14 LOG', 'PROPIO'];
+                provInpEdit.value = (p && !generic.includes(p.toUpperCase())) ? p : '';
             }
             ensureBusinessUnitInCatalog(trip.businessUnit || 'DMC');
             populateBusinessUnitSelect(trip.businessUnit || 'DMC');
@@ -15315,6 +15334,13 @@
                 const parsed = parseFloat(valRaw.replace(/[^0-9.\-]/g, ''));
                 tripValue = Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
             }
+            // Proveedor: si Tercerizado tomar el nombre ingresado (default 'EXTERNO' si vacío).
+            // Si Propio, siempre 'R14 LOG'.
+            let providerValue = 'R14 LOG';
+            if (isTercerizado) {
+                const provRaw = (document.getElementById('new-trip-provider')?.value || '').toString().trim().toUpperCase();
+                providerValue = provRaw || 'EXTERNO';
+            }
             const baseTripData = {
                 businessUnit: document.getElementById('new-trip-bu').value,
                 driver: document.getElementById('new-trip-driver').value,
@@ -15327,7 +15353,7 @@
                 tripType: repartoValue,
                 assignedMobileUser: mobileUserValue,
                 contractType: contractValue,
-                provider: isTercerizado ? 'EXTERNO' : 'R14 LOG',
+                provider: providerValue,
                 value: tripValue,
                 isRefrigerated: refrigeratedValue,
                 temperature: temperatureValue,
@@ -16218,6 +16244,12 @@
                             <option value="Propio">Propio</option>
                             <option value="Tercerizado">Tercerizado</option>
                         </select>
+                    </div>
+                    <div id="new-trip-provider-container" class="hidden">
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Proveedor tercerizado</label>
+                        <input type="text" id="new-trip-provider" placeholder="Ej. JAVIER GAREIS, MARIANO ANTICH..." autocomplete="off"
+                               class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold uppercase shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                        <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Nombre del transportista externo que realiza este viaje.</p>
                     </div>
                     <div id="new-trip-value-container" class="hidden">
                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Valor tercerizado ($)</label>
