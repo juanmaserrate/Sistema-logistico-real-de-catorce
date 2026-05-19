@@ -883,12 +883,12 @@
                     </div>
                 </div>
 
-                <!-- Tabla: Recuento de viajes Propios vs Tercerizados por unidad de negocio -->
+                <!-- Recuento de viajes Propios vs Tercerizados: 3 tablas (Localidad, Zona, Unidad de negocio) -->
                 <div class="card-dark p-6 md:p-8">
-                    <div class="flex items-center justify-between mb-4 gap-4 flex-wrap">
+                    <div class="flex items-center justify-between mb-6 gap-4 flex-wrap">
                         <div>
-                            <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-1">Recuento de viajes por unidad de negocio</h4>
-                            <p class="text-xs text-[#A3AED0] font-medium">Propios vs Tercerizados — período seleccionado</p>
+                            <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-1">Recuento de viajes</h4>
+                            <p class="text-xs text-[#A3AED0] font-medium">Propios vs Tercerizados — desglosado por Localidad, Zona y Unidad de negocio</p>
                         </div>
                         <div class="flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest">
                             <span class="inline-flex items-center gap-2 text-indigo-600"><span class="w-3 h-3 rounded-full bg-indigo-500"></span>Propios</span>
@@ -896,59 +896,90 @@
                         </div>
                     </div>
 
-                    <!-- Filtros -->
-                    <div class="flex flex-wrap items-center gap-3 mb-4 pb-4 border-b border-[#F4F7FE]">
-                        <div class="relative flex-1 min-w-[200px]">
-                            <i data-lucide="search" class="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3AED0]"></i>
-                            <input type="text" id="dash-bu-trips-search" oninput="renderBuTripsTable()" placeholder="Buscar unidad de negocio..." class="w-full bg-[#F4F7FE] border-0 rounded-xl py-2.5 pl-10 pr-3 text-xs font-medium text-[#1B2559] outline-none" />
+                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                        <!-- Por Localidad -->
+                        <div class="bg-[#FAFBFF] rounded-2xl p-5">
+                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-widest mb-3">Por Localidad</h5>
+                            <div class="overflow-x-auto custom-scrollbar">
+                                <table class="w-full text-left text-sm">
+                                    <thead>
+                                        <tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">
+                                            <th class="py-2 pr-2">Localidad</th>
+                                            <th class="py-2 px-2 text-right">Propios</th>
+                                            <th class="py-2 px-2 text-right">Terc.</th>
+                                            <th class="py-2 pl-2 text-right">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dash-table-loc-body" class="divide-y divide-[#F4F7FE]">
+                                        <tr><td colspan="4" class="py-6 text-center text-xs text-[#A3AED0] font-medium">Sin datos</td></tr>
+                                    </tbody>
+                                    <tfoot>
+                                        <tr id="dash-table-loc-total" class="hidden border-t-2 border-[#E0E5F2] bg-white">
+                                            <td class="py-2 pr-2 text-[10px] font-black text-[#1B2559] uppercase tracking-widest">Total</td>
+                                            <td class="py-2 px-2 text-right text-xs font-black text-indigo-700" id="dash-table-loc-tp">0</td>
+                                            <td class="py-2 px-2 text-right text-xs font-black text-purple-700" id="dash-table-loc-tt">0</td>
+                                            <td class="py-2 pl-2 text-right text-xs font-black text-[#1B2559]" id="dash-table-loc-ta">0</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
                         </div>
-                        <select id="dash-bu-trips-type" onchange="renderBuTripsTable()" class="bg-[#F4F7FE] border-0 rounded-xl px-3 py-2.5 text-xs font-bold text-[#1B2559] outline-none cursor-pointer">
-                            <option value="all">Todos los viajes</option>
-                            <option value="propio">Solo Propios</option>
-                            <option value="terc">Solo Tercerizados</option>
-                            <option value="only-propio">BU con propios</option>
-                            <option value="only-terc">BU con tercerizados</option>
-                        </select>
-                        <select id="dash-bu-trips-sort" onchange="renderBuTripsTable()" class="bg-[#F4F7FE] border-0 rounded-xl px-3 py-2.5 text-xs font-bold text-[#1B2559] outline-none cursor-pointer">
-                            <option value="total-desc">Ordenar: Total ↓</option>
-                            <option value="total-asc">Ordenar: Total ↑</option>
-                            <option value="propio-desc">Propios ↓</option>
-                            <option value="terc-desc">Tercerizados ↓</option>
-                            <option value="bu-asc">BU A-Z</option>
-                            <option value="bu-desc">BU Z-A</option>
-                        </select>
-                        <select id="dash-bu-trips-min" onchange="renderBuTripsTable()" class="bg-[#F4F7FE] border-0 rounded-xl px-3 py-2.5 text-xs font-bold text-[#1B2559] outline-none cursor-pointer">
-                            <option value="0">Todos</option>
-                            <option value="1">≥ 1 viaje</option>
-                            <option value="5">≥ 5 viajes</option>
-                            <option value="10">≥ 10 viajes</option>
-                            <option value="50">≥ 50 viajes</option>
-                        </select>
-                        <button type="button" onclick="resetBuTripsFilters()" class="px-3 py-2.5 rounded-xl bg-white border border-[#E0E5F2] text-xs font-bold text-[#A3AED0] hover:text-[#1B2559] hover:bg-[#F4F7FE]">Limpiar</button>
-                    </div>
 
-                    <div class="overflow-x-auto custom-scrollbar">
-                        <table class="w-full min-w-[560px] text-left text-sm">
-                            <thead>
-                                <tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">
-                                    <th class="py-3 pr-4">Unidad de negocio</th>
-                                    <th class="py-3 px-4 text-right">Propios</th>
-                                    <th class="py-3 px-4 text-right">Tercerizados</th>
-                                    <th class="py-3 pl-4 text-right">Total</th>
-                                </tr>
-                            </thead>
-                            <tbody id="dash-table-bu-trips-body" class="divide-y divide-[#F4F7FE]">
-                                <tr><td colspan="4" class="py-6 text-center text-xs text-[#A3AED0] font-medium">Sin datos</td></tr>
-                            </tbody>
-                            <tfoot>
-                                <tr id="dash-table-bu-trips-total" class="hidden border-t-2 border-[#E0E5F2] bg-[#F8FAFE]">
-                                    <td class="py-3 pr-4 text-xs font-black text-[#1B2559] uppercase tracking-widest">Total <span id="dash-table-bu-trips-total-label" class="text-[10px] text-[#A3AED0] font-medium ml-2"></span></td>
-                                    <td class="py-3 px-4 text-right text-sm font-black text-indigo-700" id="dash-table-bu-trips-total-propio">0</td>
-                                    <td class="py-3 px-4 text-right text-sm font-black text-purple-700" id="dash-table-bu-trips-total-terc">0</td>
-                                    <td class="py-3 pl-4 text-right text-sm font-black text-[#1B2559]" id="dash-table-bu-trips-total-all">0</td>
-                                </tr>
-                            </tfoot>
-                        </table>
+                        <!-- Por Zona -->
+                        <div class="bg-[#FAFBFF] rounded-2xl p-5">
+                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-widest mb-3">Por Zona</h5>
+                            <div class="overflow-x-auto custom-scrollbar">
+                                <table class="w-full text-left text-sm">
+                                    <thead>
+                                        <tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">
+                                            <th class="py-2 pr-2">Zona</th>
+                                            <th class="py-2 px-2 text-right">Propios</th>
+                                            <th class="py-2 px-2 text-right">Terc.</th>
+                                            <th class="py-2 pl-2 text-right">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dash-table-zone-body" class="divide-y divide-[#F4F7FE]">
+                                        <tr><td colspan="4" class="py-6 text-center text-xs text-[#A3AED0] font-medium">Sin datos</td></tr>
+                                    </tbody>
+                                    <tfoot>
+                                        <tr id="dash-table-zone-total" class="hidden border-t-2 border-[#E0E5F2] bg-white">
+                                            <td class="py-2 pr-2 text-[10px] font-black text-[#1B2559] uppercase tracking-widest">Total</td>
+                                            <td class="py-2 px-2 text-right text-xs font-black text-indigo-700" id="dash-table-zone-tp">0</td>
+                                            <td class="py-2 px-2 text-right text-xs font-black text-purple-700" id="dash-table-zone-tt">0</td>
+                                            <td class="py-2 pl-2 text-right text-xs font-black text-[#1B2559]" id="dash-table-zone-ta">0</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
+
+                        <!-- Por Unidad de negocio -->
+                        <div class="bg-[#FAFBFF] rounded-2xl p-5">
+                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-widest mb-3">Por Unidad de negocio</h5>
+                            <div class="overflow-x-auto custom-scrollbar">
+                                <table class="w-full text-left text-sm">
+                                    <thead>
+                                        <tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">
+                                            <th class="py-2 pr-2">Unidad</th>
+                                            <th class="py-2 px-2 text-right">Propios</th>
+                                            <th class="py-2 px-2 text-right">Terc.</th>
+                                            <th class="py-2 pl-2 text-right">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dash-table-bu-body" class="divide-y divide-[#F4F7FE]">
+                                        <tr><td colspan="4" class="py-6 text-center text-xs text-[#A3AED0] font-medium">Sin datos</td></tr>
+                                    </tbody>
+                                    <tfoot>
+                                        <tr id="dash-table-bu-total" class="hidden border-t-2 border-[#E0E5F2] bg-white">
+                                            <td class="py-2 pr-2 text-[10px] font-black text-[#1B2559] uppercase tracking-widest">Total</td>
+                                            <td class="py-2 px-2 text-right text-xs font-black text-indigo-700" id="dash-table-bu-tp">0</td>
+                                            <td class="py-2 px-2 text-right text-xs font-black text-purple-700" id="dash-table-bu-tt">0</td>
+                                            <td class="py-2 pl-2 text-right text-xs font-black text-[#1B2559]" id="dash-table-bu-ta">0</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -14950,80 +14981,67 @@
             renderLogisticsDashboard();
         }
 
-        function resetBuTripsFilters() {
-            const s = document.getElementById('dash-bu-trips-search');
-            const t = document.getElementById('dash-bu-trips-type');
-            const o = document.getElementById('dash-bu-trips-sort');
-            const m = document.getElementById('dash-bu-trips-min');
-            if (s) s.value = '';
-            if (t) t.value = 'all';
-            if (o) o.value = 'total-desc';
-            if (m) m.value = '0';
-            renderBuTripsTable();
-        }
+        function renderTripsBreakdownTables(trips) {
+            // Calcula 3 mapas: localidad, zona, BU -> { propio, terc }
+            const mapLoc = {}, mapZone = {}, mapBu = {};
+            (trips || []).forEach(t => {
+                const isP = (typeof tripIsPropioForCost === 'function') && tripIsPropioForCost(t);
+                const k = isP ? 'propio' : 'terc';
 
-        function renderBuTripsTable() {
-            const tbody = document.getElementById('dash-table-bu-trips-body');
-            const tfootRow = document.getElementById('dash-table-bu-trips-total');
-            if (!tbody) return;
-            const data = window._dashBuSplitData || {};
-            const search = (document.getElementById('dash-bu-trips-search')?.value || '').toLowerCase().trim();
-            const typeF = document.getElementById('dash-bu-trips-type')?.value || 'all';
-            const sortF = document.getElementById('dash-bu-trips-sort')?.value || 'total-desc';
-            const minF = parseInt(document.getElementById('dash-bu-trips-min')?.value || '0', 10);
+                const loc = (typeof getLocalidadFromZone === 'function')
+                    ? (getLocalidadFromZone(t.zone) || 'S/D')
+                    : 'S/D';
+                if (!mapLoc[loc]) mapLoc[loc] = { propio: 0, terc: 0 };
+                mapLoc[loc][k] += 1;
 
-            // Aplicar filtros
-            let rows = Object.entries(data).map(([bu, v]) => ({ bu, propio: v.propio || 0, terc: v.terc || 0 }));
-            if (search) rows = rows.filter(r => r.bu.toLowerCase().includes(search));
-            if (typeF === 'only-propio') rows = rows.filter(r => r.propio > 0);
-            else if (typeF === 'only-terc') rows = rows.filter(r => r.terc > 0);
-            // Para 'propio' y 'terc' no filtramos filas, solo cambia el conteo mostrado y el orden por defecto
-            rows = rows.filter(r => {
-                if (typeF === 'propio') return r.propio >= minF;
-                if (typeF === 'terc') return r.terc >= minF;
-                return (r.propio + r.terc) >= minF;
+                const z = ((t.zone || '').toString().trim()) || 'S/D';
+                if (!mapZone[z]) mapZone[z] = { propio: 0, terc: 0 };
+                mapZone[z][k] += 1;
+
+                const bu = (typeof formatBusinessUnit === 'function')
+                    ? formatBusinessUnit((typeof normalizeBusinessUnit === 'function' ? normalizeBusinessUnit(t.businessUnit) : t.businessUnit) || t.businessUnit || 'S/D')
+                    : (t.businessUnit || 'S/D');
+                if (!mapBu[bu]) mapBu[bu] = { propio: 0, terc: 0 };
+                mapBu[bu][k] += 1;
             });
 
-            // Orden
-            const cmp = {
-                'total-desc': (a, b) => (b.propio + b.terc) - (a.propio + a.terc),
-                'total-asc':  (a, b) => (a.propio + a.terc) - (b.propio + b.terc),
-                'propio-desc': (a, b) => b.propio - a.propio,
-                'terc-desc':   (a, b) => b.terc - a.terc,
-                'bu-asc':  (a, b) => a.bu.localeCompare(b.bu),
-                'bu-desc': (a, b) => b.bu.localeCompare(a.bu),
-            }[sortF] || ((a, b) => (b.propio + b.terc) - (a.propio + a.terc));
-            rows.sort(cmp);
+            renderBreakdownTable(mapLoc, 'dash-table-loc-body', 'dash-table-loc-total', 'dash-table-loc-tp', 'dash-table-loc-tt', 'dash-table-loc-ta');
+            renderBreakdownTable(mapZone, 'dash-table-zone-body', 'dash-table-zone-total', 'dash-table-zone-tp', 'dash-table-zone-tt', 'dash-table-zone-ta');
+            renderBreakdownTable(mapBu, 'dash-table-bu-body', 'dash-table-bu-total', 'dash-table-bu-tp', 'dash-table-bu-tt', 'dash-table-bu-ta');
+        }
 
+        function renderBreakdownTable(map, bodyId, footRowId, footPid, footTid, footAid) {
+            const tbody = document.getElementById(bodyId);
+            const foot = document.getElementById(footRowId);
+            if (!tbody) return;
+            const rows = Object.entries(map)
+                .map(([name, v]) => ({ name, propio: v.propio || 0, terc: v.terc || 0 }))
+                .sort((a, b) => (b.propio + b.terc) - (a.propio + a.terc));
             if (!rows.length) {
-                tbody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-xs text-[#A3AED0] font-medium">Sin resultados con los filtros aplicados</td></tr>';
-                if (tfootRow) tfootRow.classList.add('hidden');
+                tbody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-xs text-[#A3AED0] font-medium">Sin datos en el período</td></tr>';
+                if (foot) foot.classList.add('hidden');
                 return;
             }
-
             let totP = 0, totT = 0;
             tbody.innerHTML = rows.map(r => {
                 totP += r.propio;
                 totT += r.terc;
                 const total = r.propio + r.terc;
-                const hi = (cls, on) => on ? cls : 'text-[#A3AED0]';
-                const propioCls = (typeF === 'terc') ? 'text-[#A3AED0]' : 'text-indigo-700';
-                const tercCls   = (typeF === 'propio') ? 'text-[#A3AED0]' : 'text-purple-700';
-                return `<tr class="hover:bg-[#F8FAFE] transition-colors">
-                    <td class="py-3 pr-4 text-sm font-bold text-[#1B2559]">${r.bu}</td>
-                    <td class="py-3 px-4 text-right text-sm font-bold ${propioCls}">${r.propio}</td>
-                    <td class="py-3 px-4 text-right text-sm font-bold ${tercCls}">${r.terc}</td>
-                    <td class="py-3 pl-4 text-right text-sm font-black text-[#1B2559]">${total}</td>
+                return `<tr class="hover:bg-white transition-colors">
+                    <td class="py-2 pr-2 text-xs font-bold text-[#1B2559]">${r.name}</td>
+                    <td class="py-2 px-2 text-right text-xs font-bold text-indigo-700">${r.propio}</td>
+                    <td class="py-2 px-2 text-right text-xs font-bold text-purple-700">${r.terc}</td>
+                    <td class="py-2 pl-2 text-right text-xs font-black text-[#1B2559]">${total}</td>
                 </tr>`;
             }).join('');
-
-            if (tfootRow) {
-                tfootRow.classList.remove('hidden');
-                document.getElementById('dash-table-bu-trips-total-propio').textContent = totP;
-                document.getElementById('dash-table-bu-trips-total-terc').textContent = totT;
-                document.getElementById('dash-table-bu-trips-total-all').textContent = totP + totT;
-                const lbl = document.getElementById('dash-table-bu-trips-total-label');
-                if (lbl) lbl.textContent = `(${rows.length} unidad${rows.length === 1 ? '' : 'es'})`;
+            if (foot) {
+                foot.classList.remove('hidden');
+                const tp = document.getElementById(footPid);
+                const tt = document.getElementById(footTid);
+                const ta = document.getElementById(footAid);
+                if (tp) tp.textContent = totP;
+                if (tt) tt.textContent = totT;
+                if (ta) ta.textContent = totP + totT;
             }
         }
 
@@ -15182,19 +15200,14 @@
             }
 
             const buTripsMap = {};
-            const buSplitMap = {}; // { bu: { propio, terc } }
             trips.forEach(t => {
                 const bu = formatBusinessUnit(normalizeBusinessUnit(t.businessUnit) || t.businessUnit || 'S/D');
                 buTripsMap[bu] = (buTripsMap[bu] || 0) + 1;
-                if (!buSplitMap[bu]) buSplitMap[bu] = { propio: 0, terc: 0 };
-                if (tripIsPropioForCost(t)) buSplitMap[bu].propio += 1;
-                else buSplitMap[bu].terc += 1;
             });
             const buTripsSorted = Object.entries(buTripsMap).sort((a, b) => b[1] - a[1]);
 
-            // Guardar datos para que renderBuTripsTable pueda re-renderizar con filtros sin recalcular
-            window._dashBuSplitData = buSplitMap;
-            renderBuTripsTable();
+            // Tablas de recuento de viajes Propios vs Tercerizados por Localidad / Zona / BU
+            renderTripsBreakdownTables(trips);
 
             const ctxBuTrips = document.getElementById('dash-chart-bu-trips');
             if (ctxBuTrips) {
