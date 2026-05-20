@@ -305,6 +305,10 @@ tbody tr { transition: background 0.15s ease; }
 tbody tr:nth-child(even) { background: var(--surface); }
 tbody tr:hover { background: var(--surface-container-low) !important; }
 
+/* Footer del total general en Planilla de Pagos */
+tfoot tr.payments-total-row { background-color: #1B2559 !important; }
+tfoot tr.payments-total-row td { color: #ffffff !important; background-color: #1B2559 !important; }
+
 .sticky-col { background: var(--surface-container-lowest); border-right: none; }
 
 /* ---------- 9. STATUS BADGES ---------- */
