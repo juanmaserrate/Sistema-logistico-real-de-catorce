@@ -11637,108 +11637,163 @@
             });
         }
 
+        // Set para trackear qué (provider+bu+driver+reparto) está expandido al máximo (mostrar viajes individuales)
+        const _expandedDriverGroups = new Set();
+
         function renderPaymentsTable() {
             const body = document.getElementById('payments-table-body');
             if (!body) return;
             const filtered = _getPaymentsFiltered();
             const paidSet = loadPaidTripIds();
 
-            // Agrupar: provider → businessUnit → [trips]
-            const tree = new Map();  // provider → Map(BU → trips[])
+            // Agrupar: provider → BU → (driver+reparto) → [trips]
+            const tree = new Map();
             for (const t of filtered) {
                 const prov = (t.provider || 'EXTERNO').toString().trim().toUpperCase();
                 const bu = (t.businessUnit || 'S/D').toString().trim().toUpperCase();
+                const driver = (t.driver || '--').toString().trim().toUpperCase();
+                const reparto = (t.reparto || t.tripType || '--').toString().trim().toUpperCase();
+                const driverKey = driver + '||' + reparto;
                 if (!tree.has(prov)) tree.set(prov, new Map());
                 const buMap = tree.get(prov);
-                if (!buMap.has(bu)) buMap.set(bu, []);
-                buMap.get(bu).push(t);
+                if (!buMap.has(bu)) buMap.set(bu, new Map());
+                const driverMap = buMap.get(bu);
+                if (!driverMap.has(driverKey)) driverMap.set(driverKey, { driver, reparto, trips: [] });
+                driverMap.get(driverKey).trips.push(t);
             }
-            // Ordenar proveedores alfabético
             const providers = [...tree.keys()].sort();
 
             const rows = [];
             let grandTotal = 0;
             for (const prov of providers) {
                 const buMap = tree.get(prov);
-                let provTotal = 0;
-                const bus = [...buMap.keys()].sort();
                 const provExpanded = _expandedProviders.has(prov);
-                // Fila Proveedor
-                let provRowsHtml = '';
+                let provTotal = 0;
                 let provTripCount = 0;
+                let provRowsHtml = '';
+                const bus = [...buMap.keys()].sort();
+
                 for (const bu of bus) {
-                    const trips = buMap.get(bu);
-                    const buTotal = trips.reduce((s, t) => s + (Number(t.value) || 0), 0);
-                    provTotal += buTotal;
-                    provTripCount += trips.length;
+                    const driverMap = buMap.get(bu);
                     const groupKey = prov + '|' + bu;
                     const groupExpanded = _expandedGroups.has(groupKey);
+                    let buTotal = 0;
+                    let buTripCount = 0;
+                    let driverRowsHtml = '';
 
-                    // Fila UN
-                    let tripsHtml = '';
-                    if (provExpanded && groupExpanded) {
-                        trips.sort((a, b) => {
-                            const da = new Date(String(a.date || '').replace(' ', 'T'));
-                            const db = new Date(String(b.date || '').replace(' ', 'T'));
-                            return da - db;
-                        });
-                        for (const t of trips) {
-                            const date = t.date ? new Date(String(t.date).replace(' ', 'T')) : null;
-                            const dateStr = date ? date.toLocaleDateString('es-AR') : '--';
-                            const paid = paidSet.has(Number(t.id));
-                            const reparto = (t.reparto || t.tripType || '').toUpperCase();
-                            tripsHtml += `
-                                <tr class="hover:bg-[#F8FAFF] ${paid ? 'opacity-60' : ''}">
+                    // Sumar por chofer+reparto
+                    const driverEntries = [...driverMap.entries()].sort((a, b) =>
+                        a[1].driver.localeCompare(b[1].driver, 'es') || a[1].reparto.localeCompare(b[1].reparto, 'es')
+                    );
+
+                    for (const [dkey, info] of driverEntries) {
+                        const drvTotal = info.trips.reduce((s, t) => s + (Number(t.value) || 0), 0);
+                        const drvTripCount = info.trips.length;
+                        buTotal += drvTotal;
+                        buTripCount += drvTripCount;
+                        const dgKey = prov + '|' + bu + '|' + dkey;
+                        const dgExpanded = _expandedDriverGroups.has(dgKey);
+
+                        // Filas individuales del chofer-reparto (si expandido)
+                        let tripsHtml = '';
+                        if (provExpanded && groupExpanded && dgExpanded) {
+                            const sortedTrips = info.trips.slice().sort((a, b) => {
+                                const da = new Date(String(a.date || '').replace(' ', 'T'));
+                                const db = new Date(String(b.date || '').replace(' ', 'T'));
+                                return da - db;
+                            });
+                            for (const t of sortedTrips) {
+                                const date = t.date ? new Date(String(t.date).replace(' ', 'T')) : null;
+                                const dateStr = date ? date.toLocaleDateString('es-AR') : '--';
+                                const paid = paidSet.has(Number(t.id));
+                                tripsHtml += `
+                                    <tr class="bg-white hover:bg-[#F8FAFF] ${paid ? 'opacity-60' : ''}">
+                                        <td></td>
+                                        <td></td>
+                                        <td></td>
+                                        <td class="pl-8 pr-4 py-2 text-[10px] text-[#A3AED0]">— viaje ID ${t.id}</td>
+                                        <td></td>
+                                        <td class="px-4 py-2 text-center text-[10px] text-[#A3AED0]">${dateStr}</td>
+                                        <td class="px-4 py-2 text-center">
+                                            <span class="status-badge ${paid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'} text-[9px]">${paid ? 'PAGADO' : 'PENDIENTE'}</span>
+                                        </td>
+                                        <td class="px-4 py-2 text-right text-[11px] text-[#2B3674]">${_formatCurrency(t.value)}</td>
+                                        <td class="px-4 py-2 text-center">
+                                            <button onclick="togglePaidTripState(${Number(t.id)})" class="text-[9px] font-bold uppercase px-2 py-1 rounded-lg ${paid ? 'bg-rose-100 text-rose-700 hover:bg-rose-200' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}">${paid ? '↶ Revertir' : '✓ Pagar'}</button>
+                                        </td>
+                                    </tr>`;
+                            }
+                        }
+
+                        if (provExpanded && groupExpanded) {
+                            const dgEscKey = (prov + '|' + bu + '|' + dkey).replace(/'/g, "\\'");
+                            driverRowsHtml += `
+                                <tr class="bg-amber-50/40 hover:bg-amber-50 cursor-pointer" onclick="togglePaymentDriverGroup('${dgEscKey}')">
                                     <td></td>
                                     <td></td>
                                     <td></td>
-                                    <td class="px-4 py-2 text-[11px] text-[#2B3674]">${escapeHtml(t.driver || '--')}</td>
-                                    <td class="px-4 py-2 text-[11px] font-bold text-[#2B3674]">${escapeHtml(reparto || '--')}</td>
-                                    <td class="px-4 py-2 text-center text-[11px] text-[#A3AED0]">${dateStr}</td>
-                                    <td class="px-4 py-2 text-center">
-                                        <span class="status-badge ${paid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'} text-[9px]">
-                                            ${paid ? 'PAGADO' : 'PENDIENTE'}
-                                        </span>
+                                    <td class="px-4 py-2 text-[11px] font-bold text-[#2B3674]">
+                                        <i data-lucide="${dgExpanded ? 'chevron-down' : 'chevron-right'}" class="w-3 h-3 inline-block mr-1"></i>
+                                        ${escapeHtml(info.driver)}
                                     </td>
-                                    <td class="px-4 py-2 text-right text-[12px] font-bold text-[#1B2559]">${_formatCurrency(t.value)}</td>
-                                    <td class="px-4 py-2 text-center">
-                                        <button onclick="togglePaidTripState(${Number(t.id)})" class="text-[9px] font-bold uppercase px-2 py-1 rounded-lg ${paid ? 'bg-rose-100 text-rose-700 hover:bg-rose-200' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}" title="${paid ? 'Marcar pendiente' : 'Marcar pagado'}">
-                                            ${paid ? '↶ Revertir' : '✓ Pagar'}
-                                        </button>
-                                    </td>
-                                </tr>`;
+                                    <td class="px-4 py-2 text-[11px] font-bold text-[#2B3674]">${escapeHtml(info.reparto)}</td>
+                                    <td class="px-4 py-2 text-center text-[10px] text-[#A3AED0]">${drvTripCount} ${drvTripCount === 1 ? 'viaje' : 'viajes'}</td>
+                                    <td></td>
+                                    <td class="px-4 py-2 text-right text-[12px] font-bold text-[#1B2559]">${_formatCurrency(drvTotal)}</td>
+                                    <td></td>
+                                </tr>
+                                ${tripsHtml}`;
                         }
                     }
 
+                    provTotal += buTotal;
+                    provTripCount += buTripCount;
+
                     if (provExpanded) {
                         provRowsHtml += `
-                            <tr class="bg-[#F4F7FE]/50 hover:bg-[#F4F7FE] cursor-pointer" onclick="togglePaymentGroup('${escapeHtml(prov)}','${escapeHtml(bu)}')">
+                            <tr class="bg-[#F4F7FE] hover:bg-[#E8ECF8] cursor-pointer" onclick="togglePaymentGroup('${escapeHtml(prov).replace(/'/g,"\\'")}','${escapeHtml(bu).replace(/'/g,"\\'")}')">
                                 <td></td>
                                 <td></td>
                                 <td class="px-4 py-2 text-[11px] font-black text-[#1B2559]">
                                     <i data-lucide="${groupExpanded ? 'chevron-down' : 'chevron-right'}" class="w-3 h-3 inline-block mr-1"></i>
-                                    ${escapeHtml(bu)} <span class="text-[9px] text-[#A3AED0]">(${trips.length})</span>
+                                    ${escapeHtml(bu)}
                                 </td>
                                 <td colspan="4"></td>
                                 <td class="px-4 py-2 text-right text-[12px] font-black text-[#1B2559]">${_formatCurrency(buTotal)}</td>
                                 <td></td>
                             </tr>
-                            ${tripsHtml}`;
+                            ${driverRowsHtml}
+                            <tr class="bg-[#E8ECF8] border-t border-[#D0D5DD]">
+                                <td></td>
+                                <td></td>
+                                <td class="px-4 py-2 text-[11px] font-black text-[#1B2559]">Total ${escapeHtml(bu)}</td>
+                                <td colspan="4"></td>
+                                <td class="px-4 py-2 text-right text-[12px] font-black text-[#1B2559]">${_formatCurrency(buTotal)}</td>
+                                <td></td>
+                            </tr>`;
                     }
                 }
+
                 grandTotal += provTotal;
+                const provEscKey = escapeHtml(prov).replace(/'/g, "\\'");
                 rows.push(`
-                    <tr class="bg-indigo-50 hover:bg-indigo-100 cursor-pointer font-bold" onclick="togglePaymentProvider('${escapeHtml(prov)}')">
+                    <tr class="bg-indigo-50 hover:bg-indigo-100 cursor-pointer font-bold" onclick="togglePaymentProvider('${provEscKey}')">
                         <td class="px-4 py-3 text-[#1B2559] text-center">
                             <i data-lucide="${provExpanded ? 'chevron-down' : 'chevron-right'}" class="w-4 h-4 inline-block"></i>
                         </td>
                         <td class="px-4 py-3 text-[12px] font-black text-[#1B2559]">${escapeHtml(prov)}</td>
-                        <td class="px-4 py-3 text-[10px] text-[#A3AED0]">${bus.length} UN</td>
-                        <td class="px-4 py-3 text-[10px] text-[#A3AED0]" colspan="4">${provTripCount} viajes</td>
+                        <td class="px-4 py-3 text-[10px] text-[#A3AED0]" colspan="5">${[...buMap.keys()].length} UN · ${provTripCount} viajes</td>
                         <td class="px-4 py-3 text-right text-[14px] font-black text-indigo-700">${_formatCurrency(provTotal)}</td>
                         <td></td>
                     </tr>
-                    ${provRowsHtml}`);
+                    ${provRowsHtml}
+                    <tr class="bg-indigo-100 border-t-2 border-indigo-300">
+                        <td></td>
+                        <td class="px-4 py-2 text-[11px] font-black text-indigo-900 uppercase">Total ${escapeHtml(prov)}</td>
+                        <td colspan="5"></td>
+                        <td class="px-4 py-2 text-right text-[13px] font-black text-indigo-900">${_formatCurrency(provTotal)}</td>
+                        <td></td>
+                    </tr>`);
             }
 
             if (rows.length === 0) {
@@ -11774,6 +11829,12 @@
             const key = prov + '|' + bu;
             if (_expandedGroups.has(key)) _expandedGroups.delete(key);
             else _expandedGroups.add(key);
+            renderPaymentsTable();
+        }
+
+        function togglePaymentDriverGroup(dgKey) {
+            if (_expandedDriverGroups.has(dgKey)) _expandedDriverGroups.delete(dgKey);
+            else _expandedDriverGroups.add(dgKey);
             renderPaymentsTable();
         }
 
