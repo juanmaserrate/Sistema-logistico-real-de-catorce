@@ -783,10 +783,10 @@
                                 <!-- Data Injected -->
                             </tbody>
                             <tfoot>
-                                <tr class="payments-total-row">
-                                    <td colspan="7" class="px-4 py-4 font-black text-[13px] uppercase tracking-widest">Total general</td>
-                                    <td id="payments-grand-total" class="px-4 py-4 font-black text-right text-[16px]">$ 0</td>
-                                    <td></td>
+                                <tr class="payments-total-row" style="background-color:#1B2559 !important;">
+                                    <td colspan="7" class="px-4 py-4 font-black text-[13px] uppercase tracking-widest" style="color:#ffffff !important; background-color:#1B2559 !important;"><span style="color:#ffffff !important;">Total general</span></td>
+                                    <td id="payments-grand-total" class="px-4 py-4 font-black text-right text-[16px]" style="color:#ffffff !important; background-color:#1B2559 !important;"><span style="color:#ffffff !important;">$ 0</span></td>
+                                    <td style="background-color:#1B2559 !important;"></td>
                                 </tr>
                             </tfoot>
                         </table>
@@ -11814,7 +11814,7 @@
             document.getElementById('payments-kpi-paid-count').textContent = `${paidArr.length} viaje${paidArr.length === 1 ? '' : 's'}`;
             document.getElementById('payments-kpi-total').textContent = _formatCurrency(totalAll);
             document.getElementById('payments-kpi-total-count').textContent = `${filtered.length} viaje${filtered.length === 1 ? '' : 's'}`;
-            document.getElementById('payments-grand-total').textContent = _formatCurrency(grandTotal);
+            document.getElementById('payments-grand-total').innerHTML = `<span style="color:#ffffff !important;">${_formatCurrency(grandTotal)}</span>`;
 
             if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
         }

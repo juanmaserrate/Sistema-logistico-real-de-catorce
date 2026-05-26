@@ -306,8 +306,15 @@ tbody tr:nth-child(even) { background: var(--surface); }
 tbody tr:hover { background: var(--surface-container-low) !important; }
 
 /* Footer del total general en Planilla de Pagos */
-tfoot tr.payments-total-row { background-color: #1B2559 !important; }
-tfoot tr.payments-total-row td { color: #ffffff !important; background-color: #1B2559 !important; }
+tfoot tr.payments-total-row,
+tfoot tr.payments-total-row td,
+tfoot tr.payments-total-row span,
+#view-payments tfoot tr.payments-total-row,
+#view-payments tfoot tr.payments-total-row td,
+#view-payments tfoot tr.payments-total-row span {
+    background-color: #1B2559 !important;
+    color: #ffffff !important;
+}
 
 .sticky-col { background: var(--surface-container-lowest); border-right: none; }
 
