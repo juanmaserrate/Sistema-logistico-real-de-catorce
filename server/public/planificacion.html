@@ -15719,16 +15719,46 @@
             document.getElementById('modal-salary-edit').classList.add('hidden');
         }
 
+        // Cache en memoria: evita reconsultar /users en cada apertura de modal.
+        // TTL 60s. Si hay rate limit (429), reusa el último cache válido aunque haya vencido.
+        const _usersCache = { byRole: new Map(), expires: 0, lastGood: new Map() };
+
         async function fetchUsersByRole(role) {
-            try {
-                const res = await fetch(`${API_URL}/users?role=${encodeURIComponent(role)}`, { headers: getActorHeaders() });
-                if (!res.ok) return [];
-                const data = await res.json();
-                return Array.isArray(data) ? data : [];
-            } catch (e) {
-                console.warn(`No se pudieron cargar usuarios ${role}:`, e);
-                return [];
+            const now = Date.now();
+            const cached = _usersCache.byRole.get(role);
+            if (cached && _usersCache.expires > now) return cached;
+
+            // Hasta 3 intentos con backoff exponencial frente a 429
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    const res = await fetch(`${API_URL}/users?role=${encodeURIComponent(role)}`, { headers: getActorHeaders() });
+                    if (res.ok) {
+                        const data = await res.json();
+                        const arr = Array.isArray(data) ? data : [];
+                        _usersCache.byRole.set(role, arr);
+                        _usersCache.lastGood.set(role, arr);
+                        _usersCache.expires = now + 60_000;
+                        return arr;
+                    }
+                    if (res.status === 429) {
+                        // Rate limit — esperar y reintentar
+                        await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+                        continue;
+                    }
+                    // Otro error: salir y devolver cache si existe
+                    break;
+                } catch (e) {
+                    console.warn(`fetchUsersByRole(${role}) attempt ${attempt+1}:`, e);
+                    if (attempt < 2) await new Promise(r => setTimeout(r, 1500));
+                }
             }
+            // Si no se pudo refrescar, devolver el ultimo cache bueno (aunque vencido)
+            const lastGood = _usersCache.lastGood.get(role);
+            if (lastGood && lastGood.length > 0) {
+                console.warn(`fetchUsersByRole(${role}): usando cache stale por rate limit`);
+                return lastGood;
+            }
+            return [];
         }
 
         // Mapa de nombre completo (uppercase) → { providerId, providerName }
