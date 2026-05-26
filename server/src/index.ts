@@ -1633,6 +1633,37 @@ app.get('/api/v1/control/active-routes', async (_req, res) => {
             orderBy: { id: 'asc' }
         });
 
+        // Traer la última DeviceLocation por route en UNA sola query (en vez de N).
+        // Usamos un SQL crudo via $queryRaw para tomar el row más reciente por routeId.
+        const routeIds = routes.map(r => r.id);
+        const lastLocations: Record<number, any> = {};
+        if (routeIds.length > 0) {
+            try {
+                const rows = await prisma.$queryRaw<any[]>`
+                    SELECT DISTINCT ON ("routeId")
+                        "routeId", id, latitude, longitude, accuracy, speed, heading,
+                        "offRouteMeters", "capturedAt", timestamp, "deviceLabel"
+                    FROM "DeviceLocation"
+                    WHERE "routeId" = ANY(${routeIds}::int[])
+                    ORDER BY "routeId", timestamp DESC
+                `;
+                for (const row of rows) {
+                    lastLocations[row.routeId] = {
+                        latitude: Number(row.latitude),
+                        longitude: Number(row.longitude),
+                        accuracy: row.accuracy != null ? Number(row.accuracy) : null,
+                        speed: row.speed != null ? Number(row.speed) : null,
+                        heading: row.heading != null ? Number(row.heading) : null,
+                        offRouteMeters: row.offRouteMeters != null ? Number(row.offRouteMeters) : null,
+                        timestamp: (row.capturedAt || row.timestamp)?.toISOString?.() ?? null,
+                        deviceLabel: row.deviceLabel ?? null,
+                    };
+                }
+            } catch (e: any) {
+                console.warn('active-routes: error trayendo locations:', e?.message || e);
+            }
+        }
+
         const out = routes.map((route: any) => {
             const sortedStops = [...(route.stops || [])].sort((a, b) => a.sequence - b.sequence);
             return {
@@ -1646,6 +1677,9 @@ app.get('/api/v1/control/active-routes', async (_req, res) => {
                 vehicle: route.vehicle?.plate || route.trip?.vehicle || 'S/D',
                 reparto: route.trip?.reparto || route.trip?.businessUnit || `Ruta #${route.id}`,
                 businessUnit: route.trip?.businessUnit ?? null,
+                auxiliar: route.trip?.auxiliar ?? null,
+                auxiliar2: route.trip?.auxiliar2 ?? null,
+                lastLocation: lastLocations[route.id] ?? null,
                 stops: sortedStops.map((s: any) => ({
                     stopId: s.id,
                     sequence: s.sequence,
