@@ -4126,21 +4126,106 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
             }
         }
 
-        await prisma.$transaction([
-            prisma.stop.deleteMany({ where: { routeId: route.id } }),
-            ...(clientIds.length
-                ? [
-                      prisma.stop.createMany({
-                          data: clientIds.map((clientId, idx) => ({
-                              routeId: route!.id,
-                              clientId,
-                              sequence: idx + 1,
-                              status: 'PENDING'
-                          }))
-                      })
-                  ]
-                : [])
-        ]);
+        // ─── PRESERVAR PROGRESO DEL CHOFER ─────────────────────────────
+        // BUG HISTORICO: este endpoint borraba TODAS las paradas y las recreaba
+        // con status PENDING. Si un chofer ya marcaba paradas como entregadas,
+        // sacaba foto, registraba arrival/departure, todo eso se perdia cuando
+        // el operador apretaba "Guardar" en el chevron del viaje desde la web.
+        //
+        // POLITICA NUEVA: para cada clientId en el request, si ya existe una
+        // parada para ese cliente en este route, la REUTILIZAMOS conservando
+        // su status, arrival, departure, foto, observaciones, etc. Solo
+        // actualizamos su `sequence` al nuevo orden.
+        // Las paradas que quedan fuera del request:
+        //   - Si tenian progreso (status != PENDING o con arrival/foto) → se
+        //     conservan al final (no se borran, para no perder evidencia).
+        //   - Si estaban en PENDING sin progreso → se borran.
+        const existingStops = await prisma.stop.findMany({
+            where: { routeId: route.id },
+            select: {
+                id: true, clientId: true, sequence: true, status: true,
+                actualArrival: true, actualDeparture: true, observations: true,
+                reasonCode: true, proofPhotoUrl: true, deliveryWithoutIssues: true,
+                signatureUrl: true, plannedSequence: true, plannedEta: true
+            }
+        });
+
+        const hasProgress = (s: any) => {
+            const st = String(s.status || '').toUpperCase();
+            return (
+                (st && st !== 'PENDING') ||
+                s.actualArrival != null ||
+                s.actualDeparture != null ||
+                s.proofPhotoUrl != null ||
+                s.signatureUrl != null
+            );
+        };
+
+        // Index de existentes por clientId. Si hay duplicados, preferimos el que tenga progreso.
+        const byClient = new Map<string, any[]>();
+        for (const s of existingStops) {
+            const arr = byClient.get(s.clientId) || [];
+            arr.push(s);
+            byClient.set(s.clientId, arr);
+        }
+        for (const arr of byClient.values()) {
+            arr.sort((a, b) => (hasProgress(b) ? 1 : 0) - (hasProgress(a) ? 1 : 0));
+        }
+
+        const ops: any[] = [];
+        const usedIds = new Set<number>();
+        clientIds.forEach((clientId, idx) => {
+            const candidates = byClient.get(clientId) || [];
+            const existing = candidates.find((s) => !usedIds.has(s.id));
+            if (existing) {
+                // REUTILIZAR la parada existente. Solo actualizamos su sequence.
+                usedIds.add(existing.id);
+                if (existing.sequence !== idx + 1) {
+                    ops.push(prisma.stop.update({
+                        where: { id: existing.id },
+                        data: { sequence: idx + 1 }
+                    }));
+                }
+            } else {
+                // CREAR nueva parada en PENDING
+                ops.push(prisma.stop.create({
+                    data: {
+                        routeId: route!.id,
+                        clientId,
+                        sequence: idx + 1,
+                        status: 'PENDING'
+                    }
+                }));
+            }
+        });
+
+        // Paradas que quedaron fuera del nuevo orden
+        const toDelete: number[] = [];
+        for (const s of existingStops) {
+            if (usedIds.has(s.id)) continue;
+            if (hasProgress(s)) {
+                // Tiene progreso del chofer → no la perdemos. La movemos al final
+                // del orden con su sequence actualizado para que el operador la
+                // vea pero no estorbe el nuevo plan.
+                const newSeq = clientIds.length + 1 + toDelete.length;
+                if (s.sequence !== newSeq) {
+                    ops.push(prisma.stop.update({
+                        where: { id: s.id },
+                        data: { sequence: newSeq }
+                    }));
+                }
+            } else {
+                // Sin progreso → se puede borrar limpiamente
+                toDelete.push(s.id);
+            }
+        }
+        if (toDelete.length > 0) {
+            ops.push(prisma.stop.deleteMany({ where: { id: { in: toDelete } } }));
+        }
+
+        if (ops.length > 0) {
+            await prisma.$transaction(ops);
+        }
 
         // Notificar al chofer asignado y a cualquier listener global que las paradas cambiaron,
         // así la app móvil y el Torre de Control refrescan sin intervención del usuario.
