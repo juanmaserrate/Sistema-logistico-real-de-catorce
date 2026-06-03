@@ -4113,6 +4113,41 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
         }
 
         let route = await prisma.route.findUnique({ where: { tripId } });
+
+        // ─── GUARD DURO: si el viaje ya empezó, RECHAZAR el reemplazo ───
+        // Esto evita el bug que afectó al R1, R7 y otros: cuando el chofer
+        // ya marcó paradas (con foto, hora, etc), un PUT genérico borraba todo.
+        // El operador tiene que usar el modal de "Editar viaje" si realmente
+        // necesita modificar paradas en curso, que va con un flag explícito.
+        if (route) {
+            const tripStarted = !!route.actualStartTime;
+            // Detectar paradas con progreso del chofer
+            const stopsWithProgress = await prisma.stop.count({
+                where: {
+                    routeId: route.id,
+                    OR: [
+                        { status: { not: 'PENDING' } },
+                        { actualArrival: { not: null } },
+                        { actualDeparture: { not: null } },
+                        { proofPhotoUrl: { not: null } },
+                        { signatureUrl: { not: null } },
+                    ]
+                }
+            });
+            const force = String(req.headers['x-force-replace'] || '').toLowerCase() === 'true';
+            if ((tripStarted || stopsWithProgress > 0) && !force) {
+                return res.status(409).json({
+                    error: 'El viaje ya empezó o tiene paradas marcadas por el chofer. ' +
+                           'No se pueden reemplazar las paradas para no perder el progreso. ' +
+                           'Si realmente necesitás modificar, usá el modal de "Editar viaje" o ' +
+                           'envía el header X-Force-Replace: true (preserva paradas con progreso de todos modos).',
+                    code: 'ROUTE_STARTED_PROTECTED',
+                    routeStarted: tripStarted,
+                    stopsWithProgress
+                });
+            }
+        }
+
         if (!route) {
             const repartoUser = await resolveRepartoUserForTrip(trip, tenantId);
             if (!repartoUser) throw new Error('Asigná un reparto o chofer válido al viaje');
