@@ -4050,9 +4050,13 @@ app.get('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
             where: { tripId },
             include: { stops: { orderBy: { sequence: 'asc' }, include: { client: true } } }
         });
-        if (!route) return res.json({ routeId: null, stops: [] });
+        if (!route) return res.json({ routeId: null, routeStatus: null, routeStarted: false, stops: [] });
         res.json({
             routeId: route.id,
+            routeStatus: route.status,
+            routeStarted: route.actualStartTime != null,
+            actualStartTime: route.actualStartTime?.toISOString() ?? null,
+            actualEndTime: route.actualEndTime?.toISOString() ?? null,
             stops: route.stops.map((s) => ({
                 id: s.id,
                 sequence: s.sequence,
@@ -4060,7 +4064,16 @@ app.get('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
                 name: s.client?.name || 'Cliente',
                 address: s.client?.address || null,
                 latitude: s.client?.latitude ?? null,
-                longitude: s.client?.longitude ?? null
+                longitude: s.client?.longitude ?? null,
+                // Progreso del chofer (campos clave que permiten saber si la parada se tocó)
+                status: s.status || 'PENDING',
+                actualArrival: s.actualArrival?.toISOString() ?? null,
+                actualDeparture: s.actualDeparture?.toISOString() ?? null,
+                observations: s.observations ?? null,
+                reasonCode: s.reasonCode ?? null,
+                proofPhotoUrl: s.proofPhotoUrl ?? null,
+                deliveryWithoutIssues: s.deliveryWithoutIssues ?? null,
+                signatureUrl: s.signatureUrl ?? null
             }))
         });
     } catch (e: any) {
