@@ -1061,6 +1061,15 @@ app.get('/api/v1/settings/:key', async (req, res) => {
                     process.env.GOOGLE_MAPS_SERVER_KEY ||
                     null;
         }
+        // Fallback para token publico de Mapbox: usar env var si no esta en DB.
+        // Esto permite al frontend (Torre de Control) cargar Mapbox GL JS
+        // sin tener que configurar nada extra cuando MAPBOX_ACCESS_TOKEN
+        // ya esta seteado en Railway.
+        if (req.params.key === 'mapbox_access_token_public' && !value) {
+            value = process.env.MAPBOX_ACCESS_TOKEN ||
+                    process.env.MAPBOX_TOKEN ||
+                    null;
+        }
         res.json(value);
     } catch (e) {
         res.status(500).json({ error: "Failed to fetch setting" });

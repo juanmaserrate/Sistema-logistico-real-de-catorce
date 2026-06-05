@@ -15,6 +15,10 @@
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
     <script src="/vendor/markerclusterer.min.js"></script>
+    <!-- Mapbox GL JS - reemplaza Google Maps para Torre de Control.
+         Plan gratuito: 50k cargas de mapa/mes. -->
+    <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
+    <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
     <link rel="stylesheet" href="/css/planificacion.css">
     <script src="/js/r14-utils.js"></script>
     <script src="/js/r14-notifications.js"></script>
@@ -2993,6 +2997,12 @@
         let controlMarkersByTrip = new Map();
         let controlGoogleTrafficLayer = null;
         let googleMapsLoaderPromise = null;
+        let mapboxLoaderPromise = null;
+        // Migracion Google Maps -> Mapbox GL JS para Torre de Control.
+        // Mapbox usa layers/sources en lugar de objetos Polyline. Arrays guardan
+        // los IDs de layers/sources para poder limpiarlos correctamente.
+        let mapboxPlannedLayerIds = []; // ['planned-route-{routeId}', ...]
+        let mapboxTrailLayerIds = [];   // ['trail-{routeId}', ...]
         let controlLiveData = [];
         let controlAutoRefreshTimer = null;
         let controlPlannedPolylines = [];
@@ -3658,7 +3668,8 @@
             if(id === 'control') {
                 checkExpiryAlerts();
                 setTimeout(() => {
-                    if (controlMap) google.maps.event.trigger(controlMap, 'resize');
+                    // MAPBOX: en lugar de google.maps.event.trigger resize, controlMap.resize()
+                    if (controlMap && typeof controlMap.resize === 'function') controlMap.resize();
                 }, 100);
                 // Cargar el panel de TODAS las rutas activas con paradas y horarios
                 if (typeof startAllActiveRoutesPolling === 'function') startAllActiveRoutesPolling();
@@ -4303,6 +4314,46 @@
             return googleMapsLoaderPromise;
         }
 
+        // ─── MAPBOX GL JS ──────────────────────────────────────────────
+        // Reemplaza Google Maps en Torre de Control. Mapbox tiene plan free
+        // de 50k cargas/mes y es independiente del saldo de Google.
+        let __MAPBOX_TOKEN_CACHE = null;
+        async function getMapboxToken() {
+            if (__MAPBOX_TOKEN_CACHE) return __MAPBOX_TOKEN_CACHE;
+            try {
+                const res = await fetch(`${API_URL}/settings/mapbox_access_token_public`);
+                const data = res.ok ? await res.json() : null;
+                const token = typeof data === 'string' ? data.trim() : '';
+                if (token) {
+                    __MAPBOX_TOKEN_CACHE = token;
+                    return token;
+                }
+            } catch (e) {
+                console.warn('Error fetching Mapbox token:', e);
+            }
+            return null;
+        }
+
+        async function ensureMapboxLoaded() {
+            // El script y CSS ya estan en <head>. Solo esperamos a que window.mapboxgl exista.
+            if (window.mapboxgl) return true;
+            if (mapboxLoaderPromise) return mapboxLoaderPromise;
+            mapboxLoaderPromise = new Promise((resolve) => {
+                let tries = 0;
+                const check = () => {
+                    if (window.mapboxgl) return resolve(true);
+                    tries++;
+                    if (tries > 50) return resolve(false); // 5 seg timeout
+                    setTimeout(check, 100);
+                };
+                check();
+            });
+            return mapboxLoaderPromise;
+        }
+
+        /** Estilo de mapa Mapbox - streets-v12 es similar al default de Google Maps */
+        const MAPBOX_STYLE = 'mapbox://styles/mapbox/streets-v12';
+
         /** Agrupación de pins — usa el script local ya cargado en <head> (sin CDN) */
         async function loadVrpClustererModule() {
             if (vrpClustererModulePromise) return vrpClustererModulePromise;
@@ -4325,8 +4376,16 @@
 
         function toggleControlTraffic(on) {
             controlShowTraffic = !!on;
-            if (controlGoogleTrafficLayer && controlMap) {
-                controlGoogleTrafficLayer.setMap(controlShowTraffic ? controlMap : null);
+            // Mapbox: usar el estilo traffic-day-v2 para mostrar trafico.
+            // Si lo apaga, volver al estilo streets-v12.
+            if (!controlMap) return;
+            try {
+                const desired = controlShowTraffic
+                    ? 'mapbox://styles/mapbox/traffic-day-v2'
+                    : MAPBOX_STYLE;
+                controlMap.setStyle(desired);
+            } catch (e) {
+                console.warn('Mapbox setStyle traffic:', e);
             }
         }
 
@@ -4338,16 +4397,16 @@
                 if (!controlIsTripVisible(String(it.tripId))) return;
                 const loc = it.lastLocation;
                 if (loc && loc.latitude != null && loc.longitude != null) {
-                    markerPts.push({ lat: loc.latitude, lng: loc.longitude });
+                    markerPts.push([loc.longitude, loc.latitude]); // Mapbox usa [lng, lat]
                 }
             });
             if (markerPts.length > 0) {
-                const bounds = new google.maps.LatLngBounds();
+                const bounds = new mapboxgl.LngLatBounds();
                 markerPts.forEach((p) => bounds.extend(p));
-                controlMap.fitBounds(bounds, { top: 60, right: 60, bottom: 60, left: 60 });
+                controlMap.fitBounds(bounds, { padding: 60, maxZoom: 15 });
             } else {
-                // Sin choferes visibles: centrar en base R14 (Ombú 1260, Burzaco)
-                controlMap.setCenter({ lat: -34.8279, lng: -58.3930 });
+                // Sin choferes visibles: centrar en base R14 (Ombu 1260, Burzaco)
+                controlMap.setCenter([-58.3930, -34.8279]);
                 controlMap.setZoom(13);
             }
         }
@@ -4357,7 +4416,9 @@
             if (!mapEl || !controlMap) return;
             try {
                 new ResizeObserver(() => {
-                    google.maps.event.trigger(controlMap, 'resize');
+                    if (controlMap && typeof controlMap.resize === 'function') {
+                        controlMap.resize();
+                    }
                 }).observe(mapEl);
             } catch (e) {
                 console.warn('ResizeObserver no soportado:', e);
@@ -4371,71 +4432,96 @@
             const trafficCb = document.getElementById('control-show-traffic');
             if (trafficCb) controlShowTraffic = !!trafficCb.checked;
 
-            const apiKey = getGoogleMapsKey();
-            if (!apiKey) {
+            // MIGRACION A MAPBOX: ya no usamos Google Maps en Torre de Control.
+            // Si hay token de Mapbox, lo usamos. Si no hay, mostramos error.
+            const mbToken = await getMapboxToken();
+            if (!mbToken) {
                 controlMap = null;
                 el.innerHTML = `
                     <div class="h-full w-full flex items-center justify-center p-6 text-center">
                         <div class="max-w-md">
-                            <p class="text-sm font-bold text-rose-600">Falta la clave de Google Maps.</p>
-                            <p class="text-xs text-[#A3AED0] mt-2">Revisá la configuración del servidor en las variables de entorno.</p>
+                            <p class="text-sm font-bold text-rose-600">Falta el token de Mapbox.</p>
+                            <p class="text-xs text-[#A3AED0] mt-2">Configurá MAPBOX_ACCESS_TOKEN en las variables de entorno del servidor.</p>
                         </div>
                     </div>
                 `;
                 return;
             }
-            try {
-                await loadGoogleMapsScript(apiKey);
-                if (!controlMap) {
-                    el.innerHTML = '';
-                    const baBounds = getControlBaLatLngBoundsGoogle();
-                    controlMap = new google.maps.Map(el, {
-                        center: { lat: -34.8279, lng: -58.3930 }, // Ombú 1260, Burzaco
-                        zoom: 13,
-                        minZoom: 10,
-                        maxZoom: 18,
-                        mapTypeControl: false,
-                        streetViewControl: false,
-                        fullscreenControl: true,
-                        gestureHandling: 'greedy',
-                        tilt: 0,
-                        isFractionalZoomEnabled: true,
-                        clickableIcons: false,
-                        restriction: {
-                            latLngBounds: baBounds,
-                            strictBounds: true
-                        }
-                    });
-                    controlGoogleTrafficLayer = new google.maps.TrafficLayer();
-                    if (controlShowTraffic) controlGoogleTrafficLayer.setMap(controlMap);
 
-                    // Encuadre inicial centrado en base R14 (Ombú 1260, Burzaco)
-                    // No hace fitBounds a toda Buenos Aires — queda en zoom 13 sobre la base
-                }
-            } catch (e) {
-                console.error('Google Maps init error:', e);
+            const mapboxReady = await ensureMapboxLoaded();
+            if (!mapboxReady || !window.mapboxgl) {
                 controlMap = null;
                 el.innerHTML = `
                     <div class="h-full w-full flex items-center justify-center p-6 text-center">
                         <div class="max-w-md">
-                            <p class="text-sm font-bold text-rose-600">No se pudo inicializar Google Maps.</p>
-                            <p class="text-xs text-[#A3AED0] mt-2">Verificá restricciones de la clave (Maps JavaScript API).</p>
+                            <p class="text-sm font-bold text-rose-600">No se pudo cargar Mapbox GL JS.</p>
+                            <p class="text-xs text-[#A3AED0] mt-2">Revisá tu conexión a Internet.</p>
+                        </div>
+                    </div>
+                `;
+                return;
+            }
+
+            try {
+                if (!controlMap) {
+                    el.innerHTML = '';
+                    mapboxgl.accessToken = mbToken;
+                    controlMap = new mapboxgl.Map({
+                        container: el,
+                        style: MAPBOX_STYLE,
+                        center: [-58.3930, -34.8279], // [lng, lat] Ombu 1260, Burzaco
+                        zoom: 12,
+                        minZoom: 10,
+                        maxZoom: 18,
+                        maxBounds: [
+                            [CONTROL_BA_BOUNDS.west, CONTROL_BA_BOUNDS.south], // SW
+                            [CONTROL_BA_BOUNDS.east, CONTROL_BA_BOUNDS.north]  // NE
+                        ],
+                        attributionControl: true,
+                        cooperativeGestures: false
+                    });
+                    // Controles basicos: zoom + brujula + fullscreen
+                    controlMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
+                    controlMap.addControl(new mapboxgl.FullscreenControl(), 'top-right');
+
+                    // Esperar a que cargue el estilo (necesario antes de agregar layers)
+                    await new Promise((resolve) => {
+                        if (controlMap.isStyleLoaded()) return resolve();
+                        controlMap.once('load', resolve);
+                    });
+                }
+            } catch (e) {
+                console.error('Mapbox init error:', e);
+                controlMap = null;
+                el.innerHTML = `
+                    <div class="h-full w-full flex items-center justify-center p-6 text-center">
+                        <div class="max-w-md">
+                            <p class="text-sm font-bold text-rose-600">No se pudo inicializar Mapbox.</p>
+                            <p class="text-xs text-[#A3AED0] mt-2">Verifica el token de Mapbox y conexion a Internet.</p>
                         </div>
                     </div>
                 `;
             }
         }
 
+        // Helper Mapbox: remover un layer + source por ID si existen
+        function _mbRemoveLayerAndSource(layerId) {
+            if (!controlMap) return;
+            try { if (controlMap.getLayer(layerId)) controlMap.removeLayer(layerId); } catch (_) {}
+            try { if (controlMap.getLayer(layerId + '-arrows')) controlMap.removeLayer(layerId + '-arrows'); } catch (_) {}
+            try { if (controlMap.getSource(layerId)) controlMap.removeSource(layerId); } catch (_) {}
+        }
+
         function clearControlPlannedPolylines() {
-            controlPlannedPolylines.forEach((layer) => {
-                try { if (controlMap) layer.setMap(null); } catch (_) {}
-            });
+            // MAPBOX: removemos layers/sources por ID en lugar de setMap(null)
+            mapboxPlannedLayerIds.forEach((id) => _mbRemoveLayerAndSource(id));
+            mapboxPlannedLayerIds = [];
             controlPlannedPolylines = [];
         }
 
         function clearControlPlannedStopMarkers() {
             controlPlannedStopMarkers.forEach((m) => {
-                try { if (controlMap) m.setMap(null); } catch (_) {}
+                try { if (m && typeof m.remove === 'function') m.remove(); } catch (_) {}
             });
             controlPlannedStopMarkers = [];
         }
@@ -4443,24 +4529,22 @@
         function clearControlLiveMarkers() {
             if (!controlMap) return;
             controlMarkersByTrip.forEach((m) => {
-                try { m.setMap(null); } catch (_) {}
+                try { m.remove(); } catch (_) {}
             });
             controlMarkersByTrip.clear();
         }
 
         function clearControlTrailPolylines() {
-            // Bug fix: además del array legacy controlTrailPolylines, también iteramos el
-            // Map controlTrailByRouteId. Si por alguna race condition una polyline se
-            // creó solo en el Map (ej. desde socket sin pasar por loadControlTrailAllActive),
-            // antes quedaba huérfana en el mapa al cambiar de día/sesión.
-            controlTrailPolylines.forEach((layer) => {
-                try { if (controlMap) layer.setMap(null); } catch (_) {}
-            });
+            // MAPBOX: remover layers/sources de trails
+            mapboxTrailLayerIds.forEach((id) => _mbRemoveLayerAndSource(id));
+            mapboxTrailLayerIds = [];
             controlTrailPolylines = [];
             try {
                 if (typeof controlTrailByRouteId !== 'undefined' && controlTrailByRouteId && controlTrailByRouteId.forEach) {
                     controlTrailByRouteId.forEach((entry) => {
-                        try { if (entry?.polyline && controlMap) entry.polyline.setMap(null); } catch (_) {}
+                        try {
+                            if (entry?.layerId) _mbRemoveLayerAndSource(entry.layerId);
+                        } catch (_) {}
                     });
                     controlTrailByRouteId.clear();
                 }
@@ -4534,6 +4618,13 @@
             }).join('');
         }
 
+        /** Helper Mapbox: mostrar/ocultar marker via display CSS del elemento */
+        function _mbSetMarkerVisible(marker, visible) {
+            if (!marker) return;
+            const el = typeof marker.getElement === 'function' ? marker.getElement() : null;
+            if (el) el.style.display = visible ? '' : 'none';
+        }
+
         function controlToggleTrip(tripId) {
             if (!controlVisibleTrips) return;
             const tid = String(tripId);
@@ -4542,13 +4633,11 @@
             } else {
                 controlVisibleTrips.add(tid);
             }
-            // Re-render chips
             controlBuildDriverChips(controlLiveData);
-            // Actualizar visibilidad de markers GPS
+            // MAPBOX: visibilidad via display CSS
             controlMarkersByTrip.forEach((marker, id) => {
-                marker.setVisible(controlIsTripVisible(id));
+                _mbSetMarkerVisible(marker, controlIsTripVisible(id));
             });
-            // Actualizar polylines y stop markers de rutas planificadas
             controlUpdatePlannedVisibility();
         }
 
@@ -4562,70 +4651,77 @@
             }
             controlBuildDriverChips(controlLiveData);
             controlMarkersByTrip.forEach((marker, id) => {
-                marker.setVisible(controlIsTripVisible(id));
+                _mbSetMarkerVisible(marker, controlIsTripVisible(id));
             });
             controlUpdatePlannedVisibility();
         }
 
-        /** Ocultar/mostrar polylines y stop markers según filtro */
+        /** Ocultar/mostrar polylines y stop markers segun filtro - MAPBOX */
         function controlUpdatePlannedVisibility() {
-            // Polylines: cada polyline se creó en orden de routeId, mapeo a trip
+            if (!controlMap) return;
             const routeToTrip = new Map();
             (controlLiveData || []).forEach((it) => {
                 if (it.plannedRouteId) routeToTrip.set(Number(it.plannedRouteId), String(it.tripId));
             });
 
-            // Polylines
+            // Polylines: usar setLayoutProperty visibility en Mapbox
             const routeIds = [...controlPlannedStopsMetaByRouteId.keys()];
-            controlPlannedPolylines.forEach((poly, idx) => {
+            mapboxPlannedLayerIds.forEach((layerId, idx) => {
                 const rid = routeIds[idx];
                 const tid = rid != null ? routeToTrip.get(Number(rid)) : null;
                 const visible = tid ? controlIsTripVisible(tid) : true;
-                poly.setVisible(visible);
+                try {
+                    if (controlMap.getLayer(layerId)) {
+                        controlMap.setLayoutProperty(layerId, 'visibility', visible ? 'visible' : 'none');
+                    }
+                    if (controlMap.getLayer(layerId + '-arrows')) {
+                        controlMap.setLayoutProperty(layerId + '-arrows', 'visibility', visible ? 'visible' : 'none');
+                    }
+                } catch (_) {}
             });
 
-            // Stop markers
+            // Stop markers Mapbox: visibilidad via display CSS
             controlPlannedStopMarkers.forEach((m) => {
-                // El title tiene formato "N. Nombre" o "Siguiente · N. Nombre"
-                // Tenemos que checar por routeId del marker
-                // Workaround: guardar routeId en el marker
                 const rid = m.__routeId;
                 const tid = rid != null ? routeToTrip.get(Number(rid)) : null;
                 const visible = tid ? controlIsTripVisible(tid) : true;
-                m.setVisible(visible);
+                _mbSetMarkerVisible(m, visible);
             });
         }
 
         function appendControlPlannedStopMarkers(routeId, color, stops, items) {
+            if (!controlMap) return;
             const nextForRoute = (items || []).find((it) => Number(it.plannedRouteId) === routeId)?.nextPlannedStop;
             for (const st of stops) {
                 const seq = Number(st.sequence);
                 const isNext = nextForRoute && Number(st.stopId) === Number(nextForRoute.stopId);
-                const title = isNext ? `Siguiente · ${seq}. ${st.name || 'Parada'}` : `${seq}. ${st.name || 'Parada'}`;
+                const title = isNext ? `Siguiente . ${seq}. ${st.name || 'Parada'}` : `${seq}. ${st.name || 'Parada'}`;
                 const fillCol = isNext ? '#d97706' : color;
-                const z = isNext ? 6 : 3;
+                const size = isNext ? 28 : 22;
 
-                const m = new google.maps.Marker({
-                    map: controlMap,
-                    position: { lat: st.lat, lng: st.lng },
-                    zIndex: z,
-                    label: {
-                        text: String(seq),
-                        color: '#ffffff',
-                        fontSize: isNext ? '12px' : '11px',
-                        fontWeight: '700'
-                    },
-                    icon: {
-                        path: google.maps.SymbolPath.CIRCLE,
-                        scale: isNext ? 14 : 11,
-                        fillColor: fillCol,
-                        fillOpacity: 1,
-                        strokeColor: isNext ? '#fde68a' : '#ffffff',
-                        strokeWeight: isNext ? 3 : 2
-                    },
-                    title
-                });
-                m.__routeId = routeId; // Para filtro de choferes
+                // MAPBOX: marker como div circular con numero
+                const el = document.createElement('div');
+                el.className = 'r14-stop-marker';
+                el.style.width = size + 'px';
+                el.style.height = size + 'px';
+                el.style.borderRadius = '50%';
+                el.style.background = fillCol;
+                el.style.color = '#ffffff';
+                el.style.border = isNext ? '3px solid #fde68a' : '2px solid #ffffff';
+                el.style.boxShadow = '0 2px 6px rgba(0,0,0,0.35)';
+                el.style.display = 'flex';
+                el.style.alignItems = 'center';
+                el.style.justifyContent = 'center';
+                el.style.fontSize = isNext ? '12px' : '11px';
+                el.style.fontWeight = '700';
+                el.style.cursor = 'pointer';
+                el.title = title;
+                el.textContent = String(seq);
+
+                const m = new mapboxgl.Marker({ element: el, anchor: 'center' })
+                    .setLngLat([st.lng, st.lat])
+                    .addTo(controlMap);
+                m.__routeId = routeId;
                 controlPlannedStopMarkers.push(m);
             }
         }
@@ -4719,18 +4815,40 @@
                         if (!res.ok || !data.points || data.points.length < 2) continue;
 
                         const thinned = thinRoutePointsForMap(data.points, maxPts);
-                        
                         const path = thinned.map((p) => ({ lat: p.lat, lng: p.lng }));
-                        const poly = new google.maps.Polyline({
-                            path,
-                            geodesic: true,
-                            strokeColor: color,
-                            strokeOpacity: 0.88,
-                            strokeWeight: 4,
-                            zIndex: 1,
-                            map: controlMap
-                        });
-                        controlPlannedPolylines.push(poly);
+
+                        // MAPBOX: crear source + line layer
+                        const layerId = `planned-route-${routeId}`;
+                        const geojson = {
+                            type: 'Feature',
+                            properties: {},
+                            geometry: {
+                                type: 'LineString',
+                                coordinates: path.map(p => [p.lng, p.lat])
+                            }
+                        };
+                        try {
+                            // Cleanup previo por si quedo de un render anterior
+                            _mbRemoveLayerAndSource(layerId);
+                            controlMap.addSource(layerId, { type: 'geojson', data: geojson });
+                            controlMap.addLayer({
+                                id: layerId,
+                                type: 'line',
+                                source: layerId,
+                                layout: { 'line-join': 'round', 'line-cap': 'round' },
+                                paint: {
+                                    'line-color': color,
+                                    'line-width': 4,
+                                    'line-opacity': 0.88
+                                }
+                            });
+                            mapboxPlannedLayerIds.push(layerId);
+                            // Marker fantasma para mantener compat con codigo viejo que usa .length
+                            controlPlannedPolylines.push({ __layerId: layerId, __color: color });
+                        } catch (e) {
+                            console.warn('Mapbox addLayer planned:', e);
+                        }
+
                         path.forEach((p) => allBoundsPoints.push(p));
 
                         const stops = Array.isArray(data.stops) ? data.stops : [];
@@ -4746,9 +4864,7 @@
                             color
                         });
                         appendControlPlannedStopMarkers(routeId, color, stops, items);
-                        stops.forEach((st) =>
-                            allBoundsPoints.push({ lat: st.lat, lng: st.lng })
-                        );
+                        stops.forEach((st) => allBoundsPoints.push({ lat: st.lat, lng: st.lng }));
                     } catch (e) {
                         console.warn('geometry route', routeId, e);
                     }
@@ -4763,30 +4879,13 @@
                         markerPts.push({ lat: loc.latitude, lng: loc.longitude });
                     }
                 });
-                const routePtsFromPolys = (() => {
-                    const acc = [];
-                    for (const poly of controlPlannedPolylines) {
-                        try {
-                            if (poly.getPath) {
-                                poly.getPath().forEach((latlng) =>
-                                    acc.push({ lat: latlng.lat(), lng: latlng.lng() })
-                                );
-                            }
-                        } catch (_) {}
-                    }
-                    return acc;
-                })();
-                const combined = markerPts.concat(routePtsFromPolys.length ? routePtsFromPolys : allBoundsPoints);
+                const combined = markerPts.concat(allBoundsPoints);
                 if (combined.length === 0) return;
                 try {
-                    const bounds = new google.maps.LatLngBounds();
-                    combined.forEach((p) => bounds.extend(p));
-                    controlMap.fitBounds(bounds, { top: 60, right: 60, bottom: 60, left: 60 });
-                    setTimeout(() => {
-                        if (controlMap.getZoom() > 13) controlMap.setZoom(13);
-                    }, 100);
+                    const bounds = new mapboxgl.LngLatBounds();
+                    combined.forEach((p) => bounds.extend([p.lng, p.lat]));
+                    controlMap.fitBounds(bounds, { padding: 60, maxZoom: 13 });
                 } catch (_) {}
-                // Aplicar filtro de choferes a polylines y stop markers recién creados
                 controlUpdatePlannedVisibility();
             }
         }
@@ -4885,23 +4984,22 @@
             return (toDeg(Math.atan2(y, x)) + 360) % 360;
         }
 
-        /** Genera un ícono solo con el camión (sin la píldora del reparto).
-         *  Flippea horizontalmente cuando el bearing indica que va al este. */
-        function makeTruckIcon(_repartoLabel, _color, bearingDeg) {
-            const truckW = 72;       // ancho del camión renderizado
-            const truckH = 36;       // alto (mantiene aspect ratio del PNG ~2:1)
+        /** Genera SVG del camion. Para Mapbox devolvemos el SVG como string
+         *  para inyectar en un elemento HTML. */
+        function makeTruckIconSvg(bearingDeg) {
+            const truckW = 72;
+            const truckH = 36;
             const w = truckW;
             const h = truckH;
 
             const hasBearing = bearingDeg != null && Number.isFinite(bearingDeg);
-            // Si va hacia el ESTE (bearing 0-180 excluyendo norte/sur), flipear horizontal
             const flipH = hasBearing && bearingDeg > 0 && bearingDeg < 180;
             const tcx = w / 2;
             const flipTransform = flipH ? `scale(-1,1) translate(${-2 * tcx},0)` : '';
 
             const truckImgUrl = _truckImageDataUrl || '';
 
-            const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
+            return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
   <defs>
     <filter id="sh" x="-10%" y="-10%" width="120%" height="130%">
       <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#0f172a" flood-opacity="0.35"/>
@@ -4917,116 +5015,120 @@
       </g>`
   }
 </svg>`;
+        }
+
+        /** LEGACY: para compatibilidad con codigo que aun la llama.
+         *  Devuelve formato Google Maps icon (sera removido cuando todo migre). */
+        function makeTruckIcon(_repartoLabel, _color, bearingDeg) {
+            const svg = makeTruckIconSvg(bearingDeg);
             return {
                 url: 'data:image/svg+xml;charset=UTF-8,' + encodeURIComponent(svg),
-                scaledSize: new google.maps.Size(w, h),
-                anchor: new google.maps.Point(w / 2, h / 2)
+                // Sin google.maps disponible, devolvemos solo url y dejamos sizing al caller
+                width: 72,
+                height: 36
             };
         }
 
-        /** Ubicaciones GPS: actualizar posición sin borrar markers ni fitBounds (evita trabarse cada poll) */
+        /** Ubicaciones GPS: actualizar posicion sin borrar markers. MAPBOX VERSION. */
         function renderControlMap(items) {
             if (!controlMap) return;
             // Actualizar chips de filtro con los datos actuales
             controlBuildDriverChips(items);
             const seen = new Set();
-            const leafPopHtml = (it, loc) => {
-                const dev =
-                    loc.offRouteMeters != null && Number.isFinite(Number(loc.offRouteMeters))
-                        ? `${Math.round(Number(loc.offRouteMeters))} m`
-                        : null;
-                return `
-                            <div class="text-xs">
-                                <div class="font-black text-[#1B2559]">${it.driver || 'SIN CHOFER'}</div>
-                                <div class="font-bold text-[#2B3674]">${it.vehicle || 'S/D'} · ${it.reparto || '--'}</div>
-                                <div class="text-[#A3AED0]">Estado: ${it.status || '--'}</div>
-                                ${dev ? `<div class="text-amber-700 font-bold">Desvío: ${dev}</div>` : ''}
-                                <div class="text-[#A3AED0]">${new Date(loc.timestamp).toLocaleString('es-AR')}</div>
-                            </div>`;
-            };
+
             (items || []).forEach((it) => {
                 const loc = it.lastLocation;
                 if (!loc || loc.latitude == null || loc.longitude == null) return;
                 const id = String(it.tripId);
                 seen.add(id);
-                const pos = { lat: Number(loc.latitude), lng: Number(loc.longitude) };
-                const fillColor = it.status === 'OUT_OF_PLANT' ? '#10B981' : '#4F46E5';
+                const lat = Number(loc.latitude);
+                const lng = Number(loc.longitude);
+                const pos = { lat, lng };
                 const isVisible = controlIsTripVisible(id);
                 let marker = controlMarkersByTrip.get(id);
 
-                // Calcular bearing comparando con la última posición conocida.
-                // Solo si se movió más de ~15m (filtro de ruido GPS).
+                // Calcular bearing comparando con la ultima posicion conocida
                 let bearing = null;
                 if (marker && marker.__lastPos) {
                     const lp = marker.__lastPos;
                     const dLat = pos.lat - lp.lat;
                     const dLng = pos.lng - lp.lng;
-                    // ~111km/grado, >15m = >0.000135 grados
                     if (Math.abs(dLat) > 0.000135 || Math.abs(dLng) > 0.000135) {
                         bearing = computeBearing(lp.lat, lp.lng, pos.lat, pos.lng);
                     } else if (marker.__lastBearing != null) {
-                        bearing = marker.__lastBearing;  // mantener el último bearing si no se movió
+                        bearing = marker.__lastBearing;
                     }
                 }
 
-                const truckIcon = makeTruckIcon(it.reparto || it.driver || 'S/D', fillColor, bearing);
+                const ctrlData = {
+                    driver: it.driver || 'SIN CHOFER',
+                    vehicle: it.vehicle || 'S/D',
+                    reparto: it.reparto || '--',
+                    status: it.status || '--',
+                    ts: loc.timestamp,
+                    offRouteMeters: loc.offRouteMeters
+                };
 
                 if (marker) {
-                    // Animar suave durante ~3s en vez de saltar de golpe
-                    animateMarkerTo(marker, pos, 3000);
-                    marker.setVisible(isVisible);
-                    marker.setTitle(`${it.driver || 'SIN CHOFER'} · ${it.vehicle || 'S/D'} · ${it.reparto || '--'}`);
-                    marker.setLabel(null);
-                    marker.setIcon(truckIcon);
+                    // Actualizar posicion (animacion smooth de Mapbox via setLngLat)
+                    marker.setLngLat([lng, lat]);
+                    // Actualizar visibilidad via display CSS
+                    const el = marker.getElement();
+                    if (el) {
+                        el.style.display = isVisible ? '' : 'none';
+                        el.title = `${ctrlData.driver} . ${ctrlData.vehicle} . ${ctrlData.reparto}`;
+                        // Actualizar SVG del camion con nuevo bearing
+                        el.innerHTML = makeTruckIconSvg(bearing);
+                    }
                     marker.__lastPos = pos;
                     if (bearing != null) marker.__lastBearing = bearing;
-                    marker.__ctrl = {
-                        driver: it.driver || 'SIN CHOFER',
-                        vehicle: it.vehicle || 'S/D',
-                        reparto: it.reparto || '--',
-                        status: it.status || '--',
-                        ts: loc.timestamp,
-                        offRouteMeters: loc.offRouteMeters
-                    };
+                    marker.__ctrl = ctrlData;
                 } else {
-                    marker = new google.maps.Marker({
-                        map: controlMap,
-                        position: pos,
-                        visible: isVisible,
-                        title: `${it.driver || 'SIN CHOFER'} · ${it.vehicle || 'S/D'} · ${it.reparto || '--'}`,
-                        icon: truckIcon
-                    });
+                    // Crear elemento HTML custom para el marker
+                    const el = document.createElement('div');
+                    el.className = 'r14-truck-marker';
+                    el.style.width = '72px';
+                    el.style.height = '36px';
+                    el.style.cursor = 'pointer';
+                    el.style.display = isVisible ? '' : 'none';
+                    el.title = `${ctrlData.driver} . ${ctrlData.vehicle} . ${ctrlData.reparto}`;
+                    el.innerHTML = makeTruckIconSvg(bearing);
+
+                    // Popup con detalles del chofer
+                    const popup = new mapboxgl.Popup({ offset: 25, closeButton: true });
+
+                    marker = new mapboxgl.Marker({ element: el, anchor: 'center' })
+                        .setLngLat([lng, lat])
+                        .setPopup(popup)
+                        .addTo(controlMap);
+
                     marker.__lastPos = pos;
-                    marker.__ctrl = {
-                        driver: it.driver || 'SIN CHOFER',
-                        vehicle: it.vehicle || 'S/D',
-                        reparto: it.reparto || '--',
-                        status: it.status || '--',
-                        ts: loc.timestamp,
-                        offRouteMeters: loc.offRouteMeters
-                    };
-                    const info = new google.maps.InfoWindow({ content: '' });
-                    marker.__info = info;
-                    marker.addListener('click', () => {
+                    marker.__ctrl = ctrlData;
+                    marker.__popup = popup;
+
+                    el.addEventListener('click', (ev) => {
+                        ev.stopPropagation();
                         const c = marker.__ctrl;
                         const devG = c.offRouteMeters != null && Number.isFinite(Number(c.offRouteMeters))
-                            ? `<div style="color:#b45309;font-weight:700">Desvío: ${Math.round(Number(c.offRouteMeters))} m</div>` : '';
-                        info.setContent(`
+                            ? `<div style="color:#b45309;font-weight:700">Desvio: ${Math.round(Number(c.offRouteMeters))} m</div>` : '';
+                        popup.setHTML(`
                         <div style="font-size:12px;line-height:1.35">
                             <div style="font-weight:800;color:#0f172a">${c.driver}</div>
-                            <div style="font-weight:700;color:#475569">${c.vehicle} · ${c.reparto}</div>
+                            <div style="font-weight:700;color:#475569">${c.vehicle} . ${c.reparto}</div>
                             <div style="color:#64748b">Estado: ${c.status}</div>
                             ${devG}
                             <div style="color:#64748b">${new Date(c.ts).toLocaleString('es-AR')}</div>
                         </div>`);
-                        info.open({ anchor: marker, map: controlMap });
                     });
+
                     controlMarkersByTrip.set(id, marker);
                 }
             });
+
+            // Remover markers de viajes que ya no estan
             for (const [tid, m] of [...controlMarkersByTrip.entries()]) {
                 if (seen.has(tid)) continue;
-                try { m.setMap(null); } catch (_) {}
+                try { m.remove(); } catch (_) {}
                 controlMarkersByTrip.delete(tid);
             }
         }
@@ -5517,9 +5619,7 @@
                 }
             }
             if (routeIds.length === 0) {
-                // Sin rutas activas: limpiar polylines viejas
-                controlTrailByRouteId.forEach((entry) => { try { entry.polyline.setMap(null); } catch (_) {} });
-                controlTrailByRouteId.clear();
+                // Sin rutas activas: limpiar trazas viejas
                 clearControlTrailPolylines();
                 return;
             }
@@ -5537,56 +5637,88 @@
                 const color = CONTROL_TRAIL_COLORS[idx % CONTROL_TRAIL_COLORS.length];
                 const path = thin.map(p => ({ lat: p.lat, lng: p.lng }));
                 const lastTs = pts.length ? new Date(pts[pts.length - 1].timestamp).getTime() : 0;
+                const layerId = `trail-${rid}`;
                 let entry = controlTrailByRouteId.get(rid);
-                if (entry && entry.polyline) {
-                    // Reusar polyline: solo actualizar el path
-                    entry.polyline.setPath(path);
-                    entry.polyline.setOptions({ strokeColor: color });
-                    entry.lastTs = lastTs;
-                    entry.color = color;
+
+                const geojson = {
+                    type: 'Feature',
+                    properties: {},
+                    geometry: {
+                        type: 'LineString',
+                        coordinates: path.map(p => [p.lng, p.lat])
+                    }
+                };
+
+                if (entry && controlMap.getSource(layerId)) {
+                    // MAPBOX: actualizar source data
+                    try {
+                        controlMap.getSource(layerId).setData(geojson);
+                        if (controlMap.getLayer(layerId)) {
+                            controlMap.setPaintProperty(layerId, 'line-color', color);
+                        }
+                        entry.lastTs = lastTs;
+                        entry.color = color;
+                        entry.points = path; // guardamos para appendPointToTrail
+                    } catch (_) {}
                 } else {
-                    if (path.length < 2) return;  // necesitamos al menos 2 puntos para crear polyline
-                    const poly = new google.maps.Polyline({
-                        path,
-                        geodesic: true,
-                        strokeColor: color,
-                        strokeOpacity: 0.9,
-                        strokeWeight: 4,
-                        zIndex: 2,
-                        map: controlMap
-                    });
-                    controlTrailByRouteId.set(rid, { polyline: poly, color, lastTs });
-                    controlTrailPolylines.push(poly);  // mantener compat con clearControlTrailPolylines
+                    if (path.length < 2) return;
+                    try {
+                        _mbRemoveLayerAndSource(layerId);
+                        controlMap.addSource(layerId, { type: 'geojson', data: geojson });
+                        controlMap.addLayer({
+                            id: layerId,
+                            type: 'line',
+                            source: layerId,
+                            layout: { 'line-join': 'round', 'line-cap': 'round' },
+                            paint: {
+                                'line-color': color,
+                                'line-width': 4,
+                                'line-opacity': 0.9
+                            }
+                        });
+                        mapboxTrailLayerIds.push(layerId);
+                        controlTrailByRouteId.set(rid, { layerId, color, lastTs, points: path });
+                    } catch (e) {
+                        console.warn('Mapbox addLayer trail:', e);
+                    }
                 }
             });
-            // Borrar polylines de rutas que ya no están activas
+            // Borrar trazas de rutas que ya no estan activas
             for (const [rid, entry] of controlTrailByRouteId) {
                 if (!seen.has(rid)) {
-                    try { entry.polyline.setMap(null); } catch (_) {}
+                    try { if (entry?.layerId) _mbRemoveLayerAndSource(entry.layerId); } catch (_) {}
                     controlTrailByRouteId.delete(rid);
-                    // remover también del array legacy
-                    const idx = controlTrailPolylines.indexOf(entry.polyline);
-                    if (idx >= 0) controlTrailPolylines.splice(idx, 1);
+                    const idx = mapboxTrailLayerIds.indexOf(entry.layerId);
+                    if (idx >= 0) mapboxTrailLayerIds.splice(idx, 1);
                 }
             }
         }
 
-        /** Extiende una polyline existente con un punto nuevo (llega por socket).
-         *  Permite que la traza GPS crezca en tiempo real sin esperar al refresh de 12s. */
+        /** Extiende una traza existente con un punto nuevo (llega por socket). MAPBOX. */
         function appendPointToTrail(routeId, lat, lng) {
             if (routeId == null || !Number.isFinite(Number(routeId))) return;
             const entry = controlTrailByRouteId.get(Number(routeId));
-            if (!entry || !entry.polyline) return;
+            if (!entry || !entry.layerId || !controlMap) return;
             try {
-                const path = entry.polyline.getPath();
-                const last = path.getLength() > 0 ? path.getAt(path.getLength() - 1) : null;
-                // Filtrar duplicados o saltos despreciables (<5m)
+                const src = controlMap.getSource(entry.layerId);
+                if (!src) return;
+                const pts = entry.points || [];
+                const last = pts.length > 0 ? pts[pts.length - 1] : null;
                 if (last) {
-                    const dLat = lat - last.lat();
-                    const dLng = lng - last.lng();
+                    const dLat = lat - last.lat;
+                    const dLng = lng - last.lng;
                     if (Math.abs(dLat) < 0.000045 && Math.abs(dLng) < 0.000045) return; // ~5m
                 }
-                path.push(new google.maps.LatLng(lat, lng));
+                pts.push({ lat, lng });
+                entry.points = pts;
+                src.setData({
+                    type: 'Feature',
+                    properties: {},
+                    geometry: {
+                        type: 'LineString',
+                        coordinates: pts.map(p => [p.lng, p.lat])
+                    }
+                });
             } catch (_) {}
         }
 
@@ -5636,16 +5768,23 @@
                 }
 
                 if (controlMap && path.length >= 2) {
-                    const poly = new google.maps.Polyline({
-                        path,
-                        geodesic: true,
-                        strokeColor: '#f97316',
-                        strokeOpacity: 0.92,
-                        strokeWeight: 3,
-                        zIndex: 2,
-                        map: controlMap
-                    });
-                    controlTrailPolylines.push(poly);
+                    const layerId = `trail-summary-${routeId}`;
+                    try {
+                        _mbRemoveLayerAndSource(layerId);
+                        controlMap.addSource(layerId, {
+                            type: 'geojson',
+                            data: {
+                                type: 'Feature', properties: {},
+                                geometry: { type: 'LineString', coordinates: path.map(p => [p.lng, p.lat]) }
+                            }
+                        });
+                        controlMap.addLayer({
+                            id: layerId, type: 'line', source: layerId,
+                            layout: { 'line-join': 'round', 'line-cap': 'round' },
+                            paint: { 'line-color': '#f97316', 'line-opacity': 0.92, 'line-width': 3 }
+                        });
+                        mapboxTrailLayerIds.push(layerId);
+                    } catch (e) { console.warn('Mapbox trail-summary:', e); }
                 }
                 if (out && summary) {
                     const trk = summary.tracking || {};
@@ -17729,85 +17868,109 @@ function closeHdrDetailModal() {
     if (modal) modal.classList.add('hidden');
 }
 
-function renderHdrMap(detail) {
+async function renderHdrMap(detail) {
     const el = document.getElementById('hdr-detail-map');
-    if (!el || !window.google?.maps) {
-        if (el) el.innerHTML = '<div class="flex items-center justify-center h-full text-[#A3AED0] text-xs p-8 text-center">Google Maps no disponible. Configurá la API key en Torre de Control.</div>';
-        return;
+    if (!el) return;
+
+    // MIGRACION MAPBOX: usar Mapbox GL JS para el mapa del detalle del viaje
+    const mbToken = await getMapboxToken();
+    if (!mbToken || !window.mapboxgl) {
+        const ready = await ensureMapboxLoaded();
+        if (!ready || !window.mapboxgl) {
+            el.innerHTML = '<div class="flex items-center justify-center h-full text-[#A3AED0] text-xs p-8 text-center">Mapbox no disponible. Configura MAPBOX_ACCESS_TOKEN en el servidor.</div>';
+            return;
+        }
     }
+    mapboxgl.accessToken = mbToken;
 
     const locs = (detail.locations || []).filter(l => l.lat != null && l.lng != null);
     const stops = (detail.stops || []).filter(s => s.latitude != null && s.longitude != null);
 
     if (!_hdrMap) {
-        _hdrMap = new google.maps.Map(el, {
-            center: { lat: -34.6, lng: -58.45 },
-            zoom: 11,
-            disableDefaultUI: false,
-            streetViewControl: false,
-            mapTypeControl: false
+        _hdrMap = new mapboxgl.Map({
+            container: el,
+            style: MAPBOX_STYLE,
+            center: [-58.45, -34.6],
+            zoom: 11
+        });
+        _hdrMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
+        await new Promise((resolve) => {
+            if (_hdrMap.isStyleLoaded()) return resolve();
+            _hdrMap.once('load', resolve);
         });
     }
 
-    // Limpiar polyline y markers anteriores
-    if (_hdrPolyline) { _hdrPolyline.setMap(null); _hdrPolyline = null; }
-    _hdrStopMarkers.forEach(m => { try { m.setMap(null); } catch (_) {} });
+    // Limpiar polyline (layer/source) y markers anteriores
+    try {
+        if (_hdrMap.getLayer('hdr-route')) _hdrMap.removeLayer('hdr-route');
+        if (_hdrMap.getSource('hdr-route')) _hdrMap.removeSource('hdr-route');
+    } catch (_) {}
+    _hdrPolyline = null;
+    _hdrStopMarkers.forEach(m => { try { m.remove(); } catch (_) {} });
     _hdrStopMarkers = [];
 
-    const bounds = new google.maps.LatLngBounds();
+    const bounds = new mapboxgl.LngLatBounds();
 
-    // Polyline del recorrido GPS REAL (línea naranja gruesa)
+    // Polyline del recorrido GPS real
     if (locs.length >= 2) {
-        const path = locs.map(l => ({ lat: l.lat, lng: l.lng }));
-        _hdrPolyline = new google.maps.Polyline({
-            path,
-            geodesic: true,
-            strokeColor: '#f97316',
-            strokeOpacity: 0.95,
-            strokeWeight: 4,
-            zIndex: 2,
-            map: _hdrMap
-        });
-        path.forEach(p => bounds.extend(p));
+        const coords = locs.map(l => [l.lng, l.lat]);
+        try {
+            _hdrMap.addSource('hdr-route', {
+                type: 'geojson',
+                data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } }
+            });
+            _hdrMap.addLayer({
+                id: 'hdr-route', type: 'line', source: 'hdr-route',
+                layout: { 'line-join': 'round', 'line-cap': 'round' },
+                paint: { 'line-color': '#f97316', 'line-opacity': 0.95, 'line-width': 4 }
+            });
+            _hdrPolyline = true;
+            coords.forEach(c => bounds.extend(c));
+        } catch (e) { console.warn('hdr route:', e); }
     }
 
-    // Marker de inicio (verde) y fin (rojo)
+    const makeCircleEl = (color, size = 18, text = '') => {
+        const d = document.createElement('div');
+        d.style.width = size + 'px';
+        d.style.height = size + 'px';
+        d.style.borderRadius = '50%';
+        d.style.background = color;
+        d.style.border = '2px solid #ffffff';
+        d.style.boxShadow = '0 2px 4px rgba(0,0,0,0.3)';
+        d.style.display = 'flex';
+        d.style.alignItems = 'center';
+        d.style.justifyContent = 'center';
+        d.style.color = '#fff';
+        d.style.fontSize = '11px';
+        d.style.fontWeight = '700';
+        d.textContent = text;
+        return d;
+    };
+
     if (locs.length > 0) {
         const start = locs[0];
         const end = locs[locs.length - 1];
-        _hdrStopMarkers.push(new google.maps.Marker({
-            position: { lat: start.lat, lng: start.lng }, map: _hdrMap,
-            title: 'Inicio',
-            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: '#10b981', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 }
-        }));
-        _hdrStopMarkers.push(new google.maps.Marker({
-            position: { lat: end.lat, lng: end.lng }, map: _hdrMap,
-            title: 'Fin',
-            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 9, fillColor: '#dc2626', fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 }
-        }));
+        const ms = new mapboxgl.Marker({ element: makeCircleEl('#10b981', 18), anchor: 'center' })
+            .setLngLat([start.lng, start.lat]).setPopup(new mapboxgl.Popup().setText('Inicio')).addTo(_hdrMap);
+        const me = new mapboxgl.Marker({ element: makeCircleEl('#dc2626', 18), anchor: 'center' })
+            .setLngLat([end.lng, end.lat]).setPopup(new mapboxgl.Popup().setText('Fin')).addTo(_hdrMap);
+        _hdrStopMarkers.push(ms, me);
     }
 
-    // Markers numerados de paradas
     stops.forEach(s => {
         const color = s.status === 'COMPLETED' ? '#10b981' : (s.status === 'UNDELIVERABLE' ? '#dc2626' : '#6366f1');
-        const m = new google.maps.Marker({
-            position: { lat: s.latitude, lng: s.longitude },
-            map: _hdrMap,
-            title: `${s.sequence}. ${s.name}`,
-            label: { text: String(s.sequence), color: '#fff', fontSize: '11px', fontWeight: 'bold' },
-            icon: { path: google.maps.SymbolPath.CIRCLE, scale: 13, fillColor: color, fillOpacity: 1, strokeColor: '#fff', strokeWeight: 2 }
-        });
+        const m = new mapboxgl.Marker({ element: makeCircleEl(color, 26, String(s.sequence)), anchor: 'center' })
+            .setLngLat([s.longitude, s.latitude])
+            .setPopup(new mapboxgl.Popup().setText(`${s.sequence}. ${s.name}`))
+            .addTo(_hdrMap);
         _hdrStopMarkers.push(m);
-        bounds.extend({ lat: s.latitude, lng: s.longitude });
+        bounds.extend([s.longitude, s.latitude]);
     });
 
     if (!bounds.isEmpty()) {
-        _hdrMap.fitBounds(bounds, 60);
-        google.maps.event.addListenerOnce(_hdrMap, 'idle', () => {
-            if (_hdrMap.getZoom() > 16) _hdrMap.setZoom(16);
-        });
+        try { _hdrMap.fitBounds(bounds, { padding: 60, maxZoom: 16 }); } catch (_) {}
     }
-    google.maps.event.trigger(_hdrMap, 'resize');
+    if (typeof _hdrMap.resize === 'function') _hdrMap.resize();
 }
 </script>
 
