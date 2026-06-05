@@ -342,35 +342,40 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     loadRoutes();
   }, [loadRoutes]);
 
-  /** Monitor de conectividad: flush de colas offline al reconectarse. */
+  /** Monitor de conectividad: flush de colas offline. */
   useEffect(() => {
-    // Detectamos conectividad haciendo ping al servidor cada 8s.
-    // Cuando pasamos de offline → online, vaciamos las colas pendientes (stops + incidencias).
-    // Esto reemplaza al NetInfo (no instalado) y a la función `update` huérfana que había antes.
-    let wasOnline = true;
+    // Detectamos conectividad haciendo ping al servidor cada 5s.
+    // BUG FIX (antes 8s + solo flush en transicion offline->online):
+    // Si el chofer marcaba paradas sin senial y luego se reconectaba lento
+    // (sin transicion clara), la cola quedaba en el telefono sin enviarse.
+    // Ahora: SIEMPRE que haya cola pendiente Y estemos online, intentamos
+    // flushear, sin importar el estado anterior.
     let cancelled = false;
     const tick = async () => {
-      const n = await getPendingStopCount();
+      const pending = await getPendingStopCount();
       if (cancelled) return;
-      setPendingOffline(n);
-      const latency = await pingServer(3500);
+      setPendingOffline(pending);
+      const latency = await pingServer(5000);
       if (cancelled) return;
       const online = latency != null;
       setIsOnline(online);
-      if (online && !wasOnline) {
-        // Recién recuperó conectividad → sincronizar colas
+      // Flushear SIEMPRE que: estemos online + haya items en cola.
+      // No depende de "wasOnline" -> evita el bug de no detectar transicion.
+      if (online && pending > 0) {
         try {
-          await flushStopQueue();
+          const sent = await flushStopQueue();
           await flushIncidentQueue();
           await flushPhotoQueue();
           const after = await getPendingStopCount();
           if (!cancelled) setPendingOffline(after);
-        } catch { /* */ }
+          if (sent > 0) console.log(`[Sync] Flush OK: ${sent} stops enviados, ${after} restantes`);
+        } catch (e) {
+          console.warn('[Sync] flush error:', e);
+        }
       }
-      wasOnline = online;
     };
     void tick();
-    const poll = setInterval(() => { void tick(); }, 8000);
+    const poll = setInterval(() => { void tick(); }, 5000);
     return () => { cancelled = true; clearInterval(poll); };
   }, []);
 

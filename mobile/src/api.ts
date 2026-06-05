@@ -255,20 +255,51 @@ export function flushStopQueue(): Promise<number> {
     try {
       const queue = await readStopQueue();
       if (!queue.length) return 0;
+      // BUG FIX: antes el for usaba `break` ante cualquier error y dejaba
+      // los demas stops colgados eternamente. Ahora:
+      //  - Error de red (TypeError/timeout): break (no hay senial, esperar)
+      //  - Error 4xx (404/409/etc): la parada ya esta procesada o no existe,
+      //    la descartamos de la cola y seguimos con la siguiente.
+      //  - Error 5xx: break (server caido, reintentar despues)
+      //  - 200/2xx OK: sent++ y seguir.
+      const stillPending: OfflineStopAction[] = [];
       let sent = 0;
-      for (const action of queue) {
+      let networkBroke = false;
+      for (let i = 0; i < queue.length; i++) {
+        const action = queue[i];
+        if (networkBroke) {
+          // Una vez que detectamos red caida, ya no intentamos los demas en este pase
+          stillPending.push(action);
+          continue;
+        }
         try {
           const res = await fetch(apiUrl(`/api/v1/stops/${action.stopId}`), {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(action.body),
           });
-          if (!res.ok) break;
-          sent++;
-        } catch { break; }
+          if (res.ok) {
+            sent++;
+          } else if (res.status >= 400 && res.status < 500) {
+            // El stop no existe o ya fue procesado: descartar de la cola
+            console.warn(`[flushStopQueue] Descartando stop ${action.stopId} HTTP ${res.status}`);
+            sent++; // contar como procesado para no quedarnos atascados
+          } else {
+            // 5xx: server caido, reintentar luego
+            stillPending.push(action);
+            networkBroke = true;
+          }
+        } catch {
+          // Error de red real: detener y conservar
+          stillPending.push(action);
+          networkBroke = true;
+        }
       }
-      if (sent === queue.length) await AsyncStorage.removeItem(STORAGE_KEYS.offlineStopQueue);
-      else if (sent > 0) await writeStopQueue(queue.slice(sent));
+      if (stillPending.length === 0) {
+        await AsyncStorage.removeItem(STORAGE_KEYS.offlineStopQueue);
+      } else {
+        await writeStopQueue(stillPending);
+      }
       return sent;
     } finally {
       _stopQueueFlushing = null;
