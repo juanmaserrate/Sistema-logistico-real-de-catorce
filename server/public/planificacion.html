@@ -11410,27 +11410,57 @@
         }
 
         async function loadWeeklyData() {
-            try {
-                console.log("Cargando datos semanales...");
-                // Traemos todo y filtramos por mes en front para evitar
-                // inconsistencias de filtros entre backend/cliente.
-                const url = `${API_URL}/trips`;
-                // BUG FIX: el endpoint /trips esta protegido por auth (requiere Bearer token).
-                // Antes esta fetch iba SIN headers, daba 401 y la Logistica Semanal
-                // aparecia vacia. Usamos getActorHeaders() para enviar el token JWT
-                // que esta guardado en localStorage tras el login.
-                const res = await fetch(url, { headers: getActorHeaders() });
-                if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
-
-                planningData = await res.json();
-                console.log(`Datos cargados: ${planningData.length} registros found.`);
-
-                // Filtrar directamente por el mes seleccionado (sin auto-saltar a otro mes)
-                filterWeeklyData();
-            } catch(e) {
-                console.error("Error loading weekly data:", e);
+            console.log("[Weekly] Iniciando carga de datos...");
+            const token = localStorage.getItem('r14.authToken') || '';
+            if (!token) {
+                console.warn("[Weekly] No hay token en localStorage. Forzando re-login.");
                 planningData = [];
                 filterWeeklyData();
+                // Mostrar mensaje visible al operador
+                const body = document.getElementById('weekly-table-body');
+                if (body) {
+                    body.innerHTML = '<tr><td colspan="20" class="py-8 text-center"><div class="inline-flex flex-col items-center gap-3"><p class="text-sm font-black text-rose-600">SESION EXPIRADA</p><p class="text-xs text-[#A3AED0]">Tu sesion expiro. Recarga la pagina (F5) para volver a loguearte.</p><button onclick="location.reload()" class="mt-2 px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700">Recargar</button></div></td></tr>';
+                }
+                return;
+            }
+            // Retry con backoff por si el primer intento cae en rate limit 429
+            let lastErr = null;
+            for (let attempt = 0; attempt < 3; attempt++) {
+                try {
+                    if (attempt > 0) {
+                        await new Promise(r => setTimeout(r, 1000 * attempt));
+                        console.log(`[Weekly] Reintento #${attempt}...`);
+                    }
+                    const url = `${API_URL}/trips`;
+                    const res = await fetch(url, { headers: getActorHeaders() });
+                    console.log(`[Weekly] Fetch status: ${res.status}`);
+                    if (res.status === 429) {
+                        lastErr = new Error('Rate limit');
+                        continue;
+                    }
+                    if (res.status === 401 || res.status === 403) {
+                        throw new Error(`Auth ${res.status}: token invalido o expirado`);
+                    }
+                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+                    planningData = await res.json();
+                    console.log(`[Weekly] OK: ${planningData.length} viajes cargados`);
+                    filterWeeklyData();
+                    return;
+                } catch (e) {
+                    lastErr = e;
+                    console.warn(`[Weekly] Error en intento ${attempt}:`, e?.message || e);
+                }
+            }
+            // Todos los intentos fallaron
+            console.error("[Weekly] Carga fallida tras 3 intentos:", lastErr?.message || lastErr);
+            planningData = [];
+            filterWeeklyData();
+            const body = document.getElementById('weekly-table-body');
+            if (body && (!planningData || planningData.length === 0)) {
+                const msg = String(lastErr?.message || lastErr);
+                const isAuth = msg.toLowerCase().includes('auth') || msg.includes('401') || msg.includes('403');
+                body.innerHTML = `<tr><td colspan="20" class="py-8 text-center"><div class="inline-flex flex-col items-center gap-3"><p class="text-sm font-black text-rose-600">${isAuth ? 'SESION EXPIRADA' : 'ERROR DE CONEXION'}</p><p class="text-xs text-[#A3AED0]">${isAuth ? 'Tu sesion expiro. Recarga la pagina (F5) para volver a loguearte.' : 'No se pudieron cargar los viajes. Revisa tu conexion.'}</p><button onclick="location.reload()" class="mt-2 px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700">Recargar</button></div></td></tr>`;
             }
         }
 
