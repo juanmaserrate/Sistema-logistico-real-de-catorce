@@ -11276,7 +11276,11 @@
                 // Traemos todo y filtramos por mes en front para evitar
                 // inconsistencias de filtros entre backend/cliente.
                 const url = `${API_URL}/trips`;
-                const res = await fetch(url);
+                // BUG FIX: el endpoint /trips esta protegido por auth (requiere Bearer token).
+                // Antes esta fetch iba SIN headers, daba 401 y la Logistica Semanal
+                // aparecia vacia. Usamos getActorHeaders() para enviar el token JWT
+                // que esta guardado en localStorage tras el login.
+                const res = await fetch(url, { headers: getActorHeaders() });
                 if (!res.ok) throw new Error(`HTTP Error: ${res.status}`);
 
                 planningData = await res.json();
