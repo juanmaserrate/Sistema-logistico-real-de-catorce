@@ -1,0 +1,111 @@
+{
+  "_comentario": "Configuracion de categorias para el dashboard estilo Excel GASTOS TRAFICO. Editable sin tocar codigo. version 1.0",
+  "_actualizado": "2026-06-05",
+  "_notas": [
+    "MESA = MAE: misma cosa, se diferencia por LOCALIDAD del viaje",
+    "SAE LOMAS Z1/Z2/Z3, SAE QUILMES Zona 16/19, SAE LANUS Zona 4/8/14/17: se asignan por REPARTO (los Rs los va a pasar el usuario)",
+    "Reposiciones: BU = REPO o REPOSICION, separadas por region segun localidad",
+    "Lomas Jardines: repartos R18, R19, R20",
+    "SEGUNDA VUELTA y DESARROLLO usan diccionario de equivalencias de nombres"
+  ],
+
+  "contractTypes": {
+    "propio":      ["propio"],
+    "tercerizado": ["tercerizado", "externo"]
+  },
+
+  "regiones": {
+    "SAE_BROWN": {
+      "label": "SAE BROWN",
+      "localidades": {
+        "Longchamps":  ["LONGCHAMPS"],
+        "Calzada":     ["CALZADA"],
+        "Claypole":    ["CLAYPOLE", "CLAYPOLE "],
+        "Don Orione":  ["DON ORIONE"],
+        "Malvinas":    ["MALVINAS", "MALVINAS ARGENTINAS", "MLAVINAS"]
+      }
+    },
+    "SAE_LOMAS": {
+      "label": "SAE LOMAS",
+      "_pendiente": "Asignar repartos a Z1/Z2/Z3 cuando el usuario los pase",
+      "subzonas_por_reparto": {
+        "Z1": [],
+        "Z2": [],
+        "Z3": []
+      },
+      "localidades_fallback": ["LOMAS DE ZAMORA", "LOMAS"]
+    },
+    "SAE_QUILMES": {
+      "label": "SAE QUILMES",
+      "_pendiente": "Asignar repartos a Zona 16 / Zona 19",
+      "subzonas_por_reparto": {
+        "Zona 16": [],
+        "Zona 19": []
+      },
+      "localidades_fallback": ["QUILMES"]
+    },
+    "SAE_LANUS": {
+      "label": "SAE LANUS",
+      "_pendiente": "Asignar repartos a Zona 4 / 8 / 14 / 17",
+      "subzonas_por_reparto": {
+        "Zona 4":  [],
+        "Zona 8":  [],
+        "Zona 14": [],
+        "Zona 17": []
+      },
+      "localidades_fallback": ["LANUS"]
+    },
+    "LOMAS_JARDINES": {
+      "label": "LOMAS JARDINES",
+      "subzonas_por_reparto": {
+        "R18": ["R18"],
+        "R19": ["R19"],
+        "R20": ["R20"]
+      }
+    }
+  },
+
+  "mesa_localidades_por_region": {
+    "_comentario": "MESA/MAE se cuenta cuando BU = MESA o MAE. Se asigna a region segun localidad",
+    "Brown":   ["LONGCHAMPS", "CALZADA", "CLAYPOLE", "CLAYPOLE ", "DON ORIONE", "MALVINAS", "MALVINAS ARGENTINAS", "MLAVINAS", "ALTE BROWN", "ALMIRANTE BROWN", "ALTE. BROWN", "BURZACO", "ADROGUE", "GLEW"],
+    "Lomas":   ["LOMAS DE ZAMORA", "LOMAS", "LLAVALLOL", "LUIS GUILLON"],
+    "Quilmes": ["QUILMES", "SOLANO", "BERAZATEGUI"],
+    "Lanus":   ["LANUS"]
+  },
+
+  "businessUnits_MESA": ["MESA", "MAE"],
+  "businessUnits_REPOSICION": ["REPO", "REPOSICION"],
+
+  "segunda_vuelta": {
+    "label": "SEGUNDA VUELTA",
+    "_comentario": "Por BU - diccionario de equivalencias de nombres",
+    "items": {
+      "Deporte Adaptado":   ["DEPORTE ADAPTADO"],
+      "CDI":                ["CDI"],
+      "Colonias":           ["COLONIA", "COLONIAS"],
+      "Ave Fenix":          ["HOGAR FENIX", "AVE FENIX"],
+      "Casa de Abrigo":     ["CASA DE ABRIGO"],
+      "Suma Carnes":        ["SUMA", "SUMA CARNES"],
+      "Queso y Levadura":   ["QUESO Y LEVADURA"],
+      "UDI":                ["UDI", "UDI1", "UDI 1", "UDI2", "UDI 2", "UDI3", "UDI4", "UDI5", "UDI6", "UDI7", "UDI8", "UDI 7Y8", "UDI5Y6", "UDI5y6", "UDI7Y8", "UDI7y8", "UDI7/8", "UDI5y6"],
+      "SAM":                ["SAM"]
+    }
+  },
+
+  "desarrollo": {
+    "label": "DESARROLLO",
+    "_pendiente": "El sistema solo tiene BU=DESARROLLO genericamente. Necesita campo extra (ej. tripType o proyecto) para distinguir Secos Brown, Navideños Brown, etc. Por ahora se cuenta todo bajo 'Total Desarrollo'",
+    "items": {
+      "Secos Brown":        [],
+      "Navideños Brown":    [],
+      "Secos Quilmes":      [],
+      "Navideños Quilmes":  [],
+      "Secos Lanus":        [],
+      "Secos LDZ":          [],
+      "Navideños LDZ":      [],
+      "Aceite Lujan":       [],
+      "Leche en Polvo PBAC":[]
+    },
+    "fallback_bu": ["DESARROLLO"]
+  }
+}

@@ -986,6 +986,51 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- =========================================================== -->
+                <!-- CONTEO DE VIAJES POR UN SEGUN LOCALIDAD (estilo Excel GASTOS TRAFICO) -->
+                <!-- =========================================================== -->
+                <div class="card-dark p-6 md:p-8" id="dash-excel-block">
+                    <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6">
+                        <div>
+                            <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-1">Conteo de viajes por UN segun localidad</h4>
+                            <p class="text-xs text-[#A3AED0] font-medium">Formato Excel GASTOS TRAFICO. Distincion Propios / Tercerizados / MESA. Cuenta por mes.</p>
+                        </div>
+                        <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
+                            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 text-emerald-700"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>Mapeado</span>
+                            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-50 text-amber-700"><span class="w-2 h-2 rounded-full bg-amber-500"></span>Pendiente</span>
+                        </div>
+                    </div>
+
+                    <!-- Tabs: Propios | Tercerizados | MESA -->
+                    <div class="flex items-center gap-2 mb-4 border-b border-[#F4F7FE]">
+                        <button id="dash-excel-tab-propio" type="button" onclick="dashExcelSetTab('propio')"
+                            class="px-4 py-2 text-xs font-black uppercase tracking-widest border-b-2 border-indigo-600 text-indigo-700">
+                            Propios
+                        </button>
+                        <button id="dash-excel-tab-tercerizado" type="button" onclick="dashExcelSetTab('tercerizado')"
+                            class="px-4 py-2 text-xs font-black uppercase tracking-widest border-b-2 border-transparent text-[#A3AED0] hover:text-[#1B2559]">
+                            Tercerizados
+                        </button>
+                        <button id="dash-excel-tab-mesa" type="button" onclick="dashExcelSetTab('mesa')"
+                            class="px-4 py-2 text-xs font-black uppercase tracking-widest border-b-2 border-transparent text-[#A3AED0] hover:text-[#1B2559]">
+                            MESA / MAE
+                        </button>
+                    </div>
+
+                    <!-- Tablas por region (renderizadas dinamicamente) -->
+                    <div id="dash-excel-tables" class="space-y-6"></div>
+
+                    <!-- Footer: viajes sin clasificar -->
+                    <div id="dash-excel-unclassified" class="mt-8 pt-6 border-t border-dashed border-[#E0E5F2]">
+                        <h5 class="text-xs font-black text-amber-700 uppercase tracking-widest mb-3 flex items-center gap-2">
+                            <i data-lucide="alert-circle" class="w-4 h-4"></i>
+                            Viajes sin clasificar
+                        </h5>
+                        <p class="text-[11px] text-[#A3AED0] mb-3">Estos viajes no entraron en ninguna categoria del Excel. Usar para ajustar el archivo de configuracion.</p>
+                        <div id="dash-excel-unclassified-list" class="text-xs"></div>
+                    </div>
+                </div>
             </div>
 
             <!-- VIEW: EMPLOYEE SALARIES -->
@@ -15438,6 +15483,396 @@
             }
         }
 
+        // ─── DASHBOARD ESTILO EXCEL "GASTOS TRAFICO" ─────────────────────
+        // Conteo de viajes por UN segun localidad. Config flexible en
+        // /js/trip-categories-config.json para que el usuario pueda ajustar
+        // mapeos (especialmente sub-zonas por reparto) sin tocar codigo.
+        let __tripCategoriesConfig = null;
+        let __dashExcelActiveTab = 'propio'; // 'propio' | 'tercerizado' | 'mesa'
+
+        async function loadTripCategoriesConfig() {
+            if (__tripCategoriesConfig) return __tripCategoriesConfig;
+            try {
+                const res = await fetch('/js/trip-categories-config.json?v=' + Date.now());
+                if (res.ok) {
+                    __tripCategoriesConfig = await res.json();
+                    return __tripCategoriesConfig;
+                }
+            } catch (e) {
+                console.error('No se pudo cargar trip-categories-config.json:', e);
+            }
+            return null;
+        }
+
+        function _norm(v) {
+            return String(v || '').trim().toUpperCase();
+        }
+
+        function _matchesAny(value, list) {
+            const v = _norm(value);
+            return (list || []).some(x => _norm(x) === v);
+        }
+
+        const _MES_MAP = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+        /** Construye matriz de conteos para una region segun el tipo de contrato.
+         *  Retorna {filas: [{nombre, conteoPorMes: [12 numeros], total}], totalPorMes, totalGeneral} */
+        function _buildRegionMatrix(trips, cfg, regionKey, contractType) {
+            const region = cfg.regiones[regionKey];
+            if (!region) return null;
+            const filas = [];
+            const conteo = new Map(); // nombre -> [12 ceros]
+
+            const initRow = (n) => {
+                if (!conteo.has(n)) conteo.set(n, new Array(12).fill(0));
+                return conteo.get(n);
+            };
+
+            // Tipo localidades (SAE_BROWN): cuenta por localidad/zona del viaje
+            if (region.localidades) {
+                Object.keys(region.localidades).forEach(initRow);
+                trips.forEach(t => {
+                    if (!_matchesContract(t, contractType)) return;
+                    if (_isMaeOrMesa(t, cfg)) return; // MESA va en otro tab
+                    if (_isReposicion(t, cfg)) return; // Reposiciones aparte
+                    const zone = _norm(t.zone);
+                    for (const [label, zonas] of Object.entries(region.localidades)) {
+                        if (zonas.some(z => _norm(z) === zone)) {
+                            const m = _getTripMonthIdx(t);
+                            if (m >= 0) initRow(label)[m] += 1;
+                            return;
+                        }
+                    }
+                });
+            }
+
+            // Tipo sub-zonas por reparto (SAE_LOMAS, SAE_QUILMES, SAE_LANUS, LOMAS_JARDINES)
+            if (region.subzonas_por_reparto) {
+                Object.keys(region.subzonas_por_reparto).forEach(initRow);
+                trips.forEach(t => {
+                    if (!_matchesContract(t, contractType)) return;
+                    if (_isMaeOrMesa(t, cfg)) return;
+                    if (_isReposicion(t, cfg)) return;
+                    const reparto = _norm(t.tripType || t.reparto);
+                    for (const [label, rs] of Object.entries(region.subzonas_por_reparto)) {
+                        if ((rs || []).some(r => _norm(r) === reparto)) {
+                            const m = _getTripMonthIdx(t);
+                            if (m >= 0) initRow(label)[m] += 1;
+                            return;
+                        }
+                    }
+                });
+            }
+
+            // Fila Reposiciones para esta region (si aplica)
+            const repoLocs = _getRepoLocsForRegion(regionKey, cfg);
+            if (repoLocs) {
+                initRow('Reposiciones');
+                trips.forEach(t => {
+                    if (!_matchesContract(t, contractType)) return;
+                    if (!_isReposicion(t, cfg)) return;
+                    const zone = _norm(t.zone);
+                    if (repoLocs.some(z => _norm(z) === zone)) {
+                        const m = _getTripMonthIdx(t);
+                        if (m >= 0) initRow('Reposiciones')[m] += 1;
+                    }
+                });
+            }
+
+            // Armar filas con totales
+            const totalPorMes = new Array(12).fill(0);
+            for (const [nombre, arr] of conteo.entries()) {
+                const total = arr.reduce((a,b)=>a+b, 0);
+                arr.forEach((v, i) => totalPorMes[i] += v);
+                filas.push({ nombre, conteoPorMes: arr, total });
+            }
+            const totalGeneral = totalPorMes.reduce((a,b)=>a+b, 0);
+            return { filas, totalPorMes, totalGeneral };
+        }
+
+        function _matchesContract(trip, contractType) {
+            const tc = _norm(trip.contractType || 'TERCERIZADO');
+            if (contractType === 'propio') return tc === 'PROPIO';
+            if (contractType === 'tercerizado') return tc === 'TERCERIZADO' || tc === 'EXTERNO';
+            return true;
+        }
+
+        function _isMaeOrMesa(trip, cfg) {
+            return _matchesAny(trip.businessUnit, cfg.businessUnits_MESA || []);
+        }
+
+        function _isReposicion(trip, cfg) {
+            return _matchesAny(trip.businessUnit, cfg.businessUnits_REPOSICION || []);
+        }
+
+        function _getRepoLocsForRegion(regionKey, cfg) {
+            // SAE_BROWN -> Brown ; SAE_LOMAS -> Lomas ; etc.
+            const map = {
+                SAE_BROWN: 'Brown',
+                SAE_LOMAS: 'Lomas',
+                SAE_QUILMES: 'Quilmes',
+                SAE_LANUS: 'Lanus',
+                LOMAS_JARDINES: null
+            };
+            const rg = map[regionKey];
+            if (!rg) return null;
+            return cfg.mesa_localidades_por_region?.[rg] || null;
+        }
+
+        function _getTripMonthIdx(trip) {
+            if (!trip.date) return -1;
+            const clean = String(trip.date).includes(' ') ? String(trip.date).replace(/ /g, 'T') : String(trip.date);
+            const d = new Date(clean);
+            if (isNaN(d.getTime())) return -1;
+            return d.getMonth(); // 0-11
+        }
+
+        /** MESA / MAE: tabla con filas = regiones (Brown/Lomas/Quilmes/Lanus) y subfilas = localidades */
+        function _buildMesaMatrix(trips, cfg) {
+            const out = {}; // region -> { localidades: { nombre: [12] }, totalPorMes, totalGeneral }
+            const regiones = cfg.mesa_localidades_por_region || {};
+            for (const [regKey, locs] of Object.entries(regiones)) {
+                if (regKey.startsWith('_')) continue;
+                const filas = [];
+                const totalPorMes = new Array(12).fill(0);
+                const byLoc = new Map();
+                trips.forEach(t => {
+                    if (!_isMaeOrMesa(t, cfg)) return;
+                    const zone = _norm(t.zone);
+                    if (!locs.some(l => _norm(l) === zone)) return;
+                    const niceLoc = (t.zone || 'S/D').toString().trim();
+                    if (!byLoc.has(niceLoc)) byLoc.set(niceLoc, new Array(12).fill(0));
+                    const m = _getTripMonthIdx(t);
+                    if (m >= 0) {
+                        byLoc.get(niceLoc)[m] += 1;
+                        totalPorMes[m] += 1;
+                    }
+                });
+                for (const [nombre, arr] of byLoc.entries()) {
+                    filas.push({ nombre, conteoPorMes: arr, total: arr.reduce((a,b)=>a+b,0) });
+                }
+                const totalGeneral = totalPorMes.reduce((a,b)=>a+b, 0);
+                if (totalGeneral > 0) out[regKey] = { filas, totalPorMes, totalGeneral };
+            }
+            return out;
+        }
+
+        /** SEGUNDA VUELTA: una sola tabla con items definidos en config */
+        function _buildSecondVueltaMatrix(trips, cfg, contractType) {
+            const items = cfg.segunda_vuelta?.items || {};
+            const conteo = new Map();
+            Object.keys(items).forEach(k => conteo.set(k, new Array(12).fill(0)));
+            trips.forEach(t => {
+                if (contractType && !_matchesContract(t, contractType)) return;
+                const bu = _norm(t.businessUnit);
+                for (const [label, bus] of Object.entries(items)) {
+                    if ((bus || []).some(b => _norm(b) === bu)) {
+                        const m = _getTripMonthIdx(t);
+                        if (m >= 0) conteo.get(label)[m] += 1;
+                        return;
+                    }
+                }
+            });
+            const filas = [];
+            const totalPorMes = new Array(12).fill(0);
+            for (const [nombre, arr] of conteo.entries()) {
+                const tot = arr.reduce((a,b)=>a+b,0);
+                if (tot === 0) continue; // ocultar items vacios
+                arr.forEach((v,i) => totalPorMes[i] += v);
+                filas.push({ nombre, conteoPorMes: arr, total: tot });
+            }
+            return { filas, totalPorMes, totalGeneral: totalPorMes.reduce((a,b)=>a+b,0) };
+        }
+
+        /** Construye una tabla HTML estilo Excel: filas (categoria) x columnas (Ene..Dic, Total) */
+        function _renderExcelTable(titulo, matrix, opts) {
+            opts = opts || {};
+            const pendiente = !!opts.pendiente;
+            if (!matrix || matrix.filas.length === 0) {
+                return `<div class="bg-white rounded-xl border border-[#F4F7FE] p-4">
+                    <div class="flex items-center justify-between gap-2 mb-2">
+                        <h6 class="text-xs font-black uppercase tracking-widest text-[#A3AED0]">${titulo}</h6>
+                        ${pendiente ? '<span class="text-[9px] font-black uppercase tracking-widest text-amber-700 bg-amber-50 px-2 py-1 rounded-md">PENDIENTE configurar repartos</span>' : ''}
+                    </div>
+                    <p class="text-[11px] text-[#A3AED0] py-3">Sin viajes en esta categoria.</p>
+                </div>`;
+            }
+            const tdMes = (n) => n > 0 ? `<td class="px-2 py-1.5 text-right text-[11px] font-bold text-[#1B2559]">${n}</td>` : `<td class="px-2 py-1.5 text-right text-[11px] text-[#E0E5F2]">·</td>`;
+            const rowsHtml = matrix.filas.map(f => `
+                <tr class="hover:bg-[#FAFBFF]">
+                    <td class="px-3 py-1.5 text-[11px] font-bold text-[#1B2559] whitespace-nowrap">${f.nombre}</td>
+                    ${f.conteoPorMes.map(tdMes).join('')}
+                    <td class="px-3 py-1.5 text-right text-[11px] font-black text-indigo-700 border-l border-[#F4F7FE]">${f.total}</td>
+                </tr>`).join('');
+            const totalRow = `<tr class="bg-[#F4F7FE] border-t-2 border-[#E0E5F2]">
+                <td class="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#1B2559]">Total</td>
+                ${matrix.totalPorMes.map(n => `<td class="px-2 py-2 text-right text-[11px] font-black text-[#1B2559]">${n || ''}</td>`).join('')}
+                <td class="px-3 py-2 text-right text-[12px] font-black text-indigo-900 border-l border-[#E0E5F2]">${matrix.totalGeneral}</td>
+            </tr>`;
+            return `<div class="bg-white rounded-xl border border-[#F4F7FE] overflow-hidden">
+                <div class="flex items-center justify-between gap-2 px-4 py-3 bg-gradient-to-r from-indigo-50 to-white border-b border-[#F4F7FE]">
+                    <h6 class="text-xs font-black uppercase tracking-widest text-[#1B2559]">${titulo}</h6>
+                    ${pendiente ? '<span class="text-[9px] font-black uppercase tracking-widest text-amber-700 bg-amber-50 px-2 py-1 rounded-md">PENDIENTE configurar repartos</span>' : ''}
+                    <span class="text-[10px] font-black text-indigo-700">${matrix.totalGeneral} viajes</span>
+                </div>
+                <div class="overflow-x-auto custom-scrollbar">
+                    <table class="w-full text-left">
+                        <thead class="bg-[#FAFBFF]">
+                            <tr>
+                                <th class="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#A3AED0] whitespace-nowrap">Categoria</th>
+                                ${_MES_MAP.map(m => `<th class="px-2 py-2 text-right text-[9px] font-black uppercase tracking-widest text-[#A3AED0]">${m}</th>`).join('')}
+                                <th class="px-3 py-2 text-right text-[9px] font-black uppercase tracking-widest text-indigo-700 border-l border-[#F4F7FE]">Total</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-[#F4F7FE]">
+                            ${rowsHtml}
+                            ${totalRow}
+                        </tbody>
+                    </table>
+                </div>
+            </div>`;
+        }
+
+        function dashExcelSetTab(tab) {
+            __dashExcelActiveTab = tab;
+            ['propio','tercerizado','mesa'].forEach(t => {
+                const el = document.getElementById('dash-excel-tab-' + t);
+                if (!el) return;
+                if (t === tab) {
+                    el.className = 'px-4 py-2 text-xs font-black uppercase tracking-widest border-b-2 border-indigo-600 text-indigo-700';
+                } else {
+                    el.className = 'px-4 py-2 text-xs font-black uppercase tracking-widest border-b-2 border-transparent text-[#A3AED0] hover:text-[#1B2559]';
+                }
+            });
+            // Re-render con los datos ya cacheados del año
+            renderExcelStyleDashboard(__dashExcelYearTripsCache || []);
+        }
+
+        // Cache de los viajes del año entero para el panel Excel (separado del cache mensual
+        // porque necesitamos los 12 meses, no solo el activo).
+        let __dashExcelYearTripsCache = null;
+        let __dashExcelYearCachedAt = 0;
+        const DASH_EXCEL_CACHE_TTL = 5 * 60 * 1000; // 5 min
+
+        async function loadAndRenderExcelDashboard() {
+            const host = document.getElementById('dash-excel-tables');
+            if (!host) return;
+            const year = nowBuenosAires().year;
+
+            // Cache hit
+            if (__dashExcelYearTripsCache && (Date.now() - __dashExcelYearCachedAt) < DASH_EXCEL_CACHE_TTL) {
+                renderExcelStyleDashboard(__dashExcelYearTripsCache);
+                return;
+            }
+
+            // Mostrar spinner mientras carga
+            host.innerHTML = '<div class="py-8 text-center"><div class="inline-flex items-center gap-3"><div class="w-5 h-5 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div><span class="text-xs font-bold text-[#A3AED0]">Cargando datos del año...</span></div></div>';
+
+            try {
+                const res = await fetch(`${API_URL}/trips?year=${year}`, { headers: getActorHeaders() });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const yearTrips = await res.json();
+                __dashExcelYearTripsCache = yearTrips;
+                __dashExcelYearCachedAt = Date.now();
+                console.log(`[DashExcel] Cargados ${yearTrips.length} viajes del año ${year}`);
+                renderExcelStyleDashboard(yearTrips);
+            } catch (e) {
+                console.error('Error cargando viajes del año:', e);
+                host.innerHTML = `<p class="text-rose-600 text-xs font-bold">Error: ${e.message}</p>`;
+            }
+        }
+
+        async function renderExcelStyleDashboard(trips) {
+            const host = document.getElementById('dash-excel-tables');
+            if (!host) return;
+            const cfg = await loadTripCategoriesConfig();
+            if (!cfg) {
+                host.innerHTML = '<p class="text-rose-600 text-xs font-bold">No se pudo cargar la configuracion de categorias.</p>';
+                return;
+            }
+
+            const tab = __dashExcelActiveTab;
+            let html = '';
+
+            if (tab === 'mesa') {
+                // MESA/MAE: una tabla por region (Brown, Lomas, Quilmes, Lanus)
+                const mesa = _buildMesaMatrix(trips, cfg);
+                const regionNames = { Brown: 'Brown MESA', Lomas: 'Lomas MESA', Quilmes: 'Quilmes MESA', Lanus: 'Lanus MESA' };
+                let any = false;
+                for (const [regKey, label] of Object.entries(regionNames)) {
+                    if (mesa[regKey]) { html += _renderExcelTable(label, mesa[regKey], {}); any = true; }
+                    else html += _renderExcelTable(label, { filas: [], totalPorMes: [], totalGeneral: 0 }, {});
+                }
+                if (!any) html = '<p class="text-xs text-[#A3AED0] font-medium">No hay viajes con BU=MAE/MESA en el periodo.</p>' + html;
+            } else {
+                // Propios o Tercerizados
+                const labels = {
+                    SAE_BROWN: 'SAE BROWN ' + tab.toUpperCase(),
+                    SAE_LOMAS: 'SAE LOMAS ' + tab.toUpperCase(),
+                    SAE_QUILMES: 'SAE QUILMES ' + tab.toUpperCase(),
+                    SAE_LANUS: 'SAE LANUS ' + tab.toUpperCase(),
+                    LOMAS_JARDINES: 'LOMAS JARDINES ' + tab.toUpperCase()
+                };
+                for (const regionKey of ['SAE_BROWN','SAE_LOMAS','SAE_QUILMES','SAE_LANUS','LOMAS_JARDINES']) {
+                    const mtx = _buildRegionMatrix(trips, cfg, regionKey, tab);
+                    const region = cfg.regiones[regionKey];
+                    const pendiente = !!(region.subzonas_por_reparto &&
+                        Object.values(region.subzonas_por_reparto).every(arr => (!arr || arr.length === 0)) &&
+                        regionKey !== 'LOMAS_JARDINES');
+                    html += _renderExcelTable(labels[regionKey], mtx, { pendiente });
+                }
+
+                // SEGUNDA VUELTA - solo en tab Propio (se mezclan ambos? El Excel no separa)
+                if (tab === 'propio') {
+                    const sv = _buildSecondVueltaMatrix(trips, cfg, null); // null = ambos
+                    html += _renderExcelTable('SEGUNDA VUELTA (Propios + Tercerizados)', sv, {});
+                }
+            }
+            host.innerHTML = html;
+
+            // Lista de "sin clasificar" para ayudar al usuario a ver qué falta
+            _renderUnclassifiedList(trips, cfg);
+        }
+
+        function _renderUnclassifiedList(trips, cfg) {
+            const host = document.getElementById('dash-excel-unclassified-list');
+            if (!host) return;
+
+            // Construir set de BUs y combinaciones que SI estan categorizadas
+            const knownBUs = new Set();
+            (cfg.businessUnits_MESA || []).forEach(b => knownBUs.add(_norm(b)));
+            (cfg.businessUnits_REPOSICION || []).forEach(b => knownBUs.add(_norm(b)));
+            for (const items of Object.values(cfg.segunda_vuelta?.items || {})) {
+                (items || []).forEach(b => knownBUs.add(_norm(b)));
+            }
+            (cfg.desarrollo?.fallback_bu || []).forEach(b => knownBUs.add(_norm(b)));
+
+            // BUs que asumimos forman parte de SAE (Brown/Lomas/Quilmes/Lanus): DMC, SAE, etc.
+            ['DMC','SAE','DMC+SAM','DMC + SAM'].forEach(b => knownBUs.add(_norm(b)));
+
+            const unclassified = {};
+            trips.forEach(t => {
+                const bu = _norm(t.businessUnit) || 'SIN_BU';
+                if (knownBUs.has(bu)) return;
+                if (!unclassified[bu]) unclassified[bu] = 0;
+                unclassified[bu] += 1;
+            });
+
+            const entries = Object.entries(unclassified).sort((a,b) => b[1] - a[1]);
+            if (entries.length === 0) {
+                host.innerHTML = '<p class="text-[11px] text-emerald-600 font-bold">Todos los viajes estan clasificados.</p>';
+                return;
+            }
+            host.innerHTML = `<div class="grid grid-cols-2 md:grid-cols-4 gap-2">` +
+                entries.map(([bu, n]) => `
+                    <div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                        <p class="text-[10px] text-amber-700 font-bold uppercase truncate" title="${bu}">${bu}</p>
+                        <p class="text-sm font-black text-amber-900">${n} viajes</p>
+                    </div>`).join('') +
+                `</div>
+                <p class="text-[10px] text-[#A3AED0] mt-3 italic">Para clasificar estas UN, edita <code class="bg-[#F4F7FE] px-1 rounded">/js/trip-categories-config.json</code> en el servidor.</p>`;
+        }
+
         function renderLogisticsDashboard() {
             const monthEl = document.getElementById('dashboard-month-select') || document.getElementById('planning-month-select');
             const month = monthEl ? monthEl.value : 'enero';
@@ -15601,6 +16036,10 @@
 
             // Tablas de recuento de viajes Propios vs Tercerizados por Localidad / Zona / BU
             renderTripsBreakdownTables(trips);
+
+            // Bloque "Conteo de viajes por UN segun localidad" - estilo Excel GASTOS TRAFICO
+            // Necesita los 12 meses del año (no solo el mes activo). Hace fetch propia y cacheada.
+            try { loadAndRenderExcelDashboard(); } catch (e) { console.warn('loadAndRenderExcelDashboard:', e); }
 
             const ctxBuTrips = document.getElementById('dash-chart-bu-trips');
             if (ctxBuTrips) {
