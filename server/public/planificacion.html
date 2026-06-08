@@ -3764,25 +3764,55 @@
             repartoSelect.innerHTML = '<option value="">Todos los repartos</option>' + repartos.map(r => `<option value="${r}">${r}</option>`).join('');
         }
 
-        function generateReport() {
+        // Cache de viajes por mes para reportes (independiente del planningData de Logistica Semanal)
+        const __reportsCache = new Map(); // key: "mayo-2026" -> {ts, data}
+        const REPORTS_CACHE_TTL = 60000;
+
+        async function _fetchTripsForReport(month, year) {
+            const key = `${month}-${year}`;
+            const cached = __reportsCache.get(key);
+            if (cached && (Date.now() - cached.ts) < REPORTS_CACHE_TTL) return cached.data;
+            const url = `${API_URL}/trips?month=${encodeURIComponent(month)}&year=${year}`;
+            const res = await fetch(url, { headers: getActorHeaders() });
+            if (!res.ok) throw new Error('HTTP ' + res.status);
+            const data = await res.json();
+            __reportsCache.set(key, { ts: Date.now(), data });
+            return data;
+        }
+
+        async function generateReport() {
             const type = document.getElementById('report-type').value;
             const month = document.getElementById('report-month').value;
             const driver = document.getElementById('report-driver').value;
             const reparto = document.getElementById('report-reparto').value;
 
-            // Filter trips by month
-            let trips = (planningData || []).filter(t => {
-                const tripMonth = getMonthKeyFromDate(t.date);
-                return tripMonth === month;
-            });
-
-            if (driver) trips = trips.filter(t => t.driver === driver);
-            if (reparto && type === 'stops_by_reparto') trips = trips.filter(t => t.reparto === reparto);
-
             const thead = document.getElementById('report-thead');
             const tbody = document.getElementById('report-tbody');
             const kpis = document.getElementById('report-kpis');
             const empty = document.getElementById('report-empty');
+
+            // BUG FIX: antes esto leia de `planningData` (variable global de Logistica
+            // Semanal). Como Logistica Semanal optimizada trae solo el mes activo,
+            // pedir reportes de OTRO mes daba vacio. Ahora cada reporte hace su propia
+            // fetch del mes elegido, con cache 60s.
+            const year = nowBuenosAires().year;
+
+            // Spinner mientras carga
+            empty.style.display = 'none';
+            thead.innerHTML = '';
+            kpis.innerHTML = '';
+            tbody.innerHTML = '<tr><td colspan="20" class="py-12 text-center"><div class="inline-flex items-center gap-3"><div class="w-5 h-5 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div><span class="text-xs font-bold text-[#A3AED0]">Cargando datos...</span></div></td></tr>';
+
+            let trips = [];
+            try {
+                trips = await _fetchTripsForReport(month, year);
+            } catch (e) {
+                tbody.innerHTML = `<tr><td colspan="20" class="py-8 text-center text-rose-600 text-xs font-bold">Error al cargar viajes: ${e.message}</td></tr>`;
+                return;
+            }
+
+            if (driver) trips = trips.filter(t => t.driver === driver);
+            if (reparto && type === 'stops_by_reparto') trips = trips.filter(t => t.reparto === reparto);
 
             if (trips.length === 0) {
                 empty.style.display = '';
