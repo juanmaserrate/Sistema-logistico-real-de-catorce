@@ -2283,6 +2283,17 @@
                                     <label class="text-[9px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Elegí los camiones disponibles hoy</label>
                                     <div id="bud-plan-fleet-checks" class="grid grid-cols-1 gap-1 max-h-32 overflow-y-auto custom-scrollbar"></div>
                                 </div>
+                                <div id="bud-plan-manual-cap" class="grid grid-cols-2 gap-1.5 mb-2">
+                                    <div>
+                                        <label class="text-[8px] font-black text-[#A3AED0] uppercase tracking-widest block">Cap. camión (pallets)</label>
+                                        <input type="number" id="bud-max-pallets-manual" placeholder="ej. 20" class="w-full bg-white border border-amber-200 rounded-md p-1.5 text-xs font-bold text-[#1B2559]">
+                                    </div>
+                                    <div>
+                                        <label class="text-[8px] font-black text-[#A3AED0] uppercase tracking-widest block">Cap. camión (kg)</label>
+                                        <input type="number" id="bud-max-kg-manual" placeholder="ej. 8000" class="w-full bg-white border border-amber-200 rounded-md p-1.5 text-xs font-bold text-[#1B2559]">
+                                    </div>
+                                    <p class="col-span-2 text-[9px] text-[#A3AED0] italic">Solo si NO elegiste un camión de la flota arriba.</p>
+                                </div>
                                 <button onclick="budgetBuildLoadPlan()" class="w-full px-3 py-2 rounded-lg bg-amber-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-amber-700 flex items-center justify-center gap-1.5">
                                     <i data-lucide="layout-list" class="w-3.5 h-3.5"></i> Armar plan de reparto
                                 </button>
