@@ -1773,8 +1773,19 @@
                             <span class="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Hs viaje sin horario:</span>
                             <input type="number" id="cost-fallback-hours" min="1" max="24" step="0.5" class="w-16 bg-transparent border-none text-sm font-extrabold text-amber-700 outline-none">
                         </div>
+                        <button type="button" id="btn-auto-horas" onclick="autoFillHorasReales()"
+                            title="Suma automaticamente las horas de TODOS los viajes Propios del mes (las que antes sumabas a mano)"
+                            class="px-5 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black uppercase tracking-wide shadow-lg shadow-emerald-100 flex items-center gap-2">
+                            <i data-lucide="zap" class="w-4 h-4"></i> Traer horas del mes
+                        </button>
+                        <button type="button" onclick="copyCostsFromPrevMonth()"
+                            title="Copia los gastos fijos/variables guardados del mes anterior para no recargarlos a mano. Despues ajustas solo lo que cambio."
+                            class="px-5 py-4 rounded-2xl bg-white border border-[#E0E5F2] hover:bg-[#F4F7FE] text-[#1B2559] text-[11px] font-black uppercase tracking-wide flex items-center gap-2">
+                            <i data-lucide="copy" class="w-4 h-4"></i> Copiar mes anterior
+                        </button>
                     </div>
                 </div>
+                <p id="horas-auto-detail" class="text-xs font-medium text-[#A3AED0] px-2 -mt-4"></p>
 
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <!-- COSTOS FIJOS -->
@@ -3072,7 +3083,7 @@
                 if (hsEl) hsEl.value = monthData.horas_reales || 465;
                 const fbEl = document.getElementById('cost-fallback-hours');
                 if (fbEl) fbEl.value = monthData.fallback_hours || 8;
-                
+
                 document.querySelectorAll('.cost-input').forEach(input => {
                     const type = input.dataset.costType;
                     const id = input.dataset.id;
@@ -3080,6 +3091,28 @@
                 });
             }
             await calculateCosts(false);
+
+            // Hint no intrusivo: mostrar cuantas horas calcula el SISTEMA para este
+            // mes (sin pisar el valor guardado). El boton "Traer horas del mes"
+            // las aplica si el usuario quiere.
+            try {
+                const detail = document.getElementById('horas-auto-detail');
+                if (detail) {
+                    const fb = parseFloat(document.getElementById('cost-fallback-hours')?.value) || 8;
+                    const year = nowBuenosAires().year;
+                    fetch(`${API_URL}/costs/month-hours?month=${encodeURIComponent(month)}&year=${year}&fallback=${fb}`, { headers: getActorHeaders() })
+                        .then(r => r.ok ? r.json() : null)
+                        .then(d => {
+                            if (!d) return;
+                            const cur = parseFloat(document.getElementById('cost-horas-reales')?.value) || 0;
+                            const diff = Math.abs(cur - d.totalHours) > 1
+                                ? ` <span class="text-amber-700 font-bold">(cargado: ${cur} h — difiere)</span>`
+                                : ' <span class="text-emerald-700 font-bold">(coincide con lo cargado)</span>';
+                            detail.innerHTML = `El sistema suma <b>${d.totalHours} h</b> en ${d.tripsPropio} viajes Propios de ${month}${diff} — boton "Traer horas del mes" para usarlas.`;
+                        })
+                        .catch(() => {});
+                }
+            } catch (_) {}
         }
 
         // --- PERFORMANCE UTILS ---
@@ -15719,6 +15752,8 @@
             // Sync back to database for current session
             if (!globalCostsDatabase[month]) globalCostsDatabase[month] = { fijo: {}, variable: {}, horas_reales: horasReales };
             globalCostsDatabase[month].horas_reales = horasReales;
+            const _fbSync = parseFloat(document.getElementById('cost-fallback-hours')?.value);
+            if (Number.isFinite(_fbSync) && _fbSync > 0) globalCostsDatabase[month].fallback_hours = _fbSync;
             document.querySelectorAll('[data-cost-type]').forEach(input => {
                 const type = input.getAttribute('data-cost-type');
                 const id = input.getAttribute('data-id');
@@ -15726,6 +15761,75 @@
             });
             
             // No auto-save: los costos se guardan solo al presionar "CALCULAR COSTOS DEL MES"
+        }
+
+        // ── Horas reales automaticas ─────────────────────────────────────
+        // Suma las horas de TODOS los viajes Propios del mes (el dato que el
+        // usuario sumaba a mano) y llena el campo "Horas Reales" con desglose.
+        async function autoFillHorasReales() {
+            const btn = document.getElementById('btn-auto-horas');
+            const month = document.getElementById('costs-month-select').value;
+            const year = nowBuenosAires().year;
+            const fb = parseFloat(document.getElementById('cost-fallback-hours')?.value) || 8;
+            const detail = document.getElementById('horas-auto-detail');
+            if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+            if (detail) detail.textContent = 'Sumando horas de los viajes del mes...';
+            try {
+                const res = await fetch(`${API_URL}/costs/month-hours?month=${encodeURIComponent(month)}&year=${year}&fallback=${fb}`, { headers: getActorHeaders() });
+                const d = await res.json();
+                if (!res.ok) throw new Error(d.error || 'Error del servidor');
+                const el = document.getElementById('cost-horas-reales');
+                if (el) el.value = d.totalHours;
+                if (detail) {
+                    const sinHorario = d.tripsWithoutHours > 0
+                        ? ` &nbsp;·&nbsp; <span class="text-amber-700 font-bold">${d.tripsWithoutHours} viajes SIN horario asumidos a ${d.fallbackHours} h c/u = ${d.hoursAssumed} h</span>`
+                        : '';
+                    detail.innerHTML = `⚡ <b>${d.totalHours} h</b> = ${d.tripsWithHours} viajes con horario (${d.hoursFromTrips} h)${sinHorario} &nbsp;·&nbsp; ${d.tripsPropio} viajes Propios en ${month}`;
+                }
+                calculateCosts(); // refrescar tasas por hora en pantalla
+                if (typeof addNotification === 'function') addNotification('success', 'Horas del mes', `${d.totalHours} h cargadas desde ${d.tripsPropio} viajes propios.`);
+            } catch (e) {
+                if (detail) detail.innerHTML = `<span class="text-rose-600 font-bold">Error: ${e.message || e}</span>`;
+            } finally {
+                if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+            }
+        }
+
+        // Copia los gastos fijos/variables guardados del mes anterior al form
+        // actual (sin guardar): el usuario ajusta solo lo que cambio y calcula.
+        function copyCostsFromPrevMonth() {
+            const sel = document.getElementById('costs-month-select');
+            const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+            const idx = months.indexOf(sel?.value);
+            if (idx < 0) return;
+            if (idx === 0) {
+                alert('Enero no tiene mes anterior en este año. Cargalo a mano o elegi otro mes.');
+                return;
+            }
+            const prev = months[idx - 1];
+            const db = (typeof getCostsDatabase === 'function') ? getCostsDatabase() : {};
+            const prevData = db[prev];
+            if (!prevData || (!prevData.fijo && !prevData.variable)) {
+                alert(`No hay costos guardados de ${prev}. Calcula ese mes primero (boton CALCULAR COSTOS DEL MES).`);
+                return;
+            }
+            let copied = 0;
+            document.querySelectorAll('[data-cost-type]').forEach(inp => {
+                const type = inp.getAttribute('data-cost-type');
+                const id = inp.getAttribute('data-id');
+                const v = prevData[type]?.[id];
+                if (v != null) { inp.value = v; copied++; }
+            });
+            // Horas NO se copian a proposito: cada mes tiene sus horas propias.
+            // El fallback si (es una preferencia, no un dato del mes).
+            if (prevData.fallback_hours) {
+                const fbEl = document.getElementById('cost-fallback-hours');
+                if (fbEl) fbEl.value = prevData.fallback_hours;
+            }
+            calculateCosts();
+            if (typeof addNotification === 'function') {
+                addNotification('success', 'Costos', `${copied} valores copiados de ${prev}. Ajusta lo que cambio, traete las horas del mes y calcula.`);
+            }
         }
 
         async function calcularCostosDelMes() {

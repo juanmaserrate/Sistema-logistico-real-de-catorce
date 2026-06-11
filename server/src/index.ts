@@ -4084,6 +4084,69 @@ function parseTripDurationHrs(t: any, fallbackHours = 8): number {
     return fallbackHours;
 }
 
+/** Suma de horas de viajes PROPIOS del mes — autocompleta "Horas Reales" del
+ *  Motor de Costos (antes el usuario las sumaba a mano viaje por viaje).
+ *  Devuelve desglose: viajes con horario real vs viajes sin horario (asumidos
+ *  al fallback) para que el operador vea de donde sale el numero. */
+app.get('/api/v1/costs/month-hours', async (req: any, res: any) => {
+    try {
+        const monthMap: Record<string, number> = {
+            enero: 0, febrero: 1, marzo: 2, abril: 3, mayo: 4, junio: 5,
+            julio: 6, agosto: 7, septiembre: 8, octubre: 9, noviembre: 10, diciembre: 11
+        };
+        const mKey = String(req.query.month || '').toLowerCase();
+        const monthNum = monthMap[mKey];
+        if (monthNum === undefined) return res.status(400).json({ error: 'Parametro month invalido (enero..diciembre)' });
+        const year = Number(req.query.year) > 0 ? Number(req.query.year) : new Date().getFullYear();
+        const fallback = (() => {
+            const v = parseFloat(String(req.query.fallback ?? ''));
+            return Number.isFinite(v) && v > 0 && v <= 24 ? v : 8;
+        })();
+        const startDate = new Date(year, monthNum, 1);
+        const endDate = new Date(year, monthNum + 1, 0, 23, 59, 59);
+        const trips = await prisma.trip.findMany({
+            where: { contractType: 'Propio', date: { gte: startDate, lte: endDate } },
+            select: {
+                id: true,
+                exitTime: true,
+                returnTime: true,
+                // Horas GPS reales de la ruta vinculada (mas precisas que exit/return manual)
+                linkedRoute: { select: { actualStartTime: true, actualEndTime: true } }
+            }
+        });
+        let withHours = 0, withHoursSum = 0, withoutHours = 0;
+        for (const t of trips) {
+            // Adaptar al shape que espera parseTripDurationHrs (route* primero, luego exit/return)
+            const shaped = {
+                routeActualStart: t.linkedRoute?.actualStartTime ?? null,
+                routeActualEnd: t.linkedRoute?.actualEndTime ?? null,
+                exitTime: t.exitTime,
+                returnTime: t.returnTime
+            };
+            // fallback 0 = centinela "sin datos" (las duraciones reales siempre son > 0)
+            const h = parseTripDurationHrs(shaped, 0);
+            if (h > 0) { withHours++; withHoursSum += h; }
+            else withoutHours++;
+        }
+        const hoursAssumed = withoutHours * fallback;
+        const round1 = (n: number) => Math.round(n * 10) / 10;
+        res.json({
+            month: mKey,
+            year,
+            tripsPropio: trips.length,
+            tripsWithHours: withHours,
+            hoursFromTrips: round1(withHoursSum),
+            tripsWithoutHours: withoutHours,
+            fallbackHours: fallback,
+            hoursAssumed: round1(hoursAssumed),
+            totalHours: round1(withHoursSum + hoursAssumed)
+        });
+    } catch (e: any) {
+        console.error('[month-hours]', e);
+        res.status(500).json({ error: e?.message || 'Error calculando horas del mes' });
+    }
+});
+
 app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
     try {
         const { month, year: yearArg, costsParams, salariesData } = req.body || {};
