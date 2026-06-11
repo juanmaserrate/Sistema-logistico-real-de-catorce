@@ -139,11 +139,15 @@ export async function fetchRoutesToday(driverId: string): Promise<Route[]> {
   } catch (e) {
     // Offline fallback: return cached routes if they belong to the same driver.
     // El cache YA esta filtrado (lo escribimos asi arriba), pero re-filtramos por seguridad.
+    // FIX: validar tambien que el cache sea de HOY. Antes, si el chofer abria la app
+    // al dia siguiente SIN senial, veia el viaje de AYER como si estuviera activo
+    // (el operador ya lo habia cerrado y cargado el viaje nuevo). Ahora sin senial
+    // muestra vacio hasta reconectar, que es el estado real.
     try {
       const raw = await AsyncStorage.getItem(ROUTES_CACHE_KEY);
       if (raw) {
         const cached = JSON.parse(raw);
-        if (cached?.driverId === driverId && Array.isArray(cached.routes)) {
+        if (cached?.driverId === driverId && cached?.date === today && Array.isArray(cached.routes)) {
           const cachedRoutes = cached.routes as Route[];
           return cachedRoutes.filter((r: any) => {
             if (r?.actualEndTime) return false;
