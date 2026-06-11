@@ -7774,6 +7774,75 @@
                 </div>`;
         }
 
+        // ── Geocoding + Directions con MAPBOX (reemplaza Google Places/Geocoder/Directions
+        //    en Cotizaciones, que dejaron de funcionar por la deuda con Google) ──
+        const MAPBOX_PBA_BBOX = '-63.50,-41.05,-56.60,-33.25'; // Provincia de Buenos Aires
+        const MAPBOX_PROXIMITY = '-58.40,-34.75';              // GBA sur (sesga cercania)
+
+        /** Busca direcciones/lugares: devuelve lista de features GeoJSON de Mapbox. */
+        async function mapboxGeocodeForward(query, limit = 8) {
+            const token = await getMapboxToken();
+            if (!token) return [];
+            try {
+                const url = `https://api.mapbox.com/search/geocode/v6/forward?q=${encodeURIComponent(query)}`
+                    + `&country=ar&language=es&limit=${limit}`
+                    + `&proximity=${MAPBOX_PROXIMITY}&bbox=${MAPBOX_PBA_BBOX}`
+                    + `&access_token=${encodeURIComponent(token)}`;
+                const res = await fetch(url);
+                if (!res.ok) return [];
+                const data = await res.json();
+                return Array.isArray(data.features) ? data.features : [];
+            } catch (e) {
+                console.warn('mapboxGeocodeForward:', e);
+                return [];
+            }
+        }
+
+        /** Geocodifica UNA direccion (texto) → {lat,lng,formatted} | null */
+        async function mapboxGeocodeOne(addr) {
+            const feats = await mapboxGeocodeForward(addr, 1);
+            if (!feats.length) return null;
+            const f = feats[0];
+            const c = f.geometry?.coordinates || [];
+            const p = f.properties || {};
+            const lng = c[0] ?? p.coordinates?.longitude ?? null;
+            const lat = c[1] ?? p.coordinates?.latitude ?? null;
+            if (lat == null || lng == null) return null;
+            return { lat, lng, formatted: p.full_address || p.place_formatted || addr };
+        }
+
+        /** Ruta en auto por una lista de coords [{lat,lng}] → {meters,seconds} | null.
+         *  Mapbox Directions admite hasta 25 puntos por request. */
+        async function mapboxDirectionsRoute(coords) {
+            const token = await getMapboxToken();
+            if (!token || !Array.isArray(coords) || coords.length < 2) return null;
+            if (coords.length > 25) {
+                // Demasiadas paradas para un solo request: sumamos por tramos de a 25.
+                let meters = 0, seconds = 0;
+                for (let i = 0; i < coords.length - 1; i += 24) {
+                    const chunk = coords.slice(i, Math.min(i + 25, coords.length));
+                    const part = await mapboxDirectionsRoute(chunk);
+                    if (!part) return null;
+                    meters += part.meters; seconds += part.seconds;
+                }
+                return { meters, seconds };
+            }
+            const coordStr = coords.map(c => `${c.lng},${c.lat}`).join(';');
+            try {
+                const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${coordStr}`
+                    + `?overview=false&access_token=${encodeURIComponent(token)}`;
+                const res = await fetch(url);
+                if (!res.ok) return null;
+                const data = await res.json();
+                const r = data.routes?.[0];
+                if (!r) return null;
+                return { meters: r.distance || 0, seconds: r.duration || 0 };
+            } catch (e) {
+                console.warn('mapboxDirectionsRoute:', e);
+                return null;
+            }
+        }
+
         function budgetOpenStopModal() {
             document.getElementById('bud-stop-modal').classList.remove('hidden');
             document.getElementById('bud-stop-search').value = '';
@@ -7818,124 +7887,47 @@
                     </button>
                 `).join('');
             } else {
-                html += '<div class="text-[11px] text-[#A3AED0] italic p-2">No hay coincidencias en el catálogo. Buscando en Google Maps abajo...</div>';
+                html += '<div class="text-[11px] text-[#A3AED0] italic p-2">No hay coincidencias en el catálogo. Buscando en Mapbox abajo...</div>';
             }
 
-            // Si Google Maps no está listo, intentar cargarlo y esperar
-            if (q.length >= 3 && !window.google?.maps && typeof loadGoogleMapsScript === 'function' && typeof getGoogleMapsKey === 'function') {
-                html += '<div class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest px-2 py-1 mt-3">Sugerencias de Google Maps</div><div id="bud-google-sug" class="space-y-1"><div class="text-[11px] text-amber-600 italic p-2">Cargando Google Maps...</div></div>';
-                container.innerHTML = html;
-                lucide.createIcons();
-                try {
-                    const key = await getGoogleMapsKey();
-                    if (key) await loadGoogleMapsScript(key);
-                    // Re-disparar la búsqueda una vez cargado
-                    setTimeout(() => budgetStopSearch(), 50);
-                } catch {}
-                return;
-            }
-
-            // 2) Google Maps — Autocomplete primero, Geocoder como respaldo
-            if (q.length >= 3 && window.google?.maps) {
+            // 2) Mapbox Geocoding — reemplaza Google Places (devuelve coords en la
+            //    misma respuesta, sin segunda llamada como getDetails de Google).
+            if (q.length >= 3) {
                 clearTimeout(budStopSearchTimer);
-                html += '<div class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest px-2 py-1 mt-3">Sugerencias de Google Maps</div><div id="bud-google-sug" class="space-y-1"><div class="text-[11px] text-[#A3AED0] italic p-2">Buscando...</div></div>';
+                html += '<div class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest px-2 py-1 mt-3">Sugerencias de Mapbox</div><div id="bud-google-sug" class="space-y-1"><div class="text-[11px] text-[#A3AED0] italic p-2">Buscando...</div></div>';
                 container.innerHTML = html;
                 lucide.createIcons();
-
-                // Provincia de Buenos Aires (toda, desde norte hasta la costa atlántica)
-                const PBA_BOUNDS = new google.maps.LatLngBounds(
-                    new google.maps.LatLng(-41.05, -63.50),   // SW
-                    new google.maps.LatLng(-33.25, -56.60)    // NE
-                );
-                // Es una parada de PBA si NO tiene CABA y sí dice Buenos Aires
-                function isPBAResult(formattedAddress) {
-                    const a = (formattedAddress || '').toLowerCase();
-                    if (a.includes('ciudad autónoma de buenos aires') || a.includes('ciudad autonoma de buenos aires') || a.includes('caba,')) return false;
-                    return a.includes('buenos aires') && a.includes('argentina');
-                }
 
                 budStopSearchTimer = setTimeout(async () => {
                     const sugDiv = document.getElementById('bud-google-sug');
                     if (!sugDiv) return;
+                    // Guard anti-race: si el texto cambio mientras buscabamos, abortar
+                    const qNow = (document.getElementById('bud-stop-search').value || '').trim();
+                    if (qNow !== q) return;
 
-                    // --- Intento 1: Places Autocomplete (bias a PBA) ---
-                    let preds = [];
-                    if (window.google?.maps?.places) {
-                        if (!budAutocompleteSvc) {
-                            budAutocompleteSvc = new google.maps.places.AutocompleteService();
-                        }
-                        try {
-                            preds = await new Promise((resolve) => {
-                                budAutocompleteSvc.getPlacePredictions({
-                                    input: q,
-                                    componentRestrictions: { country: 'ar' },
-                                    language: 'es-AR',
-                                    locationBias: PBA_BOUNDS,
-                                }, (r, status) => {
-                                    resolve(status === google.maps.places.PlacesServiceStatus.OK && r ? r : []);
-                                });
-                            });
-                        } catch {}
+                    const feats = await mapboxGeocodeForward(q, 8);
+                    if (document.getElementById('bud-stop-search')?.value?.trim() !== q) return;
+
+                    if (!feats.length) {
+                        sugDiv.innerHTML = '<div class="text-[11px] text-[#A3AED0] italic p-2">Sin resultados de Mapbox. Podés agregar el texto como dirección libre (abajo).</div>';
+                        return;
                     }
 
-                    // Filtrar: priorizar PBA, dejar CABA solo si no hay otros
-                    const predsPBA = preds.filter(p => isPBAResult(p.description));
-                    const predsFinal = predsPBA.length ? predsPBA : preds;
-
-                    if (predsFinal.length) {
-                        window.__budGooglePreds = predsFinal.slice(0, 8);
-                        window.__budGeocoderResults = [];
-                        sugDiv.innerHTML = window.__budGooglePreds.map((p, i) => `
-                            <button type="button" onclick="budgetSelectGooglePlace(${i})" class="w-full text-left p-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 flex items-start gap-2">
+                    window.__budMapboxFeatures = feats.slice(0, 8);
+                    sugDiv.innerHTML = window.__budMapboxFeatures.map((f, i) => {
+                        const p = f.properties || {};
+                        const main = p.name || (p.full_address || '').split(',')[0] || q;
+                        const sec = p.place_formatted || p.full_address || '';
+                        return `
+                            <button type="button" onclick="budgetSelectMapboxFeature(${i})" class="w-full text-left p-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 flex items-start gap-2">
                                 <i data-lucide="map-pin" class="w-4 h-4 text-indigo-600 shrink-0 mt-0.5"></i>
                                 <div class="flex-1 min-w-0">
-                                    <div class="text-sm font-bold text-[#1B2559]">${escapeHtml(p.structured_formatting?.main_text || p.description)}</div>
-                                    <div class="text-[11px] text-[#A3AED0] truncate">${escapeHtml(p.structured_formatting?.secondary_text || '')}</div>
+                                    <div class="text-sm font-bold text-[#1B2559]">${escapeHtml(main)}</div>
+                                    <div class="text-[11px] text-[#A3AED0] truncate">${escapeHtml(sec)}</div>
                                 </div>
                             </button>
-                        `).join('');
-                        lucide.createIcons();
-                        return;
-                    }
-
-                    // --- Intento 2: Geocoder con restricción administrativeArea=Buenos Aires (estricto PBA) ---
-                    const geocoder = new google.maps.Geocoder();
-                    let geoResults = await new Promise((resolve) => {
-                        geocoder.geocode({
-                            address: q,
-                            region: 'AR',
-                            bounds: PBA_BOUNDS,
-                            componentRestrictions: { country: 'AR', administrativeArea: 'Buenos Aires' },
-                        }, (r, status) => resolve(status === 'OK' && r ? r : []));
-                    });
-                    // Si PBA estricta no devuelve, probar sin admin area (aceptar lo que venga)
-                    if (!geoResults.length) {
-                        geoResults = await new Promise((resolve) => {
-                            geocoder.geocode({
-                                address: q,
-                                region: 'AR',
-                                bounds: PBA_BOUNDS,
-                                componentRestrictions: { country: 'AR' },
-                            }, (r, status) => resolve(status === 'OK' && r ? r : []));
-                        });
-                    }
-
-                    if (!geoResults.length) {
-                        sugDiv.innerHTML = '<div class="text-[11px] text-[#A3AED0] italic p-2">Sin resultados de Google. Podés agregar el texto como dirección libre (abajo).</div>';
-                        return;
-                    }
-
-                    window.__budGeocoderResults = geoResults.slice(0, 6);
-                    window.__budGooglePreds = [];
-                    sugDiv.innerHTML = window.__budGeocoderResults.map((g, i) => `
-                        <button type="button" onclick="budgetSelectGeocoderResult(${i})" class="w-full text-left p-3 rounded-xl bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 flex items-start gap-2">
-                            <i data-lucide="map-pin" class="w-4 h-4 text-indigo-600 shrink-0 mt-0.5"></i>
-                            <div class="flex-1 min-w-0">
-                                <div class="text-sm font-bold text-[#1B2559]">${escapeHtml(g.formatted_address.split(',')[0])}</div>
-                                <div class="text-[11px] text-[#A3AED0] truncate">${escapeHtml(g.formatted_address)}</div>
-                            </div>
-                        </button>
-                    `).join('');
+                        `;
+                    }).join('');
                     lucide.createIcons();
                 }, 350);
             } else {
@@ -7944,19 +7936,20 @@
             }
         }
 
-        function budgetSelectGeocoderResult(idx) {
-            const g = window.__budGeocoderResults?.[idx];
-            if (!g) return;
-            budgetState.stops.push({
-                name: g.formatted_address.split(',')[0],
-                address: g.formatted_address,
-                lat: g.geometry.location.lat(),
-                lng: g.geometry.location.lng(),
-            });
+        function budgetSelectMapboxFeature(idx) {
+            const f = window.__budMapboxFeatures?.[idx];
+            if (!f) return;
+            const p = f.properties || {};
+            const c = f.geometry?.coordinates || [];
+            const lng = c[0] ?? p.coordinates?.longitude ?? null;
+            const lat = c[1] ?? p.coordinates?.latitude ?? null;
+            const name = p.name || (p.full_address || '').split(',')[0] || 'Parada';
+            const address = p.full_address || p.place_formatted || name;
+            budgetState.stops.push({ name, address, lat, lng });
             budgetCloseStopModal();
             budgetRenderStopsList();
             if (typeof addNotification === 'function') {
-                addNotification('success', 'Parada agregada', g.formatted_address);
+                addNotification('success', 'Parada agregada', address);
             }
         }
 
@@ -8021,75 +8014,41 @@
                 addNotification('warning', 'Sin origen', 'Ingresá la dirección de origen.');
                 return;
             }
-            // Geocodificar paradas que no tengan coords
-            if (!window.google?.maps) {
-                addNotification('warning', 'Google Maps', 'Google Maps no está cargado todavía. Esperá unos segundos y reintentá.');
-                return;
-            }
-            const geocoder = new google.maps.Geocoder();
-            async function geocode(addr) {
-                return new Promise((resolve) => {
-                    geocoder.geocode({ address: addr, region: 'AR' }, (res, status) => {
-                        if (status === 'OK' && res && res[0]) {
-                            const p = res[0].geometry.location;
-                            resolve({ lat: p.lat(), lng: p.lng(), formatted: res[0].formatted_address });
-                        } else {
-                            resolve(null);
-                        }
-                    });
-                });
-            }
+            // Geocodificar (Mapbox) las paradas que no tengan coords
             for (const s of budgetState.stops) {
                 if (!s.lat || !s.lng) {
-                    const g = await geocode(s.address || s.name);
+                    const g = await mapboxGeocodeOne(s.address || s.name);
                     if (g) { s.lat = g.lat; s.lng = g.lng; s.address = s.address || g.formatted; }
                 }
             }
-            const originGeo = await geocode(origin);
+            const originGeo = await mapboxGeocodeOne(origin);
             if (!originGeo) {
-                addNotification('warning', 'Origen no encontrado', 'No se pudo geocodificar la dirección de origen.');
+                addNotification('warning', 'Origen no encontrado', 'No se pudo geocodificar la dirección de origen con Mapbox.');
                 return;
             }
-            // Directions Service
-            const ds = new google.maps.DirectionsService();
-            const waypoints = budgetState.stops.slice(0, -1).map(s => ({
-                location: new google.maps.LatLng(s.lat, s.lng),
-                stopover: true,
-            }));
-            const dest = budgetState.stops[budgetState.stops.length - 1];
+            const valid = budgetState.stops.filter(s => s.lat != null && s.lng != null);
+            if (valid.length === 0) {
+                addNotification('warning', 'Sin coordenadas', 'No se pudieron ubicar las paradas en el mapa.');
+                return;
+            }
             try {
-                const result = await new Promise((resolve, reject) => {
-                    ds.route({
-                        origin: { lat: originGeo.lat, lng: originGeo.lng },
-                        destination: { lat: dest.lat, lng: dest.lng },
-                        waypoints,
-                        optimizeWaypoints: false,
-                        travelMode: google.maps.TravelMode.DRIVING,
-                    }, (res, status) => {
-                        if (status === 'OK') resolve(res); else reject(status);
-                    });
-                });
-                const legs = result.routes[0].legs;
-                const totalMeters = legs.reduce((a, l) => a + l.distance.value, 0);
-                const totalSeconds = legs.reduce((a, l) => a + l.duration.value, 0);
-                // Sumar el regreso al origen
-                const returnLeg = await new Promise((resolve, reject) => {
-                    ds.route({
-                        origin: { lat: dest.lat, lng: dest.lng },
-                        destination: { lat: originGeo.lat, lng: originGeo.lng },
-                        travelMode: google.maps.TravelMode.DRIVING,
-                    }, (res, status) => { if (status === 'OK') resolve(res.routes[0].legs[0]); else resolve(null); });
-                });
-                const retMeters = returnLeg?.distance?.value || 0;
-                const retSeconds = returnLeg?.duration?.value || 0;
-                budgetState.routeKm = (totalMeters + retMeters) / 1000;
-                budgetState.routeMinutes = Math.round((totalSeconds + retSeconds) / 60);
+                // Ida: origen → todas las paradas en orden (un solo request con waypoints)
+                const idaCoords = [{ lat: originGeo.lat, lng: originGeo.lng }, ...valid.map(s => ({ lat: s.lat, lng: s.lng }))];
+                const ida = await mapboxDirectionsRoute(idaCoords);
+                if (!ida) throw new Error('Mapbox no devolvió ruta');
+                // Vuelta: última parada → origen
+                const last = valid[valid.length - 1];
+                const vuelta = await mapboxDirectionsRoute([{ lat: last.lat, lng: last.lng }, { lat: originGeo.lat, lng: originGeo.lng }]);
+                const retMeters = vuelta?.meters || 0;
+                const retSeconds = vuelta?.seconds || 0;
+                budgetState.routeKm = (ida.meters + retMeters) / 1000;
+                budgetState.routeMinutes = Math.round((ida.seconds + retSeconds) / 60);
                 document.getElementById('bud-km').textContent = budgetState.routeKm.toFixed(1) + ' km';
                 document.getElementById('bud-time').textContent = budgetState.routeMinutes + ' min (' + (budgetState.routeMinutes/60).toFixed(1) + ' h)';
                 document.getElementById('bud-route-metrics').classList.remove('hidden');
             } catch (e) {
-                console.error('Directions error', e);
-                addNotification('warning', 'No se pudo calcular la ruta', 'Error de Google Directions.');
+                console.error('Mapbox Directions error', e);
+                addNotification('warning', 'No se pudo calcular la ruta', 'Error de Mapbox Directions. Revisá las direcciones.');
             }
         }
 
@@ -8098,31 +8057,53 @@
                 addNotification('warning', 'Pocas paradas', 'Necesitás al menos 2 paradas para optimizar.');
                 return;
             }
-            if (!window.google?.maps) return;
             const origin = (document.getElementById('bud-origin').value || '').trim();
-            const geocoder = new google.maps.Geocoder();
-            function geocode(addr) {
-                return new Promise((res) => geocoder.geocode({ address: addr, region: 'AR' }, (r, s) =>
-                    s === 'OK' && r[0] ? res({ lat: r[0].geometry.location.lat(), lng: r[0].geometry.location.lng() }) : res(null)));
-            }
+            // Geocodificar (Mapbox) lo que falte
             for (const s of budgetState.stops) {
-                if (!s.lat) { const g = await geocode(s.address || s.name); if (g) { s.lat = g.lat; s.lng = g.lng; } }
+                if (!s.lat) { const g = await mapboxGeocodeOne(s.address || s.name); if (g) { s.lat = g.lat; s.lng = g.lng; } }
             }
-            const originGeo = await geocode(origin);
-            if (!originGeo) return;
-            const ds = new google.maps.DirectionsService();
-            const result = await new Promise((res, rej) => ds.route({
-                origin: originGeo,
-                destination: originGeo,
-                waypoints: budgetState.stops.map(s => ({ location: new google.maps.LatLng(s.lat, s.lng), stopover: true })),
-                optimizeWaypoints: true,
-                travelMode: google.maps.TravelMode.DRIVING,
-            }, (r, st) => st === 'OK' ? res(r) : rej(st)));
-            const order = result.routes[0].waypoint_order;
-            budgetState.stops = order.map(i => budgetState.stops[i]);
-            budgetRenderStopsList();
-            await budgetCalculateRoute();
-            addNotification('success', 'Ruta optimizada', 'El orden de las paradas se ajustó.');
+            const originGeo = await mapboxGeocodeOne(origin);
+            if (!originGeo) {
+                addNotification('warning', 'Origen no encontrado', 'No se pudo geocodificar el origen.');
+                return;
+            }
+            const valid = budgetState.stops.filter(s => s.lat != null && s.lng != null);
+            if (valid.length < 2) {
+                addNotification('warning', 'Sin coordenadas', 'No hay suficientes paradas ubicables para optimizar.');
+                return;
+            }
+            try {
+                const token = await getMapboxToken();
+                // Optimization API de Mapbox: arranca y termina en el origen (roundtrip).
+                // source=first/destination=last fija el origen como inicio y fin.
+                const coords = [{ lat: originGeo.lat, lng: originGeo.lng }, ...valid.map(s => ({ lat: s.lat, lng: s.lng }))];
+                if (coords.length > 12) {
+                    addNotification('warning', 'Demasiadas paradas', 'La optimización automática admite hasta 11 paradas. Calculá la ruta sin optimizar.');
+                    return;
+                }
+                const coordStr = coords.map(c => `${c.lng},${c.lat}`).join(';');
+                const url = `https://api.mapbox.com/optimized-trips/v1/mapbox/driving/${coordStr}`
+                    + `?source=first&destination=last&roundtrip=true&overview=false&access_token=${encodeURIComponent(token)}`;
+                const res = await fetch(url);
+                const data = await res.json();
+                if (!res.ok || !Array.isArray(data.waypoints)) throw new Error(data.message || 'Sin respuesta');
+                // waypoint_index incluye el origen (índice 0). Reordenamos las PARADAS
+                // según su nuevo orden, ignorando el origen.
+                const order = data.waypoints
+                    .map((w, i) => ({ original: i, pos: w.waypoint_index }))
+                    .filter(w => w.original > 0)          // sacar el origen (era coords[0])
+                    .sort((a, b) => a.pos - b.pos)
+                    .map(w => valid[w.original - 1]);      // -1 porque valid no incluye el origen
+                if (order.length === valid.length) {
+                    budgetState.stops = order;
+                    budgetRenderStopsList();
+                }
+                await budgetCalculateRoute();
+                addNotification('success', 'Ruta optimizada', 'El orden de las paradas se ajustó con Mapbox.');
+            } catch (e) {
+                console.error('Mapbox Optimization error', e);
+                addNotification('warning', 'No se pudo optimizar', 'Error de Mapbox. Probá calcular la ruta sin optimizar.');
+            }
         }
 
         // ── CÁLCULO ────────────────────────────────────────────────────────
