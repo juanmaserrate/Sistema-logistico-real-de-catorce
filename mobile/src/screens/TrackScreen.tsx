@@ -345,23 +345,33 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   /** Monitor de conectividad: flush de colas offline. */
   useEffect(() => {
     // Detectamos conectividad haciendo ping al servidor cada 5s.
-    // BUG FIX (antes 8s + solo flush en transicion offline->online):
-    // Si el chofer marcaba paradas sin senial y luego se reconectaba lento
-    // (sin transicion clara), la cola quedaba en el telefono sin enviarse.
-    // Ahora: SIEMPRE que haya cola pendiente Y estemos online, intentamos
-    // flushear, sin importar el estado anterior.
+    // FIX (jun-2026): el timeout era 5s y declarabamos "sin senial" tras UN
+    // solo ping fallido. El server responde ~1.8s en buenas condiciones, pero
+    // con 4G normal puede demorar mas — el ping abortaba y el chofer veia
+    // "Sin senial" con LTE pleno. Ahora:
+    //  - Timeout 10s (no 5s) -> margen para conexiones reales lentas.
+    //  - Hacen falta 2 pings fallidos CONSECUTIVOS para declarar offline.
+    //  - 1 ping OK basta para volver a "online".
+    // La cola offline sigue tirando flush si hay items y estamos online —
+    // eso no cambia.
     let cancelled = false;
+    let consecutiveFails = 0;
+    const FAILS_FOR_OFFLINE = 2;
     const tick = async () => {
       const pending = await getPendingStopCount();
       if (cancelled) return;
       setPendingOffline(pending);
-      const latency = await pingServer(5000);
+      const latency = await pingServer(10000); // antes 5000
       if (cancelled) return;
-      const online = latency != null;
-      setIsOnline(online);
-      // Flushear SIEMPRE que: estemos online + haya items en cola.
-      // No depende de "wasOnline" -> evita el bug de no detectar transicion.
-      if (online && pending > 0) {
+      if (latency != null) {
+        consecutiveFails = 0;
+        setIsOnline(true);
+      } else {
+        consecutiveFails++;
+        if (consecutiveFails >= FAILS_FOR_OFFLINE) setIsOnline(false);
+      }
+      // Flushear: si tuvimos UN ping OK (latency!=null), hay senial real.
+      if (latency != null && pending > 0) {
         try {
           const sent = await flushStopQueue();
           await flushIncidentQueue();
