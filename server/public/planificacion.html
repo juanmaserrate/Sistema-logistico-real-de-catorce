@@ -12081,7 +12081,16 @@
         }
 
         function _weeklyRebuildPlanningData() {
-            planningData = [...__weeklyTripsById.values()];
+            const next = [...__weeklyTripsById.values()];
+            // FIX defensivo: si el store quedo vacio por un race condition Y
+            // planningData ya tenia data, NO pisarlo con vacio (causaba que
+            // acciones del operador rompieran porque dependen de planningData).
+            // El proximo fetch exitoso repobla normalmente.
+            if (next.length === 0 && Array.isArray(planningData) && planningData.length > 0) {
+                console.warn('[Weekly] Rebuild produjo vacio — preservando planningData existente');
+                return;
+            }
+            planningData = next;
         }
 
         async function _weeklyFetchMonth(key) {
@@ -12158,6 +12167,8 @@
             _weeklyRebuildPlanningData();
             filterWeeklyData();
 
+            // Solo mostrar la pantalla de error si REALMENTE no hay nada que mostrar.
+            // Si hubo error pero tenemos datos viejos en pantalla, mejor un toast.
             if (lastErr && planningData.length === 0) {
                 const msg = String(lastErr?.message || lastErr);
                 const isAuth = msg.startsWith('Auth');
@@ -12165,17 +12176,31 @@
                 if (body) {
                     body.innerHTML = `<tr><td colspan="20" class="py-8 text-center"><div class="inline-flex flex-col items-center gap-3"><p class="text-sm font-black text-rose-600">${isAuth ? 'SESION EXPIRADA' : 'ERROR DE CONEXION'}</p><p class="text-xs text-[#A3AED0]">${isAuth ? 'Tu sesion expiro. Recarga la pagina (F5) para volver a loguearte.' : 'No se pudieron cargar los viajes. Revisa tu conexion.'}</p><button onclick="location.reload()" class="mt-2 px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700">Recargar</button></div></td></tr>`;
                 }
+            } else if (lastErr && planningData.length > 0) {
+                // Toast no intrusivo: los datos viejos siguen visibles, solo avisamos.
+                if (typeof addNotification === 'function') {
+                    const msg = String(lastErr?.message || lastErr);
+                    const isAuth = msg.startsWith('Auth');
+                    addNotification('warning', isAuth ? 'Sesion' : 'Conexion',
+                        isAuth ? 'Tu sesion vencio. Recargá la página (F5) para reloguearte.' : 'No se pudieron refrescar los datos. Mostramos los anteriores.');
+                }
             }
         }
 
-        /** Invalida el cache mensual para forzar refetch (ej. tras crear/editar viaje) */
+        /** Invalida el cache mensual para forzar refetch (ej. tras crear/editar viaje).
+         *  FIX (bug pantalla en blanco): NUNCA limpiar __weeklyTripsById aqui.
+         *  Stale-while-revalidate: dejar los datos viejos visibles mientras el
+         *  proximo loadWeeklyData trae los nuevos. Si los limpiabamos, planningData
+         *  quedaba con 0 entre que llegaba un socket y completaba el fetch, y
+         *  cualquier accion del operador (iniciar viaje, etc) rompia. */
         function invalidateWeeklyCache(monthVal, yearVal) {
             if (monthVal && yearVal) {
                 const key = `${String(monthVal).toLowerCase()}-${yearVal}`;
                 __weeklyMonthsLoaded.delete(key);
             } else {
                 __weeklyMonthsLoaded.clear();
-                __weeklyTripsById.clear();
+                // __weeklyTripsById NO se limpia (los IDs viejos se SOBREESCRIBEN
+                // cuando llegan los nuevos del fetch).
             }
         }
 
