@@ -11249,7 +11249,26 @@
                         <span class="text-[10px] text-amber-700">
                             ${rows.length} paradas — el chofer ya empezó el reparto
                         </span>
-                    </div>
+                        <span id="weekly-signal-${tripId}" class="text-[10px] font-bold ml-auto"></span>
+                    </div>`;
+                // Async: completar el indicador de senial del telefono del chofer.
+                // Verde = reportando; ambar = sin senial hace rato (puede tener
+                // paradas marcadas sin sincronizar en el telefono).
+                getDriverLastSignalMinutes(tripId).then((sig) => {
+                    const el = document.getElementById(`weekly-signal-${tripId}`);
+                    if (!el || !sig.ok) return;
+                    if (sig.minutes == null) {
+                        el.innerHTML = '📵 Teléfono sin reportar GPS — puede tener paradas sin sincronizar';
+                        el.className = 'text-[10px] font-bold ml-auto text-rose-700';
+                    } else if (sig.minutes > DRIVER_SIGNAL_STALE_MIN) {
+                        el.innerHTML = `📵 Sin señal hace ${sig.minutes} min — puede tener paradas sin sincronizar`;
+                        el.className = 'text-[10px] font-bold ml-auto text-rose-700';
+                    } else {
+                        el.innerHTML = `📡 Señal OK (hace ${sig.minutes <= 1 ? '1' : sig.minutes} min)`;
+                        el.className = 'text-[10px] font-bold ml-auto text-emerald-700';
+                    }
+                }).catch(() => {});
+                wrap.innerHTML += `
                     <div class="overflow-x-auto">
                         <table class="w-full text-left text-[11px]">
                             <thead>
@@ -16759,9 +16778,45 @@
             }
         }
 
+        /** Minutos desde la ultima senial GPS del telefono asignado a un viaje.
+         *  null = nunca reporto en este viaje. Usa /control/active-routes (ya
+         *  incluye lastLocation por viaje). */
+        async function getDriverLastSignalMinutes(tripId) {
+            try {
+                const res = await fetch(`${API_URL}/control/active-routes`, { headers: getActorHeaders() });
+                if (!res.ok) return { minutes: null, ok: false };
+                const data = await res.json();
+                const items = Array.isArray(data) ? data : (data.items || []);
+                const it = items.find(x => String(x.tripId) === String(tripId));
+                if (!it || !it.lastLocation?.timestamp) return { minutes: null, ok: true };
+                const mins = Math.round((Date.now() - new Date(it.lastLocation.timestamp).getTime()) / 60000);
+                return { minutes: mins, ok: true };
+            } catch (_) {
+                return { minutes: null, ok: false };
+            }
+        }
+
+        /** Umbral: senial mas vieja que esto = "telefono sin reportar" */
+        const DRIVER_SIGNAL_STALE_MIN = 10;
+
         async function operatorTripRecorrido(tripId, action) {
             const verb = action === 'start' ? 'Iniciar' : 'Finalizar';
-            if (!confirm(`${verb} el viaje #${tripId} en el sistema? El chofer verá la primera entrega al iniciar.`)) return;
+            if (action === 'end') {
+                // WARNING para el operador: si el telefono del chofer no reporta
+                // senial, puede tener paradas marcadas SIN sincronizar. Finalizar
+                // no las pierde (entran solas al volver la senial), pero conviene
+                // saberlo ANTES de cerrar.
+                const sig = await getDriverLastSignalMinutes(tripId);
+                let warning = '';
+                if (sig.ok && sig.minutes == null) {
+                    warning = '\n\n⚠️ ATENCION: el telefono del chofer NO reporto GPS en este viaje.\nPuede tener paradas marcadas sin sincronizar. Si podes, pedile que abra la app con internet (wifi de la empresa) antes de finalizar.\n';
+                } else if (sig.ok && sig.minutes > DRIVER_SIGNAL_STALE_MIN) {
+                    warning = `\n\n⚠️ ATENCION: el telefono del chofer no reporta senial hace ${sig.minutes} min.\nPuede tener paradas marcadas sin sincronizar. Si podes, pedile que abra la app con internet antes de finalizar.\n`;
+                }
+                if (!confirm(`Finalizar el viaje #${tripId} en el sistema?${warning}`)) return;
+            } else {
+                if (!confirm(`${verb} el viaje #${tripId} en el sistema? El chofer verá la primera entrega al iniciar.`)) return;
+            }
             try {
                 const res = await fetch(`${API_URL}/trips/${tripId}/recorrido-operador`, {
                     method: 'PATCH',
