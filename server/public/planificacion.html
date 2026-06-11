@@ -169,6 +169,9 @@
                     <a href="#audit" id="btn-audit" class="header-nav-item">
                         <i data-lucide="shield-check" class="w-4 h-4"></i> Auditoría
                     </a>
+                    <a href="#historial" id="btn-historial" class="header-nav-item">
+                        <i data-lucide="history" class="w-4 h-4"></i> Historial
+                    </a>
                     <button type="button" onclick="openGlobalSearch()" title="Buscar (Ctrl+K)" class="header-nav-item flex items-center gap-1.5">
                         <i data-lucide="search" class="w-4 h-4"></i>
                         <kbd class="hidden sm:inline text-[9px] font-bold bg-white/20 px-1.5 py-0.5 rounded">Ctrl+K</kbd>
@@ -440,13 +443,80 @@
                 </div>
             </div>
 
+            <!-- VIEW: HISTORIAL (cambios de menú, cupos y datos por establecimiento) -->
+            <div id="view-historial" class="hidden view-animate space-y-6">
+                <div class="card-dark p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 flex-wrap">
+                    <div>
+                        <h3 class="text-2xl font-bold text-[#1B2559]">Historial</h3>
+                        <p class="text-sm text-[#A3AED0] font-medium">Cambios de menú, cupos y datos por establecimiento</p>
+                    </div>
+                    <button onclick="loadHistorial()" class="px-6 py-3 bg-white border border-[#E0E5F2] text-[#1B2559] rounded-2xl font-bold text-sm hover:bg-[#F4F7FE] transition-all flex items-center gap-2 shadow-sm">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i> Actualizar
+                    </button>
+                </div>
+
+                <div class="card-dark p-6">
+                    <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div>
+                            <label class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest block mb-2">Categoría</label>
+                            <select id="historial-filter-category" onchange="loadHistorial()" class="w-full bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm text-[#1B2559] outline-none">
+                                <option value="">Todas</option>
+                                <option value="MENU">Menú</option>
+                                <option value="CUPOS">Cupos</option>
+                                <option value="DATOS">Datos</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest block mb-2">Usuario</label>
+                            <input id="historial-filter-user" type="text" placeholder="Nombre..." oninput="loadHistorial()" class="w-full bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm text-[#1B2559] outline-none">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest block mb-2">Desde</label>
+                            <input id="historial-filter-from" type="date" onchange="loadHistorial()" class="w-full bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm text-[#1B2559] outline-none">
+                        </div>
+                        <div>
+                            <label class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest block mb-2">Hasta</label>
+                            <input id="historial-filter-to" type="date" onchange="loadHistorial()" class="w-full bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm text-[#1B2559] outline-none">
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-dark overflow-hidden">
+                    <div class="overflow-x-auto custom-scrollbar">
+                        <table class="w-full text-sm">
+                            <thead>
+                                <tr class="border-b border-[#F4F7FE]">
+                                    <th class="text-left px-6 py-4 text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Fecha/Hora</th>
+                                    <th class="text-left px-6 py-4 text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Usuario</th>
+                                    <th class="text-left px-6 py-4 text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Categoría</th>
+                                    <th class="text-left px-6 py-4 text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Establecimiento</th>
+                                    <th class="text-left px-6 py-4 text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Campo</th>
+                                    <th class="text-left px-6 py-4 text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Antes</th>
+                                    <th class="text-left px-6 py-4 text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Después</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historial-tbody">
+                                <tr><td colspan="7" class="text-center py-16 text-[#A3AED0] text-sm font-bold">Cargando historial...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <div id="historial-pagination" class="px-6 py-4 border-t border-[#F4F7FE] flex items-center justify-between hidden">
+                        <span id="historial-count" class="text-xs text-[#A3AED0] font-bold uppercase"></span>
+                        <div class="flex items-center gap-2">
+                            <button id="historial-prev-btn" onclick="historialPrevPage()" class="px-4 py-2 bg-white border border-[#E0E5F2] rounded-xl text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all disabled:opacity-40">← Anterior</button>
+                            <button id="historial-next-btn" onclick="historialNextPage()" class="px-4 py-2 bg-white border border-[#E0E5F2] rounded-xl text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all disabled:opacity-40">Siguiente →</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- VIEW: WEEKLY PLANNING (The Big Table with all columns) -->
             <div id="view-weekly" class="view-animate space-y-6">
                 <!-- Content Header & Filters -->
                 <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 min-w-0 flex-wrap">
                     <div class="flex-1 relative min-w-0 w-full">
                         <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3AED0]"></i>
-                        <input type="text" id="planning-search" oninput="filterWeeklyData()" placeholder="Buscar por chofer, zona o unidad..." class="w-full bg-white border-0 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium text-[#1B2559] shadow-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all">
+                        <input type="text" id="planning-search" oninput="debouncedFilterWeekly()" placeholder="Buscar por chofer, zona o unidad..." class="w-full bg-white border-0 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium text-[#1B2559] shadow-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all">
                     </div>
                     
                     <div class="flex items-center gap-3 relative z-50 flex-wrap">
@@ -496,16 +566,16 @@
 
                         <!-- Modo DÍA: date picker -->
                         <div id="date-filter-dia" class="hidden">
-                            <input type="date" id="filter-single-date" oninput="filterWeeklyData()"
+                            <input type="date" id="filter-single-date" oninput="debouncedFilterWeekly()"
                                 class="bg-white border-0 rounded-2xl px-5 py-3.5 text-xs font-bold text-[#1B2559] shadow-sm outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer">
                         </div>
 
                         <!-- Modo RANGO: desde/hasta -->
                         <div id="date-filter-rango" class="hidden flex items-center gap-2">
-                            <input type="date" id="filter-range-from" oninput="filterWeeklyData()"
+                            <input type="date" id="filter-range-from" oninput="debouncedFilterWeekly()"
                                 class="bg-white border-0 rounded-2xl px-4 py-3.5 text-xs font-bold text-[#1B2559] shadow-sm outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer">
                             <span class="text-xs font-bold text-[#A3AED0]">→</span>
-                            <input type="date" id="filter-range-to" oninput="filterWeeklyData()"
+                            <input type="date" id="filter-range-to" oninput="debouncedFilterWeekly()"
                                 class="bg-white border-0 rounded-2xl px-4 py-3.5 text-xs font-bold text-[#1B2559] shadow-sm outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer">
                         </div>
                         <div class="flex bg-white rounded-2xl p-1 shadow-sm">
@@ -1698,6 +1768,10 @@
                         <div class="flex items-center gap-3 bg-indigo-50 px-6 py-4 rounded-2xl">
                             <span class="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Horas Reales:</span>
                             <input type="number" id="cost-horas-reales" oninput="calculateCosts()" class="w-20 bg-transparent border-none text-sm font-extrabold text-indigo-700 outline-none">
+                        </div>
+                        <div class="flex items-center gap-3 bg-amber-50 px-6 py-4 rounded-2xl" title="Horas que se asumen para un viaje propio cuando no tiene horario de salida/llegada cargado ni GPS. Antes era fijo en 8.">
+                            <span class="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Hs viaje sin horario:</span>
+                            <input type="number" id="cost-fallback-hours" min="1" max="24" step="0.5" class="w-16 bg-transparent border-none text-sm font-extrabold text-amber-700 outline-none">
                         </div>
                     </div>
                 </div>
@@ -2996,6 +3070,8 @@
             if (monthData) {
                 const hsEl = document.getElementById('cost-horas-reales');
                 if (hsEl) hsEl.value = monthData.horas_reales || 465;
+                const fbEl = document.getElementById('cost-fallback-hours');
+                if (fbEl) fbEl.value = monthData.fallback_hours || 8;
                 
                 document.querySelectorAll('.cost-input').forEach(input => {
                     const type = input.dataset.costType;
@@ -3734,6 +3810,7 @@
             if(id === 'fleets') { if (typeof fleetsLoadList === 'function') fleetsLoadList(); }
             if(id === 'incidents') loadIncidents();
             if(id === 'audit') loadAuditLog();
+            if(id === 'historial') loadHistorial();
             // Mostrar/ocultar la barra flotante de resultado de Presupuestar
             const fb = document.getElementById('bud-floating-bar');
             if (fb) fb.style.display = (id === 'budget') ? 'block' : 'none';
@@ -9943,6 +10020,101 @@
             lucide.createIcons();
         }
 
+        // ─── HISTORIAL (cambios de menú, cupos, datos por establecimiento) ───
+        const HISTORIAL_PAGE_SIZE = 50;
+        let historialCurrentOffset = 0;
+        let historialTotal = 0;
+        const HISTORIAL_CATEGORY_LABELS = { MENU: 'Menú', CUPOS: 'Cupos', DATOS: 'Datos' };
+        const HISTORIAL_CATEGORY_COLORS = {
+            MENU:   'bg-amber-50 text-amber-700 border-amber-200',
+            CUPOS:  'bg-indigo-50 text-indigo-700 border-indigo-200',
+            DATOS:  'bg-emerald-50 text-emerald-700 border-emerald-200',
+        };
+
+        async function loadHistorial(resetPage = true) {
+            if (resetPage) historialCurrentOffset = 0;
+            const category = document.getElementById('historial-filter-category')?.value || '';
+            const user     = document.getElementById('historial-filter-user')?.value || '';
+            const from     = document.getElementById('historial-filter-from')?.value || '';
+            const to       = document.getElementById('historial-filter-to')?.value || '';
+            const tbody    = document.getElementById('historial-tbody');
+            if (!tbody) return;
+
+            tbody.innerHTML = `<tr><td colspan="7" class="text-center py-16"><div class="inline-block w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></td></tr>`;
+
+            try {
+                const q = new URLSearchParams({ limit: String(HISTORIAL_PAGE_SIZE), offset: String(historialCurrentOffset) });
+                if (category) q.set('category', category);
+                if (user)     q.set('user', user);
+                if (from)     q.set('from', from);
+                if (to)       q.set('to', to + 'T23:59:59');
+                const res  = await fetch(`${API_URL}/historial?${q}`);
+                const data = await res.json();
+                historialTotal = data.total || 0;
+                const logs = data.logs || [];
+
+                if (logs.length === 0) {
+                    tbody.innerHTML = `<tr><td colspan="7" class="text-center py-16 text-[#A3AED0] text-sm font-bold">No hay cambios registrados</td></tr>`;
+                } else {
+                    const truncate = (s) => {
+                        if (s == null) return '<span class="text-[#A3AED0]">—</span>';
+                        const str = String(s);
+                        return str.length > 40 ? `<span title="${str.replace(/"/g, '&quot;')}">${str.substring(0, 40)}…</span>` : str;
+                    };
+                    tbody.innerHTML = logs.map(log => {
+                        const dt = new Date(log.createdAt);
+                        const dateStr = dt.toLocaleDateString('es-AR', { day:'2-digit', month:'2-digit', year:'2-digit' });
+                        const timeStr = dt.toLocaleTimeString('es-AR', { hour:'2-digit', minute:'2-digit' });
+                        const catClass = HISTORIAL_CATEGORY_COLORS[log.category] || 'bg-[#F4F7FE] text-[#A3AED0] border-[#E0E5F2]';
+                        const catLabel = HISTORIAL_CATEGORY_LABELS[log.category] || log.category;
+                        return `
+                        <tr class="border-b border-[#F4F7FE] hover:bg-[#F8FAFF] transition-all">
+                            <td class="px-6 py-4 whitespace-nowrap">
+                                <div class="text-xs font-bold text-[#1B2559]">${dateStr}</div>
+                                <div class="text-[10px] text-[#A3AED0]">${timeStr}</div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <div class="text-xs font-bold text-[#1B2559]">${log.userName || '<span class="text-[#A3AED0]">Sistema</span>'}</div>
+                            </td>
+                            <td class="px-6 py-4">
+                                <span class="inline-flex items-center px-2 py-1 rounded-lg border text-[10px] font-black uppercase tracking-widest ${catClass}">${catLabel}</span>
+                            </td>
+                            <td class="px-6 py-4 text-xs font-bold text-[#1B2559]">${log.clientName || '<span class="text-[#A3AED0]">—</span>'}</td>
+                            <td class="px-6 py-4 text-xs text-[#A3AED0] font-mono">${log.field || '—'}</td>
+                            <td class="px-6 py-4 text-xs text-rose-600">${truncate(log.oldValue)}</td>
+                            <td class="px-6 py-4 text-xs text-emerald-700 font-medium">${truncate(log.newValue)}</td>
+                        </tr>
+                        `;
+                    }).join('');
+                }
+
+                const pag = document.getElementById('historial-pagination');
+                const cnt = document.getElementById('historial-count');
+                const prevBtn = document.getElementById('historial-prev-btn');
+                const nextBtn = document.getElementById('historial-next-btn');
+                if (pag) pag.classList.remove('hidden');
+                if (cnt) cnt.innerText = `${historialCurrentOffset + 1}–${Math.min(historialCurrentOffset + HISTORIAL_PAGE_SIZE, historialTotal)} de ${historialTotal}`;
+                if (prevBtn) prevBtn.disabled = historialCurrentOffset === 0;
+                if (nextBtn) nextBtn.disabled = historialCurrentOffset + HISTORIAL_PAGE_SIZE >= historialTotal;
+            } catch(e) {
+                console.error('Error cargando historial:', e);
+                tbody.innerHTML = `<tr><td colspan="7" class="text-center py-16 text-rose-500 text-sm font-bold">Error cargando historial</td></tr>`;
+            }
+            lucide.createIcons();
+        }
+
+        function historialPrevPage() {
+            if (historialCurrentOffset === 0) return;
+            historialCurrentOffset = Math.max(0, historialCurrentOffset - HISTORIAL_PAGE_SIZE);
+            loadHistorial(false);
+        }
+
+        function historialNextPage() {
+            if (historialCurrentOffset + HISTORIAL_PAGE_SIZE >= historialTotal) return;
+            historialCurrentOffset += HISTORIAL_PAGE_SIZE;
+            loadHistorial(false);
+        }
+
         async function loadSchools() {
             try {
                 const res = await fetch(`${API_URL}/clients`);
@@ -10105,6 +10277,69 @@
                             <span class="text-[11px] text-[#A3AED0] font-medium">El chofer debe sacar foto al completar esta parada en la app móvil.</span>
                         </div>
                     </label>
+
+                    <!-- Sección Menú y Cupos -->
+                    <div class="pt-4 border-t border-[#1B2559]">
+                        <h4 class="text-sm font-black text-white uppercase tracking-widest mb-3">Menú y Cupos</h4>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Menú asignado</label>
+                                <select id="edit-school-menu" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
+                                    <option value="" ${!s.menu ? 'selected' : ''}>— Sin asignar —</option>
+                                    <option value="General" ${s.menu === 'General' ? 'selected' : ''}>General</option>
+                                    <option value="DMC General" ${s.menu === 'DMC General' ? 'selected' : ''}>DMC General</option>
+                                    <option value="Comedor General" ${s.menu === 'Comedor General' ? 'selected' : ''}>Comedor General</option>
+                                    <option value="Vianda General" ${s.menu === 'Vianda General' ? 'selected' : ''}>Vianda General</option>
+                                    <option value="Listo Consumo" ${s.menu === 'Listo Consumo' ? 'selected' : ''}>Listo Consumo</option>
+                                    <option value="Patológico Celíaco" ${s.menu === 'Patológico Celíaco' ? 'selected' : ''}>Patológico Celíaco</option>
+                                    <option value="Patológico Diabético" ${s.menu === 'Patológico Diabético' ? 'selected' : ''}>Patológico Diabético</option>
+                                    <option value="Patológico Int. Lactosa" ${s.menu === 'Patológico Int. Lactosa' ? 'selected' : ''}>Patológico Int. Lactosa</option>
+                                    <option value="Patológico Bajo Sodio" ${s.menu === 'Patológico Bajo Sodio' ? 'selected' : ''}>Patológico Bajo Sodio</option>
+                                    <option value="Patológico Alergia al Maní" ${s.menu === 'Patológico Alergia al Maní' ? 'selected' : ''}>Patológico Alergia al Maní</option>
+                                </select>
+                            </div>
+                            ${(() => {
+                                let cupos = {};
+                                try { cupos = s.cupos ? (typeof s.cupos === 'string' ? JSON.parse(s.cupos) : s.cupos) : {}; } catch { cupos = {}; }
+                                const c = (k) => cupos[k] != null ? esc(cupos[k]) : '';
+                                const input = (id, label, k) => `
+                                    <div>
+                                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">${label}</label>
+                                        <input type="number" min="0" id="edit-school-${id}" value="${c(k)}" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-3 py-2.5 text-white font-bold outline-none focus:border-indigo-500" placeholder="0">
+                                    </div>`;
+                                return `
+                                <div>
+                                    <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-2">General</p>
+                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                        ${input('cupo-dmc-general', 'DMC', 'dmcGeneral')}
+                                        ${input('cupo-comedor-general', 'Comedor', 'comedorGeneral')}
+                                        ${input('cupo-viandas-general', 'Viandas', 'viandasGeneral')}
+                                        ${input('cupo-listo-consumo', 'Listo Cons.', 'listoConsumoGeneral')}
+                                    </div>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-2">DMC Patológicos</p>
+                                    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                                        ${input('cupo-dmc-celiaco', 'Celíaco', 'dmcCeliaco')}
+                                        ${input('cupo-dmc-diabetico', 'Diabético', 'dmcDiabetico')}
+                                        ${input('cupo-dmc-int-lactosa', 'Int. Lact.', 'dmcIntLactosa')}
+                                        ${input('cupo-dmc-bajo-sodio', 'Bajo Sodio', 'dmcBajoSodio')}
+                                        ${input('cupo-dmc-alergia-mani', 'Al. Maní', 'dmcAlergiaMani')}
+                                    </div>
+                                </div>
+                                <div>
+                                    <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-2">Comedor Patológicos</p>
+                                    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
+                                        ${input('cupo-com-celiaco', 'Celíaco', 'comedorCeliaco')}
+                                        ${input('cupo-com-diabetico', 'Diabético', 'comedorDiabetico')}
+                                        ${input('cupo-com-int-lactosa', 'Int. Lact.', 'comedorIntLactosa')}
+                                        ${input('cupo-com-bajo-sodio', 'Bajo Sodio', 'comedorBajoSodio')}
+                                        ${input('cupo-com-alergia-mani', 'Al. Maní', 'comedorAlergiaMani')}
+                                    </div>
+                                </div>`;
+                            })()}
+                        </div>
+                    </div>
                 </div>
             `;
         }
@@ -10161,6 +10396,32 @@
             const lngRaw = (document.getElementById('edit-school-lng')?.value || '').trim().replace(',', '.');
             const lat = latRaw === '' ? NaN : parseFloat(latRaw);
             const lng = lngRaw === '' ? NaN : parseFloat(lngRaw);
+            // Recolectar cupos desde inputs (si existen)
+            const numOrZero = (id) => {
+                const el = document.getElementById(id);
+                if (!el) return 0;
+                const v = parseInt(el.value, 10);
+                return Number.isFinite(v) && v > 0 ? v : 0;
+            };
+            const cuposObj = {
+                dmcGeneral:         numOrZero('edit-school-cupo-dmc-general'),
+                comedorGeneral:     numOrZero('edit-school-cupo-comedor-general'),
+                viandasGeneral:     numOrZero('edit-school-cupo-viandas-general'),
+                listoConsumoGeneral:numOrZero('edit-school-cupo-listo-consumo'),
+                dmcCeliaco:         numOrZero('edit-school-cupo-dmc-celiaco'),
+                dmcDiabetico:       numOrZero('edit-school-cupo-dmc-diabetico'),
+                dmcIntLactosa:      numOrZero('edit-school-cupo-dmc-int-lactosa'),
+                dmcBajoSodio:       numOrZero('edit-school-cupo-dmc-bajo-sodio'),
+                dmcAlergiaMani:     numOrZero('edit-school-cupo-dmc-alergia-mani'),
+                comedorCeliaco:     numOrZero('edit-school-cupo-com-celiaco'),
+                comedorDiabetico:   numOrZero('edit-school-cupo-com-diabetico'),
+                comedorIntLactosa:  numOrZero('edit-school-cupo-com-int-lactosa'),
+                comedorBajoSodio:   numOrZero('edit-school-cupo-com-bajo-sodio'),
+                comedorAlergiaMani: numOrZero('edit-school-cupo-com-alergia-mani'),
+            };
+            const hasAnyCupo = Object.values(cuposObj).some(v => v > 0);
+            const menuVal = (document.getElementById('edit-school-menu')?.value || '').trim();
+
             const payload = {
                 name,
                 address: (document.getElementById('edit-school-address').value || '').trim() || null,
@@ -10170,7 +10431,9 @@
                 timeWindowEnd: document.getElementById('edit-school-end').value || null,
                 serviceTime: Number.isFinite(st) && st > 0 ? st : 15,
                 latitude: Number.isFinite(lat) ? lat : null,
-                longitude: Number.isFinite(lng) ? lng : null
+                longitude: Number.isFinite(lng) ? lng : null,
+                menu: menuVal || null,
+                cupos: hasAnyCupo ? cuposObj : null,
             };
 
             try {
@@ -10487,7 +10750,9 @@
             const totalVar = Object.values(minData.variable || {}).reduce((s, v) => s + v, 0);
             const vehicleHourlyRate = (totalFijo + totalVar) / horasReales;
             
-            const durationHrs = getTripDurationHours(t, 8);
+            // Fallback configurable desde Motor de Costos (default historico 8h)
+            const fbHours = parseFloat(minData.fallback_hours) > 0 ? parseFloat(minData.fallback_hours) : 8;
+            const durationHrs = getTripDurationHours(t, fbHours);
             let tripTotal = durationHrs * vehicleHourlyRate;
             
             const isFirst = isPrimeraVueltaParaCosto(t);
@@ -11487,10 +11752,21 @@
             }
         }
 
-        // Cache en memoria por (mes+anio) para que cambiar entre meses ya visitados
-        // sea instantaneo. TTL corto (60s) para que datos nuevos aparezcan rapido.
-        const __weeklyCache = new Map(); // key: "junio-2026" -> {ts, data}
+        // ── Store mensual mergeado + anti-race ──────────────────────────────
+        // planningData se arma desde un Map por tripId, mergeando los meses que
+        // el usuario va necesitando (mes activo, hoy, dia elegido, rango).
+        // FIX 1 (race): un token de secuencia descarta respuestas viejas — antes,
+        // cambiar rapido entre meses hacia que la respuesta LENTA pisara a la
+        // nueva y habia que dar refresh.
+        // FIX 2 (dia/rango): los filtros Dia y Rango ahora cargan bajo demanda
+        // los meses que necesitan — antes filtraban solo sobre el mes activo
+        // y daban vacio si elegias una fecha de otro mes.
+        const __weeklyTripsById = new Map();    // tripId -> trip
+        const __weeklyMonthsLoaded = new Map(); // "junio-2026" -> ts de carga
+        const __weeklyMonthsLoading = new Set();
+        let __weeklyLoadSeq = 0;
         const WEEKLY_CACHE_TTL_MS = 60000;
+        const _WEEKLY_MONTH_NAMES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
         function _weeklyShowLoading() {
             const body = document.getElementById('weekly-table-body');
@@ -11499,11 +11775,75 @@
             }
         }
 
+        /** Meses (keys "mes-anio") que requiere el filtro de fecha actual */
+        function _weeklyNeededMonthKeys() {
+            const mode = activeDateFilterMode || 'mes';
+            const nowBA = nowBuenosAires();
+            const keys = new Set();
+            const addMonth = (mIdx, y) => {
+                if (mIdx >= 0 && mIdx <= 11 && y >= 2024 && y <= 2030) keys.add(`${_WEEKLY_MONTH_NAMES[mIdx]}-${y}`);
+            };
+            if (mode === 'hoy') {
+                addMonth(nowBA.month, nowBA.year);
+            } else if (mode === 'dia') {
+                const val = document.getElementById('filter-single-date')?.value;
+                if (val) {
+                    const d = new Date(val + 'T00:00:00');
+                    if (!isNaN(d.getTime())) addMonth(d.getMonth(), d.getFullYear());
+                } else {
+                    addMonth(nowBA.month, nowBA.year);
+                }
+            } else if (mode === 'rango') {
+                const from = document.getElementById('filter-range-from')?.value;
+                const to = document.getElementById('filter-range-to')?.value;
+                const f = from ? new Date(from + 'T00:00:00') : null;
+                const t = to ? new Date(to + 'T00:00:00') : null;
+                if (f && !isNaN(f.getTime())) {
+                    const end = (t && !isNaN(t.getTime())) ? t : f;
+                    let cur = new Date(f.getFullYear(), f.getMonth(), 1);
+                    let guard = 0;
+                    while (cur <= end && guard < 14) { // max 14 meses por seguridad
+                        addMonth(cur.getMonth(), cur.getFullYear());
+                        cur = new Date(cur.getFullYear(), cur.getMonth() + 1, 1);
+                        guard++;
+                    }
+                } else if (t && !isNaN(t.getTime())) {
+                    addMonth(t.getMonth(), t.getFullYear());
+                } else {
+                    addMonth(nowBA.month, nowBA.year);
+                }
+            } else {
+                // modo 'mes': el dropdown solo tiene meses del anio actual
+                const monthEl = document.getElementById('planning-month-select');
+                const mName = (monthEl?.value || '').toLowerCase();
+                const mIdx = _WEEKLY_MONTH_NAMES.indexOf(mName);
+                addMonth(mIdx >= 0 ? mIdx : nowBA.month, nowBA.year);
+            }
+            return [...keys];
+        }
+
+        function _weeklyRebuildPlanningData() {
+            planningData = [...__weeklyTripsById.values()];
+        }
+
+        async function _weeklyFetchMonth(key) {
+            // key = "junio-2026"
+            const [mName, yStr] = key.split('-');
+            const url = `${API_URL}/trips?month=${encodeURIComponent(mName)}&year=${encodeURIComponent(yStr)}`;
+            const res = await fetch(url, { headers: getActorHeaders() });
+            if (res.status === 401 || res.status === 403) throw new Error(`Auth ${res.status}`);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const data = await res.json();
+            // Merge idempotente por tripId: seguro aunque las respuestas lleguen desordenadas
+            (Array.isArray(data) ? data : []).forEach(t => { if (t && t.id != null) __weeklyTripsById.set(t.id, t); });
+            __weeklyMonthsLoaded.set(key, Date.now());
+            return Array.isArray(data) ? data.length : 0;
+        }
+
         async function loadWeeklyData() {
-            console.log("[Weekly] Iniciando carga de datos...");
+            const mySeq = ++__weeklyLoadSeq;
             const token = localStorage.getItem('r14.authToken') || '';
             if (!token) {
-                console.warn("[Weekly] No hay token en localStorage. Forzando re-login.");
                 planningData = [];
                 filterWeeklyData();
                 const body = document.getElementById('weekly-table-body');
@@ -11513,72 +11853,79 @@
                 return;
             }
 
-            // OPTIMIZACION: pedir solo el mes+anio activo al backend.
-            // Antes: ~6s y 2.6MB (2000 viajes sin filtrar).
-            // Ahora: ~1.5s y ~400KB (solo el mes que se ve).
-            const monthEl = document.getElementById('planning-month-select');
-            const month = (monthEl?.value || '').toLowerCase();
-            const year = nowBuenosAires().year;
-            const params = month ? `?month=${encodeURIComponent(month)}&year=${year}` : '';
-            const cacheKey = month ? `${month}-${year}` : 'all';
+            const needed = _weeklyNeededMonthKeys();
+            const now = Date.now();
+            const missing = needed.filter(k => {
+                const ts = __weeklyMonthsLoaded.get(k);
+                return (!ts || (now - ts) > WEEKLY_CACHE_TTL_MS) && !__weeklyMonthsLoading.has(k);
+            });
 
-            // Cache hit: mostrar instantaneo
-            const cached = __weeklyCache.get(cacheKey);
-            if (cached && (Date.now() - cached.ts) < WEEKLY_CACHE_TTL_MS) {
-                console.log(`[Weekly] Cache HIT (${cacheKey}): ${cached.data.length} viajes`);
-                planningData = cached.data;
+            if (missing.length === 0) {
+                // Todo en cache fresco: render instantaneo
+                _weeklyRebuildPlanningData();
                 filterWeeklyData();
                 return;
             }
 
             _weeklyShowLoading();
+            missing.forEach(k => __weeklyMonthsLoading.add(k));
             const t0 = performance.now();
             let lastErr = null;
-            for (let attempt = 0; attempt < 3; attempt++) {
-                try {
-                    if (attempt > 0) {
-                        await new Promise(r => setTimeout(r, 1000 * attempt));
-                        console.log(`[Weekly] Reintento #${attempt}...`);
+            try {
+                // Cargar meses faltantes en paralelo, con 1 reintento si hay 429
+                await Promise.all(missing.map(async (key) => {
+                    for (let attempt = 0; attempt < 2; attempt++) {
+                        try {
+                            if (attempt > 0) await new Promise(r => setTimeout(r, 1200));
+                            const n = await _weeklyFetchMonth(key);
+                            console.log(`[Weekly] ${key}: ${n} viajes (${Math.round(performance.now()-t0)}ms)`);
+                            return;
+                        } catch (e) {
+                            lastErr = e;
+                            if (String(e?.message || '').startsWith('Auth')) throw e;
+                        }
                     }
-                    const url = `${API_URL}/trips${params}`;
-                    const res = await fetch(url, { headers: getActorHeaders() });
-                    console.log(`[Weekly] Fetch ${cacheKey} status: ${res.status}`);
-                    if (res.status === 429) { lastErr = new Error('Rate limit'); continue; }
-                    if (res.status === 401 || res.status === 403) {
-                        throw new Error(`Auth ${res.status}: token invalido o expirado`);
-                    }
-                    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                }));
+            } catch (e) {
+                lastErr = e;
+            } finally {
+                missing.forEach(k => __weeklyMonthsLoading.delete(k));
+            }
 
-                    planningData = await res.json();
-                    const t1 = performance.now();
-                    console.log(`[Weekly] OK: ${planningData.length} viajes en ${Math.round(t1-t0)}ms`);
-                    __weeklyCache.set(cacheKey, { ts: Date.now(), data: planningData });
-                    filterWeeklyData();
-                    return;
-                } catch (e) {
-                    lastErr = e;
-                    console.warn(`[Weekly] Error en intento ${attempt}:`, e?.message || e);
+            // ANTI-RACE: si mientras cargabamos el usuario disparo otra carga
+            // (cambio de mes/filtro), NO pisamos su render. El merge al store ya
+            // quedo hecho (es idempotente), solo evitamos re-renderizar tarde.
+            if (mySeq !== __weeklyLoadSeq) return;
+
+            _weeklyRebuildPlanningData();
+            filterWeeklyData();
+
+            if (lastErr && planningData.length === 0) {
+                const msg = String(lastErr?.message || lastErr);
+                const isAuth = msg.startsWith('Auth');
+                const body = document.getElementById('weekly-table-body');
+                if (body) {
+                    body.innerHTML = `<tr><td colspan="20" class="py-8 text-center"><div class="inline-flex flex-col items-center gap-3"><p class="text-sm font-black text-rose-600">${isAuth ? 'SESION EXPIRADA' : 'ERROR DE CONEXION'}</p><p class="text-xs text-[#A3AED0]">${isAuth ? 'Tu sesion expiro. Recarga la pagina (F5) para volver a loguearte.' : 'No se pudieron cargar los viajes. Revisa tu conexion.'}</p><button onclick="location.reload()" class="mt-2 px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700">Recargar</button></div></td></tr>`;
                 }
             }
-            console.error("[Weekly] Carga fallida tras 3 intentos:", lastErr?.message || lastErr);
-            planningData = [];
-            filterWeeklyData();
-            const body = document.getElementById('weekly-table-body');
-            if (body && (!planningData || planningData.length === 0)) {
-                const msg = String(lastErr?.message || lastErr);
-                const isAuth = msg.toLowerCase().includes('auth') || msg.includes('401') || msg.includes('403');
-                body.innerHTML = `<tr><td colspan="20" class="py-8 text-center"><div class="inline-flex flex-col items-center gap-3"><p class="text-sm font-black text-rose-600">${isAuth ? 'SESION EXPIRADA' : 'ERROR DE CONEXION'}</p><p class="text-xs text-[#A3AED0]">${isAuth ? 'Tu sesion expiro. Recarga la pagina (F5) para volver a loguearte.' : 'No se pudieron cargar los viajes. Revisa tu conexion.'}</p><button onclick="location.reload()" class="mt-2 px-4 py-2 bg-indigo-600 text-white text-xs font-bold rounded-lg hover:bg-indigo-700">Recargar</button></div></td></tr>`;
+        }
+
+        /** Invalida el cache mensual para forzar refetch (ej. tras crear/editar viaje) */
+        function invalidateWeeklyCache(monthVal, yearVal) {
+            if (monthVal && yearVal) {
+                const key = `${String(monthVal).toLowerCase()}-${yearVal}`;
+                __weeklyMonthsLoaded.delete(key);
+            } else {
+                __weeklyMonthsLoaded.clear();
+                __weeklyTripsById.clear();
             }
         }
 
-        /** Invalida cache del mes actual para forzar refetch (ej. tras crear/editar viaje) */
-        function invalidateWeeklyCache(monthVal, yearVal) {
-            if (monthVal && yearVal) {
-                __weeklyCache.delete(`${String(monthVal).toLowerCase()}-${yearVal}`);
-            } else {
-                __weeklyCache.clear();
-            }
-        }
+        // Filtro debounced: buscar/tipear fecha no re-renderiza la tabla en CADA
+        // tecla (antes: keystroke -> filtrado + sort + innerHTML completo).
+        // Va via loadWeeklyData para que ademas cargue meses faltantes si el
+        // filtro de fecha apunta a un mes no cargado.
+        const debouncedFilterWeekly = debounce(() => loadWeeklyData(), 300);
 
         // ─── COLUMN VISIBILITY & FILTERING ────────────────────────────────────
         const weeklyColumns = [
@@ -12462,7 +12809,9 @@
                     }
                 }
             });
-            filterWeeklyData();
+            // loadWeeklyData (no filterWeeklyData directo): si el modo nuevo necesita
+            // meses que no estan cargados (ej. Hoy estando en otro mes), los trae.
+            loadWeeklyData();
         }
 
         function getTripDateOnly(t) {
@@ -15371,7 +15720,8 @@
             }
 
             // Recopilar parámetros del formulario
-            const costsParams = { fijo: {}, variable: {}, horas_reales: horasReales };
+            const fallbackHours = parseFloat(document.getElementById('cost-fallback-hours')?.value) || 8;
+            const costsParams = { fijo: {}, variable: {}, horas_reales: horasReales, fallback_hours: fallbackHours };
             document.querySelectorAll('[data-cost-type="fijo"]').forEach(inp => {
                 costsParams.fijo[inp.getAttribute('data-id')] = parseFloat(inp.value) || 0;
             });

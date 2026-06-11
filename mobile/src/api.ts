@@ -35,6 +35,16 @@ async function fetchWithRetry(
   throw lastErr;
 }
 
+/** Fetch de UN intento con timeout (sin retry/backoff). Para colas offline y
+ *  llamadas best-effort: si falla, el caller decide rapido (encolar/descartar)
+ *  en vez de colgarse esperando una red que no responde. */
+function fetchWithTimeout(
+  url: string,
+  options: RequestInit & { timeout?: number } = {}
+): Promise<Response> {
+  return fetchWithRetry(url, options, 0);
+}
+
 const AUTH_TOKEN_KEY = 'r14_auth_token';
 
 async function getAuthToken(): Promise<string | null> {
@@ -162,9 +172,10 @@ export async function getPendingLocationCount(): Promise<number> {
 
 export async function fetchRouteGeometry(routeId: number): Promise<RouteGeometry | null> {
   const q = new URLSearchParams({ _ts: String(Date.now()) });
-  const res = await fetch(apiUrl(`/api/v1/routes/${routeId}/geometry?${q}`), {
+  const res = await fetchWithRetry(apiUrl(`/api/v1/routes/${routeId}/geometry?${q}`), {
     headers: { 'Cache-Control': 'no-cache' },
-  });
+    timeout: 8000,
+  }, 1);
   const data = await res.json().catch(() => null);
   if (!res.ok || !data?.points?.length) return null;
   return data as RouteGeometry;
@@ -198,9 +209,10 @@ export async function fetchNavigationToNext(
     lng: String(lng),
     _ts: String(Date.now()),
   });
-  const res = await fetch(apiUrl(`/api/v1/routes/${routeId}/navigation-to-next?${q}`), {
+  const res = await fetchWithRetry(apiUrl(`/api/v1/routes/${routeId}/navigation-to-next?${q}`), {
     headers: { 'Cache-Control': 'no-cache' },
-  });
+    timeout: 8000,
+  }, 1);
   const data = (await res.json().catch(() => ({}))) as NavigationToNext & { error?: string };
   if (!res.ok) {
     throw new Error(data.error || 'Indicaciones no disponibles');
@@ -273,10 +285,11 @@ export function flushStopQueue(): Promise<number> {
           continue;
         }
         try {
-          const res = await fetch(apiUrl(`/api/v1/stops/${action.stopId}`), {
+          const res = await fetchWithTimeout(apiUrl(`/api/v1/stops/${action.stopId}`), {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(action.body),
+            timeout: 6000,
           });
           if (res.ok) {
             sent++;
@@ -326,10 +339,13 @@ export async function patchStop(
   }
 ): Promise<unknown> {
   try {
-    const res = await fetch(apiUrl(`/api/v1/stops/${stopId}`), {
+    // Timeout 6s: con senial debil el fetch sin timeout colgaba la UI del
+    // chofer; al abortar, cae al catch de abajo y la accion va a la cola offline.
+    const res = await fetchWithTimeout(apiUrl(`/api/v1/stops/${stopId}`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body),
+      timeout: 6000,
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
@@ -369,10 +385,11 @@ export async function uploadProofPhoto(localUri: string): Promise<string> {
     type: 'image/jpeg',
   } as unknown as Blob);
 
-  const res = await fetch(apiUrl('/api/upload-photo'), {
+  const res = await fetchWithTimeout(apiUrl('/api/upload-photo'), {
     method: 'POST',
     headers: { ...(await authHeaders()) },
     body: form,
+    timeout: 25000, // fotos son grandes; 25s antes de abortar y dejar en cola
   });
   const data = (await res.json().catch(() => ({}))) as { url?: string; error?: string };
   if (!res.ok || !data.url) {
@@ -400,10 +417,11 @@ export async function postTrackingLocation(payload: {
   for (const d of delays) {
     if (d > 0) await new Promise((r) => setTimeout(r, d));
     try {
-      const res = await fetch(apiUrl('/api/v1/tracking/location'), {
+      const res = await fetchWithTimeout(apiUrl('/api/v1/tracking/location'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
+        timeout: 7000,
       });
       if (res.ok) return;
       lastErr = new Error(`HTTP ${res.status}`);
@@ -435,11 +453,14 @@ export async function patchRouteRecorrido(
   driverId: string,
   action: 'start' | 'end'
 ): Promise<void> {
-  const res = await fetch(apiUrl(`/api/v1/routes/${routeId}/recorrido`), {
+  // Fichar entrada/salida es accion critica del chofer: 1 retry + timeout 8s
+  // para que con senial debil falle rapido y muestre error en vez de colgarse.
+  const res = await fetchWithRetry(apiUrl(`/api/v1/routes/${routeId}/recorrido`), {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ driverId, action }),
-  });
+    timeout: 8000,
+  }, 1);
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     const msg = (data as { error?: string }).error || '';
@@ -455,10 +476,11 @@ export async function patchRouteRecorrido(
 /** Notifica al servidor que el dispositivo ya no está en ruta: marca sus DeviceLocations como inactivas */
 export async function deactivateDevice(deviceId: string): Promise<void> {
   try {
-    await fetch(apiUrl('/api/v1/tracking/deactivate-device'), {
+    await fetchWithTimeout(apiUrl('/api/v1/tracking/deactivate-device'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ deviceId }),
+      timeout: 5000,
     });
   } catch {
     // Si falla (sin red), no bloquear el flujo del chofer
@@ -485,11 +507,12 @@ export async function reorderRouteStops(
   justification: string,
   driverName: string
 ): Promise<void> {
-  const res = await fetch(apiUrl(`/api/v1/routes/${routeId}/stops/reorder`), {
+  const res = await fetchWithRetry(apiUrl(`/api/v1/routes/${routeId}/stops/reorder`), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
     body: JSON.stringify({ newOrder, justification, driverName }),
-  });
+    timeout: 8000,
+  }, 1);
   if (!res.ok) {
     const data = await res.json().catch(() => ({}));
     throw new Error((data as { error?: string }).error || 'No se pudo reordenar las paradas');
@@ -499,10 +522,11 @@ export async function reorderRouteStops(
 // ── Push Token ────────────────────────────────────────────────────────────────
 export async function registerPushToken(userId: string, token: string): Promise<void> {
   try {
-    await fetch(apiUrl(`/api/v1/users/${userId}/push-token`), {
+    await fetchWithTimeout(apiUrl(`/api/v1/users/${userId}/push-token`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({ token }),
+      timeout: 5000,
     });
   } catch (e) {
     console.warn('[push] Error registering token:', e);
@@ -512,10 +536,11 @@ export async function registerPushToken(userId: string, token: string): Promise<
 // ── Vehicle KM ────────────────────────────────────────────────────────────────
 export async function updateVehicleKm(plate: string, km: number): Promise<void> {
   try {
-    await fetch(apiUrl(`/api/v1/vehicles/${encodeURIComponent(plate)}/km`), {
+    await fetchWithTimeout(apiUrl(`/api/v1/vehicles/${encodeURIComponent(plate)}/km`), {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify({ km }),
+      timeout: 5000,
     });
   } catch (e) {
     console.warn('[km] Error updating km:', e);
@@ -584,10 +609,11 @@ export function flushPhotoQueue(): Promise<void> {
           const url = await uploadProofPhoto(p.localUri);
           // Patcheamos el stop con la URL (idempotente: si el stop ya estaba COMPLETED,
           // solo le agregamos la foto). Si el patch falla, mantenemos en cola.
-          const res = await fetch(apiUrl(`/api/v1/stops/${p.stopId}`), {
+          const res = await fetchWithTimeout(apiUrl(`/api/v1/stops/${p.stopId}`), {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ proofPhotoUrl: url }),
+            timeout: 6000,
           });
           if (!res.ok) remaining.push(p);
         } catch {
@@ -614,10 +640,11 @@ export function flushIncidentQueue(): Promise<void> {
       let sent = 0;
       for (const action of queue) {
         try {
-          const res = await fetch(apiUrl('/api/v1/incidents'), {
+          const res = await fetchWithTimeout(apiUrl('/api/v1/incidents'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
             body: JSON.stringify(action),
+            timeout: 8000,
           });
           if (!res.ok) break;
           sent++;
@@ -642,10 +669,11 @@ export async function reportIncident(payload: {
   photoUrl?: string | null;
 }): Promise<Incident | { queued: true }> {
   try {
-    const res = await fetch(apiUrl('/api/v1/incidents'), {
+    const res = await fetchWithTimeout(apiUrl('/api/v1/incidents'), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify(payload),
+      timeout: 8000,
     });
     if (!res.ok) throw new Error('Server error');
     flushIncidentQueue().catch(() => {});

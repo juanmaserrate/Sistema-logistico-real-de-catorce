@@ -14,6 +14,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
+import compression from 'compression';
 
 dotenv.config();
 
@@ -56,6 +57,11 @@ const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
 
 // ── Seguridad: Helmet (cabeceras HTTP de protección) ────────────────────────
 app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+
+// ── Performance: gzip/brotli ────────────────────────────────────────────────
+// planificacion.html pesa 1.1MB y /api/v1/trips puede devolver 2.6MB de JSON.
+// Sin compresion, cada carga descargaba todo eso crudo. Con gzip: ~85% menos.
+app.use(compression());
 
 // ── Seguridad: CORS ──────────────────────────────────────────────────────────
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(s => s.trim()).filter(Boolean);
@@ -152,10 +158,20 @@ async function verifyPassword(plain: string, stored: string): Promise<boolean> {
 }
 app.get('/health', (_req, res) => res.status(200).type('text/plain').send('ok'));
 
-app.use('/uploads', express.static(uploadsDir));
-app.use(express.static(path.join(__dirname, '../public')));
+// Cache headers: fotos de comprobantes tienen nombre unico (timestamp) → cache largo.
+app.use('/uploads', express.static(uploadsDir, { maxAge: '7d', etag: true }));
+// HTML siempre revalida (tras un deploy, F5 normal alcanza — ya no hace falta
+// Ctrl+F5); assets estaticos (js/css/img) cachean 1h con etag.
+const staticCacheHeaders = (res: express.Response, filePath: string) => {
+    if (filePath.endsWith('.html')) {
+        res.setHeader('Cache-Control', 'no-cache');
+    } else {
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+    }
+};
+app.use(express.static(path.join(__dirname, '../public'), { etag: true, setHeaders: staticCacheHeaders }));
 const clientDistDir = path.join(__dirname, '../../client/dist');
-app.use('/app', express.static(clientDistDir));
+app.use('/app', express.static(clientDistDir, { etag: true, setHeaders: staticCacheHeaders }));
 
 app.get(/^\/app(?:\/.*)?$/, (_req, res) => {
     res.sendFile(path.join(clientDistDir, 'index.html'));
@@ -202,6 +218,76 @@ async function logAction(
         console.warn('[audit] Error logging action:', e);
     }
 }
+
+// ── Historial (cambios de negocio: menú, cupos, datos) ──────────────────────
+async function logHistorial(
+    req: express.Request,
+    args: {
+        clientId?: string | null,
+        clientName?: string | null,
+        category: 'MENU' | 'CUPOS' | 'DATOS',
+        field: string,
+        oldValue?: any,
+        newValue?: any,
+        note?: string | null,
+    }
+) {
+    try {
+        const actorName = String(req.headers['x-actor-name'] || '').trim() || null;
+        const actorId   = String(req.headers['x-actor-id']   || '').trim() || null;
+        const stringify = (v: any) => v == null ? null : (typeof v === 'object' ? JSON.stringify(v) : String(v));
+        await (prisma as any).historial.create({
+            data: {
+                clientId:   args.clientId ?? null,
+                clientName: args.clientName ?? null,
+                category:   args.category,
+                field:      args.field,
+                oldValue:   stringify(args.oldValue),
+                newValue:   stringify(args.newValue),
+                userId:     actorId,
+                userName:   actorName,
+                note:       args.note ?? null,
+            }
+        });
+    } catch (e) {
+        console.warn('[historial] Error logging change:', e);
+    }
+}
+
+app.get('/api/v1/historial', async (req, res) => {
+    try {
+        const limit    = Math.min(Number(req.query.limit  || 200), 500);
+        const offset   = Number(req.query.offset || 0);
+        const category = String(req.query.category || '').trim() || undefined;
+        const clientId = String(req.query.clientId || '').trim() || undefined;
+        const user     = String(req.query.user || '').trim() || undefined;
+        const from     = req.query.from ? new Date(String(req.query.from)) : undefined;
+        const to       = req.query.to   ? new Date(String(req.query.to))   : undefined;
+
+        const where: any = {};
+        if (category) where.category = category;
+        if (clientId) where.clientId = clientId;
+        if (user)     where.userName = { contains: user };
+        if (from || to) {
+            where.createdAt = {};
+            if (from) where.createdAt.gte = from;
+            if (to)   where.createdAt.lte = to;
+        }
+
+        const [logs, total] = await Promise.all([
+            (prisma as any).historial.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                take: limit,
+                skip: offset,
+            }),
+            (prisma as any).historial.count({ where })
+        ]);
+        res.json({ logs, total, limit, offset });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error en historial' });
+    }
+});
 
 // ── Audit Log Endpoint ───────────────────────────────────────────────────────
 /** Health check liviano para que el dispositivo mida latencia y señal. */
@@ -747,7 +833,11 @@ app.post('/api/v1/clients', async (req, res) => {
             serviceTime,
             zone: raw.zone != null && String(raw.zone).trim() ? String(raw.zone).trim() : null,
             barrio: raw.barrio != null && String(raw.barrio).trim() ? String(raw.barrio).trim() : null,
-            priority: parseInt(String(raw.priority), 10) || 0
+            priority: parseInt(String(raw.priority), 10) || 0,
+            menu: raw.menu != null && String(raw.menu).trim() ? String(raw.menu).trim() : null,
+            cupos: raw.cupos == null
+                ? null
+                : (typeof raw.cupos === 'object' ? JSON.stringify(raw.cupos) : String(raw.cupos)),
         };
         if (lat != null && lng != null && !data.address) {
             const address = await reverseGeocode(lat, lng);
@@ -783,6 +873,19 @@ app.patch('/api/v1/clients/:id', async (req, res) => {
             data.serviceTime = Number.isFinite(st) && st > 0 ? st : 15;
         }
         if (raw.priority !== undefined) data.priority = parseInt(String(raw.priority), 10) || 0;
+        if (raw.menu !== undefined) {
+            data.menu = raw.menu != null && String(raw.menu).trim() ? String(raw.menu).trim() : null;
+        }
+        if (raw.cupos !== undefined) {
+            // Acepta objeto o string JSON. Lo persistimos como string JSON.
+            if (raw.cupos == null) {
+                data.cupos = null;
+            } else if (typeof raw.cupos === 'object') {
+                data.cupos = JSON.stringify(raw.cupos);
+            } else {
+                data.cupos = String(raw.cupos);
+            }
+        }
         if (raw.latitude !== undefined) {
             const s = raw.latitude !== null && raw.latitude !== '' ? String(raw.latitude).trim().replace(',', '.') : '';
             const n = s === '' ? NaN : Number(s);
@@ -803,10 +906,39 @@ app.patch('/api/v1/clients/:id', async (req, res) => {
         if (Object.keys(data).length === 0) {
             return res.status(400).json({ error: 'Nada que actualizar' });
         }
+        // Leer estado anterior para registrar historial de cambios visibles
+        const prevClient = await prisma.client.findUnique({ where: { id: String(id) } });
         const updatedClient = await prisma.client.update({
             where: { id: String(id) },
             data
         });
+        // Registrar cambios relevantes en el historial
+        if (prevClient) {
+            const fieldCategories: Record<string, 'DATOS' | 'MENU' | 'CUPOS'> = {
+                name:            'DATOS',
+                address:         'DATOS',
+                zone:            'DATOS',
+                barrio:          'DATOS',
+                timeWindowStart: 'DATOS',
+                timeWindowEnd:   'DATOS',
+                latitude:        'DATOS',
+                longitude:       'DATOS',
+                menu:            'MENU',
+                cupos:           'CUPOS',
+            };
+            for (const [f, category] of Object.entries(fieldCategories)) {
+                if (data[f] !== undefined && String((prevClient as any)[f] ?? '') !== String((updatedClient as any)[f] ?? '')) {
+                    await logHistorial(req, {
+                        clientId:   updatedClient.id,
+                        clientName: updatedClient.name,
+                        category,
+                        field:      f,
+                        oldValue:   (prevClient as any)[f],
+                        newValue:   (updatedClient as any)[f],
+                    });
+                }
+            }
+        }
         res.json(updatedClient);
     } catch (e: any) {
         console.error("Error updating client:", e);
@@ -3919,17 +4051,19 @@ const MONTH_TO_NUM: Record<string, number> = {
     julio:6, agosto:7, septiembre:8, octubre:9, noviembre:10, diciembre:11
 };
 
-function parseTripDurationHrs(t: any): number {
+function parseTripDurationHrs(t: any, fallbackHours = 8): number {
     if (t.routeActualStart && t.routeActualEnd) {
         const diff = (new Date(t.routeActualEnd).getTime() - new Date(t.routeActualStart).getTime()) / 3600000;
-        if (!isNaN(diff) && diff > 0 && diff < 24) return diff;
+        // Tope 72h (antes 24): alineado con el frontend — viajes overnight o
+        // interprovinciales legitimos > 24h no deben caer al fallback.
+        if (!isNaN(diff) && diff > 0 && diff < 72) return diff;
     }
     if (t.exitTime && t.returnTime) {
         // try as datetime strings
         const s = new Date(t.exitTime), e = new Date(t.returnTime);
         if (!isNaN(s.getTime()) && !isNaN(e.getTime())) {
             const diff = (e.getTime() - s.getTime()) / 3600000;
-            if (diff > 0 && diff < 24) return diff;
+            if (diff > 0 && diff < 72) return diff;
         }
         // try as HH:mm strings
         const toMin = (v: string) => { const m = v.match(/(\d{1,2}):(\d{2})/); return m ? Number(m[1])*60+Number(m[2]) : NaN; };
@@ -3940,7 +4074,8 @@ function parseTripDurationHrs(t: any): number {
         }
     }
     if (Number(t.tripDuration) > 0) return Number(t.tripDuration);
-    return 8;
+    // Configurable desde el form de Motor de Costos (costsParams.fallback_hours).
+    return fallbackHours;
 }
 
 app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
@@ -3963,10 +4098,21 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
         });
 
         // 2. Calcular tasa vehículo por hora
-        const horasReales = parseFloat(costsParams.horas_reales) || 1;
+        // Guard: horas_reales <= 0 generaria una tasa horaria infinita/absurda que
+        // pisa el value de TODOS los viajes propios del mes. Rechazamos con error claro.
+        const horasReales = parseFloat(costsParams.horas_reales);
+        if (!Number.isFinite(horasReales) || horasReales <= 0) {
+            return res.status(400).json({ error: 'horas_reales debe ser un numero mayor a 0. Revisa el formulario de costos.' });
+        }
         const totalFijo = Object.values(costsParams.fijo || {}).reduce((s: number, v: any) => s + Number(v), 0);
         const totalVar = Object.values(costsParams.variable || {}).reduce((s: number, v: any) => s + Number(v), 0);
         const vehicleHourlyRate = (totalFijo + totalVar) / horasReales;
+        // Horas a asumir cuando un viaje no tiene NINGUN horario cargado (configurable
+        // desde el form de costos; default historico 8h).
+        const fallbackHours = (() => {
+            const v = parseFloat(costsParams.fallback_hours);
+            return Number.isFinite(v) && v > 0 && v <= 24 ? v : 8;
+        })();
 
         // 3. Traer todos los viajes propios del mes
         // Bug fix: antes el año estaba hardcodeado a new Date().getFullYear() (año actual del server).
@@ -4013,7 +4159,7 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
                     .filter(Boolean)
                     .flatMap((a: string) => a.toString().split(',').map((n: string) => n.trim()));
                 if (auxList.includes(name)) {
-                    return sum + parseTripDurationHrs(t);
+                    return sum + parseTripDurationHrs(t, fallbackHours);
                 }
                 return sum;
             }, 0);
@@ -4022,13 +4168,17 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
         // 6. Calcular y guardar costo de cada viaje
         const updates: any[] = [];
         for (const t of trips as any[]) {
-            const durHrs = parseTripDurationHrs(t);
+            const durHrs = parseTripDurationHrs(t, fallbackHours);
             let tripCost = durHrs * vehicleHourlyRate;
 
-            const auxList = [t.auxiliar, t.auxiliar2, t.auxiliar3]
-                .filter(Boolean)
-                .flatMap((a: string) => a.toString().split(',').map((n: string) => n.trim()))
-                .filter((n: string) => n && n !== '--' && n !== 'N/A' && n !== 'SIN AUXILIAR');
+            // Dedupe: si el mismo auxiliar figura en auxiliar y auxiliar2 (error de carga),
+            // antes se le sumaba el costo DOS veces al viaje.
+            const auxList = [...new Set(
+                [t.auxiliar, t.auxiliar2, t.auxiliar3]
+                    .filter(Boolean)
+                    .flatMap((a: string) => a.toString().split(',').map((n: string) => n.trim()))
+                    .filter((n: string) => n && n !== '--' && n !== 'N/A' && n !== 'SIN AUXILIAR')
+            )];
 
             auxList.forEach((name: string) => {
                 const bruto = salariesMap[name.toLowerCase()] || 0;

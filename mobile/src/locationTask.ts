@@ -73,13 +73,25 @@ async function enqueue(payload: LocationPayload): Promise<void> {
  */
 async function sendLocation(apiBase: string, payload: LocationPayload): Promise<void> {
   const url = `${apiBase.replace(/\/$/, '')}/api/v1/tracking/location`;
-  const res = await fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    throw new Error(`HTTP ${res.status}`);
+  // FIX CRITICO: este fetch corria SIN timeout. Con 4G debil (senial con signo
+  // de exclamacion) el socket queda half-open y el fetch cuelga PARA SIEMPRE,
+  // bloqueando la tarea de background y matando el tracking del chofer.
+  // AbortController con 7s: si no respondio, abortamos, el payload va a la
+  // cola offline y el proximo ping reintenta.
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), 7000);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
+    }
+  } finally {
+    clearTimeout(tid);
   }
 }
 
