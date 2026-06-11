@@ -1466,7 +1466,7 @@
                         <input type="text" id="prov-new-cuit" placeholder="CUIT" class="bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm font-medium text-[#1B2559] outline-none">
                         <input type="text" id="prov-new-phone" placeholder="Teléfono" class="bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm font-medium text-[#1B2559] outline-none">
                         <input type="text" id="prov-new-email" placeholder="Email" class="bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm font-medium text-[#1B2559] outline-none">
-                        <button onclick="addProviderInline()" class="px-5 py-3 rounded-xl bg-purple-600 text-white text-[11px] font-bold hover:bg-purple-700 transition-all flex items-center gap-2 justify-center">
+                        <button onclick="addProviderInline()" class="px-5 py-3 rounded-xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all flex items-center gap-2 justify-center">
                             <i data-lucide="plus" class="w-4 h-4"></i> Agregar
                         </button>
                     </div>
@@ -6135,7 +6135,7 @@
         }
 
         function vrpAddTemplateLayer(templateId) {
-            if (!templateId) { alert('Elegí un reparto primero.'); return; }
+            if (!templateId) { addNotification('warning', 'Capas', 'Elegí un reparto primero.'); return; }
             if (window._vrpLayers[templateId]) {
                 addNotification('info', 'Capa ya activa', 'Ese reparto ya está cargado como capa.');
                 return;
@@ -15784,14 +15784,14 @@
             const idx = months.indexOf(sel?.value);
             if (idx < 0) return;
             if (idx === 0) {
-                alert('Enero no tiene mes anterior en este año. Cargalo a mano o elegi otro mes.');
+                addNotification('warning', 'Costos', 'Enero no tiene mes anterior en este año. Cargalo a mano.');
                 return;
             }
             const prev = months[idx - 1];
             const db = (typeof getCostsDatabase === 'function') ? getCostsDatabase() : {};
             const prevData = db[prev];
             if (!prevData || (!prevData.fijo && !prevData.variable)) {
-                alert(`No hay costos guardados de ${prev}. Calcula ese mes primero (boton CALCULAR COSTOS DEL MES).`);
+                addNotification('warning', 'Costos', `No hay costos guardados de ${prev}. Calculá ese mes primero.`);
                 return;
             }
             let copied = 0;
@@ -15854,10 +15854,15 @@
                 // Recargar tabla de planificación para mostrar nuevos precios
                 await loadWeeklyData();
 
-                const msg = `✅ Costos del mes calculados y guardados.\n${data.updated} viajes propios actualizados.\nTasa vehículo: $${(data.vehicleHourlyRate || 0).toLocaleString()}/h`;
-                alert(msg);
+                // Toast en lugar de alert(): no bloquea la pantalla del operador
+                if (typeof addNotification === 'function') {
+                    addNotification('success', 'Motor de Costos', `${data.updated} viajes propios actualizados · Tasa vehículo: $${(data.vehicleHourlyRate || 0).toLocaleString()}/h`);
+                } else {
+                    alert(`Costos calculados. ${data.updated} viajes actualizados.`);
+                }
             } catch (e) {
-                alert('Error al calcular costos: ' + e.message);
+                if (typeof addNotification === 'function') addNotification('error', 'Motor de Costos', 'Error al calcular: ' + e.message);
+                else alert('Error al calcular costos: ' + e.message);
             } finally {
                 if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="calculator" class="w-5 h-5"></i> CALCULAR COSTOS DEL MES'; lucide.createIcons(); }
             }
@@ -16884,7 +16889,11 @@
         /** Umbral: senial mas vieja que esto = "telefono sin reportar" */
         const DRIVER_SIGNAL_STALE_MIN = 10;
 
+        // Guard anti doble-click: si el operador toca Iniciar/Finalizar dos veces
+        // rapido, la segunda llamada se ignora hasta que termine la primera.
+        let __recorridoOperadorBusy = false;
         async function operatorTripRecorrido(tripId, action) {
+            if (__recorridoOperadorBusy) return;
             const verb = action === 'start' ? 'Iniciar' : 'Finalizar';
             if (action === 'end') {
                 // WARNING para el operador: si el telefono del chofer no reporta
@@ -16902,6 +16911,7 @@
             } else {
                 if (!confirm(`${verb} el viaje #${tripId} en el sistema? El chofer verá la primera entrega al iniciar.`)) return;
             }
+            __recorridoOperadorBusy = true;
             try {
                 const res = await fetch(`${API_URL}/trips/${tripId}/recorrido-operador`, {
                     method: 'PATCH',
@@ -16935,7 +16945,10 @@
                     } catch (_) { /* no crítico */ }
                 }
             } catch (e) {
-                alert(e.message || String(e));
+                if (typeof addNotification === 'function') addNotification('error', 'Recorrido', e.message || String(e));
+                else alert(e.message || String(e));
+            } finally {
+                __recorridoOperadorBusy = false;
             }
         }
 
@@ -18190,7 +18203,8 @@
                 if (typeof addNotification === 'function') addNotification('success', 'Contraseña cambiada', `Nueva contraseña guardada para ${name}.`);
             } catch (e) {
                 console.error(e);
-                alert('No se pudo cambiar la contraseña: ' + e.message);
+                if (typeof addNotification === 'function') addNotification('error', 'Contraseña', 'No se pudo cambiar: ' + e.message);
+                else alert('No se pudo cambiar la contraseña: ' + e.message);
             }
         }
 
@@ -19023,9 +19037,17 @@ async function renderHdrMap(detail) {
     if (window.__r14ModalFixInstalled) return;
     window.__r14ModalFixInstalled = true;
 
+    // BUG FIX: el selector original solo cubria ids TERMINADOS en "-modal".
+    // Los modales modal-salary-edit, modal-unblock-role y modal-repair (que
+    // EMPIEZAN con "modal-") quedaban afuera: sin ESC, sin click-afuera y sin
+    // elevacion de z-index al superponerse. Por eso "habia X que no cerraban".
+    // OJO: ids explicitos (no prefijo "modal-") porque hay elementos INTERNOS
+    // como modal-body o modal-unblock-role-admin que NO son overlays.
+    const MODAL_SELECTOR = '[id$="-modal"], #modal-salary-edit, #modal-unblock-role, #modal-repair, .modal-overlay';
+
     /** Devuelve todos los modales actualmente VISIBLES (no tienen clase 'hidden'). */
     function getOpenModals() {
-        const all = document.querySelectorAll('[id$="-modal"], .modal-overlay');
+        const all = document.querySelectorAll(MODAL_SELECTOR);
         // No usamos offsetParent porque position:fixed lo hace null. Solo chequeamos la clase.
         return Array.from(all).filter(m => !m.classList.contains('hidden'));
     }
@@ -19109,7 +19131,7 @@ async function renderHdrMap(detail) {
     document.addEventListener('click', function(ev) {
         const modal = ev.target;
         if (!(modal instanceof HTMLElement)) return;
-        if (!modal.matches('[id$="-modal"], .modal-overlay')) return;
+        if (!modal.matches(MODAL_SELECTOR)) return;
         if (modal.classList.contains('hidden')) return;
         hideModal(modal);
     }, false);
@@ -19120,13 +19142,13 @@ async function renderHdrMap(detail) {
             if (mut.type !== 'attributes' || mut.attributeName !== 'class') continue;
             const t = mut.target;
             if (!(t instanceof HTMLElement)) continue;
-            if (!t.matches('[id$="-modal"], .modal-overlay')) continue;
+            if (!t.matches(MODAL_SELECTOR)) continue;
             if (!t.classList.contains('hidden')) {
                 bringModalToFront(t);
             }
         }
     });
-    document.querySelectorAll('[id$="-modal"], .modal-overlay').forEach(m => {
+    document.querySelectorAll(MODAL_SELECTOR).forEach(m => {
         observer.observe(m, { attributes: true, attributeFilter: ['class'] });
     });
 
