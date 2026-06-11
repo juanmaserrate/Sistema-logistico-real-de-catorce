@@ -2268,6 +2268,26 @@
                                     <i data-lucide="zap" class="w-3.5 h-3.5"></i> Optimizar
                                 </button>
                             </div>
+
+                            <!-- PLAN DE REPARTO: distribuye las paradas en camiones segun capacidad -->
+                            <div class="mt-3 p-3 rounded-xl bg-gradient-to-br from-amber-50 to-white border border-amber-200">
+                                <div class="flex items-center gap-2 mb-2">
+                                    <i data-lucide="boxes" class="w-4 h-4 text-amber-700"></i>
+                                    <span class="text-[11px] font-black text-amber-800 uppercase tracking-widest flex-1">Plan de reparto por camión</span>
+                                </div>
+                                <div class="flex items-center gap-1.5 mb-2">
+                                    <button type="button" id="bud-plan-mode-single" onclick="budgetSetPlanMode('single')" class="flex-1 px-2 py-1.5 rounded-md bg-amber-600 text-white text-[10px] font-black uppercase tracking-widest">1 camión · varias vueltas</button>
+                                    <button type="button" id="bud-plan-mode-multi" onclick="budgetSetPlanMode('multi')" class="flex-1 px-2 py-1.5 rounded-md bg-white text-[#1B2559] text-[10px] font-black uppercase tracking-widest hover:bg-amber-50 border border-amber-200">Varios camiones</button>
+                                </div>
+                                <div id="bud-plan-multi-pick" class="hidden mb-2">
+                                    <label class="text-[9px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Elegí los camiones disponibles hoy</label>
+                                    <div id="bud-plan-fleet-checks" class="grid grid-cols-1 gap-1 max-h-32 overflow-y-auto custom-scrollbar"></div>
+                                </div>
+                                <button onclick="budgetBuildLoadPlan()" class="w-full px-3 py-2 rounded-lg bg-amber-600 text-white text-[10px] font-black uppercase tracking-widest hover:bg-amber-700 flex items-center justify-center gap-1.5">
+                                    <i data-lucide="layout-list" class="w-3.5 h-3.5"></i> Armar plan de reparto
+                                </button>
+                                <div id="bud-load-plan" class="mt-2"></div>
+                            </div>
                             <div id="bud-route-metrics" class="hidden mt-2 p-2 rounded-lg bg-indigo-50 border border-indigo-100 flex justify-around text-center">
                                 <div>
                                     <div class="text-[9px] font-black text-[#A3AED0] uppercase">Dist.</div>
@@ -7772,6 +7792,200 @@
                     </div>
                     ${!ok && fleet ? `<div class="text-[10px] text-[#A3AED0] mt-1">Capacidad flota: ${fleet.maxPallets || '—'} pallets / ${(fleet.maxKg || 0).toLocaleString('es-AR')} kg → costo se multiplica por ${viajes}</div>` : ''}
                 </div>`;
+        }
+
+        // ════════════════════════════════════════════════════════════════
+        // PLAN DE REPARTO — reparte las paradas (con su carga) en camiones
+        // segun capacidad. Regla "lo que se llene primero": un camion esta
+        // lleno cuando se alcanza el tope de pallets O de kg, lo que pase antes.
+        // ════════════════════════════════════════════════════════════════
+        let budgetPlanMode = 'single'; // 'single' = 1 camion N vueltas | 'multi' = varios camiones
+
+        function budgetSetPlanMode(mode) {
+            budgetPlanMode = mode;
+            const bS = document.getElementById('bud-plan-mode-single');
+            const bM = document.getElementById('bud-plan-mode-multi');
+            const pick = document.getElementById('bud-plan-multi-pick');
+            const onCls = 'flex-1 px-2 py-1.5 rounded-md bg-amber-600 text-white text-[10px] font-black uppercase tracking-widest';
+            const offCls = 'flex-1 px-2 py-1.5 rounded-md bg-white text-[#1B2559] text-[10px] font-black uppercase tracking-widest hover:bg-amber-50 border border-amber-200';
+            if (bS) bS.className = mode === 'single' ? onCls : offCls;
+            if (bM) bM.className = mode === 'multi' ? onCls : offCls;
+            if (pick) pick.classList.toggle('hidden', mode !== 'multi');
+            if (mode === 'multi') budgetRenderPlanFleetChecks();
+        }
+
+        function budgetRenderPlanFleetChecks() {
+            const host = document.getElementById('bud-plan-fleet-checks');
+            if (!host) return;
+            const fleets = fleetsGetAll().filter(f => (f.maxPallets || 0) > 0 || (f.maxKg || 0) > 0);
+            if (fleets.length === 0) {
+                host.innerHTML = '<p class="text-[10px] text-rose-600 italic">No hay camiones con capacidad cargada. Agregalos en Flotas (maxPallets / maxKg).</p>';
+                return;
+            }
+            host.innerHTML = fleets.map(f => `
+                <label class="flex items-center gap-2 px-2 py-1.5 rounded-md bg-white border border-amber-100 cursor-pointer hover:bg-amber-50">
+                    <input type="checkbox" class="bud-plan-fleet-check" value="${f.id}" checked>
+                    <span class="text-[11px] font-bold text-[#1B2559] flex-1 truncate">${escapeHtml(f.name || 'Camión')}</span>
+                    <span class="text-[9px] font-black text-emerald-700">${f.maxPallets || '—'} pal · ${(f.maxKg || 0).toLocaleString('es-AR')} kg</span>
+                </label>
+            `).join('');
+        }
+
+        /** Capacidad efectiva de un camion. Devuelve {name, capP, capK}. */
+        function _planTruckCap(fleet) {
+            return {
+                name: fleet?.name || 'Camión',
+                capP: Number(fleet?.maxPallets) || 0,
+                capK: Number(fleet?.maxKg) || 0,
+            };
+        }
+
+        /** ¿Entra un item {p,k} en un bin con carga {p,k} y capacidad {capP,capK}? */
+        function _planFits(bin, item, cap) {
+            const okP = cap.capP <= 0 || (bin.p + item.p) <= cap.capP + 1e-9;
+            const okK = cap.capK <= 0 || (bin.k + item.k) <= cap.capK + 1e-9;
+            return okP && okK;
+        }
+
+        function budgetBuildLoadPlan() {
+            const host = document.getElementById('bud-load-plan');
+            if (!host) return;
+
+            // 1) Items = paradas con carga > 0
+            const items = budgetState.stops
+                .map((s, i) => ({ idx: i, name: s.name || `Parada ${i+1}`, p: Number(s.pallets) || 0, k: Number(s.kg) || 0 }))
+                .filter(it => it.p > 0 || it.k > 0);
+            if (items.length === 0) {
+                host.innerHTML = '<p class="text-[11px] text-[#A3AED0] italic mt-1">Cargá pallets o kg en las paradas para armar el plan.</p>';
+                return;
+            }
+
+            // 2) Camiones disponibles segun modo
+            let trucks = [];
+            if (budgetPlanMode === 'multi') {
+                const ids = Array.from(document.querySelectorAll('.bud-plan-fleet-check:checked')).map(c => c.value);
+                trucks = ids.map(id => _planTruckCap(fleetsGetAll().find(f => f.id === id))).filter(t => t.capP > 0 || t.capK > 0);
+                if (trucks.length === 0) {
+                    host.innerHTML = '<p class="text-[11px] text-rose-600 font-bold mt-1">Elegí al menos un camión con capacidad.</p>';
+                    return;
+                }
+            } else {
+                const fleetId = document.getElementById('bud-fleet-select')?.value;
+                const fleet = fleetId ? fleetsGetAll().find(f => f.id === fleetId) : null;
+                const manualP = Number(document.getElementById('bud-max-pallets-manual')?.value) || 0;
+                const manualK = Number(document.getElementById('bud-max-kg-manual')?.value) || 0;
+                const cap = fleet ? _planTruckCap(fleet) : { name: 'Camión', capP: manualP, capK: manualK };
+                if (cap.capP <= 0 && cap.capK <= 0) {
+                    host.innerHTML = '<p class="text-[11px] text-rose-600 font-bold mt-1">Elegí un camión de la flota (con capacidad cargada) o ingresá los máximos manuales arriba.</p>';
+                    return;
+                }
+                trucks = [cap];
+            }
+
+            // Capacidad del camion MAS GRANDE (para detectar paradas que no entran enteras)
+            const maxCapP = Math.max(...trucks.map(t => t.capP || 0));
+            const maxCapK = Math.max(...trucks.map(t => t.capK || 0));
+            const biggest = trucks.reduce((a, b) => {
+                const fa = (a.capP || Infinity), fb = (b.capP || Infinity);
+                return fb > fa ? b : a;
+            }, trucks[0]);
+
+            // 3) Pre-procesar: partir paradas que NO entran en el camion mas grande
+            const suggestions = [];
+            const work = [];
+            for (const it of items) {
+                const tooP = maxCapP > 0 && it.p > maxCapP + 1e-9;
+                const tooK = maxCapK > 0 && it.k > maxCapK + 1e-9;
+                if (tooP || tooK) {
+                    const partsByP = maxCapP > 0 ? Math.ceil(it.p / maxCapP) : 1;
+                    const partsByK = maxCapK > 0 ? Math.ceil(it.k / maxCapK) : 1;
+                    const parts = Math.max(partsByP, partsByK, 2);
+                    for (let n = 0; n < parts; n++) {
+                        work.push({ name: it.name, p: it.p / parts, k: it.k / parts, partial: true, partOf: parts });
+                    }
+                    const sugBig = fleetsGetAll().find(f => (f.maxPallets || 0) >= it.p && (f.maxKg || 0) >= it.k);
+                    suggestions.push(
+                        `<b>${escapeHtml(it.name)}</b> necesita ${it.p ? it.p + ' pallets' : ''}${it.p && it.k ? ' / ' : ''}${it.k ? it.k.toLocaleString('es-AR') + ' kg' : ''} — más que tu camión más grande (${biggest.name}: ${biggest.capP || '—'} pal / ${(biggest.capK||0).toLocaleString('es-AR')} kg). `
+                        + (sugBig
+                            ? `Conviene el camión <b>${escapeHtml(sugBig.name)}</b> (${sugBig.maxPallets || '—'} pal / ${(sugBig.maxKg||0).toLocaleString('es-AR')} kg) o repartir en ${parts} entregas/días.`
+                            : `Se reparte en <b>${parts} entregas</b> (varios viajes o días). Ningún camión de tu flota la lleva entera.`)
+                    );
+                } else {
+                    work.push({ name: it.name, p: it.p, k: it.k, partial: false });
+                }
+            }
+
+            // 4) Bin-packing First-Fit Decreasing.
+            // Orden: por "ocupacion" desc respecto al camion mas grande (lo grande primero).
+            const sizeOf = (it) => Math.max(maxCapP > 0 ? it.p / maxCapP : 0, maxCapK > 0 ? it.k / maxCapK : 0);
+            work.sort((a, b) => sizeOf(b) - sizeOf(a));
+
+            const bins = []; // { truck, stops:[], p, k }
+            const newBin = () => {
+                // single: siempre el mismo camion. multi: rotar entre los elegidos (mas grande primero)
+                const truck = budgetPlanMode === 'multi'
+                    ? [...trucks].sort((a,b) => (b.capP||0)-(a.capP||0))[bins.length % trucks.length]
+                    : trucks[0];
+                const b = { truck, stops: [], p: 0, k: 0 };
+                bins.push(b);
+                return b;
+            };
+
+            for (const it of work) {
+                let placed = false;
+                for (const b of bins) {
+                    if (_planFits(b, it, b.truck)) {
+                        b.stops.push(it); b.p += it.p; b.k += it.k; placed = true; break;
+                    }
+                }
+                if (!placed) {
+                    const b = newBin();
+                    b.stops.push(it); b.p += it.p; b.k += it.k;
+                }
+            }
+
+            // 5) Render del plan
+            budgetState.tripsNeeded = bins.length; // conectar con el calculo de costo
+            const totP = items.reduce((a, it) => a + it.p, 0);
+            const totK = items.reduce((a, it) => a + it.k, 0);
+
+            const binHtml = bins.map((b, i) => {
+                const fillP = b.truck.capP > 0 ? Math.round(b.p / b.truck.capP * 100) : 0;
+                const fillK = b.truck.capK > 0 ? Math.round(b.k / b.truck.capK * 100) : 0;
+                const fill = Math.max(fillP, fillK);
+                const barColor = fill >= 95 ? 'bg-rose-500' : fill >= 75 ? 'bg-amber-500' : 'bg-emerald-500';
+                const stopsTxt = b.stops.map(s =>
+                    `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-white border border-[#E0E5F2] text-[10px] font-bold text-[#1B2559] m-0.5">
+                        ${escapeHtml(s.name)}${s.partial ? ' <span class="text-amber-600">(parcial)</span>' : ''}
+                        <span class="text-[#A3AED0]">${s.p ? Math.round(s.p*10)/10+'p' : ''}${s.p&&s.k?'·':''}${s.k?Math.round(s.k)+'k':''}</span>
+                    </span>`).join('');
+                return `
+                    <div class="rounded-lg bg-white border border-[#E0E5F2] p-2 mb-1.5">
+                        <div class="flex items-center justify-between gap-2 mb-1">
+                            <span class="text-[11px] font-black text-[#1B2559]">Viaje ${i+1} · ${escapeHtml(b.truck.name)}</span>
+                            <span class="text-[10px] font-bold ${fill >= 95 ? 'text-rose-600' : 'text-[#A3AED0]'}">${b.p ? Math.round(b.p*10)/10+' pal' : ''}${b.p&&b.k?' · ':''}${b.k?Math.round(b.k).toLocaleString('es-AR')+' kg':''} (${fill}%)</span>
+                        </div>
+                        <div class="h-1.5 rounded-full bg-[#F4F7FE] overflow-hidden mb-1.5"><div class="h-full ${barColor}" style="width:${Math.min(fill,100)}%"></div></div>
+                        <div class="flex flex-wrap">${stopsTxt}</div>
+                    </div>`;
+            }).join('');
+
+            const sugHtml = suggestions.length
+                ? `<div class="mt-2 p-2 rounded-lg bg-rose-50 border border-rose-200">
+                    <p class="text-[10px] font-black text-rose-700 uppercase tracking-widest mb-1">⚠️ Sugerencias</p>
+                    ${suggestions.map(s => `<p class="text-[10px] text-rose-700 leading-snug mb-1">${s}</p>`).join('')}
+                  </div>`
+                : '';
+
+            host.innerHTML = `
+                <div class="rounded-lg bg-amber-100/50 px-2 py-1.5 mb-2 flex items-center justify-between">
+                    <span class="text-[11px] font-black text-amber-900">${bins.length} viaje${bins.length>1?'s':''} ${budgetPlanMode==='multi' ? 'en '+trucks.length+' camiones' : 'del mismo camión'}</span>
+                    <span class="text-[10px] font-bold text-amber-800">Total: ${totP ? Math.round(totP*10)/10+' pal' : ''}${totP&&totK?' · ':''}${totK?Math.round(totK).toLocaleString('es-AR')+' kg':''}</span>
+                </div>
+                ${binHtml}
+                ${sugHtml}
+                <p class="text-[9px] text-[#A3AED0] italic mt-1">El costo del presupuesto se multiplica por ${bins.length} viaje${bins.length>1?'s':''}. Tocá "Calcular" para ver el total.</p>`;
+            lucide.createIcons();
         }
 
         // ── Geocoding + Directions con MAPBOX (reemplaza Google Places/Geocoder/Directions
