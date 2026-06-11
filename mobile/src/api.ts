@@ -9,13 +9,32 @@ function apiUrl(path: string): string {
 
 const ROUTES_CACHE_KEY = 'r14_routes_today_cache';
 
-/** Fetch with automatic retry (exponential backoff) and configurable timeout. */
+// ── Manejo global de sesión vencida (token 401) ───────────────────────────────
+// La app guarda la sesión del chofer pero el token JWT dura 30 días. Cuando
+// vence, todas las llamadas autenticadas devuelven 401. Sin este manejo, el
+// chofer quedaba "logueado" pero sin poder hacer nada y sin aviso. Ahora una
+// sola respuesta 401 dispara el handler que App.tsx usa para cerrar sesión y
+// mandarlo a Login con un mensaje claro. La cola offline NO se borra.
+let _authExpiredHandler: (() => void) | null = null;
+let _authExpiredCoolingDown = false;
+export function setAuthExpiredHandler(fn: (() => void) | null): void {
+  _authExpiredHandler = fn;
+}
+function notifyAuthExpired(): void {
+  if (_authExpiredCoolingDown) return; // evitar múltiples disparos en ráfaga
+  _authExpiredCoolingDown = true;
+  try { _authExpiredHandler?.(); } catch { /* */ }
+  setTimeout(() => { _authExpiredCoolingDown = false; }, 8000);
+}
+
+/** Fetch with automatic retry (exponential backoff) and configurable timeout.
+ *  noAuthGuard: true en el login (un 401 ahí = credenciales malas, no sesión vencida). */
 async function fetchWithRetry(
   url: string,
-  options: RequestInit & { timeout?: number } = {},
+  options: RequestInit & { timeout?: number; noAuthGuard?: boolean } = {},
   retries = 3
 ): Promise<Response> {
-  const { timeout = 10000, ...fetchOpts } = options;
+  const { timeout = 10000, noAuthGuard = false, ...fetchOpts } = options;
   let lastErr: unknown;
   for (let attempt = 0; attempt <= retries; attempt++) {
     const controller = new AbortController();
@@ -23,6 +42,8 @@ async function fetchWithRetry(
     try {
       const res = await fetch(url, { ...fetchOpts, signal: controller.signal });
       clearTimeout(tid);
+      // Token vencido/inválido → avisar a la app (salvo en el propio login)
+      if (res.status === 401 && !noAuthGuard) notifyAuthExpired();
       return res;
     } catch (e) {
       clearTimeout(tid);
@@ -65,6 +86,7 @@ export async function login(username: string, password: string): Promise<Session
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, password }),
       timeout: 15000,
+      noAuthGuard: true, // un 401 aquí = credenciales inválidas, no sesión vencida
     }, 2);
   } catch (e) {
     throw new Error(`No se pudo conectar al servidor (${API_BASE}). Verificá tu conexión a internet.`);

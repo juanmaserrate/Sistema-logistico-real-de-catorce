@@ -1,5 +1,5 @@
 import React, { Suspense, useEffect, useState } from 'react';
-import { ActivityIndicator, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, Platform, StyleSheet, View } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -15,7 +15,7 @@ import {
   isGoogleNavigationNativeAvailable,
 } from './src/navigation/NavProviderGate';
 import type { RootStackParamList } from './src/navigation/types';
-import { registerPushToken } from './src/api';
+import { registerPushToken, setAuthExpiredHandler } from './src/api';
 
 /** Migración one-time: cuando un chofer recibe este OTA update, limpiamos el
  *  cache de rutas que pueda tener stale (ej. con viajes finalizados que se
@@ -65,6 +65,24 @@ export default function App() {
       setBoot(false);
       if (s) await tryRegisterPushToken(s.id);
     })();
+  }, []);
+
+  // Sesión vencida (token 401): cerrar sesión y avisar al chofer con un mensaje
+  // claro. Antes la app quedaba "logueada" pero sin poder hacer nada. La cola
+  // offline NO se borra: las entregas pendientes se sincronizan al re-loguearse.
+  useEffect(() => {
+    setAuthExpiredHandler(() => {
+      setSession((prev) => {
+        if (!prev) return prev; // ya estaba en login, no molestar
+        clearSession();
+        Alert.alert(
+          'Sesión vencida',
+          'Tu sesión expiró por seguridad. Iniciá sesión de nuevo. Las entregas que tengas pendientes se enviarán solas al reconectar.'
+        );
+        return null;
+      });
+    });
+    return () => setAuthExpiredHandler(null);
   }, []);
 
   if (boot) {
