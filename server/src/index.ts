@@ -3552,10 +3552,16 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
         res.json(stop);
     } catch (e: any) {
         console.error('PATCH /api/v1/stops/:id:', e);
-        const msg = e?.code === 'P2025'
-            ? 'La parada no existe o ya fue eliminada'
-            : (e?.message || 'Error actualizando la parada');
-        res.status(500).json({ error: msg });
+        // P2025 = la parada no existe (la borraron/reemplazaron desde la web).
+        // Devolver 404 (no 500): la cola offline de la app descarta los 4xx y
+        // sigue con las demas paradas. Con 500 el item fantasma bloqueaba la
+        // cola del chofer PARA SIEMPRE (la app interpreta 5xx como "server
+        // caido, reintentar despues").
+        if (e?.code === 'P2025') {
+            res.status(404).json({ error: 'La parada no existe o ya fue eliminada' });
+            return;
+        }
+        res.status(500).json({ error: e?.message || 'Error actualizando la parada' });
     }
 });
 
