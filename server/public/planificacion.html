@@ -2269,6 +2269,13 @@
                                 </button>
                             </div>
 
+                            <!-- ESPERA POR PARADA: tiempo de descarga que se suma a las horas del chofer -->
+                            <div class="mt-2 flex items-center gap-2 bg-amber-50 border border-amber-100 rounded-lg p-2" title="Tiempo de espera/descarga en cada parada. Se suma a las horas de manejo para calcular el costo del chofer.">
+                                <i data-lucide="clock" class="w-3.5 h-3.5 text-amber-600 shrink-0"></i>
+                                <label class="text-[9px] font-black text-amber-700 uppercase tracking-widest flex-1">Espera/descarga por parada (min)</label>
+                                <input id="bud-wait-per-stop" type="number" min="0" step="5" value="20" class="w-16 bg-white border border-amber-200 rounded-md p-1.5 text-xs font-bold text-[#1B2559] text-right">
+                            </div>
+
                             <!-- PLAN DE REPARTO: distribuye las paradas en camiones segun capacidad -->
                             <div class="mt-3 p-3 rounded-xl bg-gradient-to-br from-amber-50 to-white border border-amber-200">
                                 <div class="flex items-center gap-2 mb-2">
@@ -7494,7 +7501,7 @@
                          'bud-month-hours','bud-social-pct','bud-truck-value','bud-truck-life-km',
                          'bud-consumption','bud-tires-cost','bud-tires-km','bud-maint-year',
                          'bud-km-year','bud-fixed-month','bud-trips-month','bud-fuel-price',
-                         'bud-overhead-pct','bud-margin-pct'];
+                         'bud-overhead-pct','bud-margin-pct','bud-wait-per-stop'];
             const obj = {};
             ids.forEach(id => { const el = document.getElementById(id); if (el) obj[id] = el.value; });
             try { localStorage.setItem(BUD_DEFAULT_KEY, JSON.stringify(obj)); } catch {}
@@ -8511,8 +8518,14 @@
 
         function budgetCalculate() {
             const km = budgetState.routeKm || 0;
-            const hours = (budgetState.routeMinutes || 0) / 60;
-            if (km <= 0 || hours <= 0) {
+            const drivingHours = (budgetState.routeMinutes || 0) / 60;
+            // Espera/descarga por parada: se suma a las horas de manejo para el
+            // costo del chofer (antes el sistema solo contaba horas de ruta y el
+            // tiempo de descarga quedaba sin costear).
+            const waitPerStop = Number(document.getElementById('bud-wait-per-stop')?.value) || 0;
+            const waitHours = (budgetState.stops.length * waitPerStop) / 60;
+            const hours = drivingHours + waitHours;
+            if (km <= 0 || drivingHours <= 0) {
                 addNotification('warning', 'Falta calcular la ruta', 'Apretá "Calcular km y tiempo" primero.');
                 return;
             }
@@ -8749,7 +8762,7 @@
                 tercerizado, opcionRecomendada, opciones,
                 // Plan optimizado de despacho por parada (mix propio/tercerizado)
                 optPlan,
-                km, hours, refrigerated,
+                km, hours, drivingHours, waitHours, waitPerStop, refrigerated,
                 socialPct, monthHours, consumption, fuelPrice,
                 truckValue, truckLifeKm, tiresCost, tiresKm, maintYear, kmYear, fixedMonth, tripsMonth,
                 depreciation, tires, maintenance, fixedPerTrip, overheadPct,
@@ -9250,6 +9263,152 @@
             const cliente = (document.getElementById('bud-client-name').value || '').trim();
             const presupuestoNro = 'P-' + Date.now().toString().slice(-6);
 
+            // ── MODO MULTI-DESPACHO: resumen del proyecto + desglose por viaje ──
+            if (c.isMultiDispatch && Array.isArray(c.dispatchResults) && c.dispatchResults.length) {
+                const logo = await budgetLoadLogo();
+                const fmtH = (h) => `${Math.floor(h)}h ${String(Math.round((h % 1) * 60)).padStart(2,'0')}m`;
+                const drawHeader = () => {
+                    doc.setFillColor(0, 0, 0);
+                    doc.rect(0, 0, 210, 34, 'F');
+                    if (logo) { try { doc.addImage(logo, 'PNG', 12, 6, 22, 22); } catch {} }
+                    doc.setTextColor(255);
+                    doc.setFont('helvetica', 'bold'); doc.setFontSize(20);
+                    doc.text('REAL DE CATORCE', 40, 18);
+                    doc.setFontSize(9); doc.setFont('helvetica', 'normal');
+                    doc.text('Transporte y logística · Ombú 1269, Burzaco, Prov. Bs. As.', 40, 25);
+                    doc.text('contacto@r14trafico.com · www.r14trafico.com', 40, 30);
+                };
+                drawHeader();
+                doc.setTextColor(27, 37, 89);
+                doc.setFontSize(22); doc.setFont('helvetica', 'bold');
+                doc.text('PRESUPUESTO — PROYECTO MULTI-VIAJE', 15, 46);
+                doc.setFontSize(10); doc.setFont('helvetica', 'normal'); doc.setTextColor(120);
+                doc.text(`N° ${presupuestoNro}  ·  Fecha: ${c.fecha}  ·  Validez: 15 días`, 15, 53);
+
+                // Destinatario
+                const dest = c.destinatario || {};
+                const destBody = [['Razón social / Nombre', dest.nombre || cliente || '—']];
+                if (dest.cuit) destBody.push(['CUIT / DNI', dest.cuit]);
+                if (dest.direccion) destBody.push(['Dirección', dest.direccion]);
+                doc.autoTable({
+                    startY: 58,
+                    head: [[{ content: 'DESTINATARIO', colSpan: 2, styles: { fillColor: [27, 37, 89], textColor: 255, halign: 'left', fontStyle: 'bold' } }]],
+                    body: destBody,
+                    theme: 'grid', styles: { fontSize: 9, cellPadding: 2.5 },
+                    columnStyles: { 0: { cellWidth: 45, textColor: [100,100,120] }, 1: { fontStyle: 'bold', textColor: [27,37,89] } },
+                });
+                let y = doc.lastAutoTable.finalY + 6;
+
+                // ── RESUMEN DEL PROYECTO (primero de todo) ───────────────
+                const rows = c.dispatchResults.map((r) => {
+                    const k = r.calc || {};
+                    const kg = (k.cargoTotals?.kg) || (k.stops || []).reduce((a,s)=>a+(Number(s.kg)||0),0);
+                    return [
+                        r.name,
+                        String(r.stopCount ?? (k.stops||[]).length),
+                        kg ? kg.toLocaleString('es-AR') + ' kg' : '—',
+                        k.km ? k.km.toFixed(0) + ' km' : '—',
+                        k.hours ? fmtH(k.hours) : '—',
+                        money(r.precio)
+                    ];
+                });
+                const totalKg = c.dispatchResults.reduce((a,r)=>{const k=r.calc||{};return a+((k.cargoTotals?.kg)||(k.stops||[]).reduce((x,s)=>x+(Number(s.kg)||0),0));},0);
+                const totalKm = c.dispatchResults.reduce((a,r)=>a+((r.calc||{}).km||0),0);
+                const totalHs = c.dispatchResults.reduce((a,r)=>a+((r.calc||{}).hours||0),0);
+                rows.push([
+                    { content: 'TOTAL PROYECTO', styles: { fontStyle: 'bold', fillColor: [27,37,89], textColor: 255 } },
+                    { content: '', styles: { fillColor: [27,37,89] } },
+                    { content: totalKg.toLocaleString('es-AR') + ' kg', styles: { fontStyle: 'bold', fillColor: [27,37,89], textColor: 255, halign: 'right' } },
+                    { content: totalKm.toFixed(0) + ' km', styles: { fontStyle: 'bold', fillColor: [27,37,89], textColor: 255, halign: 'right' } },
+                    { content: fmtH(totalHs), styles: { fontStyle: 'bold', fillColor: [27,37,89], textColor: 255, halign: 'right' } },
+                    { content: money(c.totalPrecio), styles: { fontStyle: 'bold', fillColor: [27,37,89], textColor: 255, halign: 'right' } },
+                ]);
+                doc.autoTable({
+                    startY: y,
+                    head: [[{ content: 'RESUMEN DEL PROYECTO', colSpan: 6, styles: { fillColor: [67,24,255], textColor: 255, halign: 'left', fontStyle: 'bold' } }],
+                           ['Viaje', 'Paradas', 'Carga', 'Distancia', 'Tiempo oper.', 'Importe']],
+                    body: rows,
+                    theme: 'grid',
+                    headStyles: { fillColor: [244,247,254], textColor: [27,37,89], fontStyle: 'bold' },
+                    styles: { fontSize: 9, cellPadding: 2.5 },
+                    columnStyles: { 1: { halign: 'center' }, 2: { halign: 'right' }, 3: { halign: 'right' }, 4: { halign: 'right' }, 5: { halign: 'right', fontStyle: 'bold' } },
+                });
+                y = doc.lastAutoTable.finalY + 8;
+
+                // ── DESGLOSE POR VIAJE ───────────────────────────────────
+                for (const r of c.dispatchResults) {
+                    const k = r.calc || {};
+                    if (y > 215) { doc.addPage(); y = 20; }
+                    doc.setTextColor(67, 24, 255);
+                    doc.setFont('helvetica', 'bold'); doc.setFontSize(13);
+                    doc.text(`DESGLOSE — ${r.name}`, 15, y); y += 2;
+
+                    const paradasTxt = (k.stops || []).map(s => `${s.name}${s.kg ? ` (${Number(s.kg).toLocaleString('es-AR')} kg)` : ''}`).join('  ·  ') || '—';
+                    const fichaBody = [
+                        ['Recorrido', `${(k.origin || 'Ombú 1269, Burzaco')} → ${(k.stops||[]).length} paradas → regreso`],
+                        ['Paradas', paradasTxt],
+                        ['Distancia total', `${(k.km||0).toFixed(0)} km (ida + regreso)`],
+                        ['Tiempo de manejo', k.drivingHours != null ? fmtH(k.drivingHours) : fmtH(k.hours||0)],
+                        ['Espera/descarga', k.waitHours > 0 ? `${(k.stops||[]).length} paradas × ${k.waitPerStop} min = ${fmtH(k.waitHours)}` : '—'],
+                        ['Tiempo total de operación', fmtH(k.hours||0)],
+                        ['Combustible estimado', `${((k.km||0) * (k.consumption||0) / 100).toFixed(0)} L (${k.consumption} L/100km)`],
+                    ];
+                    doc.autoTable({
+                        startY: y + 2,
+                        body: fichaBody,
+                        theme: 'grid', styles: { fontSize: 8.5, cellPadding: 2 },
+                        columnStyles: { 0: { cellWidth: 50, textColor: [100,100,120] }, 1: { fontStyle: 'bold', textColor: [27,37,89] } },
+                    });
+                    y = doc.lastAutoTable.finalY + 2;
+
+                    if (r.tipo === 'terc') {
+                        doc.autoTable({
+                            startY: y,
+                            body: [[{ content: 'Servicio tercerizado — precio pactado', styles: { textColor: [100,100,120] } }, { content: money(r.precio), styles: { fontStyle: 'bold', halign: 'right' } }]],
+                            theme: 'grid', styles: { fontSize: 9, cellPadding: 2.5 },
+                        });
+                    } else {
+                        const impBody = [
+                            ['Personal (chofer y auxiliares)', money(k.personalTotal)],
+                            ['Vehículo (deprec. + cubiertas + mant. + fijos)', money(k.vehicleTotal)],
+                            ['Combustible', money(k.fuelTotal)],
+                        ];
+                        if (k.overhead > 0) impBody.push([`Overhead oficina (${k.overheadPct}%)`, money(k.overhead)]);
+                        impBody.push([{ content: 'COSTO DEL VIAJE', styles: { fontStyle: 'bold', fillColor: [244,247,254] } }, { content: money(r.costo), styles: { fontStyle: 'bold', halign: 'right', fillColor: [244,247,254] } }]);
+                        if (k.margin > 0) impBody.push([`Margen (${k.marginPct}%)`, money(k.margin)]);
+                        if (k.taxesTotal > 0) impBody.push(['Impuestos', money(k.taxesTotal)]);
+                        impBody.push([{ content: 'IMPORTE DEL VIAJE', styles: { fontStyle: 'bold', fillColor: [27,37,89], textColor: 255 } }, { content: money(r.precio), styles: { fontStyle: 'bold', halign: 'right', fillColor: [27,37,89], textColor: 255 } }]);
+                        doc.autoTable({
+                            startY: y,
+                            head: [['Concepto', 'Importe']],
+                            body: impBody,
+                            theme: 'grid',
+                            headStyles: { fillColor: [244,247,254], textColor: [27,37,89], fontStyle: 'bold' },
+                            styles: { fontSize: 9, cellPadding: 2.5 },
+                            columnStyles: { 1: { halign: 'right' } },
+                        });
+                    }
+                    y = doc.lastAutoTable.finalY + 9;
+                }
+
+                // ── TOTAL FINAL ──────────────────────────────────────────
+                if (y > 245) { doc.addPage(); y = 20; }
+                doc.setFillColor(16, 185, 129);
+                doc.roundedRect(15, y, 180, 18, 2, 2, 'F');
+                doc.setTextColor(255);
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+                doc.text('TOTAL DEL PROYECTO', 20, y + 11);
+                doc.setFontSize(16);
+                doc.text(money(c.totalPrecio), 190, y + 12, { align: 'right' });
+                y += 24;
+                doc.setTextColor(120); doc.setFont('helvetica', 'italic'); doc.setFontSize(8);
+                doc.text('Los tiempos incluyen manejo + espera/descarga en cada parada. Presupuesto sujeto a variación del precio de combustible.', 15, y);
+
+                const safe = (dest.nombre || cliente || 'Proyecto').replace(/[^a-z0-9]/gi, '-').slice(0, 30);
+                doc.save(`Presupuesto-${safe}-${c.fecha.replace(/\//g,'-')}.pdf`);
+                return;
+            }
+
             // ── HEADER marca R14 ─────────────────────────────────────────
             const logo = await budgetLoadLogo();
             doc.setFillColor(0, 0, 0);
@@ -9507,6 +9666,121 @@
             const moneyDec = (n) => (Number(n) || 0).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
             const pct = (a, tot) => tot > 0 ? Math.round(a/tot*100) : 0;
 
+            // ── MODO MULTI-DESPACHO: cuentas paso a paso de CADA viaje ──────
+            if (c.isMultiDispatch && Array.isArray(c.dispatchResults) && c.dispatchResults.length) {
+                const logo = await budgetLoadLogo();
+                const fmtH = (h) => `${(Number(h)||0).toFixed(2)} h`;
+                doc.setFillColor(0, 0, 0);
+                doc.rect(0, 0, 210, 26, 'F');
+                if (logo) { try { doc.addImage(logo, 'PNG', 12, 4, 18, 18); } catch {} }
+                doc.setTextColor(255);
+                doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
+                doc.text('CUENTA PASO A PASO — PROYECTO MULTI-VIAJE', 34, 13);
+                doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
+                doc.text('Documento interno — cómo se formó el costo de cada viaje', 34, 19);
+
+                let y = 33;
+                doc.setTextColor(27, 37, 89); doc.setFontSize(9);
+                doc.setFont('helvetica', 'bold'); doc.text('Fecha:', 15, y);
+                doc.setFont('helvetica', 'normal'); doc.text(c.fecha, 30, y);
+                if (c.destinatario?.nombre) {
+                    doc.setFont('helvetica', 'bold'); doc.text('Proyecto:', 70, y);
+                    doc.setFont('helvetica', 'normal'); doc.text(c.destinatario.nombre, 90, y);
+                }
+                y += 7;
+
+                // ── RESUMEN AL PRINCIPIO ─────────────────────────────────
+                const resRows = c.dispatchResults.map((r) => {
+                    const k = r.calc || {};
+                    const kg = (k.cargoTotals?.kg) || (k.stops || []).reduce((a,s)=>a+(Number(s.kg)||0),0);
+                    return [r.name, String((k.stops||[]).length), kg.toLocaleString('es-AR')+' kg',
+                            (k.km||0).toFixed(0)+' km', fmtH(k.drivingHours ?? k.hours), fmtH(k.waitHours||0),
+                            '$ '+money(r.costo)];
+                });
+                resRows.push([
+                    { content: 'TOTAL', styles: { fontStyle: 'bold', fillColor: [27,37,89], textColor: 255 } },
+                    '', '',
+                    { content: c.dispatchResults.reduce((a,r)=>a+((r.calc||{}).km||0),0).toFixed(0)+' km', styles: { fontStyle: 'bold', fillColor: [27,37,89], textColor: 255, halign: 'right' } },
+                    { content: fmtH(c.dispatchResults.reduce((a,r)=>a+((r.calc||{}).drivingHours ?? (r.calc||{}).hours ?? 0),0)), styles: { fontStyle: 'bold', fillColor: [27,37,89], textColor: 255, halign: 'right' } },
+                    { content: fmtH(c.dispatchResults.reduce((a,r)=>a+((r.calc||{}).waitHours||0),0)), styles: { fontStyle: 'bold', fillColor: [27,37,89], textColor: 255, halign: 'right' } },
+                    { content: '$ '+money(c.totalCosto), styles: { fontStyle: 'bold', fillColor: [27,37,89], textColor: 255, halign: 'right' } },
+                ]);
+                doc.autoTable({
+                    startY: y,
+                    head: [[{ content: 'RESUMEN DEL PROYECTO', colSpan: 7, styles: { fillColor: [67,24,255], textColor: 255, halign: 'left', fontStyle: 'bold' } }],
+                           ['Viaje','Paradas','Carga','Km','Hs manejo','Hs espera','Costo']],
+                    body: resRows,
+                    theme: 'grid',
+                    headStyles: { fillColor: [244,247,254], textColor: [27,37,89], fontStyle: 'bold' },
+                    styles: { fontSize: 8.5, cellPadding: 2 },
+                    columnStyles: { 1:{halign:'center'},2:{halign:'right'},3:{halign:'right'},4:{halign:'right'},5:{halign:'right'},6:{halign:'right',fontStyle:'bold'} },
+                });
+                y = doc.lastAutoTable.finalY + 8;
+
+                // ── CUENTAS DE CADA VIAJE ────────────────────────────────
+                let vIdx = 0;
+                for (const r of c.dispatchResults) {
+                    vIdx++;
+                    const k = r.calc || {};
+                    if (y > 195) { doc.addPage(); y = 20; }
+                    doc.setTextColor(67, 24, 255);
+                    doc.setFont('helvetica', 'bold'); doc.setFontSize(12);
+                    doc.text(`${vIdx} · ${r.name}`, 15, y); y += 4;
+                    doc.setTextColor(120); doc.setFont('helvetica', 'italic'); doc.setFontSize(8);
+                    const paradasTxt = doc.splitTextToSize('Paradas: ' + ((k.stops||[]).map(s=>s.name).join(' · ') || '—'), 180);
+                    doc.text(paradasTxt, 15, y); y += paradasTxt.length * 3.5 + 1;
+
+                    if (r.tipo === 'terc') {
+                        doc.autoTable({
+                            startY: y,
+                            body: [['Servicio tercerizado — precio pactado', '$ ' + money(r.precio)]],
+                            theme: 'grid', styles: { fontSize: 9, cellPadding: 2.5 },
+                            columnStyles: { 1: { halign: 'right', fontStyle: 'bold' } },
+                        });
+                        y = doc.lastAutoTable.finalY + 8;
+                        continue;
+                    }
+
+                    const cuentaBody = [
+                        [`Chofer: $${money(k.driver?.monto)} × (1+${k.socialPct}%) ÷ ${k.monthHours} h × ${(k.hours||0).toFixed(2)} h`, '$ ' + money(k.driverCost)],
+                        [`   · Horas = ${(k.drivingHours??0).toFixed(2)} h manejo + ${(k.waitHours||0).toFixed(2)} h espera (${(k.stops||[]).length} paradas × ${k.waitPerStop||0} min)`, ''],
+                        [`Depreciación: $${money(k.truckValue)} ÷ ${Number(k.truckLifeKm).toLocaleString('es-AR')} km × ${(k.km||0).toFixed(0)} km`, '$ ' + money(k.depreciation)],
+                        [`Cubiertas: $${money(k.tiresCost)} ÷ ${Number(k.tiresKm).toLocaleString('es-AR')} km × ${(k.km||0).toFixed(0)} km`, '$ ' + money(k.tires)],
+                        [`Mantenimiento: $${money(k.maintYear)} ÷ ${Number(k.kmYear).toLocaleString('es-AR')} km × ${(k.km||0).toFixed(0)} km`, '$ ' + money(k.maintenance)],
+                        [`Fijos por viaje: $${money(k.fixedMonth)} ÷ ${k.tripsMonth} viajes/mes`, '$ ' + money(k.fixedPerTrip)],
+                        [`Combustible: ${(k.km||0).toFixed(0)} km × ${k.consumption} L/100 × $${money(k.fuelPrice)}/L${k.refrigerated ? ' × 1,15' : ''}`, '$ ' + money(k.fuelTotal)],
+                    ];
+                    if (k.overhead > 0) cuentaBody.push([`Overhead oficina (${k.overheadPct}%)`, '$ ' + money(k.overhead)]);
+                    cuentaBody.push([
+                        { content: `COSTO ${r.name.toUpperCase()}`, styles: { fontStyle: 'bold', fillColor: [27,37,89], textColor: 255 } },
+                        { content: '$ ' + money(r.costo), styles: { fontStyle: 'bold', halign: 'right', fillColor: [27,37,89], textColor: 255 } },
+                    ]);
+                    doc.autoTable({
+                        startY: y,
+                        head: [['Cuenta (fórmula con tus datos)', 'Resultado']],
+                        body: cuentaBody,
+                        theme: 'grid',
+                        headStyles: { fillColor: [244,247,254], textColor: [27,37,89], fontStyle: 'bold' },
+                        styles: { fontSize: 8.5, cellPadding: 2 },
+                        columnStyles: { 0: { cellWidth: 135 }, 1: { halign: 'right', fontStyle: 'bold' } },
+                    });
+                    y = doc.lastAutoTable.finalY + 8;
+                }
+
+                // Total final
+                if (y > 250) { doc.addPage(); y = 20; }
+                doc.setFillColor(16, 185, 129);
+                doc.roundedRect(15, y, 180, 16, 2, 2, 'F');
+                doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
+                doc.text('COSTO TOTAL DEL PROYECTO', 20, y + 10);
+                doc.setFontSize(14);
+                doc.text('$ ' + money(c.totalCosto), 190, y + 10.5, { align: 'right' });
+
+                const safeDest = ((c.destinatario?.nombre) || 'Proyecto').replace(/[^a-z0-9]/gi, '-').slice(0, 30);
+                doc.save(`Cuenta-paso-a-paso-${safeDest}-${c.fecha.replace(/\//g,'-')}.pdf`);
+                return;
+            }
+
             // ── HEADER ────────────────────────────────────────────────────
             const logo = await budgetLoadLogo();
             doc.setFillColor(0, 0, 0);
@@ -9559,7 +9833,9 @@
                 { title: 'Ruta', rows: [
                     ['Paradas', c.stops.length],
                     ['Kilometraje calculado', `${c.km.toFixed(1)} km`],
-                    ['Tiempo de ruta', `${Math.round(c.hours*60)} min (${c.hours.toFixed(2)} h)`],
+                    ['Tiempo de manejo', `${Math.round((c.drivingHours ?? c.hours)*60)} min (${(c.drivingHours ?? c.hours).toFixed(2)} h)`],
+                    ['Espera/descarga en paradas', c.waitHours > 0 ? `${c.stops.length} paradas × ${c.waitPerStop} min = ${Math.round(c.waitHours*60)} min (${c.waitHours.toFixed(2)} h)` : '—'],
+                    ['Tiempo total de operación', `${Math.round(c.hours*60)} min (${c.hours.toFixed(2)} h)`],
                     ['Frecuencia del servicio', c.freqKey + (c.freqFactor !== 1 ? ` — factor ${c.freqFactor}` : '')],
                     ['Camión', c.refrigerated ? 'Refrigerado (+15% combustible)' : 'Estándar'],
                 ]},
