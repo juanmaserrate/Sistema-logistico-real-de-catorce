@@ -9715,7 +9715,49 @@
                     styles: { fontSize: 8.5, cellPadding: 2 },
                     columnStyles: { 1:{halign:'center'},2:{halign:'right'},3:{halign:'right'},4:{halign:'right'},5:{halign:'right'},6:{halign:'right',fontStyle:'bold'} },
                 });
-                y = doc.lastAutoTable.finalY + 8;
+                y = doc.lastAutoTable.finalY + 6;
+
+                // ── JORNADAS Y TIEMPO DE SUEÑO ───────────────────────────
+                // Regla: jornada maxima de trabajo 12 h (manejo + descargas).
+                // Si el viaje supera 12 h -> requiere dormida en destino:
+                // noches = jornadas - 1, con descanso nocturno de 10 h c/u.
+                const MAX_JORNADA_H = 12, SUENO_H_NOCHE = 10;
+                const suenoRows = c.dispatchResults.map((r) => {
+                    const k = r.calc || {};
+                    const hs = k.hours || 0;
+                    const jornadas = Math.max(1, Math.ceil(hs / MAX_JORNADA_H));
+                    const noches = jornadas - 1;
+                    return [
+                        r.name,
+                        `${hs.toFixed(2)} h`,
+                        String(jornadas),
+                        noches > 0 ? `${noches} noche${noches>1?'s':''}` : 'Regresa en el día',
+                        noches > 0 ? `${noches * SUENO_H_NOCHE} h` : '—',
+                    ];
+                });
+                const totJorn = c.dispatchResults.reduce((a,r)=>a+Math.max(1,Math.ceil(((r.calc||{}).hours||0)/MAX_JORNADA_H)),0);
+                const totNoches = c.dispatchResults.reduce((a,r)=>a+Math.max(0,Math.ceil(((r.calc||{}).hours||0)/MAX_JORNADA_H)-1),0);
+                suenoRows.push([
+                    { content: 'TOTAL', styles: { fontStyle: 'bold', fillColor: [27,37,89], textColor: 255 } },
+                    { content: fmtH(c.dispatchResults.reduce((a,r)=>a+((r.calc||{}).hours||0),0)), styles: { fontStyle: 'bold', fillColor: [27,37,89], textColor: 255, halign: 'right' } },
+                    { content: String(totJorn) + ' jornadas', styles: { fontStyle: 'bold', fillColor: [27,37,89], textColor: 255, halign: 'center' } },
+                    { content: totNoches + ' noche' + (totNoches===1?'':'s'), styles: { fontStyle: 'bold', fillColor: [27,37,89], textColor: 255, halign: 'center' } },
+                    { content: (totNoches * SUENO_H_NOCHE) + ' h', styles: { fontStyle: 'bold', fillColor: [27,37,89], textColor: 255, halign: 'right' } },
+                ]);
+                doc.autoTable({
+                    startY: y,
+                    head: [[{ content: 'JORNADAS Y TIEMPO DE SUEÑO (jornada máx. 12 h · descanso nocturno 10 h)', colSpan: 5, styles: { fillColor: [217,119,6], textColor: 255, halign: 'left', fontStyle: 'bold' } }],
+                           ['Viaje','Hs operación','Jornadas','Dormida en destino','Hs de sueño']],
+                    body: suenoRows,
+                    theme: 'grid',
+                    headStyles: { fillColor: [254,243,219], textColor: [120,53,15], fontStyle: 'bold' },
+                    styles: { fontSize: 8.5, cellPadding: 2 },
+                    columnStyles: { 1:{halign:'right'},2:{halign:'center'},3:{halign:'center'},4:{halign:'right'} },
+                });
+                y = doc.lastAutoTable.finalY + 3;
+                doc.setTextColor(120); doc.setFont('helvetica', 'italic'); doc.setFontSize(7.5);
+                doc.text('El chofer cobra sueldo mensual fijo: las noches de dormida no agregan costo de personal (sin viáticos). Si se reconociera hotel/comida, sumar por noche.', 15, y);
+                y += 7;
 
                 // ── CUENTAS DE CADA VIAJE ────────────────────────────────
                 let vIdx = 0;
@@ -9741,9 +9783,13 @@
                         continue;
                     }
 
+                    const _hsV = k.hours || 0;
+                    const _jorn = Math.max(1, Math.ceil(_hsV / MAX_JORNADA_H));
+                    const _noches = _jorn - 1;
                     const cuentaBody = [
                         [`Chofer: $${money(k.driver?.monto)} × (1+${k.socialPct}%) ÷ ${k.monthHours} h × ${(k.hours||0).toFixed(2)} h`, '$ ' + money(k.driverCost)],
                         [`   · Horas = ${(k.drivingHours??0).toFixed(2)} h manejo + ${(k.waitHours||0).toFixed(2)} h espera (${(k.stops||[]).length} paradas × ${k.waitPerStop||0} min)`, ''],
+                        [`   · Jornadas: ${_jorn} (máx ${MAX_JORNADA_H} h c/u)${_noches > 0 ? ` — dormida en destino: ${_noches} noche${_noches>1?'s':''} × ${SUENO_H_NOCHE} h de sueño` : ' — regresa en el día'}`, ''],
                         [`Depreciación: $${money(k.truckValue)} ÷ ${Number(k.truckLifeKm).toLocaleString('es-AR')} km × ${(k.km||0).toFixed(0)} km`, '$ ' + money(k.depreciation)],
                         [`Cubiertas: $${money(k.tiresCost)} ÷ ${Number(k.tiresKm).toLocaleString('es-AR')} km × ${(k.km||0).toFixed(0)} km`, '$ ' + money(k.tires)],
                         [`Mantenimiento: $${money(k.maintYear)} ÷ ${Number(k.kmYear).toLocaleString('es-AR')} km × ${(k.km||0).toFixed(0)} km`, '$ ' + money(k.maintenance)],
