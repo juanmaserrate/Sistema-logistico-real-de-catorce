@@ -9670,12 +9670,12 @@
             if (c.isMultiDispatch && Array.isArray(c.dispatchResults) && c.dispatchResults.length) {
                 const logo = await budgetLoadLogo();
                 const fmtH = (h) => `${(Number(h)||0).toFixed(2)} h`;
-                doc.setFillColor(0, 0, 0);
+                doc.setFillColor(27, 37, 89); // azul marca R14
                 doc.rect(0, 0, 210, 26, 'F');
                 if (logo) { try { doc.addImage(logo, 'PNG', 12, 4, 18, 18); } catch {} }
                 doc.setTextColor(255);
                 doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
-                doc.text('CUENTA PASO A PASO — PROYECTO MULTI-VIAJE', 34, 13);
+                doc.text('CUENTA PASO A PASO', 34, 13);
                 doc.setFont('helvetica', 'normal'); doc.setFontSize(9);
                 doc.text('Documento interno — cómo se formó el costo de cada viaje', 34, 19);
 
@@ -9845,7 +9845,7 @@
 
             // ── HEADER ────────────────────────────────────────────────────
             const logo = await budgetLoadLogo();
-            doc.setFillColor(0, 0, 0);
+            doc.setFillColor(27, 37, 89); // azul marca R14
             doc.rect(0, 0, 210, 26, 'F');
             if (logo) { try { doc.addImage(logo, 'PNG', 12, 4, 18, 18); } catch {} }
             doc.setTextColor(255);
