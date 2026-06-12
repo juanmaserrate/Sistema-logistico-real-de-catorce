@@ -9814,13 +9814,29 @@
                 }
 
                 // Total final
-                if (y > 250) { doc.addPage(); y = 20; }
+                if (y > 235) { doc.addPage(); y = 20; }
                 doc.setFillColor(16, 185, 129);
                 doc.roundedRect(15, y, 180, 16, 2, 2, 'F');
                 doc.setTextColor(255); doc.setFont('helvetica', 'bold'); doc.setFontSize(11);
                 doc.text('COSTO TOTAL DEL PROYECTO', 20, y + 10);
                 doc.setFontSize(14);
                 doc.text('$ ' + money(c.totalCosto), 190, y + 10.5, { align: 'right' });
+                y += 21;
+
+                // Referencia compacta: cuanto costaria si el sueño se pagara como trabajo.
+                // (Abajo de los totales, sin desglose por viaje.)
+                const firstPropio = c.dispatchResults.find(r => r.tipo !== 'terc')?.calc;
+                if (firstPropio && totNoches > 0) {
+                    const rateH = (Number(firstPropio.driver?.monto) || 0) * (1 + (firstPropio.socialPct || 0) / 100) / (firstPropio.monthHours || 176);
+                    const horasSueno = totNoches * SUENO_H_NOCHE;
+                    const costoSueno = horasSueno * rateH;
+                    doc.setFillColor(254, 243, 219);
+                    doc.roundedRect(15, y, 180, 14, 2, 2, 'F');
+                    doc.setTextColor(120, 53, 15);
+                    doc.setFont('helvetica', 'bold'); doc.setFontSize(8.5);
+                    doc.text(`Referencia: si las ${horasSueno} h de sueño se pagaran como horas de trabajo (${horasSueno} h × $ ${money(rateH)}/h) = + $ ${money(costoSueno)}`, 20, y + 5.5);
+                    doc.text(`Costo total del proyecto con sueño pagado: $ ${money(c.totalCosto + costoSueno)}`, 20, y + 10.5);
+                }
 
                 const safeDest = ((c.destinatario?.nombre) || 'Proyecto').replace(/[^a-z0-9]/gi, '-').slice(0, 30);
                 doc.save(`Cuenta-paso-a-paso-${safeDest}-${c.fecha.replace(/\//g,'-')}.pdf`);
