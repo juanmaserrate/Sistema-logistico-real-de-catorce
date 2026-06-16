@@ -119,9 +119,13 @@ export async function fetchRoutesToday(driverId: string): Promise<Route[]> {
     _ts: String(Date.now()),
   });
   try {
+    // Más paciencia para el arranque con red lenta (7am, hora pico): timeout
+    // 15s y hasta 3 reintentos con backoff. Si igual falla, el catch usa el
+    // cache de hoy y la pantalla muestra el auto-retry de TrackScreen.
     const res = await fetchWithRetry(
       apiUrl(`/api/v1/routes?${q}`),
-      { headers: { 'Cache-Control': 'no-cache', ...(await authHeaders()) } }
+      { headers: { 'Cache-Control': 'no-cache', ...(await authHeaders()) }, timeout: 15000 },
+      3
     );
     if (!res.ok) throw new Error('No se pudieron cargar las rutas');
     const routes = (await res.json()) as Route[];

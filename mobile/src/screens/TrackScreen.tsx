@@ -293,6 +293,10 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         if (prev != null && list.some((r) => r.id === prev)) return prev;
         return list[0].id;
       });
+      // Exito: limpiar cualquier error previo (corta el auto-retry y saca el
+      // cartel rojo). Incluso en modo silent, porque el auto-recovery llama
+      // silent y necesita que el error desaparezca cuando la red vuelve.
+      setErr('');
     } catch (e) {
       setErr(e instanceof Error ? e.message : 'Error al cargar rutas');
     } finally {
@@ -341,6 +345,21 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     })();
     loadRoutes();
   }, [loadRoutes]);
+
+  /** Auto-recuperación: si la carga de rutas falló (red lenta a la mañana,
+   *  hora pico), reintentar SOLO en background cada 8s hasta que funcione.
+   *  Antes el chofer quedaba con "Sin conexión... Reintentando" sin que la
+   *  app reintentara de verdad — tenía que recargar a mano. Ahora se
+   *  recupera sola en cuanto la red se estabiliza. */
+  useEffect(() => {
+    if (!err) return; // solo cuando hay error de carga
+    let cancelled = false;
+    const id = setInterval(() => {
+      if (cancelled) return;
+      loadRoutes({ silent: true }); // silent: no parpadea el spinner grande
+    }, 8000);
+    return () => { cancelled = true; clearInterval(id); };
+  }, [err, loadRoutes]);
 
   /** Monitor de conectividad: flush de colas offline. */
   useEffect(() => {
