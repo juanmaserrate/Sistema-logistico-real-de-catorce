@@ -631,6 +631,9 @@
                     <button onclick="openBulkEditModal()" class="px-5 py-3 rounded-2xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center gap-2">
                         <i data-lucide="edit-3" class="w-4 h-4"></i> Editar seleccionados
                     </button>
+                    <button onclick="openDuplicateTripsModal()" class="px-5 py-3 rounded-2xl bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 flex items-center gap-2">
+                        <i data-lucide="copy-plus" class="w-4 h-4"></i> Duplicar a fecha
+                    </button>
                     <button onclick="bulkDeleteTrips()" class="px-5 py-3 rounded-2xl bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-600 transition-all shadow-lg shadow-rose-200 flex items-center gap-2">
                         <i data-lucide="trash-2" class="w-4 h-4"></i> Eliminar seleccionados
                     </button>
@@ -12860,6 +12863,146 @@
             }
         }
 
+        // ─── DUPLICAR VIAJES A OTRA FECHA ───────────────────────────────────
+        // Crea copias de los viajes seleccionados en una fecha destino, conservando
+        // la planificación (chofer, auxiliares, vehículo, zona, unidad, reparto,
+        // usuario app) y reiniciando el estado de ejecución. Permite excluir por
+        // Usuario App (ej. R1, R2, R3).
+        function openDuplicateTripsModal() {
+            if (selectedTripIds.size === 0) return;
+            document.getElementById('duplicate-trips-count').textContent = `${selectedTripIds.size} viaje(s) seleccionados`;
+            // Sugerir fecha destino: +7 días respecto al primer viaje seleccionado (misma franja semanal).
+            const dateInput = document.getElementById('duplicate-target-date');
+            if (!dateInput.value) {
+                const first = planningData.find(t => selectedTripIds.has(t.id) && t.date);
+                if (first) {
+                    const d = new Date(first.date);
+                    if (!isNaN(d.getTime())) {
+                        d.setDate(d.getDate() + 7);
+                        const m = String(d.getMonth() + 1).padStart(2, '0');
+                        const day = String(d.getDate()).padStart(2, '0');
+                        dateInput.value = `${d.getFullYear()}-${m}-${day}`;
+                    }
+                }
+            }
+            document.getElementById('duplicate-trips-modal').classList.remove('hidden');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function closeDuplicateTripsModal() {
+            document.getElementById('duplicate-trips-modal').classList.add('hidden');
+        }
+
+        async function applyDuplicateTrips() {
+            const ids = [...selectedTripIds];
+            if (ids.length === 0) return;
+
+            const dateStr = document.getElementById('duplicate-target-date').value;
+            if (!dateStr) {
+                if (typeof addNotification === 'function') addNotification('warning', 'Duplicar viajes', 'Elegí una fecha destino.');
+                return;
+            }
+            const [ty, tm, td] = dateStr.split('-').map(Number);
+            const targetMidnight = new Date(ty, tm - 1, td, 0, 0, 0, 0);
+
+            const excludeUsers = new Set(
+                document.getElementById('duplicate-exclude-users').value
+                    .split(',')
+                    .map(s => s.trim().toUpperCase())
+                    .filter(Boolean)
+            );
+
+            // Campos de planificación que se conservan en la copia.
+            const KEEP_FIELDS = [
+                'priority', 'zone', 'vehicle', 'driver', 'provider',
+                'auxiliar', 'auxiliar2', 'auxiliar3', 'businessUnit',
+                'distributionType', 'contractType', 'vehicleType', 'tripType',
+                'entryTime', 'value', 'observations', 'notes', 'isRefrigerated',
+                'reparto', 'assignedMobileUser', 'locality', 'vuelta'
+            ];
+
+            const rows = [];
+            let excluded = 0;
+            for (const id of ids) {
+                const t = planningData.find(x => x.id === id);
+                if (!t) continue;
+                const userApp = (t.assignedMobileUser || '').toString().trim().toUpperCase();
+                if (userApp && excludeUsers.has(userApp)) { excluded++; continue; }
+
+                // Desplazamiento (en ms) entre el día original del viaje y el día destino.
+                const orig = new Date(t.date);
+                let shiftMs = 0;
+                if (!isNaN(orig.getTime())) {
+                    const origMidnight = new Date(orig.getFullYear(), orig.getMonth(), orig.getDate(), 0, 0, 0, 0);
+                    shiftMs = targetMidnight.getTime() - origMidnight.getTime();
+                }
+                const shift = (val) => {
+                    if (!val) return null;
+                    const d = new Date(val);
+                    if (isNaN(d.getTime())) return null;
+                    return new Date(d.getTime() + shiftMs).toISOString();
+                };
+
+                const row = {};
+                for (const f of KEEP_FIELDS) {
+                    if (t[f] !== undefined && t[f] !== null) row[f] = t[f];
+                }
+                row.date = shift(t.date) || targetMidnight.toISOString();
+                row.exitTime = shift(t.exitTime);
+                row.returnTime = shift(t.returnTime);
+                row.status = 'PENDING';
+
+                // Copiar solo paradas propias del viaje (TripStops reales: tienen nombre).
+                const stops = Array.isArray(t.stops)
+                    ? t.stops.filter(s => s && s.name).map(s => ({
+                        name: s.name,
+                        clientId: s.clientId || null,
+                        sequence: s.sequence || 0,
+                        latitude: (s.latitude ?? null),
+                        longitude: (s.longitude ?? null),
+                        status: 'PENDING'
+                    }))
+                    : [];
+                if (stops.length) row.stops = { create: stops };
+
+                rows.push(row);
+            }
+
+            if (rows.length === 0) {
+                if (typeof addNotification === 'function') addNotification('warning', 'Duplicar viajes', excluded ? 'Todos los viajes seleccionados quedaron excluidos.' : 'No hay viajes para duplicar.');
+                return;
+            }
+
+            const btn = document.getElementById('duplicate-trips-apply');
+            const prevLabel = btn ? btn.textContent : '';
+            if (btn) { btn.disabled = true; btn.textContent = 'DUPLICANDO…'; }
+            try {
+                const res = await fetch(`${API_URL}/trips/bulk`, {
+                    method: 'POST',
+                    headers: getActorHeaders(),
+                    body: JSON.stringify({ trips: rows })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data?.error || 'Error al duplicar');
+
+                closeDuplicateTripsModal();
+                clearTripSelection();
+                if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
+                await loadWeeklyData();
+
+                const created = (typeof data.created === 'number') ? data.created : rows.length;
+                const failed = Array.isArray(data.errors) ? data.errors.length : 0;
+                let msg = `${created} viaje(s) duplicados al ${dateStr}.`;
+                if (excluded) msg += ` ${excluded} excluido(s) por Usuario App.`;
+                if (failed) msg += ` ${failed} con error.`;
+                if (typeof addNotification === 'function') addNotification(failed ? 'warning' : 'success', 'Duplicar viajes', msg);
+            } catch (e) {
+                if (typeof addNotification === 'function') addNotification('error', 'Error', e.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = prevLabel || 'DUPLICAR'; }
+            }
+        }
+
         // ─── PLANILLA DE PAGOS ──────────────────────────────────────────────
         // Estado de pago persistido en localStorage por ahora.
         // En el futuro se puede migrar a AppSettings o un campo en Trip.
@@ -19001,6 +19144,37 @@
                     APLICAR CAMBIOS
                 </button>
                 <button onclick="closeBulkEditModal()" class="px-6 border border-[#E0E5F2] rounded-2xl font-bold text-[#1B2559] text-xs hover:bg-[#F4F7FE] transition-all">Cancelar</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal: Duplicar viajes a otra fecha -->
+    <div id="duplicate-trips-modal" class="hidden fixed inset-0 z-50 flex items-center justify-center p-4" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
+        <div class="bg-white rounded-3xl w-full max-w-xl max-h-[90vh] shadow-2xl overflow-hidden flex flex-col">
+            <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center bg-[#F8FAFF]">
+                <div>
+                    <h3 class="font-black text-[#1B2559] uppercase tracking-widest text-sm">Duplicar viajes a otra fecha</h3>
+                    <p id="duplicate-trips-count" class="text-[11px] text-[#A3AED0] font-medium mt-1">0 viajes seleccionados</p>
+                </div>
+                <button onclick="closeDuplicateTripsModal()" class="text-[#A3AED0] hover:text-[#1B2559] transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="p-8 space-y-5 overflow-y-auto custom-scrollbar flex-1">
+                <p class="text-sm text-[#A3AED0] font-medium">Se crearán copias de los viajes seleccionados en la fecha destino. Se conservan chofer, auxiliares, vehículo, zona, unidad, reparto y usuario app; los horarios de salida/regreso se desplazan al nuevo día. El estado se reinicia a <span class="font-bold text-[#1B2559]">PENDIENTE</span> (sin km, fotos, tiempos reales ni datos de pago).</p>
+                <div>
+                    <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Fecha destino</label>
+                    <input id="duplicate-target-date" type="date" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-emerald-500">
+                </div>
+                <div>
+                    <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Excluir Usuario App (separar con coma)</label>
+                    <input id="duplicate-exclude-users" type="text" placeholder="Ej: R1, R2, R3" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-emerald-500">
+                    <p class="text-[10px] text-[#A3AED0] font-medium mt-2">Los viajes cuyo <span class="font-bold">Usuario App</span> coincida con la lista no se duplican.</p>
+                </div>
+            </div>
+            <div class="p-6 bg-[#F8FAFF] border-t border-[#F4F7FE] flex gap-4">
+                <button id="duplicate-trips-apply" onclick="applyDuplicateTrips()" class="flex-1 bg-emerald-600 text-white py-3.5 rounded-2xl font-bold text-xs tracking-widest hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 uppercase">
+                    DUPLICAR
+                </button>
+                <button onclick="closeDuplicateTripsModal()" class="px-6 border border-[#E0E5F2] rounded-2xl font-bold text-[#1B2559] text-xs hover:bg-[#F4F7FE] transition-all">Cancelar</button>
             </div>
         </div>
     </div>
