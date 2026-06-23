@@ -17442,7 +17442,7 @@
         async function saveTripDeliveryStops(tripId) {
             const res = await fetch(`${API_URL}/trips/${tripId}/delivery-stops`, {
                 method: 'PUT',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getActorHeaders(),
                 body: JSON.stringify({ clientIds: tripDeliveryRows.map((r) => r.clientId) })
             });
             const data = await res.json().catch(() => ({}));
@@ -17495,7 +17495,7 @@
             try {
                 const res = await fetch(`${API_URL}/trips/${tripId}/recorrido-operador`, {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getActorHeaders(),
                     body: JSON.stringify({ action })
                 });
                 const data = await res.json().catch(() => ({}));
