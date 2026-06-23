@@ -3007,58 +3007,42 @@
         async function onLiveLocationUpdate(record) {
             if (!record || !controlMap) return;
             const tripId = String(record.tripId || '');
+            if (record.latitude == null || record.longitude == null) return;
+            // Descartar pings con accuracy mala (>50m) si la app la envía
+            const acc = Number(record.accuracy);
+            if (Number.isFinite(acc) && acc > 50) return;
+            const lat = Number(record.latitude);
+            const lng = Number(record.longitude);
+
             if (tripId && controlMarkersByTrip.has(tripId)) {
+                // OPTIMIZACION: mover el marker AL INSTANTE con GPS crudo.
+                // Antes cada ping hacia fetch snap-to-roads (latencia) + recargaba
+                // TODOS los datos (cascada pesada). Eso hacia el mapa lento y
+                // desfasado. Ahora el ping solo anima el marker — inmediato y fluido.
+                // El snap a calle (cosmetico) lo hace el refresh completo cada 45s.
                 const marker = controlMarkersByTrip.get(tripId);
-                if (record.latitude != null && record.longitude != null) {
-                    const rawLat = Number(record.latitude);
-                    const rawLng = Number(record.longitude);
-                    // Descartar pings con accuracy mala (>50m) si la app la envía
-                    const acc = Number(record.accuracy);
-                    if (Number.isFinite(acc) && acc > 50) return;
-
-                    let lat = rawLat;
-                    let lng = rawLng;
-                    try {
-                        const r = await fetch(`${API_URL}/control/snap-to-roads`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ points: [{ lat, lng }] })
-                        });
-                        if (r.ok) {
-                            const data = await r.json();
-                            const sp = data?.snapped?.[0];
-                            if (sp && typeof sp.lat === 'number' && typeof sp.lng === 'number') {
-                                lat = sp.lat; lng = sp.lng;
-                            }
-                        }
-                    } catch (_) { /* fallback al original */ }
-
-                    // Si el snap quedó "congelado" (mismo punto que el último, dentro
-                    // de ~5m), interpolar hacia el GPS crudo para mostrar movimiento real.
-                    const lastSnap = _lastSnappedByTrip.get(tripId);
-                    const snappedPoint = { lat, lng };
-                    const isFrozen = lastSnap && _distMeters(lastSnap, snappedPoint) < 5;
-                    let target = snappedPoint;
-                    if (isFrozen) {
-                        // Usamos el GPS crudo como target — el marker se mueve aunque
-                        // el snap devuelva el mismo punto cacheado.
-                        target = { lat: rawLat, lng: rawLng };
-                    } else {
-                        _lastSnappedByTrip.set(tripId, snappedPoint);
-                    }
-
-                    // Animar suave durante ~4.5s (los pings llegan cada ~5s, así nunca
-                    // se "completa" la animación y se ve flow continuo).
-                    animateMarkerTo(marker, target, 4500);
-                    // Extender la polyline de la traza GPS de esa ruta con el punto nuevo
-                    if (record.routeId != null && typeof appendPointToTrail === 'function') {
-                        appendPointToTrail(record.routeId, target.lat, target.lng);
+                // Bearing: orientar el camion segun el movimiento
+                let bearing = null;
+                if (marker.__lastPos) {
+                    const d = _distMeters(marker.__lastPos, { lat, lng });
+                    if (d > 12) {
+                        bearing = computeBearing(marker.__lastPos.lat, marker.__lastPos.lng, lat, lng);
+                        marker.__lastBearing = bearing;
+                        const el = marker.getElement();
+                        if (el) el.innerHTML = makeTruckIconSvg(bearing);
                     }
                 }
+                animateMarkerTo(marker, { lat, lng }, 4500);
+                marker.__lastPos = { lat, lng };
+                if (record.routeId != null && typeof appendPointToTrail === 'function') {
+                    appendPointToTrail(record.routeId, lat, lng);
+                }
+            } else if (tripId) {
+                // Chofer nuevo sin marker en el mapa: refresh LIVIANO para crearlo
+                // (debounced, no satura con rafagas).
+                if (onLiveLocationUpdate._timer) clearTimeout(onLiveLocationUpdate._timer);
+                onLiveLocationUpdate._timer = setTimeout(() => loadControlLiveData({ light: true }), 600);
             }
-            // Refrescar datos completos (debounced para no saturar con ráfagas de pings)
-            if (onLiveLocationUpdate._timer) clearTimeout(onLiveLocationUpdate._timer);
-            onLiveLocationUpdate._timer = setTimeout(() => loadControlLiveData(), 800);
         }
 
         /** Headers estándar con identificación del usuario activo para el audit log */
@@ -3200,6 +3184,7 @@
         let mapboxTrailLayerIds = [];   // ['trail-{routeId}', ...]
         let controlLiveData = [];
         let controlAutoRefreshTimer = null;
+        let controlHeavyRefreshTimer = null; // refresh completo (snap+rutas+trazas) espaciado
         let controlPlannedPolylines = [];
         let controlTrailPolylines = [];
         let controlPlannedStopMarkers = [];
@@ -5481,26 +5466,34 @@
             }
         }
 
-        async function loadControlLiveData() {
+        async function loadControlLiveData(opts) {
+            // light=true: solo refresca POSICIONES de los camiones (rapido, cada 8s).
+            // light=false (completo): ademas snapea a calles + redibuja rutas
+            // planificadas + trazas GPS (pesado, cada 45s). Antes TODO corria en
+            // cada refresh (cada 20s) -> cascada lenta. Separarlo hace que el mapa
+            // refresque las posiciones rapido sin el costo de lo cosmetico.
+            const light = !!(opts && opts.light);
             if (_controlLoadInFlight) { _controlLoadQueued = true; return; }
             _controlLoadInFlight = true;
             try {
                 const res = await fetch(`${API_URL}/fleet/locations`);
                 if (!res.ok) throw new Error(`HTTP ${res.status}`);
                 controlLiveData = await res.json();
-                // Snap-to-roads: que cada camión figure SIEMPRE en una calle, no en medio de una manzana.
-                await snapControlPositionsToRoads(controlLiveData);
+                // Render INMEDIATO con posiciones crudas (no esperamos el snap).
                 populateControlTrailSelect();
                 renderControlFeed();
                 renderControlMap(controlLiveData);
-                drawControlPlannedRoutes(controlLiveData).catch((err) => console.warn('Planned routes:', err));
-                // Auto-mostrar trazas GPS reales de los camiones activos (recorrido recorrido).
-                // Se actualiza cada vez que llega data del polling (cada 10s).
-                loadControlTrailAllActive().catch((err) => console.warn('Auto trail:', err));
+                if (!light) {
+                    // Snap a calles en background: re-render cuando vuelve, sin bloquear.
+                    snapControlPositionsToRoads(controlLiveData)
+                        .then(() => { try { renderControlMap(controlLiveData); } catch (_) {} })
+                        .catch(() => {});
+                    drawControlPlannedRoutes(controlLiveData).catch((err) => console.warn('Planned routes:', err));
+                    loadControlTrailAllActive().catch((err) => console.warn('Auto trail:', err));
+                }
             } catch (e) {
                 console.error('Control live:', e);
-                controlLiveData = [];
-                renderControlFeed();
+                if (!light) { controlLiveData = []; renderControlFeed(); }
             } finally {
                 _controlLoadInFlight = false;
                 if (_controlLoadQueued) { _controlLoadQueued = false; loadControlLiveData(); }
@@ -5652,17 +5645,24 @@
             await ensureGoogleMapsKeyFromServer();
             await initControlMap();
             setupControlMapResizeObserver();
-            loadControlLiveData();
-            // Polling cada 20s en vez de 10s. La fluidez del mapa la da el socket en vivo
-            // (push instantaneo cada ping), no el polling. Bajar a 20s reduce ~50% el costo
-            // de Roads API sin afectar visualmente el movimiento del camion.
-            controlAutoRefreshTimer = setInterval(loadControlLiveData, 20000);
+            loadControlLiveData(); // primera carga completa
+            // DOS ritmos de refresco:
+            //  - Posiciones (liviano) cada 8s: el mapa refleja a los camiones rapido.
+            //  - Completo (snap + rutas + trazas) cada 45s: lo cosmetico, espaciado.
+            // Sumado al socket en vivo (movimiento instantaneo por ping), el mapa
+            // queda fluido sin saturar el servidor.
+            controlAutoRefreshTimer = setInterval(() => loadControlLiveData({ light: true }), 8000);
+            controlHeavyRefreshTimer = setInterval(() => loadControlLiveData(), 45000);
         }
 
         function stopControlAutoRefresh() {
             if (controlAutoRefreshTimer) {
                 clearInterval(controlAutoRefreshTimer);
                 controlAutoRefreshTimer = null;
+            }
+            if (controlHeavyRefreshTimer) {
+                clearInterval(controlHeavyRefreshTimer);
+                controlHeavyRefreshTimer = null;
             }
             controlPlannedRoutesToken++;
             controlLastPlannedIdsKey = '';
