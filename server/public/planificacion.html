@@ -5244,6 +5244,43 @@
             };
         }
 
+        /** Anima un marker de Mapbox desde su posición actual hasta [lng,lat] con easing
+         *  ease-in-out, usando requestAnimationFrame. Hace que el camión "deslice" en vez
+         *  de teletransportarse entre pings (cada 5-8s), que es lo que se veía como saltos
+         *  diagonales. Si llega un ping nuevo mientras anima, cancela y rearranca desde
+         *  donde está (sin saltos hacia atrás). Es 100% del navegador: NO consume Mapbox. */
+        function animateControlMarker(marker, lng, lat, durationMs) {
+            if (!marker) return;
+            if (marker.__animFrameId) {
+                try { cancelAnimationFrame(marker.__animFrameId); } catch (_) {}
+                marker.__animFrameId = null;
+            }
+            let start = null;
+            try { start = marker.getLngLat(); } catch (_) { start = null; }
+            if (!start) { try { marker.setLngLat([lng, lat]); } catch (_) {} return; }
+            const startLng = start.lng, startLat = start.lat;
+            const dLng = lng - startLng, dLat = lat - startLat;
+            // Distancia despreciable: setear directo (evita animaciones de 0px).
+            if (Math.abs(dLat) < 1e-7 && Math.abs(dLng) < 1e-7) {
+                try { marker.setLngLat([lng, lat]); } catch (_) {}
+                return;
+            }
+            // Salto enorme (>5km, ej. cambio de zona/chofer o GPS espurio): ir directo.
+            const apxKm = Math.sqrt(dLat * dLat + dLng * dLng) * 111;
+            if (apxKm > 5) { try { marker.setLngLat([lng, lat]); } catch (_) {} return; }
+            const startTs = performance.now();
+            const dur = Math.max(300, durationMs || 2500);
+            const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+            const tick = (now) => {
+                const t = Math.min(1, (now - startTs) / dur);
+                const k = easeInOut(t);
+                try { marker.setLngLat([startLng + dLng * k, startLat + dLat * k]); } catch (_) {}
+                if (t < 1) marker.__animFrameId = requestAnimationFrame(tick);
+                else marker.__animFrameId = null;
+            };
+            marker.__animFrameId = requestAnimationFrame(tick);
+        }
+
         /** Ubicaciones GPS: actualizar posicion sin borrar markers. MAPBOX VERSION. */
         function renderControlMap(items) {
             if (!controlMap) return;
@@ -5285,8 +5322,9 @@
                 };
 
                 if (marker) {
-                    // Actualizar posicion (animacion smooth de Mapbox via setLngLat)
-                    marker.setLngLat([lng, lat]);
+                    // Deslizamiento suave hasta la nueva posición (en vez de teletransporte
+                    // diagonal). 2.5s cubre el ritmo de pings (5-8s) sin quedar atrasado.
+                    animateControlMarker(marker, lng, lat, 2500);
                     // Actualizar visibilidad via display CSS
                     const el = marker.getElement();
                     if (el) {
@@ -5680,6 +5718,9 @@
                 controlTrailByRouteId.forEach((entry) => { try { entry.polyline.setMap(null); } catch (_) {} });
                 controlTrailByRouteId.clear();
             }
+            // Limpiar tambien el cache de map-matching de trazas (evita reusar lineas
+            // pegadas a la calle de una sesion anterior al volver a entrar).
+            if (typeof controlTrailMatchCache !== 'undefined') controlTrailMatchCache.clear();
             // W7 fix: limpiar tambien los markers de los camiones de la flota.
             // Antes quedaban en memoria con sus referencias a Google Maps y al `controlMap`,
             // generando memory leak en sesiones largas que entran/salen de Torre de Control.
@@ -5839,6 +5880,46 @@
         const controlTrailByRouteId = new Map();
         const CONTROL_TRAIL_REFRESH_MS = 12000;  // refrescamos las trazas cada 12s
 
+        // Caché de map-matching de trazas en vivo (pegar el recorrido a las calles).
+        // Re-matchear cada traza en cada refresco (45s) gastaría cuota de Mapbox al pedo:
+        // la historia ya recorrida no cambia, solo crece en la punta. Por eso solo
+        // re-matcheamos una ruta si pasaron >120s Y creció >=10 puntos nuevos. Entre
+        // medio reusamos la línea ya pegada a la calle. Cada match = 1 request del tier
+        // gratis (100k/mes) — con este throttle, ~7.200/mes por reparto activo.
+        const controlTrailMatchCache = new Map(); // rid -> { ts, rawCount, matched }
+        const CONTROL_TRAIL_MATCH_THROTTLE_MS = 120000; // 120s por ruta
+
+        /** Devuelve la traza pegada a las calles (map-matching), con throttle+caché para
+         *  cuidar la cuota. Si no se puede matchear, devuelve el path crudo. */
+        async function controlMatchTrailPath(rid, rawPath, rawCount) {
+            if (!Array.isArray(rawPath) || rawPath.length < 2) return rawPath || [];
+            const now = Date.now();
+            const cached = controlTrailMatchCache.get(rid);
+            if (cached && (now - cached.ts) < CONTROL_TRAIL_MATCH_THROTTLE_MS
+                && Math.abs(rawCount - cached.rawCount) < 10
+                && Array.isArray(cached.matched) && cached.matched.length >= 2) {
+                return cached.matched;
+            }
+            // Map Matching limita 100 puntos/llamada → adelgazamos a ~90.
+            const forMatch = thinRoutePointsForMap(rawPath, 90);
+            try {
+                const mm = await fetch(`${API_URL}/control/map-matching-batch`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ points: forMatch })
+                });
+                if (mm.ok) {
+                    const dm = await mm.json();
+                    if (Array.isArray(dm?.geometry) && dm.geometry.length >= 2) {
+                        const matched = dm.geometry.map(p => ({ lat: p.lat, lng: p.lng }));
+                        controlTrailMatchCache.set(rid, { ts: now, rawCount, matched });
+                        return matched;
+                    }
+                }
+            } catch (_) { /* fallback a crudo */ }
+            return rawPath;
+        }
+
         async function loadControlTrailAllActive() {
             await initControlMap();
             const sel = document.getElementById('control-trail-route');
@@ -5857,15 +5938,18 @@
                 fetch(`${API_URL}/tracking/history?routeId=${rid}&hours=24&limit=3000`).then(r => r.ok ? r.json() : { points: [] }).then(j => ({ rid, j }))
             ));
             const seen = new Set();
-            results.forEach((r, idx) => {
-                if (r.status !== 'fulfilled') return;
+            for (let idx = 0; idx < results.length; idx++) {
+                const r = results[idx];
+                if (r.status !== 'fulfilled') continue;
                 const { rid, j } = r.value;
                 const pts = Array.isArray(j.points) ? j.points : [];
-                if (!controlMap) return;
+                if (!controlMap) continue;
                 seen.add(rid);
                 const thin = thinRoutePointsForMap(pts.map(p => ({ lat: p.latitude, lng: p.longitude })), 500);
                 const color = CONTROL_TRAIL_COLORS[idx % CONTROL_TRAIL_COLORS.length];
-                const path = thin.map(p => ({ lat: p.lat, lng: p.lng }));
+                const rawPath = thin.map(p => ({ lat: p.lat, lng: p.lng }));
+                // Pegar el recorrido a las calles (snap), cuidando la cuota con throttle+caché.
+                const path = await controlMatchTrailPath(rid, rawPath, pts.length);
                 const lastTs = pts.length ? new Date(pts[pts.length - 1].timestamp).getTime() : 0;
                 const layerId = `trail-${rid}`;
                 let entry = controlTrailByRouteId.get(rid);
@@ -5891,7 +5975,7 @@
                         entry.points = path; // guardamos para appendPointToTrail
                     } catch (_) {}
                 } else {
-                    if (path.length < 2) return;
+                    if (path.length < 2) continue;
                     try {
                         _mbRemoveLayerAndSource(layerId);
                         controlMap.addSource(layerId, { type: 'geojson', data: geojson });
@@ -5912,7 +5996,7 @@
                         console.warn('Mapbox addLayer trail:', e);
                     }
                 }
-            });
+            }
             // Borrar trazas de rutas que ya no estan activas
             for (const [rid, entry] of controlTrailByRouteId) {
                 if (!seen.has(rid)) {
