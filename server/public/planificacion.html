@@ -5882,12 +5882,17 @@
 
         // Caché de map-matching de trazas en vivo (pegar el recorrido a las calles).
         // Re-matchear cada traza en cada refresco (45s) gastaría cuota de Mapbox al pedo:
-        // la historia ya recorrida no cambia, solo crece en la punta. Por eso solo
-        // re-matcheamos una ruta si pasaron >120s Y creció >=10 puntos nuevos. Entre
+        // la historia ya recorrida NO cambia, solo crece en la punta. Por eso solo
+        // re-matcheamos una ruta si pasaron >10min Y creció >=10 puntos nuevos. Entre
         // medio reusamos la línea ya pegada a la calle. Cada match = 1 request del tier
-        // gratis (100k/mes) — con este throttle, ~7.200/mes por reparto activo.
+        // gratis de Map Matching (100k/mes).
+        // Dimensionado para ~25 repartos simultáneos: ~48 matches/día por reparto
+        // (8h, throttle 10min) × 25 × 30 días ≈ 36k/mes, + el snap de posiciones (~19k/mes)
+        // ≈ 55k/mes. Holgado bajo el tier gratis. La posición EN VIVO del camión no
+        // depende de esto (anima sola cada 5-8s y se snapea cada 45s); esto es solo la
+        // línea del recorrido histórico, que con refrescarse cada 10min sobra.
         const controlTrailMatchCache = new Map(); // rid -> { ts, rawCount, matched }
-        const CONTROL_TRAIL_MATCH_THROTTLE_MS = 120000; // 120s por ruta
+        const CONTROL_TRAIL_MATCH_THROTTLE_MS = 600000; // 10 min por ruta (cuota Mapbox)
 
         /** Devuelve la traza pegada a las calles (map-matching), con throttle+caché para
          *  cuidar la cuota. Si no se puede matchear, devuelve el path crudo. */
