@@ -960,6 +960,70 @@ app.patch('/api/v1/clients/:id', async (req, res) => {
     }
 });
 
+// ── DRY-RUN (SOLO LECTURA): cruza el Excel consolidado de unidades de negocio contra
+//    los clientes del sistema. NO escribe nada. Devuelve reporte matched/unmatched.
+//    Protegido por clave temporal porque /api/v1/admin no pasa por requireAuth.
+//    QUITAR este endpoint una vez finalizado el cruce de unidades de negocio.
+const DRYRUN_BU_KEY = 'r14-dryrun-bu-7f3a9c21e8b4';
+app.post('/api/v1/admin/dryrun-business-units', async (req: any, res: any) => {
+    try {
+        const body = req.body || {};
+        if (body.key !== DRYRUN_BU_KEY) {
+            return res.status(403).json({ error: 'clave invalida' });
+        }
+        const establishments: Array<{ name: string; region?: string; unidades?: string }> =
+            Array.isArray(body.establishments) ? body.establishments : [];
+        if (establishments.length === 0) {
+            return res.status(400).json({ error: 'establishments vacio' });
+        }
+        const clients = await prisma.client.findMany({
+            where: { tenantId: 'default-tenant' },
+            select: { id: true, name: true, zone: true },
+        });
+        const mappings = await prisma.establishmentMapping.findMany({
+            select: { excelName: true, clientId: true },
+        });
+        const clientById = new Map(clients.map(c => [c.id, c]));
+        const mappingByNorm = new Map<string, string>();
+        for (const m of mappings) mappingByNorm.set(normalizeForMatch(m.excelName), m.clientId);
+
+        const matched: any[] = [];
+        const unmatched: any[] = [];
+        let viaMapping = 0, viaFuzzy = 0;
+        for (const est of establishments) {
+            const name = String(est.name || '').trim();
+            if (!name) continue;
+            const norm = normalizeForMatch(name);
+            let client: any = null;
+            let via = '';
+            const mappedId = mappingByNorm.get(norm);
+            if (mappedId && clientById.has(mappedId)) { client = clientById.get(mappedId); via = 'mapping'; }
+            if (!client) {
+                const fz = findBestMatchingClient(name, clients);
+                if (fz) { client = clientById.get(fz.id) || fz; via = 'fuzzy'; }
+            }
+            if (client) {
+                if (via === 'mapping') viaMapping++; else viaFuzzy++;
+                matched.push({
+                    establecimiento: name, region: est.region || '', unidades: est.unidades || '',
+                    clientId: client.id, clientName: client.name, clientZone: client.zone || '', via,
+                });
+            } else {
+                unmatched.push({ establecimiento: name, region: est.region || '', unidades: est.unidades || '' });
+            }
+        }
+        res.json({
+            totalEstablecimientos: establishments.length,
+            totalClientesSistema: clients.length,
+            matched: matched.length, unmatched: unmatched.length, viaMapping, viaFuzzy,
+            detalleMatched: matched, detalleUnmatched: unmatched,
+        });
+    } catch (e: any) {
+        console.error('POST /admin/dryrun-business-units:', e);
+        res.status(500).json({ error: e?.message || 'Error en dry-run' });
+    }
+});
+
 let backfillAddressesDone = false;
 async function backfillAddressesFromCoords(): Promise<void> {
     if (backfillAddressesDone) return;
