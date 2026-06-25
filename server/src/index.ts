@@ -1075,32 +1075,6 @@ app.delete('/api/v1/clients/:id', async (req, res) => {
     }
 });
 
-// ESCRIBE (clave temporal): setea tipo/localidad/partido por cliente. QUITAR al terminar.
-const TIPOGEO_KEY = 'r14-tipogeo-5d2b8e4a1c';
-app.post('/api/v1/admin/apply-tipo-geo', async (req: any, res: any) => {
-    try {
-        const body = req.body || {};
-        if (body.key !== TIPOGEO_KEY) return res.status(403).json({ error: 'clave invalida' });
-        const items: Array<any> = Array.isArray(body.items) ? body.items : [];
-        if (items.length === 0) return res.status(400).json({ error: 'items vacio' });
-        let updated = 0, skipped = 0;
-        const errors: string[] = [];
-        for (const it of items) {
-            try {
-                const data: any = {};
-                if (it.tipo !== undefined) data.tipo = it.tipo ? String(it.tipo).trim() : null;
-                if (it.localidad !== undefined) data.localidad = it.localidad ? String(it.localidad).trim() : null;
-                if (it.partido !== undefined) data.partido = it.partido ? String(it.partido).trim() : null;
-                if (it.clearBarrio) data.barrio = null;
-                if (Object.keys(data).length === 0) { skipped++; continue; }
-                await prisma.client.update({ where: { id: String(it.clientId) }, data });
-                updated++;
-            } catch (e: any) { errors.push(`${it.clientId}: ${e?.message || e}`); }
-        }
-        res.json({ updated, skipped, errors });
-    } catch (e: any) { console.error('apply-tipo-geo:', e); res.status(500).json({ error: e?.message }); }
-});
-
 // --- SALARIES API ---
 app.get('/api/v1/salaries', async (req, res) => {
     try {
