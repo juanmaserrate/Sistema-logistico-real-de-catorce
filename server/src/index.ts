@@ -1017,6 +1017,9 @@ app.post('/api/v1/admin/dryrun-business-units', async (req: any, res: any) => {
             totalClientesSistema: clients.length,
             matched: matched.length, unmatched: unmatched.length, viaMapping, viaFuzzy,
             detalleMatched: matched, detalleUnmatched: unmatched,
+            // Lista cruda para re-matchear localmente con mas control (solo lectura).
+            allClients: clients,
+            allMappings: mappings,
         });
     } catch (e: any) {
         console.error('POST /admin/dryrun-business-units:', e);
