@@ -1184,6 +1184,13 @@
                         <select id="school-zone-filter" onchange="filterSchools()" class="bg-[#F4F7FE] border-0 rounded-2xl py-3.5 px-4 text-xs font-bold text-[#1B2559] outline-none min-w-[160px]">
                             <option value="">Todas las zonas</option>
                         </select>
+                        <select id="school-bu-filter" onchange="filterSchools()" class="bg-[#F4F7FE] border-0 rounded-2xl py-3.5 px-4 text-xs font-bold text-[#1B2559] outline-none min-w-[150px]">
+                            <option value="">Todas las unidades</option>
+                        </select>
+                        <select id="school-reparto-filter" onchange="filterSchools()" class="bg-[#F4F7FE] border-0 rounded-2xl py-3.5 px-4 text-xs font-bold text-[#1B2559] outline-none min-w-[130px]">
+                            <option value="">Todos los repartos</option>
+                        </select>
+                        <button type="button" id="btn-clear-school-filters" onclick="clearSchoolFilters()" class="px-4 py-3 rounded-2xl bg-[#F4F7FE] text-[#1B2559] hover:bg-[#E8ECF8] text-xs font-bold transition-all whitespace-nowrap">Limpiar filtros</button>
                         <button id="btn-delete-selected-schools" onclick="deleteSelectedSchools()" class="hidden px-4 py-3 rounded-2xl bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-bold transition-all whitespace-nowrap">
                             Eliminar seleccionados
                         </button>
@@ -10806,6 +10813,7 @@
                 populateVrpMapFilters();
                 if (vrpMap && window.google?.maps) void loadVrpMarkers();
                 populateSchoolZoneSelect();
+                populateSchoolBuFilters();
                 filterSchools();
             } catch(e) {
                 console.error("Error loading schools:", e);
@@ -10830,7 +10838,15 @@
                     </div>
                     <h4 class="font-bold text-[#1B2559] text-sm line-clamp-2 min-h-[40px]">${c.name}</h4>
                     <p class="text-[11px] text-[#A3AED0] mt-2 truncate"><i data-lucide="map-pin" class="w-3 h-3 inline mr-1"></i>${c.address || 'Sin Dirección'}</p>
-                    
+                    ${(() => {
+                        const e = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+                        const bus = parseSchoolBUs(c);
+                        if (!bus.length) return '';
+                        return `<div class="mt-2 flex flex-wrap gap-1">` + bus.map(b =>
+                            `<span class="text-[9px] font-black bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded uppercase tracking-wide">${e(b.unidad)}${b.reparto != null && String(b.reparto).trim() ? '·R' + e(b.reparto) : ''}</span>`
+                        ).join('') + `</div>`;
+                    })()}
+
                     <div class="mt-6 pt-4 border-t border-[#F4F7FE] flex justify-between items-center text-[11px]">
                          <div class="flex flex-col">
                             <span class="text-[#A3AED0] font-bold uppercase text-[9px]">Ventana</span>
@@ -11238,6 +11254,52 @@
             if ([...sel.options].some(o => o.value === prev)) sel.value = prev;
         }
 
+        /** Parsea Client.businessUnits (JSON string array de {unidad,reparto}) de forma segura. */
+        function parseSchoolBUs(s) {
+            try {
+                const v = s && s.businessUnits ? (typeof s.businessUnits === 'string' ? JSON.parse(s.businessUnits) : s.businessUnits) : [];
+                return Array.isArray(v) ? v : [];
+            } catch { return []; }
+        }
+
+        /** Llena los selects de filtro por unidad de negocio y por reparto con los valores
+         *  presentes en los clientes cargados (preserva la seleccion actual). */
+        function populateSchoolBuFilters() {
+            const buSel = document.getElementById('school-bu-filter');
+            const repSel = document.getElementById('school-reparto-filter');
+            const esc = (v) => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+            const unidades = new Set(), repartos = new Set();
+            for (const s of allSchools) {
+                for (const b of parseSchoolBUs(s)) {
+                    if (b && b.unidad != null && String(b.unidad).trim()) unidades.add(String(b.unidad).trim());
+                    if (b && b.reparto != null && String(b.reparto).trim()) repartos.add(String(b.reparto).trim());
+                }
+            }
+            if (buSel) {
+                const prev = buSel.value;
+                const list = [...unidades].sort((a, b) => a.localeCompare(b, 'es'));
+                buSel.innerHTML = '<option value="">Todas las unidades</option>' +
+                    list.map(u => `<option value="${esc(u)}">${esc(u)}</option>`).join('');
+                if ([...buSel.options].some(o => o.value === prev)) buSel.value = prev;
+            }
+            if (repSel) {
+                const prev = repSel.value;
+                const list = [...repartos].sort((a, b) => String(a).localeCompare(String(b), 'es', { numeric: true }));
+                repSel.innerHTML = '<option value="">Todos los repartos</option>' +
+                    list.map(r => `<option value="${esc(r)}">Reparto ${esc(r)}</option>`).join('');
+                if ([...repSel.options].some(o => o.value === prev)) repSel.value = prev;
+            }
+        }
+
+        /** Limpia todos los filtros de la vista de escuelas. */
+        function clearSchoolFilters() {
+            for (const id of ['school-search', 'school-zone-filter', 'school-bu-filter', 'school-reparto-filter']) {
+                const el = document.getElementById(id);
+                if (el) el.value = '';
+            }
+            filterSchools();
+        }
+
         function filterSchools() {
             const query = (document.getElementById('school-search')?.value || '').toLowerCase();
             let filtered = allSchools;
@@ -11251,6 +11313,17 @@
                 filtered = filtered.filter(s => !(s.zone || '').trim());
             } else if (zoneVal) {
                 filtered = filtered.filter(s => (s.zone || '').trim() === zoneVal);
+            }
+
+            // Filtros apilables por unidad de negocio y reparto. Si se eligen ambos,
+            // debe existir UNA unidad que cumpla las dos (misma entrada unidad+reparto).
+            const buVal = document.getElementById('school-bu-filter')?.value || '';
+            const repVal = document.getElementById('school-reparto-filter')?.value || '';
+            if (buVal || repVal) {
+                filtered = filtered.filter(s => parseSchoolBUs(s).some(b =>
+                    (!buVal || String(b.unidad).trim() === buVal) &&
+                    (!repVal || String(b.reparto).trim() === repVal)
+                ));
             }
 
             if (query) {
