@@ -10894,6 +10894,31 @@
             }
         }
 
+        // Unidades de negocio disponibles para el selector del cliente (las del Excel del usuario).
+        const BU_UNIDADES = ['SAE', 'SAM', 'Patios', 'Proveedor', 'Panificado', 'CDI', 'SUMA', 'FRESCOS'];
+
+        /** HTML de una fila "unidad de negocio + reparto" dentro del modal de cliente.
+         *  El reparto es un input con datalist (escribís y sugiere repartos existentes). */
+        function buRowHtml(unidad = '', reparto = '') {
+            const opts = ['<option value="">— Unidad —</option>']
+                .concat(BU_UNIDADES.map(u => `<option value="${u}" ${u === unidad ? 'selected' : ''}>${u}</option>`))
+                .join('');
+            const rep = String(reparto ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+            return `<div class="bu-row flex items-center gap-2 mb-2" data-bu-row>
+                <select class="bu-unidad flex-1 bg-[#1B2559] border border-[#1B2559] rounded-xl px-3 py-2.5 text-white font-bold outline-none focus:border-indigo-500">${opts}</select>
+                <input class="bu-reparto w-28 bg-[#1B2559] border border-[#1B2559] rounded-xl px-3 py-2.5 text-white font-bold outline-none focus:border-indigo-500" list="bu-reparto-list" value="${rep}" placeholder="Reparto">
+                <button type="button" onclick="removeBuRow(this)" class="px-3 py-2.5 rounded-xl bg-rose-500/10 text-rose-300 hover:bg-rose-500/20" title="Quitar unidad">✕</button>
+            </div>`;
+        }
+        function addBuRow() {
+            const cont = document.getElementById('bu-rows');
+            if (cont) cont.insertAdjacentHTML('beforeend', buRowHtml('', ''));
+        }
+        function removeBuRow(btn) {
+            const row = btn && btn.closest ? btn.closest('[data-bu-row]') : null;
+            if (row) row.remove();
+        }
+
         function schoolFormHtml(s) {
             const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
             return `
@@ -11010,6 +11035,23 @@
                             })()}
                         </div>
                     </div>
+                    <!-- Sección Unidades de Negocio -->
+                    <div class="pt-4 border-t border-[#1B2559]">
+                        <div class="flex items-center justify-between mb-2">
+                            <h4 class="text-sm font-black text-white uppercase tracking-widest">Unidades de Negocio</h4>
+                            <button type="button" onclick="addBuRow()" class="text-[11px] font-black text-indigo-300 hover:text-indigo-200 uppercase tracking-widest">+ Agregar unidad</button>
+                        </div>
+                        <p class="text-[10px] text-[#A3AED0] mb-3">Cada unidad con su reparto (pueden ser distintos o el mismo).</p>
+                        <datalist id="bu-reparto-list">${Array.from({ length: 30 }, (_, i) => `<option value="${i + 1}"></option>`).join('')}</datalist>
+                        <div id="bu-rows">
+                            ${(() => {
+                                let bus = [];
+                                try { bus = s.businessUnits ? (typeof s.businessUnits === 'string' ? JSON.parse(s.businessUnits) : s.businessUnits) : []; } catch { bus = []; }
+                                if (!Array.isArray(bus) || bus.length === 0) return buRowHtml('', '');
+                                return bus.map(b => buRowHtml(b.unidad || b.unit || '', b.reparto || '')).join('');
+                            })()}
+                        </div>
+                    </div>
                 </div>
             `;
         }
@@ -11092,6 +11134,14 @@
             const hasAnyCupo = Object.values(cuposObj).some(v => v > 0);
             const menuVal = (document.getElementById('edit-school-menu')?.value || '').trim();
 
+            // Recolectar unidades de negocio (unidad + reparto). Filas sin unidad se descartan.
+            const businessUnits = Array.from(document.querySelectorAll('#bu-rows [data-bu-row]'))
+                .map(r => ({
+                    unidad: (r.querySelector('.bu-unidad')?.value || '').trim(),
+                    reparto: (r.querySelector('.bu-reparto')?.value || '').trim(),
+                }))
+                .filter(b => b.unidad);
+
             const payload = {
                 name,
                 address: (document.getElementById('edit-school-address').value || '').trim() || null,
@@ -11104,6 +11154,7 @@
                 longitude: Number.isFinite(lng) ? lng : null,
                 menu: menuVal || null,
                 cupos: hasAnyCupo ? cuposObj : null,
+                businessUnits: businessUnits.length ? businessUnits : null,
             };
 
             try {
@@ -11111,7 +11162,7 @@
                 if (creatingNewSchool) {
                     res = await fetch(`${API_URL}/clients`, {
                         method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: getActorHeaders(),
                         body: JSON.stringify(payload)
                     });
                     if (!res.ok) {
@@ -11124,7 +11175,7 @@
                     if (!id) throw new Error('Sin cliente seleccionado');
                     res = await fetch(`${API_URL}/clients/${id}`, {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getActorHeaders(),
                     body: JSON.stringify(payload)
                 });
                     if (!res.ok) {
@@ -11136,7 +11187,7 @@
                     const requiresProof = document.getElementById('edit-school-requires-proof')?.checked ?? false;
                     fetch(`${API_URL}/clients/${id}/requires-proof`, {
                         method: 'PATCH',
-                        headers: { 'Content-Type': 'application/json' },
+                        headers: getActorHeaders(),
                         body: JSON.stringify({ requiresProofPhoto: requiresProof })
                     }).catch(() => {});
                 }

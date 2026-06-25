@@ -88,6 +88,12 @@ model Client {
   priority          Int     @default(0)
   barrio            String?
   requiresProofPhoto Boolean @default(false) // Si es true, la app móvil exige foto al entregar
+  /// Menú asignado al establecimiento (ej: "General", "Patológico Celíaco", etc.)
+  menu              String?
+  /// Cupos por tipo (JSON): { dmcGeneral, comedorGeneral, viandasGeneral, listoConsumoGeneral, dmcCeliaco, dmcDiabetico, dmcIntLactosa, dmcBajoSodio, dmcAlergiaMani, comedorCeliaco, comedorDiabetico, comedorIntLactosa, comedorBajoSodio, comedorAlergiaMani }
+  cupos             String?
+  /// Unidades de negocio del cliente con su reparto (JSON array): [{ "unidad": "SAE", "reparto": "5" }, { "unidad": "Patios", "reparto": "14" }]
+  businessUnits     String?
   tenant                   Tenant  @relation(fields: [tenantId], references: [id])
   stops                    Stop[]
   establishmentMappings    EstablishmentMapping[]
@@ -389,4 +395,24 @@ model DeviceLocation {
   @@index([routeId, timestamp])
   @@index([driverId])
   @@index([isActive, timestamp])
+}
+
+// Historial de cambios visibles para el negocio (menú, cupos, datos de establecimiento)
+// Más legible y filtrable que AuditLog (que es técnico). Se muestra en la solapa "Historial".
+model Historial {
+  id           String   @id @default(uuid())
+  clientId     String?  // Client.id afectado (si aplica)
+  clientName   String?  // nombre del establecimiento al momento del cambio
+  category     String   // MENU | CUPOS | DATOS
+  field        String   // ej: "menu", "cupos_general", "cupos_celiaco", "address", "name"
+  oldValue     String?  // valor anterior (como string)
+  newValue     String?  // valor nuevo (como string)
+  userId       String?  // usuario que hizo el cambio
+  userName     String?  // nombre visible del usuario
+  note         String?  // observación opcional
+  createdAt    DateTime @default(now())
+
+  @@index([clientId])
+  @@index([category])
+  @@index([createdAt])
 }

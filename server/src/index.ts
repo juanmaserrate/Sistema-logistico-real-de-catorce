@@ -838,6 +838,9 @@ app.post('/api/v1/clients', async (req, res) => {
             cupos: raw.cupos == null
                 ? null
                 : (typeof raw.cupos === 'object' ? JSON.stringify(raw.cupos) : String(raw.cupos)),
+            businessUnits: raw.businessUnits == null
+                ? null
+                : (typeof raw.businessUnits === 'object' ? JSON.stringify(raw.businessUnits) : String(raw.businessUnits)),
         };
         if (lat != null && lng != null && !data.address) {
             const address = await reverseGeocode(lat, lng);
@@ -886,6 +889,16 @@ app.patch('/api/v1/clients/:id', async (req, res) => {
                 data.cupos = String(raw.cupos);
             }
         }
+        if (raw.businessUnits !== undefined) {
+            // Array de { unidad, reparto }. Lo persistimos como string JSON.
+            if (raw.businessUnits == null) {
+                data.businessUnits = null;
+            } else if (typeof raw.businessUnits === 'object') {
+                data.businessUnits = JSON.stringify(raw.businessUnits);
+            } else {
+                data.businessUnits = String(raw.businessUnits);
+            }
+        }
         if (raw.latitude !== undefined) {
             const s = raw.latitude !== null && raw.latitude !== '' ? String(raw.latitude).trim().replace(',', '.') : '';
             const n = s === '' ? NaN : Number(s);
@@ -925,6 +938,7 @@ app.patch('/api/v1/clients/:id', async (req, res) => {
                 longitude:       'DATOS',
                 menu:            'MENU',
                 cupos:           'CUPOS',
+                businessUnits:   'DATOS',
             };
             for (const [f, category] of Object.entries(fieldCategories)) {
                 if (data[f] !== undefined && String((prevClient as any)[f] ?? '') !== String((updatedClient as any)[f] ?? '')) {
