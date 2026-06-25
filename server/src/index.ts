@@ -1066,17 +1066,6 @@ app.delete('/api/v1/clients/:id', async (req, res) => {
     }
 });
 
-// SOLO LECTURA, clave temporal: exporta todos los clientes con todos sus campos.
-// QUITAR este endpoint despues de generar el export.
-const EXPORT_KEY = 'r14-export-9a4c2e6b1f8d';
-app.post('/api/v1/admin/clients-export', async (req: any, res: any) => {
-    try {
-        if ((req.body || {}).key !== EXPORT_KEY) return res.status(403).json({ error: 'clave invalida' });
-        const clients = await prisma.client.findMany({ where: { tenantId: 'default-tenant' }, orderBy: { name: 'asc' } });
-        res.json({ total: clients.length, clients });
-    } catch (e: any) { console.error('clients-export:', e); res.status(500).json({ error: e?.message }); }
-});
-
 // --- SALARIES API ---
 app.get('/api/v1/salaries', async (req, res) => {
     try {
