@@ -1066,55 +1066,6 @@ app.delete('/api/v1/clients/:id', async (req, res) => {
     }
 });
 
-// ── DEDUP (clave temporal). QUITAR estos 2 endpoints al terminar la limpieza. ──
-const DEDUP_KEY = 'r14-dedup-3b8e1f7a2d9c';
-
-// SOLO LECTURA: dump de clientes + conteo de paradas/tripstops para detectar duplicados local.
-app.post('/api/v1/admin/clients-dump', async (req: any, res: any) => {
-    try {
-        if ((req.body || {}).key !== DEDUP_KEY) return res.status(403).json({ error: 'clave invalida' });
-        const clients = await prisma.client.findMany({ where: { tenantId: 'default-tenant' } });
-        const stopCount: Record<string, number> = {};
-        const sg = await prisma.stop.groupBy({ by: ['clientId'], _count: { _all: true } });
-        for (const g of sg) if (g.clientId) stopCount[g.clientId] = (g as any)._count._all;
-        const tripStopCount: Record<string, number> = {};
-        try {
-            const tg = await (prisma as any).tripStop.groupBy({ by: ['clientId'], _count: { _all: true } });
-            for (const g of tg) if (g.clientId) tripStopCount[g.clientId] = g._count._all;
-        } catch { /* tripStop puede no tener clientId indexable */ }
-        res.json({ total: clients.length, clients, stopCount, tripStopCount });
-    } catch (e: any) { console.error('clients-dump:', e); res.status(500).json({ error: e?.message }); }
-});
-
-// ESCRIBE: fusiona duplicados. pairs=[{sourceId,targetId}]: reasigna paradas/tripstops/mapeos
-// del source al target y borra el source. Idempotente-ish. Requiere clave.
-app.post('/api/v1/admin/dedup-apply', async (req: any, res: any) => {
-    try {
-        const body = req.body || {};
-        if (body.key !== DEDUP_KEY) return res.status(403).json({ error: 'clave invalida' });
-        const pairs: Array<{ sourceId: string; targetId: string }> = Array.isArray(body.pairs) ? body.pairs : [];
-        if (pairs.length === 0) return res.status(400).json({ error: 'pairs vacio' });
-        let merged = 0, movedStops = 0, movedTripStops = 0;
-        const errors: string[] = [];
-        for (const p of pairs) {
-            try {
-                if (!p.sourceId || !p.targetId || p.sourceId === p.targetId) { errors.push(`par invalido: ${p.sourceId}`); continue; }
-                const src = await prisma.client.findUnique({ where: { id: p.sourceId } });
-                const tgt = await prisma.client.findUnique({ where: { id: p.targetId } });
-                if (!src || !tgt) { errors.push(`no existe source/target: ${p.sourceId}/${p.targetId}`); continue; }
-                const ms = await prisma.stop.updateMany({ where: { clientId: p.sourceId }, data: { clientId: p.targetId } });
-                let mtc = 0;
-                try { const mt = await (prisma as any).tripStop.updateMany({ where: { clientId: p.sourceId }, data: { clientId: p.targetId } }); mtc = mt.count; } catch { /* */ }
-                try { await (prisma as any).establishmentMapping.updateMany({ where: { clientId: p.sourceId }, data: { clientId: p.targetId } }); } catch { /* excelName unico */ }
-                await prisma.client.delete({ where: { id: p.sourceId } });
-                try { await logAction(req, 'DELETE', 'client', p.sourceId, src.name, src, null); } catch { /* */ }
-                merged++; movedStops += ms.count; movedTripStops += mtc;
-            } catch (e: any) { errors.push(`${p.sourceId}: ${e?.message || e}`); }
-        }
-        res.json({ merged, movedStops, movedTripStops, errors });
-    } catch (e: any) { console.error('dedup-apply:', e); res.status(500).json({ error: e?.message }); }
-});
-
 // --- SALARIES API ---
 app.get('/api/v1/salaries', async (req, res) => {
     try {
