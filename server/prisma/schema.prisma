@@ -94,6 +94,12 @@ model Client {
   cupos             String?
   /// Unidades de negocio del cliente con su reparto (JSON array): [{ "unidad": "SAE", "reparto": "5" }, { "unidad": "Patios", "reparto": "14" }]
   businessUnits     String?
+  /// Tipo de establecimiento: Proveedor | Escuela | Institución Pública | Comunitario | Comedor | Institución Religiosa | Club
+  tipo              String?
+  /// Localidad (ej: "Don Orione", "Bernal")
+  localidad         String?
+  /// Partido al que pertenece (ej: "Almirante Brown", "Quilmes")
+  partido           String?
   tenant                   Tenant  @relation(fields: [tenantId], references: [id])
   stops                    Stop[]
   establishmentMappings    EstablishmentMapping[]

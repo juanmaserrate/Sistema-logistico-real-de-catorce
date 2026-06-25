@@ -841,6 +841,9 @@ app.post('/api/v1/clients', async (req, res) => {
             businessUnits: raw.businessUnits == null
                 ? null
                 : (typeof raw.businessUnits === 'object' ? JSON.stringify(raw.businessUnits) : String(raw.businessUnits)),
+            tipo: raw.tipo != null && String(raw.tipo).trim() ? String(raw.tipo).trim() : null,
+            localidad: raw.localidad != null && String(raw.localidad).trim() ? String(raw.localidad).trim() : null,
+            partido: raw.partido != null && String(raw.partido).trim() ? String(raw.partido).trim() : null,
         };
         if (lat != null && lng != null && !data.address) {
             const address = await reverseGeocode(lat, lng);
@@ -899,6 +902,9 @@ app.patch('/api/v1/clients/:id', async (req, res) => {
                 data.businessUnits = String(raw.businessUnits);
             }
         }
+        if (raw.tipo !== undefined) data.tipo = raw.tipo != null && String(raw.tipo).trim() ? String(raw.tipo).trim() : null;
+        if (raw.localidad !== undefined) data.localidad = raw.localidad != null && String(raw.localidad).trim() ? String(raw.localidad).trim() : null;
+        if (raw.partido !== undefined) data.partido = raw.partido != null && String(raw.partido).trim() ? String(raw.partido).trim() : null;
         if (raw.latitude !== undefined) {
             const s = raw.latitude !== null && raw.latitude !== '' ? String(raw.latitude).trim().replace(',', '.') : '';
             const n = s === '' ? NaN : Number(s);
@@ -939,6 +945,9 @@ app.patch('/api/v1/clients/:id', async (req, res) => {
                 menu:            'MENU',
                 cupos:           'CUPOS',
                 businessUnits:   'DATOS',
+                tipo:            'DATOS',
+                localidad:       'DATOS',
+                partido:         'DATOS',
             };
             for (const [f, category] of Object.entries(fieldCategories)) {
                 if (data[f] !== undefined && String((prevClient as any)[f] ?? '') !== String((updatedClient as any)[f] ?? '')) {
@@ -1064,6 +1073,33 @@ app.delete('/api/v1/clients/:id', async (req, res) => {
         console.error('DELETE /clients/:id:', e);
         return res.status(500).json({ error: e?.message || 'Error al eliminar cliente' });
     }
+});
+
+// ESCRIBE (clave temporal): setea tipo/localidad/partido y opcionalmente limpia barrio.
+// items=[{clientId, tipo?, localidad?, partido?, clearBarrio?}]. QUITAR al terminar.
+const TIPOGEO_KEY = 'r14-tipogeo-5d2b8e4a1c';
+app.post('/api/v1/admin/apply-tipo-geo', async (req: any, res: any) => {
+    try {
+        const body = req.body || {};
+        if (body.key !== TIPOGEO_KEY) return res.status(403).json({ error: 'clave invalida' });
+        const items: Array<any> = Array.isArray(body.items) ? body.items : [];
+        if (items.length === 0) return res.status(400).json({ error: 'items vacio' });
+        let updated = 0, skipped = 0;
+        const errors: string[] = [];
+        for (const it of items) {
+            try {
+                const data: any = {};
+                if (it.tipo !== undefined) data.tipo = it.tipo ? String(it.tipo).trim() : null;
+                if (it.localidad !== undefined) data.localidad = it.localidad ? String(it.localidad).trim() : null;
+                if (it.partido !== undefined) data.partido = it.partido ? String(it.partido).trim() : null;
+                if (it.clearBarrio) data.barrio = null;
+                if (Object.keys(data).length === 0) { skipped++; continue; }
+                await prisma.client.update({ where: { id: String(it.clientId) }, data });
+                updated++;
+            } catch (e: any) { errors.push(`${it.clientId}: ${e?.message || e}`); }
+        }
+        res.json({ updated, skipped, errors });
+    } catch (e: any) { console.error('apply-tipo-geo:', e); res.status(500).json({ error: e?.message }); }
 });
 
 // --- SALARIES API ---
