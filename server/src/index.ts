@@ -1027,6 +1027,41 @@ app.post('/api/v1/admin/dryrun-business-units', async (req: any, res: any) => {
     }
 });
 
+// ── APLICAR (ESCRIBE): asigna unidades de negocio + reparto a clientes ya cruzados.
+//    Body: { key, items: [{ clientId, businessUnits: [{ unidad, reparto }] }] }.
+//    Hace MERGE con lo existente (por unidad, ultimo gana) para no pisar datos.
+//    Protegido por la misma clave temporal. QUITAR junto con el dry-run al terminar.
+app.post('/api/v1/admin/apply-business-units', async (req: any, res: any) => {
+    try {
+        const body = req.body || {};
+        if (body.key !== DRYRUN_BU_KEY) return res.status(403).json({ error: 'clave invalida' });
+        const items: Array<{ clientId: string; businessUnits: Array<{ unidad: string; reparto: string }> }> =
+            Array.isArray(body.items) ? body.items : [];
+        if (items.length === 0) return res.status(400).json({ error: 'items vacio' });
+        let updated = 0, skipped = 0;
+        const errors: string[] = [];
+        for (const it of items) {
+            try {
+                const client = await prisma.client.findUnique({ where: { id: String(it.clientId) } });
+                if (!client) { skipped++; continue; }
+                let existing: Array<{ unidad: string; reparto: string }> = [];
+                try { existing = client.businessUnits ? JSON.parse(client.businessUnits) : []; } catch { existing = []; }
+                const map = new Map<string, { unidad: string; reparto: string }>();
+                for (const b of existing) if (b && b.unidad) map.set(String(b.unidad).toUpperCase(), { unidad: b.unidad, reparto: String(b.reparto ?? '') });
+                for (const b of (it.businessUnits || [])) if (b && b.unidad) map.set(String(b.unidad).toUpperCase(), { unidad: b.unidad, reparto: String(b.reparto ?? '') });
+                await prisma.client.update({ where: { id: client.id }, data: { businessUnits: JSON.stringify([...map.values()]) } });
+                updated++;
+            } catch (e: any) {
+                errors.push(`${it.clientId}: ${e?.message || e}`);
+            }
+        }
+        res.json({ updated, skipped, errors });
+    } catch (e: any) {
+        console.error('POST /admin/apply-business-units:', e);
+        res.status(500).json({ error: e?.message || 'Error al aplicar' });
+    }
+});
+
 let backfillAddressesDone = false;
 async function backfillAddressesFromCoords(): Promise<void> {
     if (backfillAddressesDone) return;
