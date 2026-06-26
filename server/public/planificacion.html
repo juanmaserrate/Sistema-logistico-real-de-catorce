@@ -17542,40 +17542,117 @@
             if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
         }
 
+        // ── Buscador de paradas (escuela/cliente) con filtros + busqueda exacta y aproximada ──
+        function tdNorm(s) {
+            return String(s || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+        }
+        function tdRepartos(s) {
+            try {
+                const v = s.businessUnits ? (typeof s.businessUnits === 'string' ? JSON.parse(s.businessUnits) : s.businessUnits) : [];
+                return Array.isArray(v) ? v.map((b) => String(b.reparto || '').trim()).filter(Boolean) : [];
+            } catch { return []; }
+        }
+        function tdBigrams(s) {
+            s = s.replace(/\s/g, ''); const set = new Set();
+            for (let i = 0; i < s.length - 1; i++) set.add(s.slice(i, i + 2));
+            return set;
+        }
+        function tdDice(a, b) {
+            const A = tdBigrams(a), B = tdBigrams(b);
+            if (!A.size || !B.size) return 0;
+            let inter = 0; for (const x of A) if (B.has(x)) inter++;
+            return (2 * inter) / (A.size + B.size);
+        }
+        /** Puntaje de coincidencia: exacta/prefijo/substring alto; typos por bigramas. 0 = no pasa. */
+        function tdScore(q, name) {
+            if (!q) return 1;
+            const n = tdNorm(name);
+            if (n === q) return 1000;
+            if (n.startsWith(q)) return 800;
+            const idx = n.indexOf(q);
+            if (idx >= 0) return 600 - idx;
+            const qt = q.split(' ').filter(Boolean);
+            if (qt.length > 1 && qt.every((t) => n.includes(t))) return 400;
+            if (q.length >= 3) {
+                const d = tdDice(q, n);
+                if (d >= 0.45) return Math.round(100 + d * 100);
+            }
+            return 0;
+        }
+
+        function tdPopulateFilters() {
+            const esc = (v) => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+            const tipos = new Set(), locs = new Set(), reps = new Set(), parts = new Set();
+            for (const s of allSchools) {
+                if (s.tipo) tipos.add(String(s.tipo).trim());
+                if (s.localidad) locs.add(String(s.localidad).trim());
+                if (s.partido) parts.add(String(s.partido).trim());
+                for (const r of tdRepartos(s)) reps.add(r);
+            }
+            const fill = (id, vals, label, fmt) => {
+                const sel = document.getElementById(id);
+                if (!sel) return;
+                const prev = sel.value;
+                const list = [...vals].sort((a, b) => String(a).localeCompare(String(b), 'es', { numeric: true }));
+                sel.innerHTML = `<option value="">${label}</option>` + list.map((v) => `<option value="${esc(v)}">${fmt ? fmt(v) : esc(v)}</option>`).join('');
+                if ([...sel.options].some((o) => o.value === prev)) sel.value = prev;
+            };
+            fill('td-filter-tipo', tipos, 'Todos los tipos');
+            fill('td-filter-localidad', locs, 'Toda localidad');
+            fill('td-filter-reparto', reps, 'Todo reparto', (v) => 'Reparto ' + esc(v));
+            fill('td-filter-partido', parts, 'Todo partido');
+        }
+
+        function filterTripDeliveryResults() {
+            const cont = document.getElementById('td-results');
+            if (!cont) return;
+            const q = tdNorm(document.getElementById('td-search')?.value || '');
+            const ft = document.getElementById('td-filter-tipo')?.value || '';
+            const fl = document.getElementById('td-filter-localidad')?.value || '';
+            const fr = document.getElementById('td-filter-reparto')?.value || '';
+            const fp = document.getElementById('td-filter-partido')?.value || '';
+            const used = new Set(tripDeliveryRows.map((r) => r.clientId));
+            let list = allSchools.filter((s) => !used.has(s.id));
+            if (ft) list = list.filter((s) => (s.tipo || '').trim() === ft);
+            if (fl) list = list.filter((s) => (s.localidad || '').trim() === fl);
+            if (fp) list = list.filter((s) => (s.partido || '').trim() === fp);
+            if (fr) list = list.filter((s) => tdRepartos(s).includes(fr));
+            let scored = list.map((s) => ({ s, sc: tdScore(q, s.name) }));
+            if (q) scored = scored.filter((x) => x.sc > 0);
+            scored.sort((a, b) => b.sc - a.sc || (a.s.name || '').localeCompare(b.s.name || '', 'es'));
+            const CAP = 80;
+            const shown = scored.slice(0, CAP);
+            cont.innerHTML = shown.map((x) => {
+                const s = x.s;
+                const geo = [s.localidad, s.partido].filter(Boolean).join(' · ');
+                const tipo = s.tipo ? `<span class="text-[9px] font-black bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded uppercase tracking-wide shrink-0">${escapeHtmlTrip(s.tipo)}</span>` : '';
+                return `<button type="button" onclick="tripDeliveryAddById('${s.id}')" class="w-full text-left px-3 py-2 hover:bg-indigo-50 flex items-center gap-2">
+                    <span class="flex-1 min-w-0"><span class="block truncate font-bold text-[#2B3674] text-sm">${escapeHtmlTrip(s.name || s.id)}</span><span class="block truncate text-[10px] text-[#A3AED0]">${escapeHtmlTrip(geo || s.address || '')}</span></span>${tipo}</button>`;
+            }).join('') || '<div class="px-3 py-3 text-xs text-[#A3AED0]">Sin resultados</div>';
+            const cnt = document.getElementById('td-results-count');
+            if (cnt) cnt.textContent = scored.length + ' resultado(s)' + (scored.length > CAP ? ` (mostrando ${CAP})` : '');
+        }
+
+        function tripDeliveryAddById(id) {
+            const s = allSchools.find((x) => x.id === id);
+            if (!s) return;
+            if (tripDeliveryRows.some((r) => r.clientId === id)) return;
+            tripDeliveryRows.push({ clientId: s.id, name: s.name || s.id, address: s.address || '' });
+            renderTripDeliveryList();
+            filterTripDeliveryResults();
+        }
+
         async function populateTripDeliveryAddSelect() {
             if (!allSchools.length) {
                 try {
-                    const res = await fetch(`${API_URL}/clients`);
+                    const res = await fetch(`${API_URL}/clients`, { headers: getActorHeaders() });
                     if (res.ok) allSchools = await res.json();
                 } catch (e) {
                     console.warn(e);
                 }
             }
-            const sel = document.getElementById('trip-delivery-add-select');
-            if (!sel) return;
-            const used = new Set(tripDeliveryRows.map((r) => r.clientId));
-            const opts = allSchools
-                .filter((s) => !used.has(s.id))
-                .sort((a, b) => (a.name || '').localeCompare(b.name || '', 'es'));
-            sel.innerHTML =
-                '<option value="">+ Agregar escuela / cliente…</option>' +
-                opts.map((s) => `<option value="${s.id}">${escapeHtmlTrip(s.name || s.id)}</option>`).join('');
-        }
-
-        function onTripDeliveryAddClient() {
-            const sel = document.getElementById('trip-delivery-add-select');
-            if (!sel || !sel.value) return;
-            const id = sel.value;
-            const s = allSchools.find((x) => x.id === id);
-            if (!s) return;
-            tripDeliveryRows.push({
-                clientId: s.id,
-                name: s.name || s.id,
-                address: s.address || ''
-            });
-            sel.value = '';
-            populateTripDeliveryAddSelect();
-            renderTripDeliveryList();
+            tdPopulateFilters();
+            filterTripDeliveryResults();
         }
 
         function resetTripDeliveryPanelForNewTrip() {
@@ -19552,8 +19629,17 @@
                             </button>
                             <p class="text-[10px] text-[#A3AED0]">Arrastrá las filas para reordenar. El chofer ve la primera cuando el operador inicia el viaje.</p>
                             <ul id="trip-delivery-list" class="space-y-2 min-h-[2rem]"></ul>
-                            <div class="flex flex-col sm:flex-row gap-2">
-                                <select id="trip-delivery-add-select" onchange="onTripDeliveryAddClient()" class="flex-1 bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                            <div class="space-y-2 border border-[#E0E5F2] rounded-2xl p-3 bg-white">
+                                <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Agregar parada</p>
+                                <input id="td-search" type="text" oninput="filterTripDeliveryResults()" placeholder="Buscar por nombre (exacta o aproximada)…" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                <div class="grid grid-cols-2 lg:grid-cols-4 gap-2">
+                                    <select id="td-filter-tipo" onchange="filterTripDeliveryResults()" class="bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold outline-none"><option value="">Todos los tipos</option></select>
+                                    <select id="td-filter-localidad" onchange="filterTripDeliveryResults()" class="bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold outline-none"><option value="">Toda localidad</option></select>
+                                    <select id="td-filter-reparto" onchange="filterTripDeliveryResults()" class="bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold outline-none"><option value="">Todo reparto</option></select>
+                                    <select id="td-filter-partido" onchange="filterTripDeliveryResults()" class="bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold outline-none"><option value="">Todo partido</option></select>
+                                </div>
+                                <div id="td-results" class="max-h-64 overflow-y-auto border border-[#E0E5F2] rounded-xl divide-y divide-[#F4F7FE]"></div>
+                                <p id="td-results-count" class="text-[10px] text-[#A3AED0]"></p>
                             </div>
                         </div>
                     </div>
