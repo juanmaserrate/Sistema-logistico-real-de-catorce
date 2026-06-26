@@ -218,6 +218,18 @@
                         <div class="p-5 border-b border-[#F4F7FE]">
                             <input id="routes-templates-filter" type="text" placeholder="Filtrar repartos..." oninput="renderRouteTemplatesList()" class="w-full bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm text-[#1B2559] focus:ring-2 focus:ring-indigo-500/20 outline-none">
                         </div>
+                        <div class="px-4 pt-3 pb-2 flex flex-wrap items-center gap-2 border-b border-[#F4F7FE]">
+                            <label class="flex items-center gap-1.5 text-[10px] font-bold text-[#A3AED0] uppercase cursor-pointer">
+                                <input type="checkbox" id="rt-select-all" onchange="toggleSelectAllRt(this.checked)" class="rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500 cursor-pointer"> Todas
+                            </label>
+                            <span id="rt-selected-count" class="text-[10px] font-black text-indigo-600"></span>
+                            <div class="flex-1"></div>
+                            <button onclick="rtExport()" title="Exportar (seleccionadas o todas)" class="px-3 py-1.5 rounded-lg bg-[#1B2559] text-white text-[10px] font-bold hover:bg-[#0f1a4a] flex items-center gap-1"><i data-lucide="printer" class="w-3 h-3"></i> Exportar</button>
+                            <div id="rt-bulk-actions" class="hidden items-center gap-2">
+                                <button onclick="rtBulkDuplicate()" class="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-[10px] font-bold hover:bg-indigo-100 flex items-center gap-1"><i data-lucide="copy" class="w-3 h-3"></i> Duplicar</button>
+                                <button onclick="rtBulkDelete()" class="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-600 text-[10px] font-bold hover:bg-rose-100 flex items-center gap-1"><i data-lucide="trash-2" class="w-3 h-3"></i> Eliminar</button>
+                            </div>
+                        </div>
                         <div id="routes-templates-list" class="p-4 space-y-1">
                             <!-- Injected -->
                         </div>
@@ -4454,6 +4466,7 @@
 
         // --- RUTAS MODULE ---
         let routeTemplates = [];
+        let selectedRtIds = new Set();
         let currentlyEditingRoute = null;
 
         function routeTemplateNameSort(a, b) {
@@ -6425,6 +6438,8 @@
         function renderRouteTemplatesList() {
             const list = document.getElementById('routes-templates-list');
             if (!list) return;
+            const _valid = new Set(routeTemplates.map(t => t.id));
+            for (const id of [...selectedRtIds]) if (!_valid.has(id)) selectedRtIds.delete(id);
             const filterEl = document.getElementById('routes-templates-filter');
             const filter = (filterEl?.value || '').toLowerCase().trim();
             const ordered = _applyRtOrder(routeTemplates);
@@ -6448,6 +6463,7 @@
                 const activeClass = isEditing ? 'border-indigo-200 bg-indigo-50' : 'border-transparent hover:border-[#F4F7FE] hover:bg-[#F4F7FE]';
                 return `
                 <div class="rt-item w-full p-4 rounded-xl border ${activeClass} transition-all flex items-center gap-2 group cursor-pointer" data-rt-id="${rt.id}" onclick="selectRouteTemplate('${rt.id}')">
+                    <input type="checkbox" class="rt-checkbox shrink-0 rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500 cursor-pointer" value="${rt.id}" ${selectedRtIds.has(rt.id) ? 'checked' : ''} onclick="event.stopPropagation()" onchange="onRtCheckboxChange('${rt.id}', this.checked)">
                     <div class="rt-drag-handle cursor-grab active:cursor-grabbing w-7 h-9 rounded-lg flex items-center justify-center text-[#A3AED0] hover:bg-indigo-50 hover:text-indigo-600 transition-all opacity-40 group-hover:opacity-100" title="Arrastrá para reordenar" onclick="event.stopPropagation()">
                         <i data-lucide="grip-vertical" class="w-4 h-4"></i>
                     </div>
@@ -6459,6 +6475,9 @@
                         <button onclick="event.stopPropagation(); renameRouteTemplate('${rt.id}')" title="Renombrar" class="w-8 h-8 rounded-lg bg-white border border-[#E0E5F2] hover:border-indigo-500 hover:text-indigo-600 flex items-center justify-center text-[#A3AED0] transition-all">
                             <i data-lucide="pencil" class="w-3 h-3"></i>
                         </button>
+                        <button onclick="event.stopPropagation(); rtDuplicate('${rt.id}')" title="Duplicar" class="w-8 h-8 rounded-lg bg-white border border-[#E0E5F2] hover:border-indigo-500 hover:text-indigo-600 flex items-center justify-center text-[#A3AED0] transition-all">
+                            <i data-lucide="copy" class="w-3 h-3"></i>
+                        </button>
                         <button onclick="event.stopPropagation(); deleteRouteTemplate('${rt.id}')" title="Eliminar" class="w-8 h-8 rounded-lg bg-white border border-[#E0E5F2] hover:border-rose-500 hover:text-rose-600 flex items-center justify-center text-[#A3AED0] transition-all">
                             <i data-lucide="trash-2" class="w-3 h-3"></i>
                         </button>
@@ -6467,6 +6486,7 @@
                 `;
             }).join('');
             lucide.createIcons();
+            updateRtBulkBar();
 
             // Init drag-and-drop on the list (skip when filtering to avoid partial reorder)
             if (!filter && window.Sortable) {
@@ -6568,6 +6588,134 @@
                 console.error('Error eliminando ruta:', e);
                 addNotification('warning', 'Error', 'No se pudo eliminar la ruta');
             }
+        }
+
+        // ───────── Selección / acciones masivas de rutas predefinidas ─────────
+        function onRtCheckboxChange(id, checked) {
+            if (checked) selectedRtIds.add(id); else selectedRtIds.delete(id);
+            updateRtBulkBar();
+        }
+        function toggleSelectAllRt(checked) {
+            document.querySelectorAll('#routes-templates-list .rt-checkbox').forEach(cb => {
+                cb.checked = checked;
+                if (checked) selectedRtIds.add(cb.value); else selectedRtIds.delete(cb.value);
+            });
+            updateRtBulkBar();
+        }
+        function updateRtBulkBar() {
+            const count = selectedRtIds.size;
+            const cEl = document.getElementById('rt-selected-count');
+            if (cEl) cEl.textContent = count ? `${count} sel.` : '';
+            const bulk = document.getElementById('rt-bulk-actions');
+            if (bulk) bulk.style.display = count ? 'flex' : 'none';
+            const all = document.getElementById('rt-select-all');
+            const boxes = [...document.querySelectorAll('#routes-templates-list .rt-checkbox')];
+            if (all) all.checked = boxes.length > 0 && boxes.every(b => b.checked);
+        }
+        function uniqueRtName(base, taken) {
+            const names = taken || new Set(routeTemplates.map(t => String(t.name || '').trim().toUpperCase()));
+            let cand = `${base} (copia)`, i = 2;
+            while (names.has(cand.toUpperCase())) { cand = `${base} (copia ${i})`; i++; }
+            return cand;
+        }
+        async function rtDuplicateOne(rt, taken) {
+            const stops = (rt.stops || []).slice().sort((a, b) => (a.sequence || 0) - (b.sequence || 0)).map(s => s.name);
+            const newName = uniqueRtName(rt.name, taken);
+            if (taken) taken.add(newName.toUpperCase());
+            const res = stops.length === 0
+                ? await fetch(`${API_URL}/route-templates/empty`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName }) })
+                : await fetch(`${API_URL}/route-templates`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: newName, stops }) });
+            return { ok: res.ok, newName };
+        }
+        async function rtDuplicate(id) {
+            const rt = routeTemplates.find(t => t.id === id);
+            if (!rt) return;
+            try {
+                const r = await rtDuplicateOne(rt);
+                if (!r.ok) { addNotification('warning', 'No se pudo duplicar', rt.name); return; }
+                addNotification('success', 'Ruta duplicada', `Se creó "${r.newName}"`);
+                await loadRouteTemplates();
+            } catch (e) { addNotification('warning', 'Error', 'No se pudo duplicar la ruta'); }
+        }
+        async function rtBulkDuplicate() {
+            const ids = [...selectedRtIds];
+            if (!ids.length) return;
+            const taken = new Set(routeTemplates.map(t => String(t.name || '').trim().toUpperCase()));
+            let ok = 0;
+            for (const id of ids) {
+                const rt = routeTemplates.find(t => t.id === id);
+                if (!rt) continue;
+                try { if ((await rtDuplicateOne(rt, taken)).ok) ok++; } catch (e) { /* */ }
+            }
+            addNotification(ok ? 'success' : 'warning', 'Duplicar', `${ok} de ${ids.length} rutas duplicadas`);
+            selectedRtIds.clear();
+            await loadRouteTemplates();
+        }
+        async function rtBulkDelete() {
+            const ids = [...selectedRtIds];
+            if (!ids.length) return;
+            if (!confirm(`¿Eliminar ${ids.length} ruta(s) predefinida(s)?\n\nEsta acción no se puede deshacer.`)) return;
+            let ok = 0;
+            for (const id of ids) {
+                try { const res = await fetch(`${API_URL}/route-templates/${id}`, { method: 'DELETE' }); if (res.ok) ok++; } catch (e) { /* */ }
+            }
+            if (currentlyEditingRoute && ids.includes(currentlyEditingRoute.id)) {
+                currentlyEditingRoute = null;
+                const n = document.getElementById('editing-route-name'); if (n) n.innerText = 'Seleccione un reparto';
+                document.getElementById('add-stop-btn')?.classList.add('hidden');
+            }
+            addNotification(ok ? 'info' : 'warning', 'Eliminar', `${ok} de ${ids.length} rutas eliminadas`);
+            selectedRtIds.clear();
+            await loadRouteTemplates();
+        }
+
+        // ───────── Exportar rutas predefinidas (checklist imprimible) ─────────
+        async function rtExport() {
+            const src = selectedRtIds.size > 0 ? routeTemplates.filter(t => selectedRtIds.has(t.id)) : routeTemplates.slice();
+            if (!src.length) { addNotification('warning', 'Exportar', 'No hay rutas para exportar.'); return; }
+            src.sort((a, b) => routeTemplateNameSort(a?.name, b?.name));
+            let logo = '';
+            try { if (typeof budgetLoadLogo === 'function') logo = (await budgetLoadLogo()) || ''; } catch (_) {}
+            const body = src.map(t => rtExportCardHtml(t, logo)).join('');
+            const w = window.open('', '_blank');
+            if (!w) { addNotification('error', 'Exportar', 'El navegador bloqueó la ventana. Permití las ventanas emergentes.'); return; }
+            w.document.open(); w.document.write(rtExportDocHtml(body)); w.document.close();
+            w.onload = () => { try { w.focus(); w.print(); } catch (_) {} };
+            setTimeout(() => { try { if (!w.closed) { w.focus(); w.print(); } } catch (_) {} }, 700);
+        }
+        function rtExportDocHtml(body) {
+            return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Rutas predefinidas</title>
+<style>
+  @page { size: A4 portrait; margin: 11mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 0; }
+  .route-card { border: 1px solid #1B2559; border-radius: 8px; margin-bottom: 14px; break-inside: avoid; page-break-inside: avoid; overflow: hidden; }
+  .route-head { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-bottom: 2px solid #1B2559; }
+  .route-head img { width: 38px; height: 38px; object-fit: contain; filter: brightness(0); }
+  .rt-title { font-size: 9px; color: #888; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; }
+  .rt-name { font-size: 17px; font-weight: bold; color: #1B2559; letter-spacing: 1px; }
+  .rt-meta { margin-left: auto; text-align: right; font-size: 9px; color: #555; }
+  .stops-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 22px; padding: 8px 12px; }
+  .stop-item { display: flex; align-items: center; gap: 8px; padding: 4px 2px; border-bottom: 1px solid #eee; font-size: 11px; }
+  .chk { width: 13px; height: 13px; border: 1.5px solid #1B2559; border-radius: 3px; flex-shrink: 0; }
+  .num { color: #A3AED0; font-weight: bold; width: 22px; }
+  .dest { font-weight: bold; color: #2B3674; }
+</style></head><body>${body}</body></html>`;
+        }
+        function rtExportCardHtml(t, logo) {
+            const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+            const stops = (t.stops || []).slice().sort((a, b) => (a.sequence || 0) - (b.sequence || 0)).map(s => s.name);
+            const items = stops.length
+                ? stops.map((s, i) => `<div class="stop-item"><span class="chk"></span><span class="num">${i + 1}.</span><span class="dest">${esc(s)}</span></div>`).join('')
+                : '<div class="stop-item" style="grid-column:1/3;color:#999">Sin paradas</div>';
+            return `<div class="route-card">
+                <div class="route-head">
+                    ${logo ? `<img src="${logo}" alt="R14">` : ''}
+                    <div><div class="rt-title">Ruta predefinida</div><div class="rt-name">${esc(t.name)}</div></div>
+                    <div class="rt-meta">${stops.length} paradas<br>Fecha: ____ / ____ / ____</div>
+                </div>
+                <div class="stops-grid">${items}</div>
+            </div>`;
         }
 
         // --- Modal: Agregar Escuela a Ruta ---
