@@ -1083,10 +1083,10 @@ app.post('/api/v1/admin/append-r14-to-templates', async (req: any, res: any) => 
         if ((req.body || {}).key !== R14TPL_KEY) return res.status(403).json({ error: 'clave invalida' });
         // 1) Asegurar cliente R14 (Ombú 1269) para que la parada resuelva
         const clients = await prisma.client.findMany({ where: { tenantId: 'default-tenant' }, select: { id: true, name: true, address: true } });
-        let r14 = clients.find((c) => normClientNameForMatch(c.name) === 'R14');
+        let r14: any = clients.find((c) => normClientNameForMatch(c.name) === 'R14');
         if (!r14) {
             const created = await prisma.client.create({ data: ({ tenantId: 'default-tenant', name: 'R14', address: 'Ombú 1269, Burzaco', zone: 'BURZACO', tipo: 'Depósito' } as any) });
-            r14 = { id: created.id, name: created.name, address: created.address } as any;
+            r14 = { id: created.id, name: created.name, address: created.address };
         } else if (!r14.address || !r14.address.toLowerCase().includes('1269')) {
             await prisma.client.update({ where: { id: r14.id }, data: { address: 'Ombú 1269, Burzaco' } });
         }
