@@ -628,6 +628,9 @@
                         </div>
                     </div>
                     <div class="flex-1"></div>
+                    <button onclick="printSelectedHDR()" class="px-5 py-3 rounded-2xl bg-[#1B2559] text-white text-[11px] font-bold hover:bg-[#0f1a4a] transition-all shadow-lg flex items-center gap-2">
+                        <i data-lucide="printer" class="w-4 h-4"></i> Imprimir HDR
+                    </button>
                     <button onclick="openBulkEditModal()" class="px-5 py-3 rounded-2xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center gap-2">
                         <i data-lucide="edit-3" class="w-4 h-4"></i> Editar seleccionados
                     </button>
@@ -12340,6 +12343,7 @@
                             <div class="flex flex-col items-center gap-1.5">
                                 <div class="flex gap-1 justify-center">
                                     <button type="button" onclick="openEditTripModal(${t.id})" class="p-2 text-[#A3AED0] hover:text-indigo-600 transition-all" title="Editar viaje"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
+                                    <button type="button" onclick="printHDR([${t.id}])" class="p-2 text-[#A3AED0] hover:text-[#1B2559] transition-all" title="Imprimir HDR"><i data-lucide="printer" class="w-4 h-4"></i></button>
                                     <button type="button" onclick="deleteSingleTrip(${t.id})" class="p-2 text-[#A3AED0] hover:text-rose-600 transition-all" title="Eliminar viaje"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                                 </div>
                                 <div class="flex gap-1 justify-center">
@@ -12975,6 +12979,164 @@
             } else {
                 bar.classList.add('hidden');
             }
+        }
+
+        // ─────────────────────────── IMPRESIÓN DE HDR (Hoja de Ruta) ───────────────────────────
+        async function printSelectedHDR() {
+            const ids = [...selectedTripIds];
+            if (!ids.length) {
+                if (typeof addNotification === 'function') addNotification('warning', 'Sin selección', 'Seleccioná al menos un viaje para imprimir la HDR.');
+                return;
+            }
+            await printHDR(ids);
+        }
+
+        /** Arma e imprime una HDR por cada viaje (una hoja por viaje). */
+        async function printHDR(ids) {
+            try {
+                if (!Array.isArray(ids) || !ids.length) return;
+                let logo = '';
+                try { if (typeof budgetLoadLogo === 'function') logo = (await budgetLoadLogo()) || ''; } catch (_) {}
+                const pages = [];
+                for (const id of ids) {
+                    const trip = (planningData || []).find((t) => String(t.id) === String(id));
+                    if (!trip) continue;
+                    let stops = [];
+                    try {
+                        const res = await fetch(`${API_URL}/trips/${id}/delivery-stops`, { headers: getActorHeaders() });
+                        if (res.ok) { const d = await res.json(); stops = Array.isArray(d.stops) ? d.stops : []; }
+                    } catch (e) { console.warn('HDR stops', id, e); }
+                    pages.push(hdrPageHtml(trip, stops, logo));
+                }
+                if (!pages.length) {
+                    if (typeof addNotification === 'function') addNotification('error', 'HDR', 'No se encontraron viajes para imprimir.');
+                    return;
+                }
+                const w = window.open('', '_blank');
+                if (!w) {
+                    if (typeof addNotification === 'function') addNotification('error', 'HDR', 'El navegador bloqueó la ventana. Permití las ventanas emergentes.');
+                    return;
+                }
+                w.document.open();
+                w.document.write(hdrDocumentHtml(pages.join('')));
+                w.document.close();
+                w.onload = () => { try { w.focus(); w.print(); } catch (_) {} };
+                setTimeout(() => { try { if (!w.closed) { w.focus(); w.print(); } } catch (_) {} }, 700);
+            } catch (e) {
+                console.error('printHDR', e);
+                if (typeof addNotification === 'function') addNotification('error', 'HDR', e.message || String(e));
+            }
+        }
+
+        function hdrDocumentHtml(body) {
+            return `<!doctype html><html lang="es"><head><meta charset="utf-8"><title>HDR — Hoja de Ruta</title>
+<style>
+  @page { size: A4 portrait; margin: 9mm; }
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 0; font-size: 11px; }
+  .hdr { page-break-after: always; }
+  .hdr:last-child { page-break-after: auto; }
+  .hdr-top { display: flex; align-items: center; gap: 12px; border-bottom: 3px solid #1B2559; padding-bottom: 6px; margin-bottom: 8px; }
+  .hdr-top img { width: 54px; height: 54px; object-fit: contain; }
+  .hdr-title { flex: 1; }
+  .hdr-title h1 { margin: 0; font-size: 18px; letter-spacing: 2px; color: #1B2559; }
+  .hdr-title .sub { font-size: 11px; color: #555; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
+  .km { border: 1.5px solid #1B2559; border-radius: 6px; padding: 4px 8px; font-size: 9px; text-align: center; min-width: 120px; }
+  .km b { display: block; font-size: 9px; color: #1B2559; }
+  .km .ln { border-bottom: 1px solid #999; height: 16px; margin-top: 2px; }
+  .info { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 8px; }
+  .info .cell { border: 1px solid #ccc; border-radius: 4px; padding: 3px 6px; min-height: 30px; }
+  .info .cell .k { font-size: 8px; color: #888; text-transform: uppercase; font-weight: bold; letter-spacing: .5px; }
+  .info .cell .v { font-size: 12px; font-weight: bold; color: #1B2559; }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { border: 1px solid #999; padding: 3px 5px; font-size: 10px; }
+  thead th { background: #1B2559; color: #fff; text-transform: uppercase; font-size: 9px; letter-spacing: .5px; }
+  .stops td { height: 24px; }
+  .stops .n { width: 22px; text-align: center; color: #888; }
+  .stops .dest { font-weight: bold; }
+  .stops .hr { width: 70px; }
+  .stops .mot { width: 70px; text-align: center; color: #b45309; font-weight: bold; }
+  .depot td { background: #F4F7FE; font-weight: bold; }
+  .na { position: relative; background: #f5f5f5; }
+  .na::before { content: "N/A"; font-size: 7px; color: #c0392b; position: absolute; top: 1px; left: 3px; }
+  .na::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top right, transparent calc(50% - 0.8px), #c0392b calc(50% - 0.8px), #c0392b calc(50% + 0.8px), transparent calc(50% + 0.8px)); }
+  .sec-title { background: #1B2559; color: #fff; font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; padding: 3px 6px; margin: 8px 0 0; border-radius: 4px 4px 0 0; }
+  .obs { border: 1px solid #999; border-top: none; min-height: 46px; padding: 4px; }
+  .env th { background: #2B3674; }
+  .env td { height: 22px; text-align: center; }
+  .env .sec { background: #F4F7FE; font-weight: bold; text-align: left; }
+  .firmas { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
+  .firmas .f { border-top: 1px solid #111; padding-top: 3px; font-size: 9px; text-transform: uppercase; color: #555; text-align: center; font-weight: bold; }
+</style></head><body>${body}</body></html>`;
+        }
+
+        function hdrPageHtml(trip, stops, logo) {
+            const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+            const reparto = trip.tripType || trip.reparto || '—';
+            const transportista = trip.driver || '';
+            const aux = [trip.auxiliar, trip.auxiliar2, trip.auxiliar3].filter(Boolean).join(' / ');
+            const vehiculo = trip.vehicleType || '';
+            const motivo = (typeof formatBusinessUnit === 'function' ? formatBusinessUnit(trip.businessUnit) : (trip.businessUnit || '')) || '';
+            let fecha = ''; try { fecha = trip.date ? new Date(trip.date).toLocaleDateString('es-AR') : ''; } catch (_) {}
+            const refrig = trip.isRefrigerated ? 'SÍ' : 'NO';
+            const temp = (trip.temperature != null && trip.temperature !== '') ? `${trip.temperature}°` : '';
+
+            // Filas: depósito (salida) + paradas. 1ra fila tacha HR LLEGADA; última tacha HR SALIDA.
+            const rows = [{ name: 'REAL DE CATORCE — SALIDA DEPÓSITO', depot: true }]
+                .concat((stops || []).map((s) => ({ name: s.name || s.clientId || '' })));
+            const last = rows.length - 1;
+            const stopRows = rows.map((r, i) => {
+                const lleg = i === 0 ? '<td class="hr na"></td>' : '<td class="hr"></td>';
+                const sal = i === last ? '<td class="hr na"></td>' : '<td class="hr"></td>';
+                return `<tr class="${r.depot ? 'depot' : ''}">
+                    <td class="n">${i === 0 ? '' : i}</td>
+                    <td class="dest">${esc(r.name)}</td>
+                    ${lleg}${sal}
+                    <td class="mot">${r.depot ? '' : esc(motivo)}</td>
+                    <td></td>
+                </tr>`;
+            }).join('');
+
+            const envCols = ['PALLETS', 'PECO', 'BURZACO', 'PLÁSTICO', 'CANASTO', 'DEPO', 'JAULA', 'CARRETA'];
+            const envHead = '<th class="sec">SECTOR</th>' + envCols.map((c) => `<th>${c}</th>`).join('') + '<th>FIRMA Y ACLARACIÓN</th>';
+            const envRow = (label) => `<tr><td class="sec">${label}</td>${envCols.map(() => '<td></td>').join('')}<td></td></tr>`;
+
+            return `<div class="hdr">
+                <div class="hdr-top">
+                    ${logo ? `<img src="${logo}" alt="R14">` : ''}
+                    <div class="hdr-title">
+                        <h1>HOJA DE RUTA</h1>
+                        <div class="sub">Reparto ${esc(reparto)} · ${esc(fecha)}</div>
+                    </div>
+                    <div class="km"><b>KM SALIDA DEL DEPÓSITO</b><div class="ln"></div></div>
+                    <div class="km"><b>KM LLEGADA AL DEPÓSITO</b><div class="ln"></div></div>
+                </div>
+                <div class="info">
+                    <div class="cell"><div class="k">Transportista</div><div class="v">${esc(transportista) || '&nbsp;'}</div></div>
+                    <div class="cell"><div class="k">Auxiliar</div><div class="v">${esc(aux) || '&nbsp;'}</div></div>
+                    <div class="cell"><div class="k">Vehículo</div><div class="v">${esc(vehiculo) || '&nbsp;'}</div></div>
+                    <div class="cell"><div class="k">Patente</div><div class="v">&nbsp;</div></div>
+                    <div class="cell"><div class="k">Reparto</div><div class="v">${esc(reparto)}</div></div>
+                    <div class="cell"><div class="k">Motivo / Unidad</div><div class="v">${esc(motivo) || '&nbsp;'}</div></div>
+                    <div class="cell"><div class="k">Temperatura</div><div class="v">${esc(temp) || '&nbsp;'}</div></div>
+                    <div class="cell"><div class="k">Refrigerado</div><div class="v">${refrig}</div></div>
+                </div>
+                <table class="stops">
+                    <thead><tr><th class="n">#</th><th>Destino</th><th class="hr">Hora llegada</th><th class="hr">Hora salida</th><th class="mot">Motivo</th><th>Observaciones</th></tr></thead>
+                    <tbody>${stopRows}</tbody>
+                </table>
+                <div class="sec-title">Observaciones</div>
+                <div class="obs"></div>
+                <div class="sec-title">Envases · Entrada y salida de cajones</div>
+                <table class="env">
+                    <thead><tr>${envHead}</tr></thead>
+                    <tbody>${envRow('ARMADO (salida)')}${envRow('CARGA (salida)')}${envRow('RECEPCIÓN (entrada)')}</tbody>
+                </table>
+                <div class="firmas">
+                    <div class="f">Firma y aclaración chofer</div>
+                    <div class="f">Firma y aclaración auxiliar</div>
+                </div>
+            </div>`;
         }
 
         async function deleteSingleTrip(id) {
