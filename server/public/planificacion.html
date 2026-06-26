@@ -12995,6 +12995,8 @@
         async function printHDR(ids) {
             try {
                 if (!Array.isArray(ids) || !ids.length) return;
+                let logo = '';
+                try { if (typeof budgetLoadLogo === 'function') logo = (await budgetLoadLogo()) || ''; } catch (_) {}
                 const pages = [];
                 for (const id of ids) {
                     const trip = (planningData || []).find((t) => String(t.id) === String(id));
@@ -13004,7 +13006,7 @@
                         const res = await fetch(`${API_URL}/trips/${id}/delivery-stops`, { headers: getActorHeaders() });
                         if (res.ok) { const d = await res.json(); stops = Array.isArray(d.stops) ? d.stops : []; }
                     } catch (e) { console.warn('HDR stops', id, e); }
-                    pages.push(hdrPageHtml(trip, stops));
+                    pages.push(hdrPageHtml(trip, stops, logo));
                 }
                 if (!pages.length) {
                     if (typeof addNotification === 'function') addNotification('error', 'HDR', 'No se encontraron viajes para imprimir.');
@@ -13068,20 +13070,7 @@
 </style></head><body>${body}</body></html>`;
         }
 
-        // Logo R14 (fondo negro + lettering blanco) embebido para que se vea en papel blanco.
-        const HDR_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 450 450" width="56" height="56" style="border-radius:6px;">
-  <rect width="450" height="450" fill="#000"/>
-  <circle cx="52" cy="310" r="12" fill="#fff"/>
-  <path d="M78 82 C78 82 78 42 120 42 L120 42 C155 42 165 65 165 95 C165 130 148 152 120 155 L185 310 L165 310 L102 160 L98 160 L98 310 L78 310 Z M98 60 L98 145 L115 145 C142 145 148 125 148 95 C148 65 140 60 118 60 Z" fill="#fff"/>
-  <path d="M215 42 L233 42 L233 310 L215 310 Z" fill="#fff"/>
-  <path d="M270 220 L270 42 L290 42 L290 220 Z" fill="#fff"/>
-  <path d="M258 220 L258 240 L385 240 L385 220 Z" fill="#fff"/>
-  <path d="M365 42 L385 42 L385 310 L365 310 Z" fill="#fff"/>
-  <circle cx="398" cy="310" r="12" fill="#fff"/>
-  <text x="225" y="390" text-anchor="middle" fill="#fff" font-family="Helvetica,Arial,sans-serif" font-size="36" font-weight="300" letter-spacing="4">Real de Catorce</text>
-</svg>`;
-
-        function hdrPageHtml(trip, stops) {
+        function hdrPageHtml(trip, stops, logo) {
             const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
             const reparto = trip.tripType || trip.reparto || '—';
             const transportista = trip.driver || '';
@@ -13114,7 +13103,7 @@
 
             return `<div class="hdr">
                 <div class="hdr-top">
-                    ${HDR_LOGO_SVG}
+                    ${logo ? `<img src="${logo}" alt="Real de Catorce" style="width:64px;height:64px;object-fit:contain;filter:brightness(0);-webkit-print-color-adjust:exact;print-color-adjust:exact;">` : ''}
                     <div class="hdr-title">
                         <h1>HOJA DE RUTA</h1>
                         <div class="sub">Reparto ${esc(reparto)} · ${esc(fecha)}</div>
