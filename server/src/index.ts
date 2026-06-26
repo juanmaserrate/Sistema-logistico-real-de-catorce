@@ -1075,42 +1075,6 @@ app.delete('/api/v1/clients/:id', async (req, res) => {
     }
 });
 
-// ESCRIBE (clave temporal): agrega "R14" (Ombú 1269) al final de TODAS las rutas
-// predefinidas y asegura el cliente R14. Idempotente. QUITAR al terminar.
-const R14TPL_KEY = 'r14-tpl-8c3f1a90d2';
-app.post('/api/v1/admin/append-r14-to-templates', async (req: any, res: any) => {
-    try {
-        if ((req.body || {}).key !== R14TPL_KEY) return res.status(403).json({ error: 'clave invalida' });
-        // 1) Asegurar cliente R14 (Ombú 1269) para que la parada resuelva
-        const clients = await prisma.client.findMany({ where: { tenantId: 'default-tenant' }, select: { id: true, name: true, address: true } });
-        let r14: any = clients.find((c) => normClientNameForMatch(c.name) === 'R14');
-        if (!r14) {
-            const created = await prisma.client.create({ data: ({ tenantId: 'default-tenant', name: 'R14', address: 'Ombú 1269, Burzaco', zone: 'BURZACO', tipo: 'Depósito' } as any) });
-            r14 = { id: created.id, name: created.name, address: created.address };
-        } else if (!r14.address || !r14.address.toLowerCase().includes('1269')) {
-            await prisma.client.update({ where: { id: r14.id }, data: { address: 'Ombú 1269, Burzaco' } });
-        }
-        // 2) Recorrer templates; asegurar que terminen en "R14"
-        const VARIANTS = new Set(['R14', 'R 14', 'REAL 14', 'REAL14', 'REAL DE CATORCE', 'REAL CATORCE']);
-        const templates = await (prisma as any).routeTemplate.findMany({ include: { stops: { orderBy: { sequence: 'asc' } } } });
-        let appended = 0, normalized = 0, alreadyOk = 0;
-        for (const t of templates) {
-            const stops = t.stops || [];
-            const last = stops.length ? stops[stops.length - 1] : null;
-            const lastNorm = last ? normClientNameForMatch(last.name) : '';
-            if (last && VARIANTS.has(lastNorm)) {
-                if (last.name !== 'R14') { await (prisma as any).routeStopTemplate.update({ where: { id: last.id }, data: { name: 'R14' } }); normalized++; }
-                else alreadyOk++;
-            } else {
-                const maxSeq = stops.reduce((m: number, s: any) => Math.max(m, Number(s.sequence) || 0), 0);
-                await (prisma as any).routeStopTemplate.create({ data: { routeTemplateId: t.id, name: 'R14', sequence: maxSeq + 1 } });
-                appended++;
-            }
-        }
-        res.json({ templatesTotal: templates.length, appended, normalized, alreadyOk, r14ClientId: r14.id });
-    } catch (e: any) { console.error('append-r14-to-templates:', e); res.status(500).json({ error: e?.message }); }
-});
-
 // --- SALARIES API ---
 app.get('/api/v1/salaries', async (req, res) => {
     try {
