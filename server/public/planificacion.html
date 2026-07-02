@@ -13328,6 +13328,10 @@
             try {
                 const res = await fetch(`${API_URL}/trips/${id}`, { method: 'DELETE', headers: getActorHeaders() });
                 if (!res.ok) throw new Error('Error al eliminar');
+                // Sacar del store mensual (el fetch solo mergea, nunca borra) y
+                // invalidar el cache para que un refetch no lo traiga de vuelta.
+                if (typeof __weeklyTripsById !== 'undefined') __weeklyTripsById.delete(id);
+                if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
                 planningData = planningData.filter(t => t.id !== id);
                 filterWeeklyData();
                 if (typeof addNotification === 'function') addNotification('success', 'Viaje eliminado', `Viaje #${id} fue eliminado correctamente.`);
@@ -13355,6 +13359,8 @@
             }
 
             const okIdSet = new Set(okIds);
+            if (typeof __weeklyTripsById !== 'undefined') okIds.forEach(id => __weeklyTripsById.delete(id));
+            if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
             planningData = planningData.filter(t => !okIdSet.has(t.id));
             clearTripSelection();
             filterWeeklyData();
@@ -18205,6 +18211,9 @@
                         }
                     }).catch(() => {});
                 }
+                // Forzar refetch: el mes esta fresco en cache (<60s) y sin invalidar
+                // loadWeeklyData serviria el estado viejo (viaje sin iniciar/finalizar).
+                if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
                 await loadWeeklyData();
 
                 // Al iniciar, auto-cargar la traza del viaje sobre el mapa de Torre de Control
@@ -18819,6 +18828,7 @@
                 const msg = id ? 'Viaje Actualizado' : `Viajes creados (${targetDates.length})`;
                 if (typeof addNotification === 'function') addNotification('success', msg, 'La operación fue exitosa.');
                 closeNewTripModal();
+                if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
                 loadWeeklyData();
             } catch (err) {
                 console.error(err);
