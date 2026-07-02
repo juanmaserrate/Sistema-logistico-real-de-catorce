@@ -12899,7 +12899,6 @@
         }
 
         async function loadWeeklyData() {
-            const mySeq = ++__weeklyLoadSeq;
             const token = localStorage.getItem('r14.authToken') || '';
             if (!token) {
                 planningData = [];
@@ -12919,12 +12918,19 @@
             });
 
             if (missing.length === 0) {
-                // Todo en cache fresco: render instantaneo
+                // Cache fresco, o los meses que faltan YA los esta trayendo otra
+                // llamada en vuelo: renderizamos desde el store pero SIN tomar turno
+                // de anti-carrera. Asi este render "de cortesia" no le roba el turno a
+                // la carga en vuelo que traera el estado actualizado. (Fix: al finalizar
+                // un viaje, el eco por socket cortaba por cache y pisaba el refetch,
+                // dejando el tag sin actualizar hasta apretar Actualizar.)
                 _weeklyRebuildPlanningData();
                 filterWeeklyData();
                 return;
             }
 
+            // Solo las cargas que REALMENTE hacen fetch compiten en el anti-carrera.
+            const mySeq = ++__weeklyLoadSeq;
             _weeklyShowLoading();
             missing.forEach(k => __weeklyMonthsLoading.add(k));
             const t0 = performance.now();
