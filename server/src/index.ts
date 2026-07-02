@@ -4589,6 +4589,10 @@ app.patch('/api/v1/trips/:tripId/recorrido-operador', async (req, res) => {
                 where: { id: tripId },
                 data: { status: 'OUT_OF_PLANT', startedAt: now }
             });
+            // Propagar en tiempo real (igual que el arranque del chofer): sin esto,
+            // el resto de la web y la app del chofer no se enteran hasta refrescar.
+            io.emit('route:updated', { routeId: route.id, tripId, type: 'operator_started' });
+            io.emit('trip:updated', { tripId });
             return res.json({ route: updated });
         }
 
@@ -4633,6 +4637,8 @@ app.patch('/api/v1/trips/:tripId/recorrido-operador', async (req, res) => {
                 where: { id: tripId },
                 data: { status: 'COMPLETED', completedAt: now }
             });
+            io.emit('route:updated', { routeId: route.id, tripId, type: 'operator_finished' });
+            io.emit('trip:updated', { tripId });
             return res.json({ route: updated });
         }
         const updated = await prisma.route.update({
@@ -4643,6 +4649,8 @@ app.patch('/api/v1/trips/:tripId/recorrido-operador', async (req, res) => {
             where: { id: tripId },
             data: { status: 'COMPLETED', completedAt: now }
         });
+        io.emit('route:updated', { routeId: route.id, tripId, type: 'operator_finished' });
+        io.emit('trip:updated', { tripId });
         return res.json({ route: updated });
     } catch (e: any) {
         console.error('PATCH trips recorrido-operador:', e);
