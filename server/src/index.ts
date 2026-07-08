@@ -2821,12 +2821,42 @@ app.patch('/api/v1/routes/:id/recorrido', async (req, res) => {
         if (action === 'start') {
             // Si la ruta ya está iniciada o cerrada, devolvemos OK silencioso (no rompemos al chofer)
             if (route.actualStartTime || route.actualEndTime) {
+                // Fix retroactivo: puede que la ruta esté iniciada pero el Trip haya
+                // quedado en PENDING (bug de sincronización previo a este commit). Si
+                // detectamos esa inconsistencia, actualizamos el Trip ahora.
+                if (route.tripId) {
+                    try {
+                        const linkedTrip = await prisma.trip.findUnique({ where: { id: route.tripId }, select: { status: true, startedAt: true } });
+                        if (linkedTrip && (linkedTrip.status === 'PENDING' || !linkedTrip.startedAt)) {
+                            await prisma.trip.update({
+                                where: { id: route.tripId },
+                                data: {
+                                    status: 'OUT_OF_PLANT',
+                                    startedAt: linkedTrip.startedAt || route.actualStartTime || now
+                                }
+                            });
+                            io.emit('trip:updated', { tripId: route.tripId });
+                        }
+                    } catch (e) { console.warn('[routes/recorrido start] sync trip skip:', e); }
+                }
                 return res.json(route);
             }
             const updated = await prisma.route.update({
                 where: { id: routeId },
                 data: { actualStartTime: now, status: 'IN_PROGRESS' }
             });
+            // BUG FIX: cuando el chofer ficha entrada desde la app, tambien hay que
+            // marcar el Trip como iniciado. Antes solo se actualizaba la Route, y el
+            // operador veia el Trip en PENDING en la web — al darle "Iniciar" el server
+            // rechazaba con "El recorrido ya fue iniciado" (endpoint /trips/:id/recorrido-operador).
+            if (route.tripId) {
+                try {
+                    await prisma.trip.update({
+                        where: { id: route.tripId },
+                        data: { status: 'OUT_OF_PLANT', startedAt: now }
+                    });
+                } catch (e) { console.warn('[routes/recorrido start] trip update skip:', e); }
+            }
             // Avisar a Torre de Control que el chofer arrancó
             try {
                 io.emit('route:updated', { routeId, type: 'driver_started' });
