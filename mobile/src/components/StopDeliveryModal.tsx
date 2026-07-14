@@ -97,40 +97,43 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
     if (!r.canceled && r.assets[0]?.uri) setPhotoUri(r.assets[0].uri);
   }, []);
 
-  /** Intenta subir la foto. Si falla por red, encola la foto local para que se
-   *  reintente cuando vuelva la señal (flushPhotoQueue) y devuelve null (no rompe
-   *  el flujo de la entrega). */
-  const tryUploadPhoto = useCallback(async (stopId: number): Promise<{ url: string | null; failed: boolean }> => {
-    if (!photoUri) return { url: null, failed: false };
-    try {
-      const compressed = await compressPhoto(photoUri, liteMode);
-      const url = await uploadProofPhoto(compressed);
-      return { url, failed: false };
-    } catch {
-      // Sin red: encolamos la foto LOCAL para reintentar en background
-      try { await enqueueOfflinePhoto(stopId, photoUri); } catch { /* */ }
-      return { url: null, failed: true };
-    }
-  }, [photoUri, liteMode]);
+  /** La foto viaja DESPUÉS de la marca, en segundo plano: sube, y patchea el
+   *  stop con la URL. Si la subida falla (sin red / timeout), la foto local va
+   *  a la cola y flushPhotoQueue la sube sola al volver la señal. Si el patch
+   *  de la URL falla por red, patchStop ya lo encola solo. */
+  const uploadPhotoInBackground = useCallback((stopId: number, uri: string, lite: boolean) => {
+    void (async () => {
+      try {
+        const compressed = await compressPhoto(uri, lite);
+        const url = await uploadProofPhoto(compressed);
+        await patchStop(stopId, { proofPhotoUrl: url });
+      } catch {
+        try { await enqueueOfflinePhoto(stopId, uri); } catch { /* */ }
+      }
+    })();
+  }, []);
 
   const submitDelivered = useCallback(async () => {
     if (!stop) return;
     setSaving(true);
     try {
       assertApiConfigured();
-      const photo = await tryUploadPhoto(stop.id);
-      await patchStop(stop.id, {
+      // 1) PRIMERO la marca de entrega: rápida (≤6s) y, sin señal, va a la
+      //    cola offline. Antes se subía la foto ANTES de marcar (hasta 25s de
+      //    spinner con señal débil) y la entrega quedaba trabada detrás.
+      const result = await patchStop(stop.id, {
         status: 'COMPLETED',
         actualDeparture: new Date().toISOString(),
         observations: observations.trim() || undefined,
-        proofPhotoUrl: photo.url ?? undefined,
         // M7 fix: enviar false explícito en lugar de null para "entrega con problemas"
         deliveryWithoutIssues: deliveryOk,
       });
-      if (photo.failed) {
+      // 2) La foto sigue sola en segundo plano; no bloquea al chofer.
+      if (photoUri) uploadPhotoInBackground(stop.id, photoUri, liteMode);
+      if ((result as { queued?: boolean })?.queued) {
         Alert.alert(
-          'Sin red',
-          'La entrega se guardó y la foto quedó pendiente — se va a subir sola cuando recuperes señal.'
+          'Sin señal',
+          'La entrega quedó guardada en el celular y se enviará sola al recuperar señal.'
         );
       }
       onSaved();
@@ -140,7 +143,7 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
     } finally {
       setSaving(false);
     }
-  }, [deliveryOk, observations, onClose, onSaved, stop, tryUploadPhoto]);
+  }, [deliveryOk, observations, onClose, onSaved, stop, photoUri, liteMode, uploadPhotoInBackground]);
 
   const submitUndeliverable = useCallback(async () => {
     if (!stop) return;
@@ -151,19 +154,18 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
     setSaving(true);
     try {
       assertApiConfigured();
-      const photo = await tryUploadPhoto(stop.id);
-      await patchStop(stop.id, {
+      const result = await patchStop(stop.id, {
         status: 'UNDELIVERABLE',
         actualDeparture: new Date().toISOString(),
         reasonCode: undeliverableReason,
         observations: observations.trim() || undefined,
-        proofPhotoUrl: photo.url ?? undefined,
         deliveryWithoutIssues: null,
       });
-      if (photo.failed) {
+      if (photoUri) uploadPhotoInBackground(stop.id, photoUri, liteMode);
+      if ((result as { queued?: boolean })?.queued) {
         Alert.alert(
-          'Sin red',
-          'El estado se guardó y la foto quedó pendiente — se va a subir sola cuando recuperes señal.'
+          'Sin señal',
+          'El estado quedó guardado en el celular y se enviará solo al recuperar señal.'
         );
       }
       onSaved();
@@ -173,7 +175,7 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
     } finally {
       setSaving(false);
     }
-  }, [observations, onClose, onSaved, stop, undeliverableReason, tryUploadPhoto]);
+  }, [observations, onClose, onSaved, stop, undeliverableReason, photoUri, liteMode, uploadPhotoInBackground]);
 
   if (!stop) return null;
   const title = stop.client?.name || `Parada ${stop.sequence}`;

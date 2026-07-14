@@ -55,6 +55,15 @@ type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Track'>;
 };
 
+/** Un viaje esta concluido si la ruta tiene fin real o el trip esta en estado
+ *  final. Los concluidos DE HOY se siguen mostrando (solo consulta): antes se
+ *  le "desaparecia la ruta" al chofer apenas el viaje se finalizaba. */
+function isConcluded(r: Route): boolean {
+  if (r.actualEndTime) return true;
+  const ts = (r.trip?.status || '').toUpperCase();
+  return ts === 'COMPLETED' || ts === 'RETURNED';
+}
+
 export default function TrackScreen({ session, onLogout, navigation }: Props) {
   const insets = useSafeAreaInsets();
   const [routes, setRoutes] = useState<Route[]>([]);
@@ -85,6 +94,8 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     () => (selId != null ? routes.find((r) => r.id === selId) ?? null : null),
     [routes, selId]
   );
+  /** Viaje seleccionado ya concluido: se ve todo, pero sin botones de acción. */
+  const selConcluded = selected ? isConcluded(selected) : false;
 
   /** Primera parada PENDING con cliente (Maps, navegación embebida, registro). */
   const firstPendingStop = useMemo(() => {
@@ -226,21 +237,15 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     }
     try {
       const fullList = await fetchRoutesToday(session.id);
-      // BUG FIX: filtrar viajes ya finalizados.
-      // Cuando el operador da por finalizado el viaje en la web (Route.actualEndTime != null
-      // o Trip.status === 'COMPLETED'), la app NO debe seguir mostrando esas paradas.
-      // El historial completo (incluyendo viajes finalizados) sigue disponible en HistoryScreen.
-      const list = fullList.filter((r) => {
-        if (r.actualEndTime) return false;
-        const tripStatus = (r.trip?.status || '').toUpperCase();
-        if (tripStatus === 'COMPLETED' || tripStatus === 'RETURNED') return false;
-        return true;
-      });
+      // Los viajes concluidos de HOY se muestran al final como "Viaje concluido"
+      // (solo consulta). Los dias anteriores no llegan aca (filtro de fecha).
+      const list = [...fullList].sort((a, b) => Number(isConcluded(a)) - Number(isConcluded(b)));
       setRoutes(list);
       setSelId((prev) => {
         if (list.length === 0) return null;
         if (prev != null && list.some((r) => r.id === prev)) return prev;
-        return list[0].id;
+        const firstActive = list.find((r) => !isConcluded(r));
+        return (firstActive ?? list[0]).id;
       });
       // Exito: limpiar cualquier error previo (corta el auto-retry y saca el
       // cartel rojo). Incluso en modo silent, porque el auto-recovery llama
@@ -324,8 +329,18 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     // eso no cambia.
     let cancelled = false;
     let consecutiveFails = 0;
+    let inFlight = false; // evita ticks solapados (ping 10s > intervalo 5s)
     const FAILS_FOR_OFFLINE = 2;
     const tick = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        await tickBody();
+      } finally {
+        inFlight = false;
+      }
+    };
+    const tickBody = async () => {
       const pending = await getPendingStopCount();
       if (cancelled) return;
       setPendingOffline(pending);
@@ -379,10 +394,15 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       // eslint-disable-next-line @typescript-eslint/no-var-requires
       const { io } = require('socket.io-client');
       const base = API_BASE.replace(/\/api\/v1\/?$/, '');
+      // Reconexion INFINITA con backoff (antes: 5 intentos y el socket moria
+      // para siempre — tras un corte de ~10s el chofer dejaba de recibir
+      // cambios de ruta hasta reabrir la app).
       socket = io(base, {
         transports: ['websocket'],
-        reconnectionAttempts: 5,
+        reconnection: true,
+        reconnectionAttempts: Infinity,
         reconnectionDelay: 2000,
+        reconnectionDelayMax: 30000,
       });
       socketRef.current = socket;
       socket.on('connect', () => {
@@ -728,7 +748,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
               {routes.map((r) => {
                 const bu = r.trip?.businessUnit || r.trip?.reparto || `Ruta #${r.id}`;
                 const isOn = selId === r.id;
-                const concluded = r.trip?.status === 'COMPLETED';
+                const concluded = isConcluded(r);
                 return (
                   <Pressable
                     key={r.id}
@@ -748,12 +768,19 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
               })}
             </View>
           )}
-          {selected && selected.trip?.status !== 'COMPLETED' && routeStopsSorted.length > 0 ? (
+          {selected && routeStopsSorted.length > 0 ? (
             <View style={styles.stopsSection}>
               <View style={styles.stopsSectionHeader}>
                 <Text style={styles.stopsSectionTitle}>Paradas del recorrido</Text>
               </View>
-              {hasPendingStops ? (
+              {selConcluded ? (
+                <View style={styles.concludedBanner}>
+                  <Text style={styles.concludedBannerTxt}>
+                    ✓ Viaje concluido — solo consulta. Tus entregas del día quedan a la vista hasta mañana.
+                  </Text>
+                </View>
+              ) : null}
+              {hasPendingStops && !selConcluded ? (
                 <Pressable style={styles.reorderBtn} onPress={() => setReorderModalOpen(true)}>
                   <Text style={styles.reorderBtnTxt}>↕ Reordenar paradas</Text>
                 </Pressable>
@@ -860,12 +887,12 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                         ) : null}
                       </View>
                     ) : null}
-                    {st.status === 'PENDING' ? (
+                    {st.status === 'PENDING' && !selConcluded ? (
                       <Pressable style={styles.tlBtnArr} onPress={() => onMarkArrival(st)}>
                         <Text style={styles.tlBtnArrTxt}>Registrar llegada</Text>
                       </Pressable>
                     ) : null}
-                    {isActive ? (
+                    {isActive && !selConcluded ? (
                       <Pressable style={styles.tlBtnOut} onPress={() => setDeliveryModalStop(st)}>
                         <Text style={styles.tlBtnOutTxt}>Finalizar entrega</Text>
                         <Text style={styles.tlBtnOutSub}>Entregado · No entregado · Obs · Foto</Text>
@@ -938,12 +965,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           (async () => {
             try {
               const fullFresh = await fetchRoutesToday(session.id);
-              const freshList = fullFresh.filter((r) => {
-                if (r.actualEndTime) return false;
-                const ts = (r.trip?.status || '').toUpperCase();
-                if (ts === 'COMPLETED' || ts === 'RETURNED') return false;
-                return true;
-              });
+              const freshList = [...fullFresh].sort((a, b) => Number(isConcluded(a)) - Number(isConcluded(b)));
               setRoutes(freshList);
             } catch {
               // Si la red falla, mantenemos el optimistic update
@@ -1054,6 +1076,8 @@ const styles = StyleSheet.create({
   reorderBtnTxt: { fontSize: font.lg - 1, fontWeight: font.black, color: colors.textInverse, letterSpacing: 0.3 },
   reorderBanner: { backgroundColor: colors.infoBg, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.sm, borderWidth: 0 },
   reorderBannerTxt: { fontSize: font.xs, color: colors.primary, fontWeight: font.bold, lineHeight: 14 },
+  concludedBanner: { backgroundColor: '#ecfdf5', borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.sm },
+  concludedBannerTxt: { fontSize: font.xs, color: '#006d43', fontWeight: font.bold, lineHeight: 15 },
 
   /* ── Timeline ──────────────────────────────────── */
   tlRow: {

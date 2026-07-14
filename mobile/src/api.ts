@@ -118,42 +118,56 @@ function localYmd(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
+/** Superpone sobre las rutas las marcas que quedaron en la cola offline.
+ *  Sin esto, un chofer sin señal marcaba "llegué" o "entregado", la marca iba
+ *  a la cola, pero la pantalla seguía mostrando la parada como pendiente
+ *  (el refresh traía el estado viejo del server o del cache) — no podía ni
+ *  abrir "Finalizar entrega". Ahora lo que él marcó se ve SIEMPRE, y cuando
+ *  la cola se envía, el estado real del server coincide y el overlay
+ *  desaparece solo (la cola queda vacía). */
+async function overlayQueuedStops(routes: Route[]): Promise<Route[]> {
+  try {
+    const q = await readStopQueue();
+    if (!q.length) return routes;
+    const byStop = new Map<number, Record<string, unknown>>();
+    for (const a of q) {
+      byStop.set(a.stopId, { ...(byStop.get(a.stopId) || {}), ...a.body });
+    }
+    return routes.map((r: any) => ({
+      ...r,
+      stops: (r.stops || []).map((s: any) => (byStop.has(s.id) ? { ...s, ...byStop.get(s.id) } : s)),
+    }));
+  } catch {
+    return routes;
+  }
+}
+
 export async function fetchRoutesToday(driverId: string): Promise<Route[]> {
   const today = localYmd(new Date());
   const q = new URLSearchParams({
     driverId,
     date: today,
+    // Los viajes concluidos DE HOY tambien se piden: el chofer conserva la
+    // vista de su dia (solo consulta) aunque el operador cierre el viaje.
+    // Antes se le "desaparecia la ruta" apenas finalizaba. Mañana el filtro
+    // de fecha los saca solo.
+    excludeFinished: 'false',
     _ts: String(Date.now()),
   });
   try {
-    // Más paciencia para el arranque con red lenta (7am, hora pico): timeout
-    // 15s y hasta 3 reintentos con backoff. Si igual falla, el catch usa el
-    // cache de hoy y la pantalla muestra el auto-retry de TrackScreen.
+    // Timeout 12s + 1 reintento: si la red esta mal, caemos RAPIDO al cache
+    // de hoy (el chofer ve su lista al toque) y el auto-retry de TrackScreen
+    // sigue intentando en background hasta que el server responda.
     const res = await fetchWithRetry(
       apiUrl(`/api/v1/routes?${q}`),
-      { headers: { 'Cache-Control': 'no-cache', ...(await authHeaders()) }, timeout: 15000 },
-      3
+      { headers: { 'Cache-Control': 'no-cache', ...(await authHeaders()) }, timeout: 12000 },
+      1
     );
     if (!res.ok) throw new Error('No se pudieron cargar las rutas');
     const routes = (await res.json()) as Route[];
 
-    // BUG FIX: antes este bloque preferia el cache si el server respondia [] (creyendo
-    // que era transitorio). Pero con el filtro nuevo del backend (excluye viajes
-    // finalizados), [] es la respuesta CORRECTA cuando el chofer no tiene viajes activos.
-    // Ahora SIEMPRE confiamos en la respuesta exitosa del server: la app refleja el
-    // estado real y limpia el cache si quedó stale.
-
-    // Filtrar tambien aca por si el server (version vieja) no filtra: redundancia segura.
-    // Triple filtro:
-    //  1. Solo del DIA ACTUAL del celular (anti-zona-horaria: si el server manda
-    //     viajes de mañana por desfase de TZ, los filtramos).
-    //  2. Sin actualEndTime (viaje no cerrado).
-    //  3. Trip no esta en estado final.
+    // Filtro anti-zona-horaria: solo viajes cuya fecha sea HOY en el celular.
     const filtered = routes.filter((r: any) => {
-      if (r?.actualEndTime) return false;
-      const ts = String(r?.trip?.status || '').toUpperCase();
-      if (ts === 'COMPLETED' || ts === 'RETURNED') return false;
-      // Verificar que la fecha del viaje sea HOY en la zona local del celu
       if (r?.date) {
         try {
           const routeYmd = localYmd(new Date(r.date));
@@ -163,31 +177,23 @@ export async function fetchRoutesToday(driverId: string): Promise<Route[]> {
       return true;
     });
 
-    // Cachear el resultado FILTRADO para futuros offline fallbacks
+    // Cachear el resultado para futuros offline fallbacks (SIN overlay: la
+    // cola offline se aplica al leer, no al guardar).
     AsyncStorage.setItem(
       ROUTES_CACHE_KEY,
       JSON.stringify({ driverId, date: today, routes: filtered, ts: Date.now() })
     ).catch(() => {});
-    return filtered;
+    return overlayQueuedStops(filtered);
   } catch (e) {
-    // Offline fallback: return cached routes if they belong to the same driver.
-    // El cache YA esta filtrado (lo escribimos asi arriba), pero re-filtramos por seguridad.
-    // FIX: validar tambien que el cache sea de HOY. Antes, si el chofer abria la app
-    // al dia siguiente SIN senial, veia el viaje de AYER como si estuviera activo
-    // (el operador ya lo habia cerrado y cargado el viaje nuevo). Ahora sin senial
-    // muestra vacio hasta reconectar, que es el estado real.
+    // Offline fallback: cache del MISMO chofer y del MISMO dia. Si el chofer
+    // abre la app al dia siguiente sin señal, no ve el viaje de ayer como
+    // activo: muestra vacio hasta reconectar, que es el estado real.
     try {
       const raw = await AsyncStorage.getItem(ROUTES_CACHE_KEY);
       if (raw) {
         const cached = JSON.parse(raw);
         if (cached?.driverId === driverId && cached?.date === today && Array.isArray(cached.routes)) {
-          const cachedRoutes = cached.routes as Route[];
-          return cachedRoutes.filter((r: any) => {
-            if (r?.actualEndTime) return false;
-            const ts = String(r?.trip?.status || '').toUpperCase();
-            if (ts === 'COMPLETED' || ts === 'RETURNED') return false;
-            return true;
-          });
+          return overlayQueuedStops(cached.routes as Route[]);
         }
       }
     } catch {}
@@ -529,7 +535,10 @@ export async function deactivateDevice(deviceId: string): Promise<void> {
 // ── Historial de rutas ────────────────────────────────────────────────────────
 
 export async function fetchRouteHistory(driverId: string, days = 30): Promise<Route[]> {
-  const q = new URLSearchParams({ driverId, days: String(days), _ts: String(Date.now()) });
+  // excludeFinished=false es OBLIGATORIO aca: el server excluye viajes
+  // terminados por defecto, y el historial es justamente eso — sin este
+  // parametro el Historial del chofer venia practicamente vacio.
+  const q = new URLSearchParams({ driverId, days: String(days), excludeFinished: 'false', _ts: String(Date.now()) });
   const res = await fetchWithRetry(
     apiUrl(`/api/v1/routes?${q}`),
     { headers: { 'Cache-Control': 'no-cache', ...(await authHeaders()) } }
