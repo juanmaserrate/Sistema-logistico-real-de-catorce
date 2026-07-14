@@ -64,6 +64,16 @@ function isConcluded(r: Route): boolean {
   return ts === 'COMPLETED' || ts === 'RETURNED';
 }
 
+/** Que rutas ve el chofer:
+ *  - Si tiene rutas ACTIVAS → solo las activas (al asignarle un viaje nuevo,
+ *    el concluido se oculta solo y la app pasa al nuevo).
+ *  - Sin nada activo → las concluidas de HOY como resumen del dia (solo
+ *    consulta). A medianoche desaparecen solas por el filtro de fecha. */
+function visibleRoutes(all: Route[]): Route[] {
+  const actives = all.filter((r) => !isConcluded(r));
+  return actives.length > 0 ? actives : all;
+}
+
 export default function TrackScreen({ session, onLogout, navigation }: Props) {
   const insets = useSafeAreaInsets();
   const [routes, setRoutes] = useState<Route[]>([]);
@@ -237,15 +247,12 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     }
     try {
       const fullList = await fetchRoutesToday(session.id);
-      // Los viajes concluidos de HOY se muestran al final como "Viaje concluido"
-      // (solo consulta). Los dias anteriores no llegan aca (filtro de fecha).
-      const list = [...fullList].sort((a, b) => Number(isConcluded(a)) - Number(isConcluded(b)));
+      const list = visibleRoutes(fullList);
       setRoutes(list);
       setSelId((prev) => {
         if (list.length === 0) return null;
         if (prev != null && list.some((r) => r.id === prev)) return prev;
-        const firstActive = list.find((r) => !isConcluded(r));
-        return (firstActive ?? list[0]).id;
+        return list[0].id;
       });
       // Exito: limpiar cualquier error previo (corta el auto-retry y saca el
       // cartel rojo). Incluso en modo silent, porque el auto-recovery llama
@@ -965,8 +972,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           (async () => {
             try {
               const fullFresh = await fetchRoutesToday(session.id);
-              const freshList = [...fullFresh].sort((a, b) => Number(isConcluded(a)) - Number(isConcluded(b)));
-              setRoutes(freshList);
+              setRoutes(visibleRoutes(fullFresh));
             } catch {
               // Si la red falla, mantenemos el optimistic update
               loadRoutes({ silent: true }).catch(() => {});
