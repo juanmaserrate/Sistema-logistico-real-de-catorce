@@ -12,25 +12,20 @@ import {
   AppState,
   type AppStateStatus,
   RefreshControl,
-  Animated,
-  Dimensions,
 } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { StatusBar } from 'expo-status-bar';
 
-// NavProviderGate ya no usa Navigation SDK
-// Import react-native-maps only on native platforms
-const MapView = Platform.OS === 'web' ? null : require('react-native-maps').default;
-const { Marker, Polyline, PROVIDER_GOOGLE } = Platform.OS === 'web' ? {} : require('react-native-maps');
+// La pestaña "Mapa" fue dada de baja (jul-2026, pedido del usuario): los
+// choferes usan solo el listado de paradas; el mapa con trazado no se usaba
+// y consumía geometría del servidor. react-native-maps ya no se importa acá.
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import type { SessionUser, Route, RouteGeometry, Stop } from '../types';
+import type { SessionUser, Route, Stop } from '../types';
 import {
   fetchRoutesToday,
-  fetchRouteGeometry,
-  fetchNavigationToNext,
   postTrackingLocation,
   patchStop,
   patchRouteRecorrido,
@@ -41,7 +36,6 @@ import {
   getPendingStopCount,
   getPendingLocationCount,
   pingServer,
-  type NavigationToNext,
 } from '../api';
 import StopDeliveryModal from '../components/StopDeliveryModal';
 import IncidentModal from '../components/IncidentModal';
@@ -61,38 +55,14 @@ type Props = {
   navigation: NativeStackNavigationProp<RootStackParamList, 'Track'>;
 };
 
-const BA = { latitude: -34.65, longitude: -58.45, latitudeDelta: 0.35, longitudeDelta: 0.35 };
-
-const { width: SCREEN_W } = Dimensions.get('window');
-
-type ActiveTab = 'recorrido' | 'mapa';
-
 export default function TrackScreen({ session, onLogout, navigation }: Props) {
   const insets = useSafeAreaInsets();
-  const mapRef = useRef<InstanceType<typeof MapView>>(null);
-  const [activeTab, setActiveTab] = useState<ActiveTab>('recorrido');
-  const slideAnim = useRef(new Animated.Value(0)).current;
-
-  const switchTab = useCallback((tab: ActiveTab) => {
-    setActiveTab(tab);
-    Animated.spring(slideAnim, {
-      toValue: tab === 'recorrido' ? 0 : 1,
-      useNativeDriver: true,
-      tension: 68,
-      friction: 12,
-    }).start();
-  }, [slideAnim]);
   const [routes, setRoutes] = useState<Route[]>([]);
   const [selId, setSelId] = useState<number | null>(null);
-  const [geom, setGeom] = useState<RouteGeometry | null>(null);
   const [loading, setLoading] = useState(true);
-  const [geomLoading, setGeomLoading] = useState(false);
   const [err, setErr] = useState('');
   const [tracking, setTracking] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
-  const [nav, setNav] = useState<NavigationToNext | null>(null);
-  const [navLoading, setNavLoading] = useState(false);
-  const [navErr, setNavErr] = useState('');
   const [deliveryModalStop, setDeliveryModalStop] = useState<Stop | null>(null);
   // Estado de la señal: 'ok' verde, 'queued' amarillo (hay cola pendiente), 'error' rojo.
   const [signalState, setSignalState] = useState<'ok' | 'queued' | 'error'>('ok');
@@ -247,27 +217,6 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       return '—';
     }
   };
-
-  const loadNavInstructions = useCallback(async () => {
-    if (selId == null) return;
-    setNavLoading(true);
-    setNavErr('');
-    try {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setNavErr('Activá la ubicación para ver los pasos hasta la próxima parada.');
-        return;
-      }
-      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
-      const data = await fetchNavigationToNext(selId, pos.coords.latitude, pos.coords.longitude);
-      setNav(data);
-    } catch (e) {
-      setNav(null);
-      setNavErr(e instanceof Error ? e.message : 'Error al cargar indicaciones');
-    } finally {
-      setNavLoading(false);
-    }
-  }, [selId]);
 
   const loadRoutes = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent === true;
@@ -500,66 +449,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     }, [loadRoutes])
   );
 
-  /** Si cambian paradas u orden (mismo routeId), volver a pedir geometría al mapa. */
-  const geometryStopsKey = useMemo(() => {
-    const r = routes.find((x) => x.id === selId);
-    if (!r?.stops?.length) return `none-${selId ?? ''}`;
-    return r.stops.map((s) => `${s.id}:${s.sequence}:${s.client?.id ?? ''}`).join('|');
-  }, [routes, selId]);
-
   useEffect(() => {
-    if (selId == null) {
-      setGeom(null);
-      return;
-    }
-    let cancel = false;
-    setGeomLoading(true);
-    (async () => {
-      try {
-        const g = await fetchRouteGeometry(selId);
-        if (!cancel) setGeom(g);
-      } catch {
-        if (!cancel) setGeom(null);
-      } finally {
-        if (!cancel) setGeomLoading(false);
-      }
-    })();
-    return () => {
-      cancel = true;
-    };
-  }, [selId, geometryStopsKey]);
-
-  /** Encuadrar el mapa: usa geometría por calles si está, si no usa los stops directamente. */
-  const fitMapToRoute = useCallback(() => {
-    if (!mapRef.current) return;
-    const coords: Array<{ latitude: number; longitude: number }> = [];
-    if (geom?.points?.length) {
-      for (const p of geom.points) coords.push({ latitude: p.lat, longitude: p.lng });
-      for (const s of geom.stops || []) coords.push({ latitude: s.lat, longitude: s.lng });
-    } else if (selected?.stops?.length) {
-      for (const s of selected.stops) {
-        if (s.client?.latitude != null && s.client?.longitude != null) {
-          coords.push({ latitude: s.client.latitude, longitude: s.client.longitude });
-        }
-      }
-    }
-    if (coords.length < 2) return;
-    setTimeout(() => {
-      mapRef.current?.fitToCoordinates(coords, {
-        edgePadding: { top: 100, right: 40, bottom: 200, left: 40 },
-        animated: true,
-      });
-    }, 400);
-  }, [geom, selected]);
-
-  /** Re-encuadrar cuando llega geom, cambia ruta, o el usuario va a la tab mapa. */
-  useEffect(() => {
-    fitMapToRoute();
-  }, [fitMapToRoute, activeTab]);
-
-  useEffect(() => {
-    setNav(null);
-    setNavErr('');
     setStopSearch('');
   }, [selId]);
 
@@ -703,48 +593,20 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     }
   };
 
-  const lineCoords = useMemo(
-    () =>
-      (geom?.points || []).map((p) => ({
-        latitude: p.lat,
-        longitude: p.lng,
-      })),
-    [geom]
-  );
-
-  const recorridoTranslateX = slideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [0, -SCREEN_W],
-  });
-  const mapaTranslateX = slideAnim.interpolate({
-    inputRange: [0, 1],
-    outputRange: [SCREEN_W, 0],
-  });
-
   return (
     <View style={styles.screen}>
       <StatusBar style="light" />
 
-      {/* Tab bar */}
+      {/* Barra superior (la pestaña "Mapa" fue dada de baja) */}
       <View style={[styles.tabBar, { paddingTop: Math.max(insets.top, 12) + 4 }]}>
-        <Pressable
-          style={[styles.tab, activeTab === 'recorrido' && styles.tabActive]}
-          onPress={() => switchTab('recorrido')}
-        >
-          <Text style={[styles.tabTxt, activeTab === 'recorrido' && styles.tabTxtActive]}>Mi Recorrido</Text>
-        </Pressable>
-        <Pressable
-          style={[styles.tab, activeTab === 'mapa' && styles.tabActive]}
-          onPress={() => switchTab('mapa')}
-        >
-          <Text style={[styles.tabTxt, activeTab === 'mapa' && styles.tabTxtActive]}>Mapa</Text>
-        </Pressable>
+        <View style={[styles.tab, styles.tabActive]}>
+          <Text style={[styles.tabTxt, styles.tabTxtActive]}>Mi Recorrido</Text>
+        </View>
       </View>
 
-      {/* Contenedor animado de ambas vistas */}
       <View style={styles.tabContent}>
         {/* Vista: Mi Recorrido (pantalla completa) */}
-        <Animated.View style={[styles.tabPage, { transform: [{ translateX: recorridoTranslateX }] }]}>
+        <View style={styles.tabPage}>
           <ScrollView
             refreshControl={
               <RefreshControl
@@ -886,13 +748,6 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
               })}
             </View>
           )}
-          {geomLoading ? (
-            <Text style={styles.mini}>Cargando trazado por calles…</Text>
-          ) : geom == null && selected && selected.stops.length >= 2 ? (
-            <Text style={styles.mini}>
-              Ruta no disponible en el mapa.
-            </Text>
-          ) : null}
           {selected && selected.trip?.status !== 'COMPLETED' && routeStopsSorted.length > 0 ? (
             <View style={styles.stopsSection}>
               <View style={styles.stopsSectionHeader}>
@@ -1051,70 +906,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
             </View>
           ) : null}
         </ScrollView>
-        </Animated.View>
-
-        {/* Vista: Mapa (pantalla completa) */}
-        <Animated.View style={[styles.tabPage, styles.tabPageAbsolute, { transform: [{ translateX: mapaTranslateX }] }]}>
-          <MapView
-            ref={mapRef}
-            style={StyleSheet.absoluteFill}
-            provider={Platform.OS === 'android' ? PROVIDER_GOOGLE : undefined}
-            initialRegion={BA}
-            showsUserLocation
-            showsMyLocationButton
-          >
-            {/* Polyline Google Directions (si hay geometría por calles) */}
-            {lineCoords.length >= 2 && (
-              <Polyline coordinates={lineCoords} strokeColor={colors.primary} strokeWidth={6} />
-            )}
-            {/* Polyline directa entre paradas — fallback siempre visible si hay >= 2 stops con coordenadas */}
-            {!lineCoords.length && selected?.stops && (() => {
-              const sorted = [...selected.stops]
-                .sort((a, b) => a.sequence - b.sequence)
-                .filter(s => s.client?.latitude != null && s.client?.longitude != null);
-              return sorted.length >= 2 ? (
-                <Polyline
-                  coordinates={sorted.map(s => ({ latitude: s.client.latitude!, longitude: s.client.longitude! }))}
-                  strokeColor={colors.primary}
-                  strokeWidth={5}
-                  lineDashPattern={[10, 6]}
-                />
-              ) : null;
-            })()}
-            {/* Marcadores numerados desde geometría */}
-            {(geom?.stops || []).map((s) => (
-              <Marker
-                key={`g-${s.stopId ?? s.sequence}`}
-                coordinate={{ latitude: s.lat, longitude: s.lng }}
-                title={`${s.sequence}. ${s.name ?? `Parada ${s.sequence}`}`}
-              >
-                <View style={{ backgroundColor: s.sequence === 1 ? colors.success : colors.primary, width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}>
-                  <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>{s.sequence}</Text>
-                </View>
-              </Marker>
-            ))}
-            {/* Marcadores numerados fallback (sin geometría) */}
-            {!geom &&
-              selected?.stops?.map((st) => {
-                const la = st.client?.latitude;
-                const lo = st.client?.longitude;
-                if (la == null || lo == null) return null;
-                // Null-safe: si el cliente está roto/borrado, igual mostramos el pin con la secuencia
-                const clientName = st.client?.name ?? `Parada ${st.sequence}`;
-                return (
-                  <Marker
-                    key={st.id}
-                    coordinate={{ latitude: la, longitude: lo }}
-                    title={`${st.sequence}. ${clientName}`}
-                  >
-                    <View style={{ backgroundColor: st.sequence === 1 ? colors.success : colors.primary, width: 28, height: 28, borderRadius: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 2, borderColor: '#fff' }}>
-                      <Text style={{ color: '#fff', fontWeight: '900', fontSize: 12 }}>{st.sequence}</Text>
-                    </View>
-                  </Marker>
-                );
-              })}
-          </MapView>
-        </Animated.View>
+        </View>
       </View>
 
       <StopDeliveryModal
