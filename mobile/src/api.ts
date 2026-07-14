@@ -42,8 +42,15 @@ async function fetchWithRetry(
     try {
       const res = await fetch(url, { ...fetchOpts, signal: controller.signal });
       clearTimeout(tid);
-      // Token vencido/inválido → avisar a la app (salvo en el propio login)
-      if (res.status === 401 && !noAuthGuard) notifyAuthExpired();
+      // Token vencido/inválido → avisar a la app (salvo en el propio login).
+      // SOLO si la request llevaba Authorization: un 401 en una llamada que
+      // salió SIN token es un bug de headers nuestro, no una sesión vencida.
+      // (Esto deslogueaba a los choferes en loop cuando geometry iba sin token.)
+      if (res.status === 401 && !noAuthGuard) {
+        const h = (fetchOpts.headers || {}) as Record<string, string>;
+        const hadAuth = Object.keys(h).some((k) => k.toLowerCase() === 'authorization');
+        if (hadAuth) notifyAuthExpired();
+      }
       return res;
     } catch (e) {
       clearTimeout(tid);
@@ -202,8 +209,10 @@ export async function getPendingLocationCount(): Promise<number> {
 
 export async function fetchRouteGeometry(routeId: number): Promise<RouteGeometry | null> {
   const q = new URLSearchParams({ _ts: String(Date.now()) });
+  // /api/v1/routes/* requiere token desde abr-2026: esta llamada iba SIN
+  // Authorization y devolvía 401 siempre ("Ruta no disponible en el mapa").
   const res = await fetchWithRetry(apiUrl(`/api/v1/routes/${routeId}/geometry?${q}`), {
-    headers: { 'Cache-Control': 'no-cache' },
+    headers: { 'Cache-Control': 'no-cache', ...(await authHeaders()) },
     timeout: 8000,
   }, 1);
   const data = await res.json().catch(() => null);
@@ -240,7 +249,7 @@ export async function fetchNavigationToNext(
     _ts: String(Date.now()),
   });
   const res = await fetchWithRetry(apiUrl(`/api/v1/routes/${routeId}/navigation-to-next?${q}`), {
-    headers: { 'Cache-Control': 'no-cache' },
+    headers: { 'Cache-Control': 'no-cache', ...(await authHeaders()) },
     timeout: 8000,
   }, 1);
   const data = (await res.json().catch(() => ({}))) as NavigationToNext & { error?: string };
@@ -317,7 +326,7 @@ export function flushStopQueue(): Promise<number> {
         try {
           const res = await fetchWithTimeout(apiUrl(`/api/v1/stops/${action.stopId}`), {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
             body: JSON.stringify(action.body),
             timeout: 6000,
           });
@@ -373,7 +382,7 @@ export async function patchStop(
     // chofer; al abortar, cae al catch de abajo y la accion va a la cola offline.
     const res = await fetchWithTimeout(apiUrl(`/api/v1/stops/${stopId}`), {
       method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
       body: JSON.stringify(body),
       timeout: 6000,
     });
@@ -641,7 +650,7 @@ export function flushPhotoQueue(): Promise<void> {
           // solo le agregamos la foto). Si el patch falla, mantenemos en cola.
           const res = await fetchWithTimeout(apiUrl(`/api/v1/stops/${p.stopId}`), {
             method: 'PATCH',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
             body: JSON.stringify({ proofPhotoUrl: url }),
             timeout: 6000,
           });

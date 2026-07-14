@@ -1,5 +1,6 @@
 import React, { Suspense, useEffect, useState } from 'react';
-import { ActivityIndicator, Alert, Platform, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, Alert, AppState, Platform, StyleSheet, View } from 'react-native';
+import * as Updates from 'expo-updates';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
@@ -65,6 +66,53 @@ export default function App() {
       setBoot(false);
       if (s) await tryRegisterPushToken(s.id);
     })();
+  }, []);
+
+  /** Adopción de updates OTA. Antes un fix publicado tardaba DOS reinicios de
+   *  la app en llegar al celular (expo-updates baja el update en un arranque y
+   *  lo aplica recién en el SIGUIENTE). Los choferes no cierran la app por
+   *  días y quedaban semanas corriendo versiones viejas con bugs ya
+   *  arreglados. Ahora:
+   *  - Al abrir en frío: chequea, baja y APLICA el update al instante (reload,
+   *    tarda segundos). Un solo arranque alcanza.
+   *  - Al volver a primer plano (máx. cada 10 min): chequea y baja; como el
+   *    chofer puede estar en medio de una entrega, no lo interrumpimos — le
+   *    ofrecemos "Actualizar ahora" o queda listo para el próximo arranque.
+   *  Nada se pierde con el reload: sesión y colas offline viven en AsyncStorage. */
+  useEffect(() => {
+    let coldStart = true;
+    let lastCheck = 0;
+    const checkAndApply = async () => {
+      try {
+        if (__DEV__ || !Updates.isEnabled) return;
+        if (Date.now() - lastCheck < 10 * 60 * 1000) return;
+        lastCheck = Date.now();
+        const wasColdStart = coldStart;
+        coldStart = false;
+        const chk = await Updates.checkForUpdateAsync();
+        if (!chk.isAvailable) return;
+        await Updates.fetchUpdateAsync();
+        if (wasColdStart) {
+          await Updates.reloadAsync();
+        } else {
+          Alert.alert(
+            'Actualización lista',
+            'Hay una versión nueva de la app. Tarda 2 segundos y no se pierde nada.',
+            [
+              { text: 'Después', style: 'cancel' },
+              { text: 'Actualizar ahora', onPress: () => { Updates.reloadAsync().catch(() => {}); } },
+            ]
+          );
+        }
+      } catch {
+        // Sin red o updates no disponibles: la app sigue normal.
+      }
+    };
+    void checkAndApply();
+    const sub = AppState.addEventListener('change', (s) => {
+      if (s === 'active') void checkAndApply();
+    });
+    return () => sub.remove();
   }, []);
 
   // Sesión vencida (token 401): cerrar sesión y avisar al chofer con un mensaje
