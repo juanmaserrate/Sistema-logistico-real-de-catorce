@@ -79,7 +79,12 @@ app.use(express.json());
 
 // ── Seguridad: JWT ────────────────────────────────────────────────────────────
 const JWT_SECRET = process.env.JWT_SECRET || 'r14-dev-secret-CAMBIAR-en-produccion';
-const JWT_EXPIRES_IN = '30d';
+// Sesiones "para siempre" (10 años) a pedido del usuario: la primera ola de
+// vencimientos a 30 dias deslogueo a todos los operadores/choferes a la vez.
+// El control de acceso NO se pierde: requireAuth verifica contra la base
+// (cache 60s) que el usuario siga existiendo y no este BLOCKED — bloquear a
+// alguien en Usuarios le corta el acceso en <1 min aunque su token sea eterno.
+const JWT_EXPIRES_IN = '3650d';
 
 function generateToken(user: { id: string; username: string; role: string; fullName: string }): string {
     return jwt.sign(
@@ -89,16 +94,47 @@ function generateToken(user: { id: string; username: string; role: string; fullN
     );
 }
 
-function requireAuth(req: any, res: any, next: any) {
+// Kill-switch para tokens eternos: cache (60s) de usuarios existentes y
+// bloqueados. Si el usuario fue BLOQUEADO o ELIMINADO, su token deja de
+// servir en <1 min aunque no haya vencido. Ante error de DB: fail-open
+// (no dejamos a toda la empresa afuera por un hipo de la base).
+let _authUserCache: { ids: Set<string>; blocked: Set<string>; ts: number } = { ids: new Set(), blocked: new Set(), ts: 0 };
+async function _refreshAuthUserCache(): Promise<void> {
+    const rows = await prisma.user.findMany({ select: { id: true, role: true } });
+    _authUserCache = {
+        ids: new Set(rows.map(r => r.id)),
+        blocked: new Set(rows.filter(r => String(r.role || '').toUpperCase() === 'BLOCKED').map(r => r.id)),
+        ts: Date.now()
+    };
+}
+async function _tokenUserActive(userId: string): Promise<boolean> {
+    try {
+        if (Date.now() - _authUserCache.ts > 60_000) await _refreshAuthUserCache();
+        // Usuario recien creado que no esta en el cache: refrescar una vez antes de rechazar
+        if (!_authUserCache.ids.has(userId)) await _refreshAuthUserCache();
+        if (!_authUserCache.ids.has(userId)) return false;   // eliminado
+        return !_authUserCache.blocked.has(userId);           // bloqueado
+    } catch {
+        return true; // fail-open: un error de DB no debe expulsar a todos
+    }
+}
+
+async function requireAuth(req: any, res: any, next: any) {
     const authHeader = req.headers['authorization'];
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
     if (!token) return res.status(401).json({ error: 'Autenticación requerida. Iniciá sesión.' });
+    let payload: any;
     try {
-        req.user = jwt.verify(token, JWT_SECRET);
-        next();
+        payload = jwt.verify(token, JWT_SECRET);
     } catch {
         return res.status(401).json({ error: 'Token inválido o expirado. Volvé a iniciar sesión.' });
     }
+    const uid = payload?.userId ? String(payload.userId) : '';
+    if (uid && !(await _tokenUserActive(uid))) {
+        return res.status(401).json({ error: 'Usuario bloqueado o dado de baja. Contactá al administrador.' });
+    }
+    req.user = payload;
+    next();
 }
 
 // ── Seguridad: Rate Limiting ───────────────────────────────────────────────────
