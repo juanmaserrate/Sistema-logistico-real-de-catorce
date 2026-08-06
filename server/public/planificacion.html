@@ -18552,10 +18552,12 @@
             document.getElementById('new-trip-aux2').innerHTML = auxOptions;
             document.getElementById('new-trip-aux3').innerHTML = auxOptions;
 
-            const zoneOptions = uniqueZones.length === 0
-                ? '<option value="">⚠ No hay zonas cargadas — cargá un cliente o un viaje con zona</option>'
-                : '<option value="">Seleccionar Zona</option>';
-            document.getElementById('new-trip-zone').innerHTML = zoneOptions + uniqueZones.map(z => `<option value="${escapeHtml(z)}">${escapeHtml(z)}</option>`).join('');
+            const zoneDl = document.getElementById('new-trip-zone-list');
+            if (zoneDl) zoneDl.innerHTML = uniqueZones.map(z => `<option value="${escapeHtml(z)}">${escapeHtml(z)}</option>`).join('');
+            const zoneInput = document.getElementById('new-trip-zone');
+            zoneInput.placeholder = uniqueZones.length === 0
+                ? '⚠ No hay zonas cargadas — cargá un cliente o un viaje con zona'
+                : 'Escribí o seleccioná una zona…';
 
             document.getElementById('new-trip-vehicle').innerHTML = '<option value="">Seleccionar Vehículo</option>' + uniqueVehicles.map(v => `<option value="${v}">${v}</option>`).join('');
             populateBusinessUnitSelect('DMC');
@@ -20028,9 +20030,8 @@
                 <div class="grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
                     <div>
                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Zona</label>
-                        <select id="new-trip-zone" onchange="autoFillLocalidad()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                             <!-- Injected by JS -->
-                        </select>
+                        <input type="text" id="new-trip-zone" list="new-trip-zone-list" placeholder="Escribí o seleccioná una zona…" autocomplete="off" oninput="autoFillLocalidad()" onchange="autoFillLocalidad()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                        <datalist id="new-trip-zone-list"></datalist>
                     </div>
                     <div>
                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Localidad (Auto)</label>
