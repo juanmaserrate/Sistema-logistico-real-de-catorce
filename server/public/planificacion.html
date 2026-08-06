@@ -11467,7 +11467,7 @@
                 return;
             }
             const prev = sel.value;
-            const zones = [...new Set(allSchools.map(s => (s.zone || '').trim()).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+            const zones = [...new Set(allSchools.map(s => (s.zone || '').trim()).filter(Boolean).filter(z => !isExcludedZoneName(z)))].sort((a, b) => a.localeCompare(b, 'es'));
             const esc = (z) => String(z).replace(/&/g, '&amp;').replace(/"/g, '&quot;');
             sel.innerHTML = '<option value="">Todas las zonas</option>' +
                 zones.map(z => `<option value="${esc(z)}">${esc(z)}</option>`).join('') +
@@ -13384,7 +13384,7 @@
 
             // Populate dropdowns from existing data
             const drivers = [...new Set(planningData.map(t => t.driver).filter(Boolean))].sort();
-            const zones = [...new Set(planningData.map(t => t.zone).filter(Boolean))].sort();
+            const zones = [...new Set(planningData.map(t => t.zone).filter(Boolean).filter(z => !isExcludedZoneName(z)))].sort();
             const repartos = [...new Set(planningData.map(t => t.reparto || t.tripType).filter(Boolean))].sort();
             const plates = [...new Set(allVehicles.map(v => v.plate).filter(Boolean))].sort();
             const auxNames = [...new Set(planningData.flatMap(t => [t.auxiliar, t.auxiliar2, t.auxiliar3]).filter(Boolean))].sort();
@@ -15122,7 +15122,7 @@
             const zKeep = zSel.value;
             const lKeep = lSel.value;
             const bKeep = bSel.value;
-            const zones = [...new Set(allSchools.map((s) => (s.zone || '').trim()).filter(Boolean))].sort((a, b) =>
+            const zones = [...new Set(allSchools.map((s) => (s.zone || '').trim()).filter(Boolean).filter(z => !isExcludedZoneName(z)))].sort((a, b) =>
                 a.localeCompare(b, 'es')
             );
             zSel.innerHTML =
@@ -16822,6 +16822,17 @@
             'ZONA NORTE': 'Zona Norte (GBA)'
         };
 
+        // Zonas que no deben ofrecerse como opción en los desplegables (config de la empresa)
+        function isExcludedZoneName(z) {
+            const u = String(z || '').trim().toUpperCase();
+            if (u.includes('ALMIRANTE BROWN')) return true;
+            if (u.includes('ALTE BROWN') || u.includes('ALTE. BROWN')) return true;
+            if (u.includes('CAPILLA')) return true;
+            if (u.includes('RAFAEL CALZADA') || u === 'CALZADA') return true;
+            if (/^R\s*\d+$/.test(u)) return true;
+            return false;
+        }
+
         function getLocalidadFromZone(zone) {
             const z = (zone || '').toString().trim().toUpperCase();
             if (!z) return 'N/D';
@@ -18519,20 +18530,8 @@
                 return t;
             };
             // Zonas que no deben aparecer como opción en el desplegable (config de la empresa)
-            const _isExcludedZone = (z) => {
-                const u = String(z || '').trim().toUpperCase();
-                if (u.includes('ALMIRANTE BROWN')) return true;
-                if (u === 'ALTE BROWN' || u === 'ALTE. BROWN') return true;
-                if (u.includes('CAPILLA')) return true;
-                if (u.includes('RAFAEL CALZADA') || u === 'CALZADA') return true;
-                if (/^R\s*\d+$/.test(u)) return true;
-                return false;
-            };
-            const zonesFromTrips = planningData.map(t => _normZone(t.zone)).filter(Boolean);
-            const zonesFromClients = (clientsData || []).map(c => _normZone(c.zone)).filter(Boolean);
-            const canonicalZones = Object.keys(ZONE_LOCALITY_MAP).map(_normZone).filter(Boolean);
             const uniqueZones = [...new Set([...zonesFromTrips, ...zonesFromClients, ...canonicalZones])]
-                .filter(_isExcludedZone)
+                .filter(z => !isExcludedZoneName(z))
                 .sort((a, b) => a.localeCompare(b, 'es'));
 
             // We usually have basic vehicle types like VANS, MINIBUS, DUCATO
