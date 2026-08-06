@@ -18529,7 +18529,11 @@
                 if (t === 'ALTE. BROWN' || t === 'ALTE BROWN') return 'ALMIRANTE BROWN';
                 return t;
             };
-            // Zonas que no deben aparecer como opción en el desplegable (config de la empresa)
+            // Todas las zonas disponibles: viajes visibles + catálogo de clientes +
+            // zonas canónicas operativas, EXCEPTO las excluidas por config de la empresa.
+            const zonesFromTrips = planningData.map(t => _normZone(t.zone)).filter(Boolean);
+            const zonesFromClients = (clientsData || []).map(c => _normZone(c.zone)).filter(Boolean);
+            const canonicalZones = Object.keys(ZONE_LOCALITY_MAP).map(_normZone).filter(Boolean);
             const uniqueZones = [...new Set([...zonesFromTrips, ...zonesFromClients, ...canonicalZones])]
                 .filter(z => !isExcludedZoneName(z))
                 .sort((a, b) => a.localeCompare(b, 'es'));
