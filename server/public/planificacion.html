@@ -18518,10 +18518,21 @@
                 if (t === 'ALTE. BROWN' || t === 'ALTE BROWN') return 'ALMIRANTE BROWN';
                 return t;
             };
+            // Zonas que no deben aparecer como opción en el desplegable (config de la empresa)
+            const _isExcludedZone = (z) => {
+                const u = String(z || '').trim().toUpperCase();
+                if (u.includes('ALMIRANTE BROWN')) return true;
+                if (u === 'ALTE BROWN' || u === 'ALTE. BROWN') return true;
+                if (u.includes('CAPILLA')) return true;
+                if (u.includes('RAFAEL CALZADA') || u === 'CALZADA') return true;
+                if (/^R\s*\d+$/.test(u)) return true;
+                return false;
+            };
             const zonesFromTrips = planningData.map(t => _normZone(t.zone)).filter(Boolean);
             const zonesFromClients = (clientsData || []).map(c => _normZone(c.zone)).filter(Boolean);
             const canonicalZones = Object.keys(ZONE_LOCALITY_MAP).map(_normZone).filter(Boolean);
             const uniqueZones = [...new Set([...zonesFromTrips, ...zonesFromClients, ...canonicalZones])]
+                .filter(_isExcludedZone)
                 .sort((a, b) => a.localeCompare(b, 'es'));
 
             // We usually have basic vehicle types like VANS, MINIBUS, DUCATO
