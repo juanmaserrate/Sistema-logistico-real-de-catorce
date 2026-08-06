@@ -1743,10 +1743,10 @@
                                 </select>
                             </div>
                             <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Fecha *</label><input type="date" id="repair-date" required class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
-                            <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Kilometraje</label><input type="number" id="repair-mileage" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
+                            <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Kilometraje</label><input type="text" inputmode="numeric" id="repair-mileage" oninput="sanitizeNumericInput(this,false)" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
                             <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Taller</label><input type="text" id="repair-workshop" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
                             <div class="col-span-2"><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Trabajo Realizado *</label><textarea id="repair-work" rows="3" required class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></textarea></div>
-                            <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Costo ($)</label><input type="number" id="repair-cost" step="0.01" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
+                            <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Costo ($)</label><input type="text" inputmode="decimal" id="repair-cost" oninput="sanitizeNumericInput(this,true)" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
                             <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Notas</label><input type="text" id="repair-notes" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
                         </div>
                         <div class="flex gap-3 pt-4">
@@ -16247,7 +16247,7 @@
                     <td class="px-4 py-2"><input type="text" value="${esc(v.brand)}" oninput="updateMaintenanceVehicleField('${v.plate}','brand',this.value)" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
                     <td class="px-4 py-2"><span class="${v.currentKm != null ? 'font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg text-xs' : 'text-[#A3AED0] text-xs'}">${v.currentKm != null ? Number(v.currentKm).toLocaleString('es-AR') + ' km' : '—'}</span></td>
                     <td class="px-4 py-2"><input type="text" value="${esc(v.model)}" oninput="updateMaintenanceVehicleField('${v.plate}','model',this.value)" class="w-32 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
-                    <td class="px-4 py-2"><input type="number" value="${esc(v.year)}" oninput="updateMaintenanceVehicleField('${v.plate}','year',this.value)" class="w-20 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
+                    <td class="px-4 py-2"><input type="text" inputmode="numeric" autocomplete="off" value="${esc(v.year)}" oninput="sanitizeNumericInput(this,false); updateMaintenanceVehicleField('${v.plate}','year',this.value)" class="w-20 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
                     <td class="px-4 py-2"><input type="date" value="${esc((v.vtv || '').split('T')[0])}" oninput="updateMaintenanceVehicleField('${v.plate}','vtv',this.value)" class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
                     <td class="px-4 py-2"><input type="text" value="${esc(v.bromatologia)}" oninput="updateMaintenanceVehicleField('${v.plate}','bromatologia',this.value)" class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
                     <td class="px-4 py-2"><input type="date" value="${esc((v.senasa || '').split('T')[0])}" oninput="updateMaintenanceVehicleField('${v.plate}','senasa',this.value)" class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
@@ -16312,6 +16312,54 @@
             renderMaintenanceRecords();
         }
 
+        /** Devuelve las filas de mantenimiento filtradas por los filtros activos
+         *  (patente y período). Comparte la lógica con renderMaintenanceRecords()
+         *  para poder refrescar los totales sin re-renderizar la tabla (re-render
+         *  en cada tecla rompía el tipeo en el campo Costo). */
+        function getMaintenanceFilteredRows(allRows) {
+            const plateQ = (document.getElementById('maintenance-filter-plate')?.value || '').toUpperCase().trim();
+            const periodFilter = (document.getElementById('maintenance-filter-period')?.value || '').trim();
+            return (allRows || []).filter(r => {
+                const p = String(r.plate || '').toUpperCase();
+                const plateOk = !plateQ || p === plateQ;
+                if (!periodFilter) return plateOk;
+                const ym = getRepairYearMonthKey(r);
+                return plateOk && ym === periodFilter;
+            });
+        }
+
+        /** Actualiza SOLO los totales (suma y por categoría) sin re-renderizar la
+         *  tabla, para no interrumpir el tipeo en el campo Costo. */
+        function refreshMaintenanceTotals() {
+            const totalVal = document.getElementById('maintenance-total-value');
+            const catWrap = document.getElementById('maintenance-totals-by-cat-wrap');
+            const catBody = document.getElementById('maintenance-totals-by-cat-body');
+            if (!totalVal) return;
+            const data = getMaintenanceData();
+            const allRows = [];
+            Object.entries(data.records || {}).forEach(([plate, rows]) => {
+                (rows || []).forEach(r => allRows.push({ ...r, plate }));
+            });
+            const rows = getMaintenanceFilteredRows(allRows);
+            const fmtCur = (n) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(n) || 0);
+            const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+            totalVal.innerText = fmtCur(rows.reduce((s, r) => s + (Number(r.cost) || 0), 0));
+            if (catWrap && catBody) {
+                const byCat = {};
+                rows.forEach(r => {
+                    const c = (r.category && String(r.category).trim()) ? String(r.category).trim() : 'Sin categoría';
+                    byCat[c] = (byCat[c] || 0) + (Number(r.cost) || 0);
+                });
+                const catEntries = Object.entries(byCat).sort((a, b) => b[1] - a[1]);
+                catWrap.classList.remove('hidden');
+                catBody.innerHTML = catEntries.map(([c, v]) => `
+                    <div class="flex justify-between gap-4 bg-[#F8FAFF] rounded-xl px-4 py-3 border border-[#EEF2FF]">
+                        <span class="text-[#A3AED0] font-medium truncate" title="${esc(c)}">${esc(c)}</span>
+                        <span class="font-extrabold text-[#1B2559] whitespace-nowrap">${fmtCur(v)}</span>
+                    </div>`).join('');
+            }
+        }
+
         function renderMaintenanceRecords() {
             const list = document.getElementById('maintenance-records-list');
             const totalDiv = document.getElementById('maintenance-total');
@@ -16354,13 +16402,7 @@
             const plateQ = (document.getElementById('maintenance-filter-plate')?.value || '').toUpperCase().trim();
             const periodFilter = (document.getElementById('maintenance-filter-period')?.value || '').trim();
 
-            const rows = allRows.filter(r => {
-                const p = String(r.plate || '').toUpperCase();
-                const plateOk = !plateQ || p === plateQ;
-                if (!periodFilter) return plateOk;
-                const ym = getRepairYearMonthKey(r);
-                return plateOk && ym === periodFilter;
-            });
+            const rows = getMaintenanceFilteredRows(allRows);
 
             if (rows.length === 0) {
                 list.innerHTML = '<p class="text-[#A3AED0] text-sm">No hay resultados para los filtros aplicados (revisá patente o mes; las filas sin fecha no entran al filtro por mes).</p>';
@@ -16406,10 +16448,10 @@
                                         </select>
                                     </td>
                                     <td class="px-3 py-2"><input type="date" value="${esc((r.date || '').split('T')[0])}" oninput="updateRepairField('${r.plate}','${r.id}','date', this.value)" class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
-                                    <td class="px-3 py-2"><input type="number" value="${esc(r.mileage)}" oninput="updateRepairField('${r.plate}','${r.id}','mileage', this.value)" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
+                                    <td class="px-3 py-2"><input type="text" inputmode="numeric" autocomplete="off" value="${esc(r.mileage)}" oninput="sanitizeNumericInput(this,false); updateRepairField('${r.plate}','${r.id}','mileage', this.value)" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
                                     <td class="px-3 py-2"><input type="text" value="${esc(r.workDone)}" oninput="updateRepairField('${r.plate}','${r.id}','workDone', this.value)" class="w-64 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
                                     <td class="px-3 py-2"><input type="text" value="${esc(r.workshop)}" oninput="updateRepairField('${r.plate}','${r.id}','workshop', this.value)" class="w-44 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
-                                    <td class="px-3 py-2"><input type="number" step="0.01" value="${esc(r.cost)}" oninput="updateRepairField('${r.plate}','${r.id}','cost', this.value)" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
+                                    <td class="px-3 py-2"><input type="text" inputmode="decimal" autocomplete="off" value="${esc(r.cost)}" oninput="sanitizeNumericInput(this,true); updateRepairField('${r.plate}','${r.id}','cost', this.value)" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
                                     <td class="px-3 py-2"><input type="text" value="${esc(r.notes)}" oninput="updateRepairField('${r.plate}','${r.id}','notes', this.value)" class="w-52 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
                                     <td class="px-3 py-2 text-right">
                                         <button onclick="saveRepairRow('${r.plate}','${r.id}')" class="p-2 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 mr-1 shadow-sm"><i data-lucide="save" class="w-4 h-4"></i></button>
@@ -16478,6 +16520,24 @@
             renderMaintenanceRecords();
         }
 
+        /** Filtra un input numérico al momento de tipear: deja solo dígitos y, si
+         *  allowDecimal, un único separador (punto o coma). Con type="text" el campo
+         *  no muestra las flechitas de los inputs type="number". */
+        function sanitizeNumericInput(el, allowDecimal) {
+            if (!el) return;
+            let v = el.value.replace(/[^0-9.,]/g, '');
+            if (allowDecimal) {
+                const m = v.match(/[.,]/);
+                if (m && m.index >= 0) {
+                    const sep = v[m.index];
+                    v = v.slice(0, m.index) + sep + v.slice(m.index + 1).replace(/[.,]/g, '');
+                }
+            } else {
+                v = v.replace(/[.,]/g, '');
+            }
+            if (v !== el.value) el.value = v;
+        }
+
         function updateRepairField(plate, id, field, value) {
             const data = getMaintenanceData();
             const records = data.records[plate] || [];
@@ -16486,7 +16546,9 @@
             const rec = records[recIdx];
 
             if (field === 'mileage' || field === 'cost') {
-                rec[field] = value === '' ? null : Number(value);
+                const clean = String(value).trim().replace(/\s+/g, '').replace(',', '.');
+                const num = parseFloat(clean);
+                rec[field] = clean === '' ? null : (Number.isFinite(num) ? num : null);
             } else if (field === 'plate') {
                 const newPlate = value.trim().toUpperCase();
                 if (newPlate && newPlate !== plate) {
@@ -16504,7 +16566,9 @@
             }
             setMaintenanceData(data);
             if (field === 'cost') {
-                renderMaintenanceRecords();
+                // No re-renderizar la tabla: eso destruía el input en cada tecla y
+                // impedía escribir el número. Actualizamos solo los totales.
+                refreshMaintenanceTotals();
             }
         }
 
@@ -16662,14 +16726,19 @@
                 return;
             }
             
+            const _toNum = (v) => {
+                const clean = String(v || '').trim().replace(',', '.');
+                const num = parseFloat(clean);
+                return clean === '' ? null : (Number.isFinite(num) ? num : null);
+            };
             const payload = {
                 plate: plate,
                 category: document.getElementById('repair-category').value,
                 date: date,
-                mileage: document.getElementById('repair-mileage').value ? parseFloat(document.getElementById('repair-mileage').value) : null,
+                mileage: _toNum(document.getElementById('repair-mileage').value),
                 workshop: document.getElementById('repair-workshop').value,
                 workDone: work,
-                cost: document.getElementById('repair-cost').value ? parseFloat(document.getElementById('repair-cost').value) : null,
+                cost: _toNum(document.getElementById('repair-cost').value),
                 notes: document.getElementById('repair-notes').value
             };
 
@@ -18366,6 +18435,20 @@
         // Se construye al abrir el modal y se usa para auto-detectar Tercerizado.
         const _driverProviderMap = new Map();
 
+        /** Trae el catálogo de clientes para poder completar la lista de zonas
+         *  aunque la vista semanal actual no tenga viajes con zona cargada. */
+        async function fetchClientsForZones() {
+            try {
+                const res = await fetch(`${API_URL}/clients`, { headers: getActorHeaders() });
+                if (!res.ok) return [];
+                const data = await res.json();
+                return Array.isArray(data) ? data : [];
+            } catch (e) {
+                console.warn('fetchClientsForZones:', e);
+                return [];
+            }
+        }
+
         async function openNewTripModal() {
             document.getElementById('new-trip-modal').classList.remove('hidden');
             document.getElementById('new-trip-id').value = '';
@@ -18376,11 +18459,12 @@
             // DRIVER → choferes con login para la app móvil (antes CHOFER + DRIVER unificados)
             // AUXILIAR → personas que acompañan (nómina)
             // CHOFER → catálogo de choferes (sin login)
-            const [choferesFromDb, auxFromDb, repartoUsersFromDb, choferCatalog] = await Promise.all([
+            const [choferesFromDb, auxFromDb, repartoUsersFromDb, choferCatalog, clientsData] = await Promise.all([
                 fetchUsersByRole('DRIVER'),
                 fetchUsersByRole('AUXILIAR'),
                 fetchUsersByRole('DRIVER'),
-                fetchUsersByRole('CHOFER')
+                fetchUsersByRole('CHOFER'),
+                fetchClientsForZones()
             ]);
 
             // Construir mapa de proveedor por chofer/auxiliar usando los datos de TODOS los roles
@@ -18423,12 +18507,22 @@
             const uniqueDrivers = [...new Set([...driverNamesFromDb, ...driversFromTrips])].sort();
             const uniqueAux = [...new Set([...auxNamesFromDb, ...auxFromTrips])].sort();
 
-            const uniqueZonesRaw = [...new Set(planningData.map(t => t.zone).filter(Boolean))];
-            let processedZones = uniqueZonesRaw.map(z => {
-                if (z === 'ALTE. BROWN' || z === 'ALTE BROWN') return 'ALMIRANTE BROWN';
-                return z;
-            });
-            const uniqueZones = [...new Set(processedZones)].sort();
+            // Zonas del desplegable: NO dependen solo de los viajes visibles en la
+            // vista actual (por defecto "hoy", que puede estar vacío y dejaba el
+            // desplegable sin opciones). Se arman combinando 3 fuentes:
+            //   1) zonas de los viajes visibles (comportamiento original)
+            //   2) zonas del catálogo de clientes/escuelas (siempre disponibles)
+            //   3) zonas canónicas operativas (ZONE_LOCALITY_MAP)
+            const _normZone = (z) => {
+                const t = String(z || '').trim();
+                if (t === 'ALTE. BROWN' || t === 'ALTE BROWN') return 'ALMIRANTE BROWN';
+                return t;
+            };
+            const zonesFromTrips = planningData.map(t => _normZone(t.zone)).filter(Boolean);
+            const zonesFromClients = (clientsData || []).map(c => _normZone(c.zone)).filter(Boolean);
+            const canonicalZones = Object.keys(ZONE_LOCALITY_MAP).map(_normZone).filter(Boolean);
+            const uniqueZones = [...new Set([...zonesFromTrips, ...zonesFromClients, ...canonicalZones])]
+                .sort((a, b) => a.localeCompare(b, 'es'));
 
             // We usually have basic vehicle types like VANS, MINIBUS, DUCATO
             const uniqueVehicles = [...new Set(planningData.map(t => t.vehicleType).filter(Boolean))].sort();
@@ -18444,7 +18538,10 @@
             document.getElementById('new-trip-aux2').innerHTML = auxOptions;
             document.getElementById('new-trip-aux3').innerHTML = auxOptions;
 
-            document.getElementById('new-trip-zone').innerHTML = '<option value="">Seleccionar Zona</option>' + uniqueZones.map(z => `<option value="${z}">${z}</option>`).join('');
+            const zoneOptions = uniqueZones.length === 0
+                ? '<option value="">⚠ No hay zonas cargadas — cargá un cliente o un viaje con zona</option>'
+                : '<option value="">Seleccionar Zona</option>';
+            document.getElementById('new-trip-zone').innerHTML = zoneOptions + uniqueZones.map(z => `<option value="${escapeHtml(z)}">${escapeHtml(z)}</option>`).join('');
 
             document.getElementById('new-trip-vehicle').innerHTML = '<option value="">Seleccionar Vehículo</option>' + uniqueVehicles.map(v => `<option value="${v}">${v}</option>`).join('');
             populateBusinessUnitSelect('DMC');
