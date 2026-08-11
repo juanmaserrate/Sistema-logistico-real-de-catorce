@@ -30,6 +30,8 @@ export interface Stop {
   proofPhotoUrl?: string | null;
   deliveryWithoutIssues?: boolean | null;
   reasonCode?: string | null;
+  /** true = vuelta al depósito (Real de Catorce). Al marcarla se cierra el viaje. */
+  isReturnToBase?: boolean;
   client: Client;
 }
 

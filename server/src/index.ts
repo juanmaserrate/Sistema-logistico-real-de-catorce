@@ -1812,6 +1812,13 @@ app.post('/api/v1/control/map-matching-batch', async (req, res) => {
 
 /** Lista las rutas/viajes ACTIVOS hoy con sus paradas y horarios reales.
  *  Usado por Torre de Control para mostrar todas las paradas a la vez sin filtrar. */
+// Umbrales unicos de "reporta señal". Antes convivian tres numeros distintos:
+// 10 min en el badge del modal de viaje y 45 min hardcodeado dos veces en la
+// Torre de Control, asi que la misma ruta salia "OK" en un lado y "Demorado"
+// en el otro.
+const DRIVER_SIGNAL_OK_MIN = 10;     // <= 10 min → verde
+const DRIVER_SIGNAL_STALE_MIN = 30;  // <= 30 min → amarillo; mas → rojo
+
 app.get('/api/v1/control/active-routes', async (_req, res) => {
     try {
         const startOfDay = new Date();
@@ -1898,6 +1905,109 @@ app.get('/api/v1/control/active-routes', async (_req, res) => {
     } catch (e: any) {
         console.error('GET /control/active-routes:', e);
         res.status(500).json({ error: e?.message || 'Error al obtener rutas activas' });
+    }
+});
+
+/** Estado de señal de TODOS los choferes con viaje asignado — alimenta la
+ *  sección "Estado de Choferes" de la web.
+ *
+ *  Diferencia clave con /fleet/locations: ahí se filtra por pings de la última
+ *  hora, así que el chofer con el GPS muerto DESAPARECE de la lista — justo el
+ *  que hay que mirar. Acá la fila existe siempre que haya ruta asignada, y el
+ *  que nunca reportó sale con signal:'never'.
+ *
+ *  Query: ?date=YYYY-MM-DD (default: hoy). */
+app.get('/api/v1/control/driver-status', async (req, res) => {
+    try {
+        const dateStr = String(req.query.date || '');
+        const base = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
+        if (isNaN(base.getTime())) return res.status(400).json({ error: 'Fecha inválida' });
+        const startOfDay = new Date(base); startOfDay.setHours(0, 0, 0, 0);
+        const endOfDay = new Date(base); endOfDay.setHours(23, 59, 59, 999);
+
+        const routes = await prisma.route.findMany({
+            where: { date: { gte: startOfDay, lte: endOfDay }, driverId: { not: null } },
+            include: {
+                driver: { select: { id: true, fullName: true, username: true } },
+                vehicle: { select: { plate: true } },
+                trip: { select: { id: true, reparto: true, businessUnit: true, status: true, vehicle: true } },
+                stops: { select: { status: true, isReturnToBase: true } }
+            },
+            orderBy: { id: 'asc' }
+        });
+
+        // Ultimo ping POR CHOFER (no por ruta): si el chofer arranco el GPS sin
+        // ruta seleccionada, los pings van con routeId null y por ruta no se veian.
+        const driverIds = [...new Set(routes.map((r: any) => r.driverId).filter(Boolean))] as string[];
+        const lastByDriver: Record<string, { at: Date; lat: number; lng: number }> = {};
+        if (driverIds.length > 0) {
+            try {
+                const rows = await prisma.$queryRaw<any[]>`
+                    SELECT DISTINCT ON ("driverId")
+                        "driverId", latitude, longitude, "capturedAt", timestamp
+                    FROM "DeviceLocation"
+                    WHERE "driverId" = ANY(${driverIds}::text[])
+                    ORDER BY "driverId", timestamp DESC
+                `;
+                for (const row of rows) {
+                    lastByDriver[row.driverId] = {
+                        at: row.capturedAt || row.timestamp,
+                        lat: Number(row.latitude),
+                        lng: Number(row.longitude)
+                    };
+                }
+            } catch (e: any) {
+                console.warn('[driver-status] error trayendo ultimos pings:', e?.message || e);
+            }
+        }
+
+        const now = Date.now();
+        const out = routes.map((route: any) => {
+            const stops = route.stops || [];
+            const done = stops.filter((s: any) => {
+                const st = String(s.status || '').toUpperCase();
+                return st === 'COMPLETED' || st === 'UNDELIVERABLE';
+            }).length;
+            const last = route.driverId ? lastByDriver[route.driverId] : null;
+            const minutesAgo = last?.at ? Math.round((now - new Date(last.at).getTime()) / 60000) : null;
+            const closed = !!route.actualEndTime || ['COMPLETED', 'RETURNED'].includes(String(route.trip?.status || '').toUpperCase());
+            let signal: 'ok' | 'stale' | 'dead' | 'never';
+            if (minutesAgo == null) signal = 'never';
+            else if (minutesAgo <= DRIVER_SIGNAL_OK_MIN) signal = 'ok';
+            else if (minutesAgo <= DRIVER_SIGNAL_STALE_MIN) signal = 'stale';
+            else signal = 'dead';
+            return {
+                routeId: route.id,
+                tripId: route.tripId ?? null,
+                driverId: route.driverId,
+                driverName: route.driver?.fullName || route.driver?.username || 'SIN CHOFER',
+                reparto: route.trip?.reparto || route.trip?.businessUnit || `Ruta #${route.id}`,
+                vehicle: route.vehicle?.plate || route.trip?.vehicle || null,
+                punchedIn: !!route.actualStartTime,
+                startedAt: route.actualStartTime?.toISOString() ?? null,
+                endedAt: route.actualEndTime?.toISOString() ?? null,
+                routeStatus: route.status,
+                tripStatus: route.trip?.status ?? null,
+                closed,
+                stopsTotal: stops.length,
+                stopsDone: done,
+                hasBaseStop: stops.some((s: any) => s.isReturnToBase === true),
+                lastPingAt: last?.at ? new Date(last.at).toISOString() : null,
+                lastLat: last?.lat ?? null,
+                lastLng: last?.lng ?? null,
+                minutesAgo,
+                signal
+            };
+        });
+
+        res.json({
+            date: startOfDay.toISOString().slice(0, 10),
+            thresholds: { ok: DRIVER_SIGNAL_OK_MIN, stale: DRIVER_SIGNAL_STALE_MIN },
+            drivers: out
+        });
+    } catch (e: any) {
+        console.error('GET /control/driver-status:', e);
+        res.status(500).json({ error: e?.message || 'Error al obtener el estado de los choferes' });
     }
 });
 
@@ -2844,7 +2954,7 @@ app.delete('/api/v1/routes/:id', async (req, res) => {
 app.patch('/api/v1/routes/:id/recorrido', async (req, res) => {
     try {
         const routeId = Number(req.params.id);
-        const { driverId, action } = req.body || {};
+        const { driverId, action, at } = req.body || {};
         if (!Number.isFinite(routeId) || !driverId || (action !== 'start' && action !== 'end')) {
             return res.status(400).json({ error: 'Se requiere driverId y action: start | end' });
         }
@@ -2853,7 +2963,24 @@ app.patch('/api/v1/routes/:id/recorrido', async (req, res) => {
         if (route.driverId !== String(driverId)) {
             return res.status(403).json({ error: 'Esta ruta no está asignada a tu usuario' });
         }
-        const now = new Date();
+        const serverNow = new Date();
+        // `at` = hora real del fichaje en el celular. Existe para la cola offline:
+        // si el chofer ficha entrada a las 06:40 sin señal y la app sincroniza a
+        // las 09:15, el viaje tiene que quedar iniciado a las 06:40. Se acepta
+        // solo dentro de una ventana razonable (relojes de celular desfasados).
+        const now = (() => {
+            if (!at) return serverNow;
+            const d = new Date(at);
+            const ms = d.getTime();
+            if (!Number.isFinite(ms)) return serverNow;
+            const lower = new Date(route.date || serverNow).getTime() - 12 * 3600 * 1000;
+            const upper = serverNow.getTime() + 5 * 60 * 1000;
+            if (ms < lower || ms > upper) {
+                console.warn(`[routes/recorrido] 'at' fuera de rango en ruta ${routeId}: ${at}`);
+                return serverNow;
+            }
+            return d;
+        })();
         if (action === 'start') {
             // Si la ruta ya está iniciada o cerrada, devolvemos OK silencioso (no rompemos al chofer)
             if (route.actualStartTime || route.actualEndTime) {
@@ -3539,6 +3666,147 @@ app.get('/api/v1/routes/:id/navigation-to-next', async (req, res) => {
     }
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// PARADA DE RETORNO A BASE ("Real de Catorce")
+// ═══════════════════════════════════════════════════════════════════════════
+// El viaje empieza y termina en el deposito. Cuando el chofer marca finalizada
+// esa ultima parada, el viaje se cierra solo con ESA hora — no con la hora en
+// que el operador se acuerda de cerrarlo desde la web.
+//
+// Hasta ahora la nocion de "base" vivia solo en el frontend comparando el
+// string 'REAL 14'. Ahora es un flag real en la parada (Stop.isReturnToBase),
+// y el nombre solo se usa para detectarla y marcarla.
+
+const BASE_STOP_COORDS = {
+    name: 'Real de Catorce',
+    address: 'Ombú 1269, Burzaco, Almirante Brown',
+    latitude: -34.8353338,
+    longitude: -58.4233261,
+    zone: 'Almirante Brown',
+    barrio: 'BURZACO',
+};
+
+/** Normaliza para comparar nombres: sin tildes, mayusculas, sin espacios extra. */
+function normalizeName(s: string): string {
+    return String(s || '')
+        .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+        .toUpperCase().replace(/\s+/g, ' ').trim();
+}
+
+/** true si el nombre del cliente corresponde al deposito / base.
+ *  Cubre las variantes historicas: 'REAL 14', 'REAL14', 'REAL DE CATORCE',
+ *  'DEPOSITO', 'DEPOSITO PRINCIPAL' (mismo criterio que DEPOT_NAMES en
+ *  scripts/import-clientes-from-excel.ts). */
+function isBaseStopName(name: string | null | undefined): boolean {
+    const n = normalizeName(name || '');
+    if (!n) return false;
+    return /^(REAL\s*(DE\s*)?(14|CATORCE))\b/.test(n) || /^DEPOSITO\b/.test(n) || n === 'DEPOT';
+}
+
+/** Devuelve el Client del deposito, creandolo si no existe.
+ *  (Recicla el bloque del endpoint admin add-real14, hoy desactivado.) */
+let _baseClientCache: { id: string; name: string } | null = null;
+async function ensureBaseClient(tenantId: string): Promise<{ id: string; name: string } | null> {
+    if (_baseClientCache) return _baseClientCache;
+    try {
+        // Buscamos por cualquiera de las variantes de nombre, no solo la exacta.
+        const candidates = await prisma.client.findMany({
+            where: { tenantId },
+            select: { id: true, name: true }
+        });
+        const found = candidates.find((c) => isBaseStopName(c.name));
+        if (found) { _baseClientCache = found; return found; }
+        const created = await prisma.client.create({
+            data: { tenantId, ...BASE_STOP_COORDS, serviceTime: 15, priority: 0 },
+            select: { id: true, name: true }
+        });
+        console.log(`[base-stop] Cliente deposito creado: ${created.id}`);
+        _baseClientCache = created;
+        return created;
+    } catch (e: any) {
+        console.warn('[base-stop] No se pudo resolver el cliente deposito:', e?.message || e);
+        return null;
+    }
+}
+
+/** Cierra ruta + viaje usando la hora en que el chofer marco la parada de base.
+ *  Se llama desde PATCH /stops/:id. Devuelve true si cerro algo.
+ *
+ *  Reemplaza al viejo AUTO_FINISH_ROUTE_ON_LAST_STOP, que se desactivo porque
+ *  cerraba viajes de casualidad cuando TODAS las paradas quedaban en estado
+ *  final (sync offline, reemplazo de paradas). La condicion de aca es mucho
+ *  mas angosta: SOLO la parada marcada como base, y SOLO si la ruta esta
+ *  abierta. */
+async function closeRouteFromBaseStop(stop: any): Promise<boolean> {
+    const route = stop?.route;
+    if (!route || route.actualEndTime) return false;
+    const st = String(stop.status || '').toUpperCase();
+    if (st !== 'COMPLETED' && st !== 'UNDELIVERABLE') return false;
+
+    const now = new Date();
+    // La hora que pidio el usuario: la del marcado del chofer, no la del server.
+    // Como la app manda su propio timestamp, un viaje que sincroniza 5 horas
+    // tarde igual queda cerrado a la hora real de vuelta al deposito.
+    let closeAt: Date = stop.actualDeparture || stop.actualArrival || now;
+
+    // Inferir el inicio si el chofer nunca pudo fichar entrada (sin señal).
+    let startAt: Date | null = route.actualStartTime || null;
+    if (!startAt) {
+        const siblings = await prisma.stop.findMany({
+            where: { routeId: route.id },
+            select: { actualArrival: true, actualDeparture: true }
+        });
+        const ms: number[] = [];
+        for (const s of siblings) {
+            if (s.actualArrival) ms.push(new Date(s.actualArrival).getTime());
+            if (s.actualDeparture) ms.push(new Date(s.actualDeparture).getTime());
+        }
+        startAt = ms.length ? new Date(Math.min(...ms)) : closeAt;
+    }
+
+    // Clamp de cordura — mismo criterio que recorrido-operador. Protege contra
+    // relojes de celular desfasados (ROMs Android con la fecha corrida).
+    const lowerBound = new Date(new Date(route.date || closeAt).getTime() - 12 * 3600 * 1000);
+    const upperBound = new Date(now.getTime() + 5 * 60 * 1000);
+    const closeMs = closeAt.getTime();
+    if (
+        !Number.isFinite(closeMs) ||
+        closeMs < lowerBound.getTime() ||
+        closeMs > upperBound.getTime() ||
+        (startAt && closeMs <= startAt.getTime())
+    ) {
+        console.warn(`[base-stop] Hora fuera de rango en ruta ${route.id} (${closeAt.toISOString?.()}) — se usa la hora del servidor`);
+        closeAt = now;
+    }
+
+    await prisma.route.update({
+        where: { id: route.id },
+        data: { actualStartTime: startAt, actualEndTime: closeAt, status: 'COMPLETED' }
+    });
+    if (route.tripId) {
+        await prisma.trip.update({
+            where: { id: route.tripId },
+            data: {
+                status: 'COMPLETED',
+                completedAt: closeAt,
+                // returnTime es el campo que levanta el Motor de Costos para
+                // calcular las horas del mes: sin esto el viaje caia al
+                // fallback de 8h en vez de tener su duracion real.
+                returnTime: closeAt
+            }
+        }).catch((e: any) => console.warn('[base-stop] trip update:', e?.message || e));
+    }
+    await prisma.deviceLocation.updateMany({
+        where: { routeId: route.id, isActive: true },
+        data: { isActive: false }
+    }).catch(() => {});
+
+    console.log(`[base-stop] Ruta ${route.id} cerrada al marcar el retorno a base (${closeAt.toISOString()})`);
+    io.emit('route:updated', { routeId: route.id, type: 'closed_at_base' });
+    if (route.tripId) io.emit('trip:updated', { tripId: route.tripId });
+    return true;
+}
+
 app.patch('/api/v1/stops/:id', async (req, res) => {
     // Bug fix: antes prisma.stop.update y el resto del handler estaban fuera de try/catch.
     // Si Prisma rechazaba (id inexistente, datos inválidos), la promesa burbujeaba
@@ -3568,13 +3836,42 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
         const stop = await prisma.stop.update({
             where: { id: stopId },
             data,
-            include: { route: { select: { id: true, tripId: true, driverId: true, actualEndTime: true, actualStartTime: true } } }
+            include: {
+                client: { select: { name: true } },
+                route: { select: { id: true, tripId: true, driverId: true, date: true, actualEndTime: true, actualStartTime: true } }
+            }
         });
         io.emit('stop:updated', { stop });
         // Notificar a Torre de Control y a la app del chofer
         if (stop.route?.driverId) {
             io.to(`driver:${stop.route.driverId}`).emit('route:updated', { routeId: stop.route.id, type: 'stop_status' });
         }
+
+    // === CIERRE AL MARCAR EL RETORNO A BASE (Real de Catorce) ===
+    // Reemplaza al auto-finish generico de abajo. Se dispara SOLO en la parada
+    // de deposito, con la hora que marco el chofer (no la del servidor).
+    // El fallback por nombre cubre las rutas creadas antes del flag.
+    try {
+        let isBase = (stop as any).isReturnToBase === true;
+        if (!isBase && isBaseStopName((stop as any).client?.name) && stop.route) {
+            // Fallback para rutas creadas antes del flag. Exigimos que sea la
+            // ULTIMA parada: si el deposito figura al medio del recorrido (una
+            // recarga), marcarla no debe cerrar el viaje.
+            const last = await prisma.stop.findFirst({
+                where: { routeId: stop.route.id },
+                orderBy: { sequence: 'desc' },
+                select: { id: true }
+            });
+            isBase = last?.id === stop.id;
+        }
+        if (isBase) {
+            await closeRouteFromBaseStop(stop);
+        }
+    } catch (e: any) {
+        // Nunca romper la marca del chofer por un fallo al cerrar el viaje:
+        // la parada ya quedo guardada, el operador puede cerrar a mano.
+        console.warn('[base-stop] Error cerrando el viaje:', e?.message || e);
+    }
 
     // === AUTO-FINALIZACION DE RUTA — DESACTIVADO ===
     // Antes: al marcar todas las paradas como COMPLETED/UNDELIVERABLE, la ruta y el trip
@@ -4498,6 +4795,22 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
             }
         }
 
+        // ─── GARANTIZAR EL RETORNO A BASE COMO ULTIMA PARADA ───────────
+        // Antes la parada "Real de Catorce" aparecia solo si la plantilla la
+        // traia — a veces si, a veces no. Sin ella el viaje no puede cerrarse
+        // solo con la hora real de vuelta al deposito. Ahora se agrega siempre
+        // al final (salvo que el operador vacie la lista a proposito).
+        let baseClientId: string | null = null;
+        if (clientIds.length > 0) {
+            const base = await ensureBaseClient(tenantId);
+            if (base) {
+                baseClientId = base.id;
+                if (clientIds[clientIds.length - 1] !== base.id) {
+                    clientIds.push(base.id);
+                }
+            }
+        }
+
         // ─── PRESERVAR PROGRESO DEL CHOFER ─────────────────────────────
         // BUG HISTORICO: este endpoint borraba TODAS las paradas y las recreaba
         // con status PENDING. Si un chofer ya marcaba paradas como entregadas,
@@ -4518,7 +4831,8 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
                 id: true, clientId: true, sequence: true, status: true,
                 actualArrival: true, actualDeparture: true, observations: true,
                 reasonCode: true, proofPhotoUrl: true, deliveryWithoutIssues: true,
-                signatureUrl: true, plannedSequence: true, plannedEta: true
+                signatureUrl: true, plannedSequence: true, plannedEta: true,
+                isReturnToBase: true
             }
         });
 
@@ -4547,15 +4861,18 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
         const ops: any[] = [];
         const usedIds = new Set<number>();
         clientIds.forEach((clientId, idx) => {
+            // Solo la ULTIMA parada lleva el flag de retorno a base: si el
+            // deposito figura tambien al medio (recarga), esa no cierra el viaje.
+            const isBase = baseClientId != null && clientId === baseClientId && idx === clientIds.length - 1;
             const candidates = byClient.get(clientId) || [];
             const existing = candidates.find((s) => !usedIds.has(s.id));
             if (existing) {
                 // REUTILIZAR la parada existente. Solo actualizamos su sequence.
                 usedIds.add(existing.id);
-                if (existing.sequence !== idx + 1) {
+                if (existing.sequence !== idx + 1 || existing.isReturnToBase !== isBase) {
                     ops.push(prisma.stop.update({
                         where: { id: existing.id },
-                        data: { sequence: idx + 1 }
+                        data: { sequence: idx + 1, isReturnToBase: isBase }
                     }));
                 }
             } else {
@@ -4565,7 +4882,8 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
                         routeId: route!.id,
                         clientId,
                         sequence: idx + 1,
-                        status: 'PENDING'
+                        status: 'PENDING',
+                        isReturnToBase: isBase
                     }
                 }));
             }

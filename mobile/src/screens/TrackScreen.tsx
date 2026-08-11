@@ -33,7 +33,8 @@ import {
   flushStopQueue,
   flushIncidentQueue,
   flushPhotoQueue,
-  getPendingStopCount,
+  flushPunchQueue,
+  getPendingTotalCount,
   getPendingLocationCount,
   pingServer,
 } from '../api';
@@ -64,6 +65,16 @@ function isConcluded(r: Route): boolean {
   return ts === 'COMPLETED' || ts === 'RETURNED';
 }
 
+/** Parada de retorno al depósito. El flag lo pone el backend; el fallback por
+ *  nombre cubre las rutas creadas antes de que existiera el campo. */
+function isBaseStop(st: Stop): boolean {
+  if (st.isReturnToBase) return true;
+  const n = (st.client?.name || '')
+    .normalize('NFD').replace(/\p{Diacritic}/gu, '')
+    .toUpperCase().trim();
+  return /^(REAL\s*(DE\s*)?(14|CATORCE))\b/.test(n) || /^DEPOSITO\b/.test(n);
+}
+
 /** Que rutas ve el chofer:
  *  - Si tiene rutas ACTIVAS → solo las activas (al asignarle un viaje nuevo,
  *    el concluido se oculta solo y la app pasa al nuevo).
@@ -80,6 +91,8 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   const [selId, setSelId] = useState<number | null>(null);
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState('');
+  // true = el error fue "no llegué al servidor", no "no tenés viajes hoy"
+  const [errIsOffline, setErrIsOffline] = useState(false);
   const [tracking, setTracking] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [deliveryModalStop, setDeliveryModalStop] = useState<Stop | null>(null);
@@ -258,7 +271,12 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       // cartel rojo). Incluso en modo silent, porque el auto-recovery llama
       // silent y necesita que el error desaparezca cuando la red vuelve.
       setErr('');
+      setErrIsOffline(false);
     } catch (e) {
+      // Distinguimos "no pude bajar las rutas" de "hoy no tenés viajes": antes
+      // los dos casos terminaban mostrando "No tenés rutas asignadas para hoy"
+      // y el chofer se iba a su casa creyendo que no tenía trabajo.
+      setErrIsOffline((e as any)?.code === 'OFFLINE_NO_CACHE');
       setErr(e instanceof Error ? e.message : 'Error al cargar rutas');
     } finally {
       if (!silent) setLoading(false);
@@ -348,7 +366,10 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       }
     };
     const tickBody = async () => {
-      const pending = await getPendingStopCount();
+      // BUG FIX: antes esto contaba SOLO las paradas pendientes. Si al chofer
+      // le quedaba una foto o una incidencia en cola pero ninguna parada, la
+      // condicion de abajo (pending > 0) daba falso y nunca se sincronizaba.
+      const pending = await getPendingTotalCount();
       if (cancelled) return;
       setPendingOffline(pending);
       const latency = await pingServer(10000); // antes 5000
@@ -363,10 +384,13 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       // Flushear: si tuvimos UN ping OK (latency!=null), hay senial real.
       if (latency != null && pending > 0) {
         try {
+          // El fichaje va PRIMERO: si el chofer ficho entrada sin señal, el
+          // operador tiene que ver el viaje en curso antes que las entregas.
+          await flushPunchQueue();
           const sent = await flushStopQueue();
           await flushIncidentQueue();
           await flushPhotoQueue();
-          const after = await getPendingStopCount();
+          const after = await getPendingTotalCount();
           if (!cancelled) setPendingOffline(after);
           if (sent > 0) console.log(`[Sync] Flush OK: ${sent} stops enviados, ${after} restantes`);
         } catch (e) {
@@ -384,9 +408,13 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     const sub = AppState.addEventListener('change', (next: AppStateStatus) => {
       if (next === 'active') {
         loadRoutes({ silent: true });
-        flushStopQueue().then((n) => { if (n > 0) getPendingStopCount().then(setPendingOffline); });
-        flushIncidentQueue().catch(() => {});
-        flushPhotoQueue().catch(() => {});
+        void (async () => {
+          await flushPunchQueue().catch(() => 0);
+          await flushStopQueue().catch(() => 0);
+          await flushIncidentQueue().catch(() => {});
+          await flushPhotoQueue().catch(() => {});
+          getPendingTotalCount().then(setPendingOffline).catch(() => {});
+        })();
       }
     });
     return () => sub.remove();
@@ -562,11 +590,18 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     }
     const routeForPing = selId; // puede ser null — está permitido
     await setActiveRouteId(routeForPing);
-    await sendOnePing(routeForPing);
+    // FIX: estos dos await bloqueaban el fichaje hasta ~45s con señal mala
+    // (postTrackingLocation reintenta 4 veces × 7s) sin ningún spinner en
+    // pantalla: el chofer creía que la app se había colgado y tocaba de nuevo.
+    // Ahora salen en background — el GPS de fondo arranca igual, y el fichaje
+    // que no llegue queda en la cola offline y sale solo al recuperar señal.
+    void sendOnePing(routeForPing);
     // El start sobre /routes/:id/recorrido sigue mandándose si hay ruta seleccionada,
     // pero ya NO afecta el cierre/finalización del viaje (eso es solo del operador).
     if (routeForPing != null) {
-      await patchRouteRecorrido(routeForPing, session.id, 'start').catch(() => {});
+      void patchRouteRecorrido(routeForPing, session.id, 'start')
+        .then((r) => { if (r?.queued) getPendingTotalCount().then(setPendingOffline).catch(() => {}); })
+        .catch(() => {});
     }
     const started = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
     if (!started) {
@@ -591,8 +626,9 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   // "Finalizar" desde la web.
   const stopTracking = async () => {
     if (selId != null) {
-      // Notificación al backend (no cierra el viaje, solo registra el evento)
-      await patchRouteRecorrido(selId, session.id, 'end').catch(() => {});
+      // Notificación al backend (no cierra el viaje, solo registra el evento).
+      // No se espera: si no hay señal, patchRouteRecorrido lo deja en la cola.
+      void patchRouteRecorrido(selId, session.id, 'end').catch(() => {});
     }
     try {
       const started = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
@@ -669,12 +705,23 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
             </View>
           ) : null}
 
-          {/* Banner offline */}
-          {pendingOffline > 0 && (
-            <View style={styles.offlineBanner}>
-              <Text style={styles.offlineTxt}>⚡ {pendingOffline} acción(es) pendiente(s) de sincronizar</Text>
+          {/* Banner offline. Antes solo aparecía si había cola pendiente: un
+              chofer sin señal y sin nada marcado todavía no tenía ninguna
+              señal visual de que estaba desconectado. */}
+          {!isOnline ? (
+            <View style={styles.noSignalBanner}>
+              <Text style={styles.noSignalTxt}>📵 Sin señal — seguí marcando normalmente</Text>
+              <Text style={styles.noSignalSub}>
+                {pendingOffline > 0
+                  ? `${pendingOffline} acción(es) guardada(s) en el celular. Se envían solas al volver la señal.`
+                  : 'Todo lo que marques se guarda acá y se envía solo cuando vuelva la señal.'}
+              </Text>
             </View>
-          )}
+          ) : pendingOffline > 0 ? (
+            <View style={styles.offlineBanner}>
+              <Text style={styles.offlineTxt}>⚡ Sincronizando {pendingOffline} acción(es) pendiente(s)…</Text>
+            </View>
+          ) : null}
 
           {/* Panel de estadísticas del día */}
           {todayStats && todayStats.total > 0 ? (
@@ -730,7 +777,22 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
             <Text style={styles.incidentBtnTxt}>⚠️  Reportar incidencia</Text>
           </Pressable>
 
-          {err ? <Text style={styles.err}>{err}</Text> : null}
+          {err ? (
+            errIsOffline ? (
+              <View style={styles.loadFailCard}>
+                <Text style={styles.loadFailTitle}>📵 No pude bajar tus rutas</Text>
+                <Text style={styles.loadFailTxt}>
+                  No hay conexión con el sistema. Reintentando solo cada 8 segundos.
+                  {'\n'}Si tenés viajes asignados, van a aparecer apenas vuelva la señal.
+                </Text>
+                <Pressable style={styles.loadFailBtn} onPress={() => void loadRoutes()}>
+                  <Text style={styles.loadFailBtnTxt}>Reintentar ahora</Text>
+                </Pressable>
+              </View>
+            ) : (
+              <Text style={styles.err}>{err}</Text>
+            )
+          ) : null}
           {firstPendingClient ? (
             <View>
               <Pressable style={styles.nextBox} onPress={openFirstDeliveryInMaps}>
@@ -749,7 +811,9 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           {loading ? (
             <ActivityIndicator color={colors.primary} style={{ marginVertical: 8 }} />
           ) : routes.length === 0 ? (
-            <Text style={styles.hint}>No tenés rutas asignadas para hoy.</Text>
+            // Solo cuando el server respondió OK con lista vacía. Si no pudimos
+            // conectar, arriba ya se muestra la tarjeta "No pude bajar tus rutas".
+            errIsOffline ? null : <Text style={styles.hint}>No tenés rutas asignadas para hoy.</Text>
           ) : (
             <View style={styles.routeCards}>
               {routes.map((r) => {
@@ -808,6 +872,9 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                 const isActive = st.status === 'ARRIVED';
                 const isDone = st.status === 'COMPLETED';
                 const isFailed = st.status === 'UNDELIVERABLE';
+                // Parada de vuelta al depósito: al marcarla se CIERRA el viaje
+                // con esa hora, así que se avisa claramente antes de tocarla.
+                const isBase = isBaseStop(st);
                 return (
                 <View key={st.id} style={styles.tlRow}>
                   {/* Timeline left: dot + line */}
@@ -828,10 +895,10 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                     ]} />}
                   </View>
                   {/* Timeline right: content */}
-                  <View style={[styles.tlContent, isActive && styles.tlContentActive]}>
+                  <View style={[styles.tlContent, isActive && styles.tlContentActive, isBase && styles.tlContentBase]}>
                     <View style={styles.tlHeader}>
                       <Text style={styles.tlName} numberOfLines={1}>
-                        {st.client?.name || 'Cliente'}
+                        {isBase ? '🏠 ' : ''}{st.client?.name || 'Cliente'}
                       </Text>
                       <View style={[
                         styles.tlBadge,
@@ -894,15 +961,29 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                         ) : null}
                       </View>
                     ) : null}
+                    {isBase && !isDone && !isFailed ? (
+                      <Text style={styles.tlBaseHint}>
+                        Última parada. Al marcarla se cierra el viaje con esta hora.
+                      </Text>
+                    ) : null}
                     {st.status === 'PENDING' && !selConcluded ? (
                       <Pressable style={styles.tlBtnArr} onPress={() => onMarkArrival(st)}>
-                        <Text style={styles.tlBtnArrTxt}>Registrar llegada</Text>
+                        <Text style={styles.tlBtnArrTxt}>
+                          {isBase ? 'Llegué al depósito' : 'Registrar llegada'}
+                        </Text>
                       </Pressable>
                     ) : null}
                     {isActive && !selConcluded ? (
-                      <Pressable style={styles.tlBtnOut} onPress={() => setDeliveryModalStop(st)}>
-                        <Text style={styles.tlBtnOutTxt}>Finalizar entrega</Text>
-                        <Text style={styles.tlBtnOutSub}>Entregado · No entregado · Obs · Foto</Text>
+                      <Pressable
+                        style={[styles.tlBtnOut, isBase && styles.tlBtnBase]}
+                        onPress={() => setDeliveryModalStop(st)}
+                      >
+                        <Text style={styles.tlBtnOutTxt}>
+                          {isBase ? 'Finalizar viaje' : 'Finalizar entrega'}
+                        </Text>
+                        <Text style={styles.tlBtnOutSub}>
+                          {isBase ? 'Cierra el recorrido con la hora de ahora' : 'Entregado · No entregado · Obs · Foto'}
+                        </Text>
                       </Pressable>
                     ) : null}
                   </View>
@@ -1181,6 +1262,15 @@ const styles = StyleSheet.create({
   },
   tlBtnOutTxt: { color: colors.textInverse, fontWeight: font.black, fontSize: font.md },
   tlBtnOutSub: { color: 'rgba(255,255,255,0.8)', fontSize: 9, marginTop: 3, textAlign: 'center' },
+  /* Parada de retorno a base (Real de Catorce) */
+  tlContentBase: { backgroundColor: colors.secondaryLight },
+  tlBtnBase: { backgroundColor: colors.success },
+  tlBaseHint: {
+    fontSize: font.sm,
+    color: colors.success,
+    fontWeight: font.bold,
+    marginTop: spacing.xs,
+  },
 
   /* ── Toast / offline / misc ────────────────────── */
   toastBanner: { backgroundColor: colors.infoBg, borderRadius: radius.sm, padding: spacing.sm, marginBottom: spacing.sm, borderWidth: 0 },
@@ -1278,6 +1368,47 @@ const styles = StyleSheet.create({
     borderWidth: 0,
   },
   offlineTxt: { fontSize: font.sm, fontWeight: font.bold, color: colors.warning, textAlign: 'center' },
+  // Banner "sin señal": más fuerte que el de sincronización, porque el mensaje
+  // importante es "seguí trabajando, no perdés nada".
+  noSignalBanner: {
+    backgroundColor: colors.errorBg,
+    borderRadius: radius.sm + 2,
+    paddingVertical: spacing.md,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm + 2,
+  },
+  noSignalTxt: { fontSize: font.md, fontWeight: font.extrabold, color: colors.error, textAlign: 'center' },
+  noSignalSub: {
+    fontSize: font.sm,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.xs,
+    lineHeight: 15,
+  },
+  // Tarjeta "no pude bajar tus rutas" — distinta del vacío legítimo
+  loadFailCard: {
+    backgroundColor: colors.errorBg,
+    borderRadius: radius.md,
+    padding: spacing.lg,
+    marginTop: spacing.sm,
+    marginBottom: spacing.sm,
+  },
+  loadFailTitle: { fontSize: font.lg, fontWeight: font.extrabold, color: colors.error, textAlign: 'center' },
+  loadFailTxt: {
+    fontSize: font.base,
+    color: colors.textSecondary,
+    textAlign: 'center',
+    marginTop: spacing.sm,
+    lineHeight: 18,
+  },
+  loadFailBtn: {
+    marginTop: spacing.md,
+    backgroundColor: colors.primary,
+    borderRadius: radius.md,
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  loadFailBtnTxt: { fontSize: font.md, fontWeight: font.extrabold, color: colors.onPrimary },
   incidentBtn: {
     marginTop: spacing.sm,
     backgroundColor: colors.accentLight,

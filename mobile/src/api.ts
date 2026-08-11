@@ -7,7 +7,34 @@ function apiUrl(path: string): string {
   return `${API_BASE}${path.startsWith('/') ? path : `/${path}`}`;
 }
 
-const ROUTES_CACHE_KEY = 'r14_routes_today_cache';
+const ROUTES_CACHE_KEY = STORAGE_KEYS.routesCache;
+
+// ── Política de reintento por código HTTP ─────────────────────────────────────
+// Regla unica para TODAS las colas offline. Antes cada cola decidia distinto y
+// se perdian marcas del chofer: un 401 (token vencido a mitad del dia) hacia
+// que la entrega se descartara con un cartel de error, en vez de esperar a que
+// el chofer se relogueara.
+//   RETRY   → conservar en la cola y volver a intentar (red mala, server caido,
+//             sesion vencida, rate limit).
+//   DISCARD → el server dijo que esto no va a funcionar nunca (parada borrada,
+//             body invalido): sacarlo de la cola para no bloquearla.
+function httpDisposition(status: number): 'retry' | 'discard' {
+  if (status >= 500) return 'retry';           // server caido
+  if (status === 401 || status === 403) return 'retry'; // sesion vencida → se recupera al reloguear
+  if (status === 408 || status === 429) return 'retry'; // timeout / rate limit
+  if (status >= 400) return 'discard';         // 400/404/409/422: no tiene arreglo
+  return 'discard';                            // 2xx/3xx: ya se proceso
+}
+
+/** true si el error de un fetch es de red (sin señal, timeout, abort). */
+function isNetworkError(e: any): boolean {
+  const msg = String(e?.message || '');
+  return (
+    e?.name === 'TypeError' ||
+    e?.name === 'AbortError' ||
+    /network|fetch|abort|timeout|failed to fetch/i.test(msg)
+  );
+}
 
 // ── Manejo global de sesión vencida (token 401) ───────────────────────────────
 // La app guarda la sesión del chofer pero el token JWT dura 30 días. Cuando
@@ -197,6 +224,10 @@ export async function fetchRoutesToday(driverId: string): Promise<Route[]> {
         }
       }
     } catch {}
+    // Marcamos el error para que la pantalla pueda distinguir "no pude bajar
+    // las rutas" de "hoy no tenés viajes". Antes los dos casos mostraban el
+    // mismo cartel y el chofer creía que no tenía trabajo asignado.
+    (e as any).code = 'OFFLINE_NO_CACHE';
     throw e;
   }
 }
@@ -298,8 +329,15 @@ async function readStopQueue(): Promise<OfflineStopAction[]> {
   } catch { return []; }
 }
 
+// Tope alto a proposito: una jornada larga sin señal puede acumular cientos de
+// marcas y antes se truncaba a 100 EN SILENCIO (se perdian las mas viejas, que
+// son justo las que tienen la hora real de las primeras entregas del dia).
+const STOP_QUEUE_MAX = 1000;
 async function writeStopQueue(queue: OfflineStopAction[]): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEYS.offlineStopQueue, JSON.stringify(queue.slice(-100)));
+  if (queue.length > STOP_QUEUE_MAX) {
+    console.warn(`[stopQueue] DESBORDE: descartando ${queue.length - STOP_QUEUE_MAX} marcas viejas`);
+  }
+  await AsyncStorage.setItem(STORAGE_KEYS.offlineStopQueue, JSON.stringify(queue.slice(-STOP_QUEUE_MAX)));
 }
 
 // Mutex: si flushStopQueue ya está corriendo (ej. polling + AppState dispararon a la vez),
@@ -338,12 +376,13 @@ export function flushStopQueue(): Promise<number> {
           });
           if (res.ok) {
             sent++;
-          } else if (res.status >= 400 && res.status < 500) {
+          } else if (httpDisposition(res.status) === 'discard') {
             // El stop no existe o ya fue procesado: descartar de la cola
             console.warn(`[flushStopQueue] Descartando stop ${action.stopId} HTTP ${res.status}`);
             sent++; // contar como procesado para no quedarnos atascados
           } else {
-            // 5xx: server caido, reintentar luego
+            // 5xx / 401 / 429: conservar. El 401 se recupera solo cuando el
+            // chofer se reloguea; antes se descartaba y la entrega se perdia.
             stillPending.push(action);
             networkBroke = true;
           }
@@ -383,6 +422,12 @@ export async function patchStop(
     reasonCode?: string | null;
   }
 ): Promise<unknown> {
+  const enqueue = async () => {
+    const queue = await readStopQueue();
+    queue.push({ stopId, body, timestamp: new Date().toISOString() });
+    await writeStopQueue(queue);
+    return { queued: true };
+  };
   try {
     // Timeout 6s: con senial debil el fetch sin timeout colgaba la UI del
     // chofer; al abortar, cae al catch de abajo y la accion va a la cola offline.
@@ -394,6 +439,12 @@ export async function patchStop(
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) {
+      // BUG FIX: antes CUALQUIER respuesta no-OK tiraba un throw y la marca del
+      // chofer se perdia con un cartel de error. El caso mas comun era el 401
+      // (token de 30 dias vencido a mitad de la jornada): la entrega, con su
+      // hora real, se iba a la basura. Ahora los codigos recuperables van a la
+      // cola y salen solos cuando el chofer se reloguea o vuelve el server.
+      if (httpDisposition(res.status) === 'retry') return await enqueue();
       throw new Error((data as { error?: string }).error || 'No se pudo actualizar la parada');
     }
     // Flush any pending offline actions on success
@@ -403,17 +454,7 @@ export async function patchStop(
     // Network error → queue for later.
     // navigator.onLine NO existe en React Native: la única señal confiable de estar offline
     // es que fetch lance (TypeError o AbortError). Cualquier error de red lo encolamos.
-    const msg = String(e?.message || '');
-    const isNetworkError =
-      e?.name === 'TypeError' ||
-      e?.name === 'AbortError' ||
-      /network|fetch|abort|timeout|failed to fetch/i.test(msg);
-    if (isNetworkError) {
-      const queue = await readStopQueue();
-      queue.push({ stopId, body, timestamp: new Date().toISOString() });
-      await writeStopQueue(queue);
-      return { queued: true };
-    }
+    if (isNetworkError(e)) return await enqueue();
     throw e;
   }
 }
@@ -493,28 +534,114 @@ export async function pingServer(timeout = 4000): Promise<number | null> {
   }
 }
 
+// ── Cola offline de fichajes (entrada / salida) ───────────────────────────────
+// Antes el fichaje no tenia cola: si el chofer fichaba entrada sin señal, la
+// llamada fallaba, se tragaba el error con .catch(()=>{}) y el operador veia el
+// viaje en PENDING toda la mañana. Ahora se encola CON LA HORA DEL CELULAR y el
+// server la respeta al sincronizar (parametro `at`).
+
+interface OfflinePunchAction {
+  routeId: number;
+  driverId: string;
+  action: 'start' | 'end';
+  at: string; // ISO del momento real en que el chofer ficho
+}
+
+const PUNCH_QUEUE_MAX = 200;
+
+async function readPunchQueue(): Promise<OfflinePunchAction[]> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.offlinePunchQueue);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
+
+async function writePunchQueue(queue: OfflinePunchAction[]): Promise<void> {
+  await AsyncStorage.setItem(STORAGE_KEYS.offlinePunchQueue, JSON.stringify(queue.slice(-PUNCH_QUEUE_MAX)));
+}
+
+export async function getPendingPunchCount(): Promise<number> {
+  return (await readPunchQueue()).length;
+}
+
+/** Un fichaje ya sincronizado no se reintenta: el backend es idempotente
+ *  ("ya fue iniciado" devuelve OK), asi que descartamos por disposicion HTTP. */
+let _punchQueueFlushing: Promise<number> | null = null;
+export function flushPunchQueue(): Promise<number> {
+  if (_punchQueueFlushing) return _punchQueueFlushing;
+  _punchQueueFlushing = (async (): Promise<number> => {
+    try {
+      const queue = await readPunchQueue();
+      if (!queue.length) return 0;
+      const stillPending: OfflinePunchAction[] = [];
+      let sent = 0;
+      let networkBroke = false;
+      for (const item of queue) {
+        if (networkBroke) { stillPending.push(item); continue; }
+        try {
+          const res = await fetchWithTimeout(apiUrl(`/api/v1/routes/${item.routeId}/recorrido`), {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+            body: JSON.stringify({ driverId: item.driverId, action: item.action, at: item.at }),
+            timeout: 8000,
+          });
+          if (res.ok || httpDisposition(res.status) === 'discard') sent++;
+          else { stillPending.push(item); networkBroke = true; }
+        } catch {
+          stillPending.push(item);
+          networkBroke = true;
+        }
+      }
+      if (stillPending.length === 0) await AsyncStorage.removeItem(STORAGE_KEYS.offlinePunchQueue);
+      else await writePunchQueue(stillPending);
+      return sent;
+    } finally {
+      _punchQueueFlushing = null;
+    }
+  })();
+  return _punchQueueFlushing;
+}
+
 export async function patchRouteRecorrido(
   routeId: number,
   driverId: string,
   action: 'start' | 'end'
-): Promise<void> {
-  // Fichar entrada/salida es accion critica del chofer: 1 retry + timeout 8s
-  // para que con senial debil falle rapido y muestre error en vez de colgarse.
-  const res = await fetchWithRetry(apiUrl(`/api/v1/routes/${routeId}/recorrido`), {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
-    body: JSON.stringify({ driverId, action }),
-    timeout: 8000,
-  }, 1);
-  if (!res.ok) {
-    const data = await res.json().catch(() => ({}));
-    const msg = (data as { error?: string }).error || '';
-    // Filtramos los avisos benignos del backend ("ya fue iniciado" / "ya fue terminado").
-    // Cualquier otro mensaje SI es un error real y se eleva al chofer.
-    const benign = /ya fue (iniciado|terminado|finalizado|comenzado)/i.test(msg);
-    if (!benign) {
-      throw new Error(msg || 'Error al actualizar recorrido');
+): Promise<{ queued?: boolean }> {
+  // `at` se calcula ACA, no en el server: si esto termina en la cola offline y
+  // sincroniza tres horas mas tarde, la hora que queda registrada sigue siendo
+  // la real del fichaje.
+  const at = new Date().toISOString();
+  const enqueue = async () => {
+    const q = await readPunchQueue();
+    q.push({ routeId, driverId, action, at });
+    await writePunchQueue(q);
+    return { queued: true };
+  };
+  try {
+    // Fichar entrada/salida es accion critica del chofer: 1 retry + timeout 8s
+    // para que con senial debil falle rapido y encole en vez de colgarse.
+    const res = await fetchWithRetry(apiUrl(`/api/v1/routes/${routeId}/recorrido`), {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      body: JSON.stringify({ driverId, action, at }),
+      timeout: 8000,
+    }, 1);
+    if (!res.ok) {
+      if (httpDisposition(res.status) === 'retry') return await enqueue();
+      const data = await res.json().catch(() => ({}));
+      const msg = (data as { error?: string }).error || '';
+      // Filtramos los avisos benignos del backend ("ya fue iniciado" / "ya fue terminado").
+      // Cualquier otro mensaje SI es un error real y se eleva al chofer.
+      const benign = /ya fue (iniciado|terminado|finalizado|comenzado)/i.test(msg);
+      if (!benign) throw new Error(msg || 'Error al actualizar recorrido');
     }
+    flushPunchQueue().catch(() => {});
+    return {};
+  } catch (e: any) {
+    if (isNetworkError(e)) return await enqueue();
+    throw e;
   }
 }
 
@@ -606,12 +733,36 @@ interface OfflineIncidentAction {
   timestamp: string;
 }
 
+const INCIDENT_QUEUE_MAX = 200;
+
 async function readIncidentQueue(): Promise<OfflineIncidentAction[]> {
   try {
     const raw = await AsyncStorage.getItem(STORAGE_KEYS.offlineIncidentQueue);
     if (!raw) return [];
     return JSON.parse(raw) || [];
   } catch { return []; }
+}
+
+async function writeIncidentQueue(q: OfflineIncidentAction[]): Promise<void> {
+  await AsyncStorage.setItem(STORAGE_KEYS.offlineIncidentQueue, JSON.stringify(q.slice(-INCIDENT_QUEUE_MAX)));
+}
+
+export async function getPendingIncidentCount(): Promise<number> {
+  return (await readIncidentQueue()).length;
+}
+
+/** Total de acciones del chofer esperando señal (las 4 colas).
+ *  El poller usaba SOLO la cola de paradas para decidir si flushear: si un
+ *  chofer tenia una foto o una incidencia pendiente pero ninguna parada, no se
+ *  sincronizaba nunca hasta que minimizara y volviera a abrir la app. */
+export async function getPendingTotalCount(): Promise<number> {
+  const [stops, photos, incidents, punches] = await Promise.all([
+    getPendingStopCount(),
+    getPendingPhotoCount(),
+    getPendingIncidentCount(),
+    getPendingPunchCount(),
+  ]);
+  return stops + photos + incidents + punches;
 }
 
 // ─── Cola offline de FOTOS de comprobante ────────────────────────────────────
@@ -629,8 +780,12 @@ async function readPhotoQueue(): Promise<OfflinePhoto[]> {
   } catch { return []; }
 }
 
+const PHOTO_QUEUE_MAX = 200; // antes 50: una jornada sin señal excede ese tope
 async function writePhotoQueue(q: OfflinePhoto[]): Promise<void> {
-  await AsyncStorage.setItem(STORAGE_KEYS.offlinePhotoQueue, JSON.stringify(q.slice(-50)));
+  if (q.length > PHOTO_QUEUE_MAX) {
+    console.warn(`[photoQueue] DESBORDE: descartando ${q.length - PHOTO_QUEUE_MAX} fotos viejas`);
+  }
+  await AsyncStorage.setItem(STORAGE_KEYS.offlinePhotoQueue, JSON.stringify(q.slice(-PHOTO_QUEUE_MAX)));
 }
 
 export async function enqueueOfflinePhoto(stopId: number, localUri: string): Promise<void> {
@@ -652,7 +807,11 @@ export function flushPhotoQueue(): Promise<void> {
       const queue = await readPhotoQueue();
       if (!queue.length) return;
       const remaining: OfflinePhoto[] = [];
+      // networkBroke: sin esto, con 10 fotos y sin señal el flush tardaba
+      // 10 × 25s = 4 minutos peleando contra una red que no está.
+      let networkBroke = false;
       for (const p of queue) {
+        if (networkBroke) { remaining.push(p); continue; }
         try {
           const url = await uploadProofPhoto(p.localUri);
           // Patcheamos el stop con la URL (idempotente: si el stop ya estaba COMPLETED,
@@ -663,9 +822,13 @@ export function flushPhotoQueue(): Promise<void> {
             body: JSON.stringify({ proofPhotoUrl: url }),
             timeout: 6000,
           });
-          if (!res.ok) remaining.push(p);
-        } catch {
+          if (!res.ok) {
+            remaining.push(p);
+            if (httpDisposition(res.status) === 'retry') networkBroke = true;
+          }
+        } catch (e) {
           remaining.push(p);
+          if (isNetworkError(e)) networkBroke = true;
         }
       }
       if (remaining.length === 0) await AsyncStorage.removeItem(STORAGE_KEYS.offlinePhotoQueue);
@@ -685,8 +848,13 @@ export function flushIncidentQueue(): Promise<void> {
     try {
       const queue = await readIncidentQueue();
       if (!queue.length) return;
-      let sent = 0;
+      // Antes: `break` ante CUALQUIER !res.ok. Una incidencia rechazada con 400
+      // (ej. viaje borrado) bloqueaba la cola para siempre y las siguientes
+      // nunca llegaban. Ahora se descarta la mala y se sigue.
+      const stillPending: OfflineIncidentAction[] = [];
+      let networkBroke = false;
       for (const action of queue) {
+        if (networkBroke) { stillPending.push(action); continue; }
         try {
           const res = await fetchWithTimeout(apiUrl('/api/v1/incidents'), {
             method: 'POST',
@@ -694,14 +862,17 @@ export function flushIncidentQueue(): Promise<void> {
             body: JSON.stringify(action),
             timeout: 8000,
           });
-          if (!res.ok) break;
-          sent++;
-        } catch { break; }
+          if (!res.ok && httpDisposition(res.status) === 'retry') {
+            stillPending.push(action);
+            networkBroke = true;
+          }
+        } catch {
+          stillPending.push(action);
+          networkBroke = true;
+        }
       }
-      if (sent === queue.length) await AsyncStorage.removeItem(STORAGE_KEYS.offlineIncidentQueue);
-      else if (sent > 0) {
-        await AsyncStorage.setItem(STORAGE_KEYS.offlineIncidentQueue, JSON.stringify(queue.slice(sent)));
-      }
+      if (stillPending.length === 0) await AsyncStorage.removeItem(STORAGE_KEYS.offlineIncidentQueue);
+      else await writeIncidentQueue(stillPending);
     } finally {
       _incidentQueueFlushing = null;
     }
@@ -730,7 +901,7 @@ export async function reportIncident(payload: {
     // Queue offline
     const queue = await readIncidentQueue();
     queue.push({ ...payload, timestamp: new Date().toISOString() });
-    await AsyncStorage.setItem(STORAGE_KEYS.offlineIncidentQueue, JSON.stringify(queue));
+    await writeIncidentQueue(queue);
     return { queued: true };
   }
 }

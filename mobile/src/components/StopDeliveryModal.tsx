@@ -180,6 +180,8 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
   if (!stop) return null;
   const title = stop.client?.name || `Parada ${stop.sequence}`;
   const address = stop.client?.address || '';
+  // Retorno al depósito: no es una entrega, es el cierre del viaje.
+  const isBase = stop.isReturnToBase === true;
 
   return (
     <Modal
@@ -201,7 +203,9 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
             <Text style={styles.closeTxt}>✕</Text>
           </Pressable>
           <View style={styles.headerTitleWrap}>
-            <Text style={styles.headerKicker}>Parada {stop.sequence}</Text>
+            <Text style={styles.headerKicker}>
+              {isBase ? 'Cierre del viaje' : `Parada ${stop.sequence}`}
+            </Text>
             <Text style={styles.headerTitle} numberOfLines={1}>{title}</Text>
           </View>
         </View>
@@ -243,7 +247,9 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
             {tab === 'delivered' ? (
               <>
                 <Text style={styles.hint}>
-                  Registramos la salida y enviamos observaciones y foto a planificación.
+                  {isBase
+                    ? 'Volviste al depósito. Al confirmar, el viaje se cierra con la hora de ahora — aunque no tengas señal, se guarda esta hora.'
+                    : 'Registramos la salida y enviamos observaciones y foto a planificación.'}
                 </Text>
                 <TextInput
                   style={styles.input}
@@ -325,7 +331,9 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
               {saving ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.saveBtnTxt}>Confirmar entrega</Text>
+                <Text style={styles.saveBtnTxt}>
+                  {isBase ? 'Finalizar viaje' : 'Confirmar entrega'}
+                </Text>
               )}
             </Pressable>
           ) : (

@@ -152,6 +152,9 @@ model Stop {
   /// true = chofer marcó «entrega sin problemas»; null = no indicado
   deliveryWithoutIssues Boolean?
   signatureUrl    String?
+  /// true = parada de retorno al depósito (Real de Catorce). Al marcarla como
+  /// finalizada, el viaje se cierra automáticamente con ESA hora.
+  isReturnToBase  Boolean   @default(false)
   client          Client    @relation(fields: [clientId], references: [id])
   route           Route     @relation(fields: [routeId], references: [id])
 

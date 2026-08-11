@@ -115,6 +115,9 @@
                     <a href="#control" id="btn-control" class="header-nav-item">
                         <i data-lucide="monitor-play" class="w-4 h-4"></i> Torre de Control
                     </a>
+                    <a href="#drivers-status" id="btn-drivers-status" class="header-nav-item">
+                        <i data-lucide="radio" class="w-4 h-4"></i> Estado de Choferes
+                    </a>
                     <a href="#hdr" id="btn-hdr" class="header-nav-item">
                         <i data-lucide="history" class="w-4 h-4"></i> HDR
                     </a>
@@ -1997,6 +2000,30 @@
                 </div>
             </div>
 
+            <!-- VIEW: ESTADO DE CHOFERES (¿quién reporta señal?) -->
+            <div id="view-drivers-status" class="hidden view-animate space-y-6">
+                <div class="card-dark overflow-hidden">
+                    <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                        <div>
+                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Señal de los choferes</h4>
+                            <p class="text-xs text-[#A3AED0] mt-1">Todos los que tienen viaje asignado, reporten o no. Se actualiza solo cada 15 segundos.</p>
+                        </div>
+                        <div class="flex items-center gap-2 shrink-0">
+                            <input type="date" id="ds-date" class="bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]">
+                            <button onclick="loadDriverStatus()" class="bg-[#451ebb] text-white rounded-lg px-4 py-2 text-sm font-bold">
+                                Actualizar
+                            </button>
+                        </div>
+                    </div>
+                    <div class="p-6 bg-white">
+                        <div id="ds-kpis" class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5"></div>
+                        <div id="ds-list" class="space-y-2">
+                            <p class="text-sm text-[#A3AED0]">Cargando…</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- VIEW: CONTROL TOWER / LIVE MONITORING -->
             <div id="view-control" class="hidden view-animate space-y-8">
                 <!-- MAPA DE FLOTA EN VIVO (HERO) -->
@@ -3491,8 +3518,8 @@
 
         // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
         const ACCESS_PROFILES = {
-            SUPERADMIN: ['control','hdr','weekly','payments','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'],
-            TRAFICO: ['control','hdr','weekly','payments','dashboard','vrp','budget','fleets','maintenance','routes','users','employees','schools','reports','incidents'],
+            SUPERADMIN: ['control','drivers-status','hdr','weekly','payments','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'],
+            TRAFICO: ['control','drivers-status','hdr','weekly','payments','dashboard','vrp','budget','fleets','maintenance','routes','users','employees','schools','reports','incidents'],
             RRHH: ['salaries','employees'],
             ADMINISTRACION: ['weekly','payments','dashboard','budget','salaries','schools','reports']
         };
@@ -3528,7 +3555,7 @@
             }
 
             // Hide/show nav buttons based on access
-            const allSections = ['control','hdr','weekly','payments','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports'];
+            const allSections = ['control','drivers-status','hdr','weekly','payments','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports'];
             allSections.forEach(sec => {
                 const btn = document.getElementById('btn-' + sec);
                 if (btn) {
@@ -3694,7 +3721,7 @@
             return { ...stored, ...hardcoded };
         }
 
-        const ALL_MODULES = ['control','hdr','weekly','payments','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'];
+        const ALL_MODULES = ['control','drivers-status','hdr','weekly','payments','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'];
 
         function renderProfileAssignments() {
             const tbody = document.getElementById('profile-assignments-body');
@@ -3822,6 +3849,7 @@
 
             const titles = {
                 control: 'Torre de Control / En Vivo',
+                'drivers-status': 'Estado de Choferes',
                 hdr: 'Historial de Rutas (HDR)',
                 fleets: 'Flotas — Datos de vehículos',
                 weekly: 'Planificación Semanal',
@@ -3842,6 +3870,7 @@
 
             const descs = {
                 control: 'Monitoreo en tiempo real de operaciones y estados de tránsito',
+                'drivers-status': 'Quién está reportando señal y quién no, entre los choferes con viaje asignado',
                 hdr: 'Recorridos finalizados con paradas, horarios y trazado GPS de la flota',
                 fleets: 'Configuración de cada camión reutilizable en presupuestos (valor, consumo, mantenimiento, etc.)',
                 weekly: 'Gestión centralizada de la operación logística de Real de Catorce',
@@ -3896,6 +3925,9 @@
                 // Al salir de Torre de Control, parar el polling
                 if (typeof stopAllActiveRoutesPolling === 'function') stopAllActiveRoutesPolling();
             }
+            // Estado de Choferes: refresco cada 15s solo mientras la vista esté abierta
+            if (id === 'drivers-status') startDriverStatusPolling();
+            else stopDriverStatusPolling();
             if(id === 'payments') { if (typeof loadPaymentsView === 'function') loadPaymentsView(); }
             if(id === 'hdr') { if (typeof loadHdrList === 'function') loadHdrList(); }
             if(id === 'routes') loadRouteTemplates();
@@ -3909,6 +3941,117 @@
             // Mostrar/ocultar la barra flotante de resultado de Presupuestar
             const fb = document.getElementById('bud-floating-bar');
             if (fb) fb.style.display = (id === 'budget') ? 'block' : 'none';
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // ESTADO DE CHOFERES — ¿quién está reportando señal?
+        // ═══════════════════════════════════════════════════════════════════
+        // La Torre de Control muestra a los que reportan; el problema operativo
+        // es el otro: saber quién NO reporta. /fleet/locations filtra por la
+        // última hora, así que el chofer con el teléfono muerto desaparecía de
+        // la lista justo cuando había que llamarlo. Acá la fila existe siempre
+        // que haya viaje asignado.
+        // Umbrales UNICOS de "reporta señal", usados por Estado de Choferes, la
+        // Torre de Control y el badge del modal de viaje.
+        const DRIVER_SIGNAL_OK_MIN = 10;     // <= 10 min → verde
+        const DRIVER_SIGNAL_STALE_MIN = 30;  // <= 30 min → amarillo; más → rojo
+
+        let _dsPollTimer = null;
+
+        function _dsAgo(min) {
+            if (min == null) return 'nunca reportó';
+            if (min < 1) return 'recién';
+            if (min < 60) return `hace ${min} min`;
+            const h = Math.floor(min / 60);
+            return `hace ${h} h ${min % 60} min`;
+        }
+
+        const DS_STYLES = {
+            ok:    { dot: 'bg-emerald-500', card: 'bg-emerald-50',  txt: 'text-emerald-700', label: 'Reportando' },
+            stale: { dot: 'bg-amber-500',   card: 'bg-amber-50',    txt: 'text-amber-700',   label: 'Señal débil' },
+            dead:  { dot: 'bg-rose-500',    card: 'bg-rose-50',     txt: 'text-rose-700',    label: 'Sin señal' },
+            never: { dot: 'bg-slate-400',   card: 'bg-slate-100',   txt: 'text-slate-600',   label: 'Nunca reportó' }
+        };
+
+        async function loadDriverStatus() {
+            const listEl = document.getElementById('ds-list');
+            const kpiEl = document.getElementById('ds-kpis');
+            if (!listEl) return;
+            const dateEl = document.getElementById('ds-date');
+            const date = dateEl?.value || '';
+            try {
+                const res = await fetch(`${API_URL}/control/driver-status${date ? `?date=${date}` : ''}`, { headers: getActorHeaders() });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error del servidor');
+                const rows = data.drivers || [];
+                if (dateEl && !dateEl.value) dateEl.value = data.date;
+
+                // Los que hay que mirar primero: sin señal arriba, ya cerrados abajo.
+                const rank = { dead: 0, never: 1, stale: 2, ok: 3 };
+                rows.sort((a, b) => (a.closed - b.closed) || (rank[a.signal] - rank[b.signal]));
+
+                const activos = rows.filter(r => !r.closed);
+                const alerta = activos.filter(r => r.signal === 'dead' || r.signal === 'never').length;
+                const kpis = [
+                    { label: 'Viajes del día', val: rows.length, cls: 'text-[#1B2559]' },
+                    { label: 'En curso', val: activos.length, cls: 'text-[#451ebb]' },
+                    { label: 'Sin señal', val: alerta, cls: alerta > 0 ? 'text-rose-600' : 'text-[#1B2559]' },
+                    { label: 'Sin fichar entrada', val: activos.filter(r => !r.punchedIn).length, cls: 'text-amber-600' }
+                ];
+                if (kpiEl) {
+                    kpiEl.innerHTML = kpis.map(k => `
+                        <div class="bg-[#F4F7FE] rounded-xl p-3">
+                            <p class="text-[10px] font-bold text-[#A3AED0] uppercase tracking-wider">${k.label}</p>
+                            <p class="text-2xl font-black ${k.cls} mt-1">${k.val}</p>
+                        </div>`).join('');
+                }
+
+                if (rows.length === 0) {
+                    listEl.innerHTML = '<p class="text-sm text-[#A3AED0]">No hay viajes con chofer asignado para esta fecha.</p>';
+                    return;
+                }
+
+                listEl.innerHTML = rows.map(r => {
+                    const s = DS_STYLES[r.signal] || DS_STYLES.never;
+                    const chips = [];
+                    if (r.closed) chips.push('<span class="status-badge bg-slate-200 text-slate-600 text-[10px]">Viaje cerrado</span>');
+                    else {
+                        if (!r.punchedIn) chips.push('<span class="status-badge bg-amber-100 text-amber-700 text-[10px]">No fichó entrada</span>');
+                        if (!r.hasBaseStop) chips.push('<span class="status-badge bg-indigo-100 text-indigo-700 text-[10px]">Sin parada de base</span>');
+                    }
+                    const pct = r.stopsTotal > 0 ? Math.round((r.stopsDone / r.stopsTotal) * 100) : 0;
+                    return `
+                    <div class="${s.card} rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 ${r.closed ? 'opacity-60' : ''}">
+                        <span class="w-3 h-3 rounded-full ${s.dot} shrink-0"></span>
+                        <div class="flex-1 min-w-0">
+                            <p class="font-bold text-[#1B2559] text-sm truncate">${r.driverName}</p>
+                            <p class="text-xs text-[#A3AED0] truncate">${r.reparto}${r.vehicle ? ` · ${r.vehicle}` : ''}</p>
+                        </div>
+                        <div class="text-left sm:text-right shrink-0">
+                            <p class="text-xs font-bold ${s.txt}">${s.label}</p>
+                            <p class="text-[11px] text-[#A3AED0]">${_dsAgo(r.minutesAgo)}</p>
+                        </div>
+                        <div class="w-full sm:w-32 shrink-0">
+                            <p class="text-[11px] font-bold text-[#1B2559]">${r.stopsDone}/${r.stopsTotal} paradas</p>
+                            <div class="h-1.5 bg-white/70 rounded-full mt-1 overflow-hidden">
+                                <div class="h-full bg-[#451ebb] rounded-full" style="width:${pct}%"></div>
+                            </div>
+                        </div>
+                        <div class="flex flex-wrap gap-1 shrink-0">${chips.join(' ')}</div>
+                    </div>`;
+                }).join('');
+            } catch (e) {
+                listEl.innerHTML = `<p class="text-sm text-rose-600 font-bold">Error: ${e.message || e}</p>`;
+            }
+        }
+
+        function startDriverStatusPolling() {
+            loadDriverStatus();
+            if (_dsPollTimer) clearInterval(_dsPollTimer);
+            _dsPollTimer = setInterval(loadDriverStatus, 15000);
+        }
+        function stopDriverStatusPolling() {
+            if (_dsPollTimer) { clearInterval(_dsPollTimer); _dsPollTimer = null; }
         }
 
         // ─── REPORTS MODULE ─────────────────────────────────────────────────
@@ -5463,7 +5606,7 @@
             const delayed = list.filter(it => {
                 if (it.status === 'COMPLETED' || it.status === 'CANCELLED' || it.status === 'CANCELADO') return false;
                 const ts = it.lastLocation?.timestamp ? new Date(it.lastLocation.timestamp).getTime() : 0;
-                return ts > 0 && (Date.now() - ts) > (45 * 60 * 1000);
+                return ts > 0 && (Date.now() - ts) > (DRIVER_SIGNAL_STALE_MIN * 60 * 1000);
             }).length;
             const kIn = document.getElementById('control-kpi-incourse');
             const kCo = document.getElementById('control-kpi-completed');
@@ -5485,7 +5628,7 @@
                         ? Math.round(Number(loc.offRouteMeters))
                         : null;
                 const devTxt = devM != null ? `${devM}` : '—';
-                const alertTxt = !loc ? 'Sin ubicación' : ((Date.now() - ts.getTime()) > (45 * 60 * 1000) ? 'Demorado' : 'OK');
+                const alertTxt = !loc ? 'Sin ubicación' : ((Date.now() - ts.getTime()) > (DRIVER_SIGNAL_STALE_MIN * 60 * 1000) ? 'Demorado' : 'OK');
                 return `
                     <tr class="hover:bg-[#F4F7FE] transition-colors">
                         <td class="text-xs font-bold text-[#A3AED0]">${ts ? ts.toLocaleString('es-AR') : '--'}</td>
@@ -18260,8 +18403,11 @@
             }
         }
 
-        /** Umbral: senial mas vieja que esto = "telefono sin reportar" */
-        const DRIVER_SIGNAL_STALE_MIN = 10;
+        /** Umbral: senial mas vieja que esto = "telefono sin reportar".
+         *  Definido arriba (junto a DRIVER_SIGNAL_OK_MIN) para que la Torre de
+         *  Control, el badge del viaje y Estado de Choferes usen el MISMO numero.
+         *  Antes convivian 10 min acá y 45 min hardcodeado en la Torre: la misma
+         *  ruta salia "OK" en un panel y "Demorado" en el otro. */
 
         // Guard anti doble-click: si el operador toca Iniciar/Finalizar dos veces
         // rapido, la segunda llamada se ignora hasta que termine la primera.
