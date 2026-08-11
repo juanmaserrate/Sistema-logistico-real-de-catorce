@@ -3163,10 +3163,13 @@
                         .then(d => {
                             if (!d) return;
                             const cur = parseFloat(document.getElementById('cost-horas-reales')?.value) || 0;
-                            const diff = Math.abs(cur - d.totalHours) > 1
+                            const diff = Math.abs(cur - d.hoursFromTrips) > 1
                                 ? ` <span class="text-amber-700 font-bold">(cargado: ${cur} h — difiere)</span>`
                                 : ' <span class="text-emerald-700 font-bold">(coincide con lo cargado)</span>';
-                            detail.innerHTML = `El sistema suma <b>${d.totalHours} h</b> en ${d.tripsPropio} viajes Propios de ${month}${diff} — boton "Traer horas del mes" para usarlas.`;
+                            const sinHor = d.tripsWithoutHours > 0
+                                ? ` <span class="text-amber-700">· ${d.tripsWithoutHours} sin horario no contados</span>`
+                                : '';
+                            detail.innerHTML = `El sistema suma <b>${d.hoursFromTrips} h</b> reales de ${d.tripsWithHours}/${d.tripsPropio} viajes Propios de ${month}${diff}${sinHor} — boton "Traer horas del mes" para usarlas.`;
                         })
                         .catch(() => {});
                 }
@@ -17051,15 +17054,18 @@
                 const d = await res.json();
                 if (!res.ok) throw new Error(d.error || 'Error del servidor');
                 const el = document.getElementById('cost-horas-reales');
-                if (el) el.value = d.totalHours;
+                // Solo cargamos las horas REALES (viajes con horario). Los viajes
+                // sin horario se muestran como info para que el usuario decida
+                // si los suma a mano — asumir 8h por viaje inflaba el total.
+                if (el) el.value = d.hoursFromTrips;
                 if (detail) {
                     const sinHorario = d.tripsWithoutHours > 0
-                        ? ` &nbsp;·&nbsp; <span class="text-amber-700 font-bold">${d.tripsWithoutHours} viajes SIN horario asumidos a ${d.fallbackHours} h c/u = ${d.hoursAssumed} h</span>`
+                        ? ` &nbsp;·&nbsp; <span class="text-amber-700 font-bold">⚠ ${d.tripsWithoutHours} viajes SIN horario NO sumados (serían ~${d.hoursAssumed} h a ${d.fallbackHours} h c/u si querés agregarlas a mano)</span>`
                         : '';
-                    detail.innerHTML = `⚡ <b>${d.totalHours} h</b> = ${d.tripsWithHours} viajes con horario (${d.hoursFromTrips} h)${sinHorario} &nbsp;·&nbsp; ${d.tripsPropio} viajes Propios en ${month}`;
+                    detail.innerHTML = `⚡ <b>${d.hoursFromTrips} h</b> cargadas de ${d.tripsWithHours} viajes con horario${sinHorario} &nbsp;·&nbsp; ${d.tripsPropio} viajes Propios en ${month}`;
                 }
                 calculateCosts(); // refrescar tasas por hora en pantalla
-                if (typeof addNotification === 'function') addNotification('success', 'Horas del mes', `${d.totalHours} h cargadas desde ${d.tripsPropio} viajes propios.`);
+                if (typeof addNotification === 'function') addNotification('success', 'Horas del mes', `${d.hoursFromTrips} h cargadas desde ${d.tripsWithHours} viajes con horario.`);
             } catch (e) {
                 if (detail) detail.innerHTML = `<span class="text-rose-600 font-bold">Error: ${e.message || e}</span>`;
             } finally {

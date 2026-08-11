@@ -4193,12 +4193,19 @@ app.get('/api/v1/costs/month-hours', async (req: any, res: any) => {
         })();
         const startDate = new Date(year, monthNum, 1);
         const endDate = new Date(year, monthNum + 1, 0, 23, 59, 59);
+        // Case-insensitive: en DB puede haber 'Propio' / 'propio' / 'PROPIO'
+        // por cargas manuales o imports viejos. Sin esto, se colaban tercerizados
+        // porque cualquier variante que no matchee exacto quedaba afuera (o al reves).
         const trips = await prisma.trip.findMany({
-            where: { contractType: 'Propio', date: { gte: startDate, lte: endDate } },
+            where: {
+                contractType: { equals: 'Propio', mode: 'insensitive' },
+                date: { gte: startDate, lte: endDate }
+            },
             select: {
                 id: true,
                 exitTime: true,
                 returnTime: true,
+                contractType: true,
                 // Horas GPS reales de la ruta vinculada (mas precisas que exit/return manual)
                 linkedRoute: { select: { actualStartTime: true, actualEndTime: true } }
             }
@@ -4282,7 +4289,7 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
 
         const trips = await prisma.trip.findMany({
             where: {
-                contractType: 'Propio',
+                contractType: { equals: 'Propio', mode: 'insensitive' },
                 date: { gte: startDate, lte: endDate }
             }
         });
