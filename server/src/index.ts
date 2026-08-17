@@ -1812,6 +1812,25 @@ app.post('/api/v1/control/map-matching-batch', async (req, res) => {
 
 /** Lista las rutas/viajes ACTIVOS hoy con sus paradas y horarios reales.
  *  Usado por Torre de Control para mostrar todas las paradas a la vez sin filtrar. */
+// ── Fecha operativa (Buenos Aires) ────────────────────────────────────────────
+// El server corre en UTC en Railway, asi que a partir de las 21:00 de Argentina
+// `new Date()` ya devuelve el dia siguiente. Sin esto, el panel de Estado de
+// Choferes mostraba los viajes de MAÑANA justo en el horario en que el operador
+// de la tarde revisa los de HOY.
+// Las rutas se guardan con `date` a medianoche UTC del dia previsto, asi que la
+// ventana se arma en UTC a partir del YMD de Buenos Aires.
+function buenosAiresYmd(d: Date = new Date()): string {
+    // en-CA da directamente YYYY-MM-DD
+    return d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+}
+/** Ventana [00:00, 23:59:59.999] UTC del dia YMD indicado. */
+function utcDayRange(ymd: string): { start: Date; end: Date } {
+    return {
+        start: new Date(`${ymd}T00:00:00.000Z`),
+        end: new Date(`${ymd}T23:59:59.999Z`)
+    };
+}
+
 // Umbrales unicos de "reporta señal". Antes convivian tres numeros distintos:
 // 10 min en el badge del modal de viaje y 45 min hardcodeado dos veces en la
 // Torre de Control, asi que la misma ruta salia "OK" en un lado y "Demorado"
@@ -1920,10 +1939,9 @@ app.get('/api/v1/control/active-routes', async (_req, res) => {
 app.get('/api/v1/control/driver-status', async (req, res) => {
     try {
         const dateStr = String(req.query.date || '');
-        const base = dateStr ? new Date(dateStr + 'T00:00:00') : new Date();
-        if (isNaN(base.getTime())) return res.status(400).json({ error: 'Fecha inválida' });
-        const startOfDay = new Date(base); startOfDay.setHours(0, 0, 0, 0);
-        const endOfDay = new Date(base); endOfDay.setHours(23, 59, 59, 999);
+        const ymd = /^\d{4}-\d{2}-\d{2}$/.test(dateStr) ? dateStr : buenosAiresYmd();
+        const { start: startOfDay, end: endOfDay } = utcDayRange(ymd);
+        if (isNaN(startOfDay.getTime())) return res.status(400).json({ error: 'Fecha inválida (YYYY-MM-DD)' });
 
         const routes = await prisma.route.findMany({
             where: { date: { gte: startOfDay, lte: endOfDay }, driverId: { not: null } },
@@ -2001,7 +2019,7 @@ app.get('/api/v1/control/driver-status', async (req, res) => {
         });
 
         res.json({
-            date: startOfDay.toISOString().slice(0, 10),
+            date: ymd,
             thresholds: { ok: DRIVER_SIGNAL_OK_MIN, stale: DRIVER_SIGNAL_STALE_MIN },
             drivers: out
         });
@@ -3817,9 +3835,12 @@ app.post('/api/admin/backfill-base-stops', async (req: any, res: any) => {
     const { key, from, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     try {
-        const startOfDay = from ? new Date(String(from) + 'T00:00:00') : new Date();
+        // Por defecto HOY en Buenos Aires (no el "hoy" UTC del server, que a
+        // partir de las 21:00 de Argentina ya es el dia siguiente y se saltearia
+        // justamente los viajes del dia en curso).
+        const fromYmd = /^\d{4}-\d{2}-\d{2}$/.test(String(from || '')) ? String(from) : buenosAiresYmd();
+        const { start: startOfDay } = utcDayRange(fromYmd);
         if (isNaN(startOfDay.getTime())) return res.status(400).json({ error: 'from inválido (YYYY-MM-DD)' });
-        if (!from) startOfDay.setHours(0, 0, 0, 0);
 
         const tenant = await prisma.tenant.findFirst({ select: { id: true } });
         if (!tenant) return res.status(500).json({ error: 'No hay tenant' });
@@ -3871,7 +3892,7 @@ app.post('/api/admin/backfill-base-stops', async (req: any, res: any) => {
             io.emit('route:updated', { type: 'base_stop_backfill' });
         }
         console.log(`[backfill-base-stops] ${dryRun ? '(DRY RUN) ' : ''}`, JSON.stringify({ ...result, detalle: undefined }));
-        res.json({ dryRun: !!dryRun, desde: startOfDay.toISOString().slice(0, 10), ...result });
+        res.json({ dryRun: !!dryRun, desde: fromYmd, ...result });
     } catch (e: any) {
         console.error('backfill-base-stops:', e);
         res.status(500).json({ error: e?.message || 'Error' });
