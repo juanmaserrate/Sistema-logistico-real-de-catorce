@@ -125,6 +125,39 @@ async function flushQueue(apiBase: string): Promise<void> {
   // Si sent === 0 no tocamos la cola (nada cambio).
 }
 
+// ─── Sincronizacion de entregas en segundo plano ─────────────────────────────
+// Las colas de paradas/fichajes/incidencias solo se vaciaban desde TrackScreen,
+// o sea con la app abierta. Un chofer que marca todo sin señal, cierra la app
+// al llegar y no la vuelve a abrir dejaba TODO trabado — el operador no veia
+// las entregas ni el viaje se cerraba.
+// Ahora aprovechamos esta tarea, que ya corre en segundo plano mientras el
+// chofer tiene el seguimiento activo: si hay red (lo sabemos porque el ping de
+// GPS salio bien), vaciamos tambien las colas de datos.
+// Las FOTOS quedan afuera a proposito: pesan y tardan hasta 25s cada una, y el
+// SO puede matar la tarea a la mitad. Se siguen subiendo con la app abierta.
+const DATA_FLUSH_EVERY_MS = 60_000; // no en cada ping de 5s
+let _lastDataFlush = 0;
+
+async function flushPendingDataQueues(): Promise<void> {
+  if (Date.now() - _lastDataFlush < DATA_FLUSH_EVERY_MS) return;
+  _lastDataFlush = Date.now();
+  try {
+    // Import diferido: evita cargar api.ts (y sus dependencias) en cada
+    // arranque headless de la tarea si no hay nada pendiente que mandar.
+    const api = await import('./api');
+    const pendientes = await api.getPendingStopCount() + await api.getPendingPunchCount();
+    if (pendientes === 0) return;
+    // Fichaje primero: el operador tiene que ver el viaje en curso antes que
+    // las entregas sueltas.
+    await api.flushPunchQueue();
+    await api.flushStopQueue();
+    await api.flushIncidentQueue();
+    console.log('[bg-sync] colas de datos vaciadas en segundo plano');
+  } catch {
+    // Sin red o error: se reintenta en el proximo ciclo.
+  }
+}
+
 // ─── Tarea en segundo plano ──────────────────────────────────────────────────
 
 TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
@@ -190,12 +223,18 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
     await flushQueue(apiBase);
 
     // 2. Enviamos la ubicacion actual.
+    let hayRed = false;
     try {
       await sendLocation(apiBase, payload);
+      hayRed = true;
     } catch {
       // Sin red: guardamos en la cola offline para reintento posterior.
       await enqueue(payload);
     }
+
+    // 3. Si el ping salio bien, hay red de verdad: aprovechamos para mandar
+    //    las entregas/fichajes pendientes aunque la app este cerrada.
+    if (hayRed) await flushPendingDataQueues();
   } catch {
     // Error inesperado general; no hacemos nada para no bloquear la tarea.
   }

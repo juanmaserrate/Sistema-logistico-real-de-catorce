@@ -209,6 +209,20 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     return selected.stops.some((s) => s.status === 'PENDING');
   }, [selected]);
 
+  /** true = terminó todas las entregas y solo le queda marcar el depósito. */
+  const basePendingReminder = useMemo(() => {
+    const stops = selected?.stops || [];
+    const base = stops.find((s) => isBaseStop(s));
+    if (!base) return false;
+    const baseSt = String(base.status || '').toUpperCase();
+    if (baseSt === 'COMPLETED' || baseSt === 'UNDELIVERABLE') return false;
+    return !stops.some((s) => {
+      if (s.id === base.id) return false;
+      const st = String(s.status || '').toUpperCase();
+      return st !== 'COMPLETED' && st !== 'UNDELIVERABLE';
+    });
+  }, [selected]);
+
   const routeStopsSorted = useMemo(() => {
     if (!selected?.stops?.length) return [];
     return [...selected.stops].sort((a, b) => a.sequence - b.sequence);
@@ -620,11 +634,62 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     setTracking(true);
   };
 
-  // Fichar salida: solo apaga el seguimiento GPS. NO cierra el viaje. El chofer
-  // sigue viendo la lista de paradas y puede continuar registrando entregas si
-  // hay otra ruta para hoy. El viaje solo se finaliza cuando el operador aprieta
-  // "Finalizar" desde la web.
+  /** Fichar salida es el momento natural para cerrar el viaje: el chofer ya
+   *  volvió y lo hace por costumbre. Si terminó todas las entregas y solo le
+   *  falta marcar la vuelta al depósito, se lo ofrecemos acá — sin esto el
+   *  viaje quedaba abierto porque nadie está acostumbrado a marcar la base.
+   *  Devuelve true si el chofer eligió cerrar (y ya se marcó). */
+  const offerCloseAtBase = useCallback(async (): Promise<boolean> => {
+    const route = routes.find((r) => r.id === selId);
+    if (!route || isConcluded(route)) return false;
+    const stops = route.stops || [];
+    const base = stops.find((s) => isBaseStop(s));
+    if (!base) return false;
+    const baseSt = String(base.status || '').toUpperCase();
+    if (baseSt === 'COMPLETED' || baseSt === 'UNDELIVERABLE') return false; // ya marcada
+    // Solo ofrecemos si el resto del recorrido está terminado.
+    const restoPendiente = stops.some((s) => {
+      if (s.id === base.id) return false;
+      const st = String(s.status || '').toUpperCase();
+      return st !== 'COMPLETED' && st !== 'UNDELIVERABLE';
+    });
+    if (restoPendiente) return false;
+
+    return new Promise<boolean>((resolve) => {
+      Alert.alert(
+        '¿Terminaste el viaje?',
+        'Ya entregaste todas las paradas. Si volviste al depósito, cerramos el viaje con la hora de ahora.',
+        [
+          { text: 'Todavía no', style: 'cancel', onPress: () => resolve(false) },
+          {
+            text: 'Sí, terminé',
+            onPress: () => {
+              void (async () => {
+                const now = new Date().toISOString();
+                try {
+                  await patchStop(base.id, {
+                    status: 'COMPLETED',
+                    actualArrival: base.actualArrival || now,
+                    actualDeparture: now,
+                  });
+                  await loadRoutes({ silent: true });
+                  getPendingTotalCount().then(setPendingOffline).catch(() => {});
+                } catch { /* queda en la cola, sale al recuperar señal */ }
+                resolve(true);
+              })();
+            },
+          },
+        ]
+      );
+    });
+  }, [routes, selId, loadRoutes]);
+
+  // Fichar salida: apaga el seguimiento GPS. Antes NO cerraba el viaje nunca;
+  // ahora, si el recorrido está terminado, ofrece cerrarlo marcando la vuelta
+  // al depósito (ver offerCloseAtBase). Si el chofer dice que no, el viaje
+  // sigue abierto y lo cierra el operador desde la web, como siempre.
   const stopTracking = async () => {
+    await offerCloseAtBase();
     if (selId != null) {
       // Notificación al backend (no cierra el viaje, solo registra el evento).
       // No se espera: si no hay señal, patchRouteRecorrido lo deja en la cola.
@@ -848,6 +913,18 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                 <View style={styles.concludedBanner}>
                   <Text style={styles.concludedBannerTxt}>
                     ✓ Viaje concluido — solo consulta. Tus entregas del día quedan a la vista hasta mañana.
+                  </Text>
+                </View>
+              ) : null}
+              {/* Recordatorio: terminó todo menos la vuelta al depósito. Sin
+                  esto el chofer entrega la última parada, se va, y el viaje
+                  queda abierto — nadie está acostumbrado a marcar la base. */}
+              {basePendingReminder && !selConcluded ? (
+                <View style={styles.basePendingBanner}>
+                  <Text style={styles.basePendingTitle}>🏠 Te falta la vuelta al depósito</Text>
+                  <Text style={styles.basePendingTxt}>
+                    Ya entregaste todas las paradas. Cuando llegues a Real de Catorce, marcala abajo
+                    y el viaje se cierra solo con esa hora.
                   </Text>
                 </View>
               ) : null}
@@ -1263,6 +1340,14 @@ const styles = StyleSheet.create({
   tlBtnOutTxt: { color: colors.textInverse, fontWeight: font.black, fontSize: font.md },
   tlBtnOutSub: { color: 'rgba(255,255,255,0.8)', fontSize: 9, marginTop: 3, textAlign: 'center' },
   /* Parada de retorno a base (Real de Catorce) */
+  basePendingBanner: {
+    backgroundColor: colors.secondaryLight,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    marginBottom: spacing.sm,
+  },
+  basePendingTitle: { fontSize: font.md, fontWeight: font.extrabold, color: colors.success },
+  basePendingTxt: { fontSize: font.sm, color: colors.textSecondary, marginTop: spacing.xs, lineHeight: 16 },
   tlContentBase: { backgroundColor: colors.secondaryLight },
   tlBtnBase: { backgroundColor: colors.success },
   tlBaseHint: {
