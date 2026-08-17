@@ -31,5 +31,6 @@ export const STORAGE_KEYS = {
   offlineIncidentQueue: 'r14_offline_incident_queue', // Cola offline de incidencias pendientes
   offlinePhotoQueue: 'r14_offline_photo_queue',   // Cola de fotos de comprobante pendientes (sin red al subir)
   offlinePunchQueue: 'r14_offline_punch_queue',   // Cola de fichajes (entrada/salida) hechos sin señal
+  offlineRetryQueue: 'r14_offline_retry_queue',   // Cola de paradas pospuestas ("vuelvo más tarde") sin señal
   routesCache: 'r14_routes_today_cache',          // Cache de las rutas del día (fallback offline)
 } as const;

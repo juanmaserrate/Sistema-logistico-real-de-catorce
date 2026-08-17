@@ -145,11 +145,16 @@ async function flushPendingDataQueues(): Promise<void> {
     // Import diferido: evita cargar api.ts (y sus dependencias) en cada
     // arranque headless de la tarea si no hay nada pendiente que mandar.
     const api = await import('./api');
-    const pendientes = await api.getPendingStopCount() + await api.getPendingPunchCount();
+    const pendientes =
+      await api.getPendingStopCount() +
+      await api.getPendingPunchCount() +
+      await api.getPendingRetryCount();
     if (pendientes === 0) return;
     // Fichaje primero: el operador tiene que ver el viaje en curso antes que
-    // las entregas sueltas.
+    // las entregas sueltas. Despues los pospuestos (reordenan el recorrido) y
+    // recien ahi las marcas de entrega.
     await api.flushPunchQueue();
+    await api.flushRetryQueue();
     await api.flushStopQueue();
     await api.flushIncidentQueue();
     console.log('[bg-sync] colas de datos vaciadas en segundo plano');

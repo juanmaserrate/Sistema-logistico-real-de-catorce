@@ -34,6 +34,7 @@ import {
   flushIncidentQueue,
   flushPhotoQueue,
   flushPunchQueue,
+  flushRetryQueue,
   getPendingTotalCount,
   getPendingLocationCount,
   pingServer,
@@ -125,7 +126,8 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     if (!selected?.stops?.length) return null;
     if (selected.trip?.status === 'COMPLETED') return null;
     const pending = [...selected.stops]
-      .filter((s) => s.status === 'PENDING')
+      // RETRY cuenta como pendiente: es una parada que todavia tiene que hacer.
+      .filter((s) => s.status === 'PENDING' || s.status === 'RETRY')
       .sort((a, b) => a.sequence - b.sequence);
     const st = pending[0];
     if (!st?.client) return null;
@@ -206,7 +208,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
 
   const hasPendingStops = useMemo(() => {
     if (!selected?.stops) return false;
-    return selected.stops.some((s) => s.status === 'PENDING');
+    return selected.stops.some((s) => s.status === 'PENDING' || s.status === 'RETRY');
   }, [selected]);
 
   /** true = terminó todas las entregas y solo le queda marcar el depósito. */
@@ -247,7 +249,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     const total = stops.length;
     const completed = stops.filter((s) => s.status === 'COMPLETED').length;
     const undeliverable = stops.filter((s) => s.status === 'UNDELIVERABLE').length;
-    const pending = stops.filter((s) => s.status === 'PENDING' || s.status === 'ARRIVED').length;
+    const pending = stops.filter((s) => ['PENDING', 'ARRIVED', 'RETRY'].includes(s.status)).length;
     const times = stops
       .filter((s) => s.actualArrival && s.actualDeparture)
       .map((s) => (new Date(s.actualDeparture!).getTime() - new Date(s.actualArrival!).getTime()) / 60000);
@@ -401,6 +403,9 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           // El fichaje va PRIMERO: si el chofer ficho entrada sin señal, el
           // operador tiene que ver el viaje en curso antes que las entregas.
           await flushPunchQueue();
+          // Los pospuestos ANTES que las paradas: reordenan el recorrido, y las
+          // marcas de entrega tienen que caer sobre el orden ya corregido.
+          await flushRetryQueue();
           const sent = await flushStopQueue();
           await flushIncidentQueue();
           await flushPhotoQueue();
@@ -424,6 +429,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         loadRoutes({ silent: true });
         void (async () => {
           await flushPunchQueue().catch(() => 0);
+          await flushRetryQueue().catch(() => 0);
           await flushStopQueue().catch(() => 0);
           await flushIncidentQueue().catch(() => {});
           await flushPhotoQueue().catch(() => {});
@@ -949,6 +955,8 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                 const isActive = st.status === 'ARRIVED';
                 const isDone = st.status === 'COMPLETED';
                 const isFailed = st.status === 'UNDELIVERABLE';
+                // Pospuesta: sigue pendiente, la va a reintentar en este lugar.
+                const isRetry = st.status === 'RETRY';
                 // Parada de vuelta al depósito: al marcarla se CIERRA el viaje
                 // con esa hora, así que se avisa claramente antes de tocarla.
                 const isBase = isBaseStop(st);
@@ -964,6 +972,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                     ]}>
                       {isDone ? <Text style={styles.tlDotIcon}>✓</Text>
                         : isFailed ? <Text style={styles.tlDotIcon}>✗</Text>
+                        : isRetry ? <Text style={styles.tlDotIcon}>↻</Text>
                         : <Text style={styles.tlDotNum}>{st.sequence}</Text>}
                     </View>
                     {!isLast && <View style={[
@@ -983,6 +992,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                         isActive && styles.tlBadgeActive,
                         isDone && styles.tlBadgeDone,
                         isFailed && styles.tlBadgeFailed,
+                        isRetry && styles.tlBadgeRetry,
                       ]}>
                         <Text style={[
                           styles.tlBadgeTxt,
@@ -990,11 +1000,13 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                           isActive && styles.tlBadgeActiveTxt,
                           isDone && styles.tlBadgeDoneTxt,
                           isFailed && styles.tlBadgeFailedTxt,
+                          isRetry && styles.tlBadgeRetryTxt,
                         ]}>
                           {st.status === 'PENDING' ? 'Pendiente'
                             : isActive ? 'En destino'
                             : isDone ? 'Entregado'
                             : isFailed ? 'No entregado'
+                            : isRetry ? `Reintento${(st.retryCount || 0) > 1 ? ` (${st.retryCount}º)` : ''}`
                             : st.status}
                         </Text>
                       </View>
@@ -1043,10 +1055,15 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                         Última parada. Al marcarla se cierra el viaje con esta hora.
                       </Text>
                     ) : null}
-                    {st.status === 'PENDING' && !selConcluded ? (
+                    {isRetry && st.retryReason ? (
+                      <Text style={styles.tlRetryReason}>
+                        ↻ Quedó para reintentar — {st.retryReason.replace(/_/g, ' ')}
+                      </Text>
+                    ) : null}
+                    {(st.status === 'PENDING' || isRetry) && !selConcluded ? (
                       <Pressable style={styles.tlBtnArr} onPress={() => onMarkArrival(st)}>
                         <Text style={styles.tlBtnArrTxt}>
-                          {isBase ? 'Llegué al depósito' : 'Registrar llegada'}
+                          {isBase ? 'Llegué al depósito' : isRetry ? 'Volví — registrar llegada' : 'Registrar llegada'}
                         </Text>
                       </Pressable>
                     ) : null}
@@ -1104,6 +1121,12 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       <StopDeliveryModal
         visible={deliveryModalStop != null}
         stop={deliveryModalStop}
+        // Las que le quedan por hacer: son las opciones de "después de cuál"
+        // cuando pospone una entrega.
+        remainingStops={(selected?.stops || []).filter((s) => {
+          const st = String(s.status || '').toUpperCase();
+          return st !== 'COMPLETED' && st !== 'UNDELIVERABLE';
+        })}
         onClose={() => setDeliveryModalStop(null)}
         onSaved={() => {
           const completedStop = deliveryModalStop;
@@ -1339,6 +1362,10 @@ const styles = StyleSheet.create({
   },
   tlBtnOutTxt: { color: colors.textInverse, fontWeight: font.black, fontSize: font.md },
   tlBtnOutSub: { color: 'rgba(255,255,255,0.8)', fontSize: 9, marginTop: 3, textAlign: 'center' },
+  /* Parada pospuesta ("vuelvo más tarde") */
+  tlBadgeRetry: { backgroundColor: colors.warningBg },
+  tlBadgeRetryTxt: { color: colors.warning },
+  tlRetryReason: { fontSize: font.sm, color: colors.warning, fontWeight: font.bold, marginTop: spacing.xs },
   /* Parada de retorno a base (Real de Catorce) */
   basePendingBanner: {
     backgroundColor: colors.secondaryLight,

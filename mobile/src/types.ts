@@ -32,6 +32,10 @@ export interface Stop {
   reasonCode?: string | null;
   /** true = vuelta al depósito (Real de Catorce). Al marcarla se cierra el viaje. */
   isReturnToBase?: boolean;
+  /** Veces que pasó y no pudo entregar, eligiendo volver más tarde (status RETRY). */
+  retryCount?: number;
+  /** Motivo del último intento fallido (derivado de retryLog en el server). */
+  retryReason?: string | null;
   client: Client;
 }
 

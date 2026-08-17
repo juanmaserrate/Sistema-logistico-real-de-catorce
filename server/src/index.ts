@@ -1831,6 +1831,20 @@ function utcDayRange(ymd: string): { start: Date; end: Date } {
     };
 }
 
+/** Valida una fecha que mando el celular. La app manda sus propias horas para
+ *  que el trabajo offline conserve el horario real, pero hay ROMs de Android
+ *  con el reloj corrido: aceptamos solo lo que caiga en una ventana razonable
+ *  (ultimos 7 dias hasta 5 min en el futuro) y si no, devolvemos el fallback. */
+function sanitizeClientDate(v: any, fallback: Date | null = null): Date | null {
+    if (v == null || v === '') return fallback;
+    const d = new Date(v);
+    const ms = d.getTime();
+    if (!Number.isFinite(ms)) return fallback;
+    const now = Date.now();
+    if (ms < now - 7 * 24 * 3600 * 1000 || ms > now + 5 * 60 * 1000) return fallback;
+    return d;
+}
+
 // Umbrales unicos de "reporta señal". Antes convivian tres numeros distintos:
 // 10 min en el badge del modal de viaje y 45 min hardcodeado dos veces en la
 // Torre de Control, asi que la misma ruta salia "OK" en un lado y "Demorado"
@@ -1949,7 +1963,7 @@ app.get('/api/v1/control/driver-status', async (req, res) => {
                 driver: { select: { id: true, fullName: true, username: true } },
                 vehicle: { select: { plate: true } },
                 trip: { select: { id: true, reparto: true, businessUnit: true, status: true, vehicle: true } },
-                stops: { select: { status: true, isReturnToBase: true } }
+                stops: { select: { status: true, isReturnToBase: true, retryCount: true } }
             },
             orderBy: { id: 'asc' }
         });
@@ -2009,6 +2023,9 @@ app.get('/api/v1/control/driver-status', async (req, res) => {
                 closed,
                 stopsTotal: stops.length,
                 stopsDone: done,
+                // Paradas que el chofer pospuso y todavia tiene que reintentar:
+                // son las que pueden dejar el viaje sin cerrar.
+                stopsRetry: stops.filter((s: any) => String(s.status || '').toUpperCase() === 'RETRY').length,
                 hasBaseStop: stops.some((s: any) => s.isReturnToBase === true),
                 lastPingAt: last?.at ? new Date(last.at).toISOString() : null,
                 lastLat: last?.lat ?? null,
@@ -2927,8 +2944,23 @@ app.get('/api/v1/routes', async (req, res) => {
         include: { stops: { orderBy: { sequence: 'asc' }, include: { client: true } }, vehicle: true, driver: true, trip: { select: { id: true, businessUnit: true, reparto: true, zone: true, status: true, completedAt: true } } },
         orderBy: { date: 'desc' }
     });
-    res.json(routes);
+    res.json(routes.map(withRetryReason));
 });
+
+/** Expone el motivo del ULTIMO intento fallido como campo plano `retryReason`,
+ *  para que la app y la web lo muestren sin tener que leer el JSON de la
+ *  bitacora. El log completo viaja igual en `retryLog`. */
+function withRetryReason(route: any) {
+    if (!route?.stops) return route;
+    return {
+        ...route,
+        stops: route.stops.map((s: any) => {
+            const log = Array.isArray(s.retryLog) ? s.retryLog : [];
+            const last = log.length ? log[log.length - 1] : null;
+            return { ...s, retryReason: last?.reason ?? null, retryAt: last?.at ?? null };
+        })
+    };
+}
 
 /** Detalle de ruta (mismo shape que en el listado) — útil para apps que refrescan por id. */
 app.get('/api/v1/routes/:id', async (req, res) => {
@@ -3761,6 +3793,23 @@ async function closeRouteFromBaseStop(stop: any): Promise<boolean> {
     const st = String(stop.status || '').toUpperCase();
     if (st !== 'COMPLETED' && st !== 'UNDELIVERABLE') return false;
 
+    // Si quedo alguna parada sin resolver (PENDING / ARRIVED / RETRY), NO cerramos.
+    // El chofer que pospuso una entrega tiene que decir que paso con ella antes
+    // de terminar: o entrego, o no entrego con motivo. Si no, la parada quedaba
+    // en el aire y el viaje figuraba completo igual.
+    const sinResolver = await prisma.stop.count({
+        where: {
+            routeId: route.id,
+            id: { not: stop.id },
+            status: { notIn: ['COMPLETED', 'UNDELIVERABLE'] }
+        }
+    });
+    if (sinResolver > 0) {
+        console.log(`[base-stop] Ruta ${route.id}: no se cierra, quedan ${sinResolver} paradas sin resolver`);
+        io.emit('route:updated', { routeId: route.id, type: 'base_marked_pending_stops', pendientes: sinResolver });
+        return false;
+    }
+
     const now = new Date();
     // La hora que pidio el usuario: la del marcado del chofer, no la del server.
     // Como la app manda su propio timestamp, un viaje que sincroniza 5 horas
@@ -4112,25 +4161,25 @@ app.post('/api/v1/routes/:id/stops/reorder', async (req, res) => {
             res.status(400).json({ error: `stopIds no pertenecen a la ruta ${routeId}: ${foreign.join(', ')}` });
             return;
         }
-        if (orderedIds.length !== currentStops.length) {
-            res.status(400).json({
-                error: `newOrder debe incluir las ${currentStops.length} paradas de la ruta (recibidas: ${orderedIds.length})`
-            });
-            return;
-        }
-        const sequences = newOrder.map(o => Number(o.sequence));
-        if (sequences.some(s => !Number.isFinite(s))) {
-            res.status(400).json({ error: 'sequence inválida en newOrder' });
-            return;
-        }
-        if (new Set(sequences).size !== sequences.length) {
-            res.status(400).json({ error: 'sequence duplicada en newOrder' });
-            return;
-        }
+        // BUG FIX: antes se exigia recibir TODAS las paradas de la ruta, pero la
+        // app manda solo las que quedan por hacer (ReorderModal filtra PENDING).
+        // Resultado: "Reordenar paradas" tiraba 400 apenas el chofer entregaba la
+        // primera — o sea, casi siempre. Ahora aceptamos un orden PARCIAL: las
+        // paradas que no vienen en newOrder (ya entregadas) se dejan como estan.
+        // Las posiciones finales las decide el SERVER, no el cliente: tomamos los
+        // lugares que esas mismas paradas ya ocupaban, ordenados, y las repartimos
+        // en el orden nuevo. Asi es imposible que dos paradas queden con el mismo
+        // numero o que se pise a una ya entregada — que es lo que pasaria si las
+        // pendientes tuvieran numeros salteados (3, 5, 7 porque la 4 y la 6 ya se
+        // entregaron) y el cliente mandara 3, 4, 5.
+        const slots = orderedIds
+            .map(id => currentMap.get(id)!.sequence)
+            .sort((a, b) => a - b);
+        const resolvedOrder = orderedIds.map((stopId, i) => ({ stopId, sequence: slots[i] }));
 
         // Actualizar secuencias en transacción
         await prisma.$transaction(
-            newOrder.map(item =>
+            resolvedOrder.map(item =>
                 prisma.stop.update({
                     // FIX: where compuesto: además de id, exigimos que pertenezca al routeId
                     // del param. Si por alguna race condition la parada cambió de ruta entre
@@ -4173,6 +4222,99 @@ app.post('/api/v1/routes/:id/stops/reorder', async (req, res) => {
     } catch (e: any) {
         console.error('POST /routes/:id/stops/reorder:', e);
         res.status(500).json({ error: e?.message || 'Error al reordenar' });
+    }
+});
+
+// ── Posponer una parada: "no pude entregar, vuelvo mas tarde" ────────────────
+// Antes el chofer solo tenia dos salidas: entregado o NO ENTREGADO definitivo.
+// Si el local estaba cerrado y pensaba pasar de nuevo al final del recorrido,
+// no tenia como registrarlo: marcaba "no entregado" (y quedaba como fallida
+// aunque despues entregara) o no marcaba nada (y la parada quedaba trabada).
+//
+// POST /api/v1/stops/:id/retry-later
+//   { reason, note?, afterStopId?, at? }
+//   afterStopId = la parada despues de la cual quiere reintentarla. Si no viene,
+//   se manda al final del recorrido (siempre antes del retorno a base).
+//   at = hora real del intento fallido (la manda el celular, sobrevive al offline).
+app.post('/api/v1/stops/:id/retry-later', async (req, res) => {
+    try {
+        const stopId = Number(req.params.id);
+        if (!Number.isFinite(stopId)) return res.status(400).json({ error: 'ID de parada inválido' });
+        const { reason, note, afterStopId, at } = req.body || {};
+
+        const stop = await prisma.stop.findUnique({
+            where: { id: stopId },
+            select: { id: true, routeId: true, sequence: true, status: true, retryCount: true, retryLog: true, isReturnToBase: true }
+        });
+        if (!stop) return res.status(404).json({ error: 'La parada no existe o ya fue eliminada' });
+        if (stop.isReturnToBase) {
+            return res.status(400).json({ error: 'La vuelta al depósito no se puede posponer' });
+        }
+        const st = String(stop.status || '').toUpperCase();
+        if (st === 'COMPLETED') {
+            return res.status(409).json({ error: 'Esa parada ya figura entregada' });
+        }
+
+        const all = await prisma.stop.findMany({
+            where: { routeId: stop.routeId },
+            orderBy: { sequence: 'asc' },
+            select: { id: true, sequence: true, isReturnToBase: true }
+        });
+
+        // Destino: justo despues de afterStopId, o al final del recorrido. En los
+        // dos casos NUNCA despues del retorno a base — si no, el viaje se cerraria
+        // antes de que el chofer pase de nuevo.
+        const base = all.find((s) => s.isReturnToBase);
+        const others = all.filter((s) => s.id !== stopId && !s.isReturnToBase);
+        let destIndex: number;
+        if (afterStopId != null) {
+            const idx = others.findIndex((s) => s.id === Number(afterStopId));
+            if (idx < 0) return res.status(400).json({ error: 'La parada de referencia no pertenece a este recorrido' });
+            destIndex = idx + 1;
+        } else {
+            destIndex = others.length; // al final, antes de la base
+        }
+        const nuevoOrden = [...others];
+        nuevoOrden.splice(destIndex, 0, { id: stopId, sequence: stop.sequence, isReturnToBase: false });
+        if (base) nuevoOrden.push(base);
+
+        const intento = {
+            at: sanitizeClientDate(at, null)?.toISOString() ?? new Date().toISOString(),
+            reason: reason ? String(reason) : 'sin_motivo',
+            note: note ? String(note).slice(0, 500) : null
+        };
+        const logPrevio = Array.isArray(stop.retryLog) ? (stop.retryLog as any[]) : [];
+
+        await prisma.$transaction([
+            ...nuevoOrden.map((s, i) =>
+                prisma.stop.update({ where: { id: s.id, routeId: stop.routeId }, data: { sequence: i + 1 } })
+            ),
+            prisma.stop.update({
+                where: { id: stopId },
+                data: {
+                    status: 'RETRY',
+                    // Se limpia el arribo: el chofer va a volver a llegar.
+                    actualArrival: null,
+                    retryCount: (stop.retryCount || 0) + 1,
+                    retryLog: [...logPrevio, intento].slice(-10) as any
+                }
+            })
+        ]);
+
+        const updated = await prisma.stop.findUnique({
+            where: { id: stopId },
+            include: { client: { select: { name: true } } }
+        });
+        const route = await prisma.route.findUnique({ where: { id: stop.routeId }, select: { driverId: true } });
+        io.emit('stop:updated', { stop: updated });
+        io.emit('route:updated', { routeId: stop.routeId, type: 'stop_postponed' });
+        if (route?.driverId) io.to(`driver:${route.driverId}`).emit('route:updated', { routeId: stop.routeId, type: 'stop_postponed' });
+
+        res.json(updated);
+    } catch (e: any) {
+        console.error('POST /stops/:id/retry-later:', e);
+        if (e?.code === 'P2025') return res.status(404).json({ error: 'La parada no existe o ya fue eliminada' });
+        res.status(500).json({ error: e?.message || 'Error posponiendo la parada' });
     }
 });
 

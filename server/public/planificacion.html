@@ -4018,6 +4018,8 @@
                     else {
                         if (!r.punchedIn) chips.push('<span class="status-badge bg-amber-100 text-amber-700 text-[10px]">No fichó entrada</span>');
                         if (!r.hasBaseStop) chips.push('<span class="status-badge bg-indigo-100 text-indigo-700 text-[10px]">Sin parada de base</span>');
+                        // El viaje no puede cerrar mientras queden reintentos sin resolver
+                        if (r.stopsRetry > 0) chips.push(`<span class="status-badge bg-orange-100 text-orange-700 text-[10px]">↻ ${r.stopsRetry} para reintentar</span>`);
                     }
                     const pct = r.stopsTotal > 0 ? Math.round((r.stopsDone / r.stopsTotal) * 100) : 0;
                     return `
@@ -4570,7 +4572,7 @@
                     const stopsHtml = (r.stops || []).map(s => `
                         <div class="text-[10px] flex items-center justify-between border-t border-white pt-1 mt-1">
                             <span class="font-bold">#${s.sequence} ${(s.clientName || 'Sin cliente').replace(/</g, '&lt;')}</span>
-                            <span class="px-2 py-0.5 rounded-md ${s.status === 'COMPLETED' ? 'bg-emerald-200 text-emerald-800' : s.status === 'UNDELIVERABLE' ? 'bg-rose-200 text-rose-800' : s.status === 'ARRIVED' ? 'bg-indigo-200 text-indigo-800' : 'bg-amber-200 text-amber-800'} font-black">${s.status}</span>
+                            <span class="px-2 py-0.5 rounded-md ${s.status === 'COMPLETED' ? 'bg-emerald-200 text-emerald-800' : s.status === 'UNDELIVERABLE' ? 'bg-rose-200 text-rose-800' : s.status === 'RETRY' ? 'bg-orange-200 text-orange-800' : s.status === 'ARRIVED' ? 'bg-indigo-200 text-indigo-800' : 'bg-amber-200 text-amber-800'} font-black">${s.status}</span>
                         </div>
                     `).join('');
                     html += `
@@ -5948,7 +5950,8 @@
             'PENDING': { text: 'Pendiente', cls: 'bg-amber-50 text-amber-700' },
             'ARRIVED': { text: 'En destino', cls: 'bg-indigo-50 text-indigo-700' },
             'COMPLETED': { text: 'Entregado', cls: 'bg-emerald-50 text-emerald-700' },
-            'UNDELIVERABLE': { text: 'No entregado', cls: 'bg-rose-50 text-rose-700' }
+            'UNDELIVERABLE': { text: 'No entregado', cls: 'bg-rose-50 text-rose-700' },
+            'RETRY': { text: 'Vuelve mas tarde', cls: 'bg-orange-50 text-orange-700' }
         };
         function _fmtHm(iso) {
             if (!iso) return '—';
@@ -12405,6 +12408,7 @@
                     if (s === 'COMPLETED') return { txt: 'Entregado', cls: 'bg-emerald-100 text-emerald-700' };
                     if (s === 'ARRIVED') return { txt: 'En la parada', cls: 'bg-blue-100 text-blue-700' };
                     if (s === 'UNDELIVERABLE' || s === 'FAILED') return { txt: 'No entregado', cls: 'bg-rose-100 text-rose-700' };
+                    if (s === 'RETRY') return { txt: 'Vuelve mas tarde', cls: 'bg-orange-100 text-orange-700' };
                     if (s === 'IN_PROGRESS') return { txt: 'En camino', cls: 'bg-amber-100 text-amber-700' };
                     return { txt: 'Pendiente', cls: 'bg-[#F4F7FE] text-[#A3AED0]' };
                 };
@@ -20443,6 +20447,7 @@ async function openHdrDetail(routeId) {
             const STAT_CLR = {
                 'COMPLETED': { bg: 'bg-emerald-50', text: 'text-emerald-700', icon: '✓' },
                 'UNDELIVERABLE': { bg: 'bg-rose-50', text: 'text-rose-700', icon: '✗' },
+            'RETRY': { bg: 'bg-orange-50', text: 'text-orange-700', icon: '↻' },
                 'ARRIVED': { bg: 'bg-indigo-50', text: 'text-indigo-700', icon: '•' },
                 'PENDING': { bg: 'bg-amber-50', text: 'text-amber-700', icon: '⏳' }
             };
@@ -20573,7 +20578,7 @@ async function renderHdrMap(detail) {
     }
 
     stops.forEach(s => {
-        const color = s.status === 'COMPLETED' ? '#10b981' : (s.status === 'UNDELIVERABLE' ? '#dc2626' : '#6366f1');
+        const color = s.status === 'COMPLETED' ? '#10b981' : (s.status === 'UNDELIVERABLE' ? '#dc2626' : (s.status === 'RETRY' ? '#f97316' : '#6366f1'));
         const m = new mapboxgl.Marker({ element: makeCircleEl(color, 26, String(s.sequence)), anchor: 'center' })
             .setLngLat([s.longitude, s.latitude])
             .setPopup(new mapboxgl.Popup().setText(`${s.sequence}. ${s.name}`))

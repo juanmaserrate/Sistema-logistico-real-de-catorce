@@ -16,18 +16,20 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import type { Stop } from '../types';
-import { patchStop, uploadProofPhoto, enqueueOfflinePhoto } from '../api';
+import { patchStop, uploadProofPhoto, enqueueOfflinePhoto, postponeStop } from '../api';
 import { assertApiConfigured } from '../config';
 import { compressPhoto, getLiteMode } from '../utils/photoUtils';
 
 type Props = {
   visible: boolean;
   stop: Stop | null;
+  /** Paradas que le quedan por hacer, para elegir dónde reintentar la pospuesta. */
+  remainingStops?: Stop[];
   onClose: () => void;
   onSaved: () => void;
 };
 
-type Tab = 'delivered' | 'undeliverable';
+type Tab = 'delivered' | 'retry' | 'undeliverable';
 
 const UNDELIVERABLE_REASONS = [
   { code: 'no_habia_nadie', label: 'No había nadie' },
@@ -37,7 +39,19 @@ const UNDELIVERABLE_REASONS = [
   { code: 'otro', label: 'Otro (ver observaciones)' },
 ];
 
-export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: Props) {
+// Motivos de "vuelvo más tarde": son situaciones transitorias, a diferencia de
+// las de "No entregado" (dirección incorrecta, rechaza recepción) que no se
+// arreglan pasando de nuevo.
+const RETRY_REASONS = [
+  { code: 'no_habia_nadie', label: 'No había nadie ahora' },
+  { code: 'local_cerrado', label: 'Cerrado / fuera de horario' },
+  { code: 'sin_lugar_descarga', label: 'No pude estacionar / descargar' },
+  { code: 'calle_cortada', label: 'Calle cortada' },
+  { code: 'pidio_mas_tarde', label: 'Me pidieron volver más tarde' },
+  { code: 'otro', label: 'Otro (ver observaciones)' },
+];
+
+export default function StopDeliveryModal({ visible, stop, remainingStops = [], onClose, onSaved }: Props) {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>('delivered');
   const [observations, setObservations] = useState('');
@@ -46,6 +60,9 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
   const [saving, setSaving] = useState(false);
   const [liteMode, setLiteModeState] = useState(false);
   const [undeliverableReason, setUndeliverableReason] = useState<string>('');
+  const [retryReason, setRetryReason] = useState<string>('');
+  // null = al final del recorrido (antes del depósito)
+  const [retryAfterStopId, setRetryAfterStopId] = useState<number | null>(null);
 
   useEffect(() => { getLiteMode().then(setLiteModeState); }, []);
 
@@ -56,8 +73,17 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
       setPhotoUri(null);
       setDeliveryOk(stop.deliveryWithoutIssues === true);
       setUndeliverableReason('');
+      setRetryReason('');
+      setRetryAfterStopId(null);
     }
   }, [visible, stop]);
+
+  /** Las que puede elegir como referencia: las que le quedan por hacer, sin
+   *  contar la que está posponiendo ni la vuelta al depósito. */
+  const retryTargets = React.useMemo(
+    () => remainingStops.filter((s) => s.id !== stop?.id && !s.isReturnToBase),
+    [remainingStops, stop]
+  );
 
   const hasChanges = useCallback((): boolean => {
     if (observations.trim().length > 0) return true;
@@ -145,6 +171,45 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
     }
   }, [deliveryOk, observations, onClose, onSaved, stop, photoUri, liteMode, uploadPhotoInBackground]);
 
+  /** "No pude ahora, vuelvo más tarde": la parada NO se cierra, se reubica en
+   *  el recorrido y sigue contando como pendiente. El viaje no se puede
+   *  finalizar hasta que la resuelva. */
+  const submitRetry = useCallback(async () => {
+    if (!stop) return;
+    if (!retryReason) {
+      Alert.alert('Motivo requerido', 'Contá por qué no pudiste entregar ahora.');
+      return;
+    }
+    setSaving(true);
+    try {
+      assertApiConfigured();
+      const result = await postponeStop({
+        stopId: stop.id,
+        reason: retryReason,
+        note: observations.trim() || null,
+        afterStopId: retryAfterStopId,
+      });
+      // La foto del intento fallido también sirve como evidencia.
+      if (photoUri) uploadPhotoInBackground(stop.id, photoUri, liteMode);
+      const destino = retryAfterStopId
+        ? retryTargets.find((s) => s.id === retryAfterStopId)?.client?.name || 'la parada elegida'
+        : null;
+      Alert.alert(
+        result?.queued ? 'Guardado sin señal' : 'Parada pospuesta',
+        (destino
+          ? `La vas a reintentar después de ${destino}.`
+          : 'Te queda al final del recorrido, antes de volver al depósito.') +
+          (result?.queued ? '\n\nSe envía sola al recuperar señal.' : '')
+      );
+      onSaved();
+      onClose();
+    } catch (e) {
+      Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo posponer la parada');
+    } finally {
+      setSaving(false);
+    }
+  }, [observations, onClose, onSaved, stop, retryReason, retryAfterStopId, retryTargets, photoUri, liteMode, uploadPhotoInBackground]);
+
   const submitUndeliverable = useCallback(async () => {
     if (!stop) return;
     if (!undeliverableReason) {
@@ -214,7 +279,8 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
           <Text style={styles.addr} numberOfLines={2}>{address}</Text>
         ) : null}
 
-        {/* Tabs */}
+        {/* Tabs. La del medio ("vuelvo") no aparece en la vuelta al depósito:
+            esa parada no se pospone, cierra el viaje. */}
         <View style={styles.tabs}>
           <Pressable
             style={[styles.tab, tab === 'delivered' && styles.tabActive]}
@@ -224,6 +290,16 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
               ✓ Entregado
             </Text>
           </Pressable>
+          {!isBase ? (
+            <Pressable
+              style={[styles.tab, tab === 'retry' && styles.tabActiveAmber]}
+              onPress={() => setTab('retry')}
+            >
+              <Text style={[styles.tabTxt, tab === 'retry' && styles.tabTxtAmber]}>
+                ↻ Vuelvo
+              </Text>
+            </Pressable>
+          ) : null}
           <Pressable
             style={[styles.tab, tab === 'undeliverable' && styles.tabActiveRed]}
             onPress={() => setTab('undeliverable')}
@@ -279,10 +355,83 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
                   <Image source={{ uri: photoUri }} style={styles.preview} resizeMode="cover" />
                 ) : null}
               </>
+            ) : tab === 'retry' ? (
+              <>
+                <Text style={styles.hint}>
+                  La parada NO se cierra: queda pendiente y la vas a reintentar más adelante.
+                  El viaje no se puede finalizar hasta que la resuelvas.
+                </Text>
+                <Text style={styles.reasonLabel}>¿Por qué no pudiste ahora?</Text>
+                {RETRY_REASONS.map((r) => (
+                  <Pressable
+                    key={r.code}
+                    style={[styles.reasonRow, retryReason === r.code && styles.reasonRowOnAmber]}
+                    onPress={() => setRetryReason(r.code)}
+                  >
+                    <View style={[styles.radioCircle, retryReason === r.code && styles.radioCircleOnAmber]}>
+                      {retryReason === r.code ? <View style={styles.radioFillAmber} /> : null}
+                    </View>
+                    <Text style={[styles.reasonTxt, retryReason === r.code && styles.reasonTxtOnAmber]}>
+                      {r.label}
+                    </Text>
+                  </Pressable>
+                ))}
+
+                <Text style={[styles.reasonLabel, { marginTop: 16 }]}>¿Cuándo la reintentás?</Text>
+                <Pressable
+                  style={[styles.reasonRow, retryAfterStopId === null && styles.reasonRowOnAmber]}
+                  onPress={() => setRetryAfterStopId(null)}
+                >
+                  <View style={[styles.radioCircle, retryAfterStopId === null && styles.radioCircleOnAmber]}>
+                    {retryAfterStopId === null ? <View style={styles.radioFillAmber} /> : null}
+                  </View>
+                  <Text style={[styles.reasonTxt, retryAfterStopId === null && styles.reasonTxtOnAmber]}>
+                    Al final, antes de volver al depósito
+                  </Text>
+                </Pressable>
+                {retryTargets.length > 0 ? (
+                  <Text style={styles.retryHint}>…o después de una parada en particular:</Text>
+                ) : null}
+                {retryTargets.map((s) => (
+                  <Pressable
+                    key={s.id}
+                    style={[styles.reasonRow, retryAfterStopId === s.id && styles.reasonRowOnAmber]}
+                    onPress={() => setRetryAfterStopId(s.id)}
+                  >
+                    <View style={[styles.radioCircle, retryAfterStopId === s.id && styles.radioCircleOnAmber]}>
+                      {retryAfterStopId === s.id ? <View style={styles.radioFillAmber} /> : null}
+                    </View>
+                    <Text
+                      style={[styles.reasonTxt, retryAfterStopId === s.id && styles.reasonTxtOnAmber]}
+                      numberOfLines={1}
+                    >
+                      Después de {s.client?.name || `parada ${s.sequence}`}
+                    </Text>
+                  </Pressable>
+                ))}
+
+                <TextInput
+                  style={[styles.input, { marginTop: 10 }]}
+                  placeholder="Observaciones (opcional)"
+                  placeholderTextColor="#94a3b8"
+                  multiline
+                  value={observations}
+                  onChangeText={setObservations}
+                />
+                <Pressable style={styles.photoBtn} onPress={() => void pickPhoto()}>
+                  <Text style={styles.photoBtnTxt}>
+                    {photoUri ? 'Cambiar foto' : 'Tomar foto del intento (opcional)'}
+                  </Text>
+                </Pressable>
+                {photoUri ? (
+                  <Image source={{ uri: photoUri }} style={styles.preview} resizeMode="cover" />
+                ) : null}
+              </>
             ) : (
               <>
                 <Text style={styles.hint}>
-                  Indicá el motivo. Se notifica a planificación para reasignación.
+                  Esta parada queda cerrada como NO entregada. Si pensás pasar de nuevo,
+                  usá «↻ Vuelvo» en vez de esta opción.
                 </Text>
                 <Text style={styles.reasonLabel}>Motivo:</Text>
                 {UNDELIVERABLE_REASONS.map((r) => (
@@ -336,6 +485,18 @@ export default function StopDeliveryModal({ visible, stop, onClose, onSaved }: P
                 </Text>
               )}
             </Pressable>
+          ) : tab === 'retry' ? (
+            <Pressable
+              style={[styles.saveBtnAmber, saving && styles.saveBtnDisabled]}
+              onPress={() => void submitRetry()}
+              disabled={saving}
+            >
+              {saving ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.saveBtnTxt}>Vuelvo más tarde</Text>
+              )}
+            </Pressable>
           ) : (
             <Pressable
               style={[styles.saveBtnRed, saving && styles.saveBtnDisabled]}
@@ -387,9 +548,11 @@ const styles = StyleSheet.create({
   },
   tabActive: { backgroundColor: '#ecfdf5' },
   tabActiveRed: { backgroundColor: '#fef2f2' },
+  tabActiveAmber: { backgroundColor: '#fffbeb' },
   tabTxt: { fontWeight: '800', fontSize: 14, color: '#74777b' },
   tabTxtActive: { color: '#006d43' },
   tabTxtRed: { color: '#dc2626' },
+  tabTxtAmber: { color: '#b45309' },
   scrollContent: { paddingHorizontal: 18, paddingTop: 10 },
   hint: { fontSize: 12, color: '#74777b', marginTop: 8, marginBottom: 12, lineHeight: 16 },
   reasonLabel: { fontSize: 13, fontWeight: '800', color: '#44474a', marginBottom: 6 },
@@ -417,6 +580,18 @@ const styles = StyleSheet.create({
   radioFill: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#dc2626' },
   reasonTxt: { fontSize: 15, color: '#44474a', fontWeight: '600' },
   reasonTxtOn: { color: '#dc2626', fontWeight: '800' },
+  /* Variante ámbar para "vuelvo más tarde": es transitorio, no un fallo */
+  reasonRowOnAmber: { backgroundColor: '#fffbeb' },
+  radioCircleOnAmber: { borderColor: '#b45309' },
+  radioFillAmber: { width: 10, height: 10, borderRadius: 5, backgroundColor: '#b45309' },
+  reasonTxtOnAmber: { color: '#b45309', fontWeight: '800' },
+  retryHint: { fontSize: 12, color: '#74777b', marginTop: 10, marginBottom: 4 },
+  saveBtnAmber: {
+    paddingVertical: 16,
+    borderRadius: 9999,
+    backgroundColor: '#b45309',
+    alignItems: 'center',
+  },
   input: {
     minHeight: 84,
     borderRadius: 12,

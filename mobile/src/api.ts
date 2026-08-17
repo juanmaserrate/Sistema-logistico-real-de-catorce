@@ -155,18 +155,46 @@ function localYmd(d: Date): string {
 async function overlayQueuedStops(routes: Route[]): Promise<Route[]> {
   try {
     const q = await readStopQueue();
-    if (!q.length) return routes;
+    const retries = await readRetryQueue();
+    if (!q.length && !retries.length) return routes;
     const byStop = new Map<number, Record<string, unknown>>();
     for (const a of q) {
       byStop.set(a.stopId, { ...(byStop.get(a.stopId) || {}), ...a.body });
     }
-    return routes.map((r: any) => ({
-      ...r,
-      stops: (r.stops || []).map((s: any) => (byStop.has(s.id) ? { ...s, ...byStop.get(s.id) } : s)),
-    }));
+    // Las paradas pospuestas sin señal se muestran YA como pospuestas: el chofer
+    // tiene que ver su recorrido en el orden real para seguir trabajando, no
+    // esperar a que vuelva la señal.
+    for (const r of retries) {
+      byStop.set(r.stopId, { ...(byStop.get(r.stopId) || {}), status: 'RETRY', actualArrival: null });
+    }
+    return routes.map((r: any) => {
+      let stops = (r.stops || []).map((s: any) => (byStop.has(s.id) ? { ...s, ...byStop.get(s.id) } : s));
+      if (retries.length) stops = applyPendingReorder(stops, retries);
+      return { ...r, stops };
+    });
   } catch {
     return routes;
   }
+}
+
+/** Reubica localmente las paradas pospuestas que todavía no se sincronizaron,
+ *  con la misma regla que aplica el server: después de `afterStopId`, o al final
+ *  del recorrido — pero siempre antes de la vuelta al depósito. */
+function applyPendingReorder(stops: any[], retries: OfflineRetryAction[]): any[] {
+  let list = [...stops];
+  for (const r of retries) {
+    const idx = list.findIndex((s) => s.id === r.stopId);
+    if (idx < 0) continue;
+    const [moved] = list.splice(idx, 1);
+    const base = list.filter((s) => s.isReturnToBase);
+    const rest = list.filter((s) => !s.isReturnToBase);
+    const dest = r.afterStopId != null
+      ? rest.findIndex((s) => s.id === r.afterStopId) + 1
+      : rest.length;
+    rest.splice(dest > 0 ? dest : rest.length, 0, moved);
+    list = [...rest, ...base];
+  }
+  return list.map((s, i) => ({ ...s, sequence: i + 1 }));
 }
 
 export async function fetchRoutesToday(driverId: string): Promise<Route[]> {
@@ -604,6 +632,122 @@ export function flushPunchQueue(): Promise<number> {
   return _punchQueueFlushing;
 }
 
+// ── Posponer una parada ("no pude, vuelvo más tarde") ─────────────────────────
+// El chofer llega, el local está cerrado, y piensa pasar de nuevo al final del
+// recorrido. Antes solo podía marcar "No entregado" (definitivo, aunque después
+// entregara) o no marcar nada. Ahora la parada queda viva y se reubica.
+
+interface OfflineRetryAction {
+  stopId: number;
+  reason: string;
+  note?: string | null;
+  afterStopId?: number | null;
+  at: string; // hora real del intento fallido
+}
+
+const RETRY_QUEUE_MAX = 200;
+
+async function readRetryQueue(): Promise<OfflineRetryAction[]> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.offlineRetryQueue);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
+
+async function writeRetryQueue(q: OfflineRetryAction[]): Promise<void> {
+  await AsyncStorage.setItem(STORAGE_KEYS.offlineRetryQueue, JSON.stringify(q.slice(-RETRY_QUEUE_MAX)));
+}
+
+export async function getPendingRetryCount(): Promise<number> {
+  return (await readRetryQueue()).length;
+}
+
+/** Las acciones pendientes se superponen sobre las rutas (igual que las paradas)
+ *  para que el chofer vea el reintento aunque todavía no haya salido al server. */
+export async function readPendingRetries(): Promise<
+  { stopId: number; afterStopId: number | null }[]
+> {
+  const q = await readRetryQueue();
+  return q.map((a) => ({ stopId: a.stopId, afterStopId: a.afterStopId ?? null }));
+}
+
+let _retryQueueFlushing: Promise<number> | null = null;
+export function flushRetryQueue(): Promise<number> {
+  if (_retryQueueFlushing) return _retryQueueFlushing;
+  _retryQueueFlushing = (async (): Promise<number> => {
+    try {
+      const queue = await readRetryQueue();
+      if (!queue.length) return 0;
+      const stillPending: OfflineRetryAction[] = [];
+      let sent = 0;
+      let networkBroke = false;
+      for (const item of queue) {
+        if (networkBroke) { stillPending.push(item); continue; }
+        try {
+          const res = await fetchWithTimeout(apiUrl(`/api/v1/stops/${item.stopId}/retry-later`), {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+            body: JSON.stringify(item),
+            timeout: 8000,
+          });
+          if (res.ok || httpDisposition(res.status) === 'discard') sent++;
+          else { stillPending.push(item); networkBroke = true; }
+        } catch {
+          stillPending.push(item);
+          networkBroke = true;
+        }
+      }
+      if (stillPending.length === 0) await AsyncStorage.removeItem(STORAGE_KEYS.offlineRetryQueue);
+      else await writeRetryQueue(stillPending);
+      return sent;
+    } finally {
+      _retryQueueFlushing = null;
+    }
+  })();
+  return _retryQueueFlushing;
+}
+
+export async function postponeStop(params: {
+  stopId: number;
+  reason: string;
+  note?: string | null;
+  /** Parada después de la cual quiere reintentarla. null = al final. */
+  afterStopId?: number | null;
+}): Promise<{ queued?: boolean }> {
+  const item: OfflineRetryAction = {
+    stopId: params.stopId,
+    reason: params.reason,
+    note: params.note ?? null,
+    afterStopId: params.afterStopId ?? null,
+    at: new Date().toISOString(),
+  };
+  const enqueue = async () => {
+    const q = await readRetryQueue();
+    q.push(item);
+    await writeRetryQueue(q);
+    return { queued: true };
+  };
+  try {
+    const res = await fetchWithTimeout(apiUrl(`/api/v1/stops/${item.stopId}/retry-later`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+      body: JSON.stringify(item),
+      timeout: 8000,
+    });
+    if (!res.ok) {
+      if (httpDisposition(res.status) === 'retry') return await enqueue();
+      const data = await res.json().catch(() => ({}));
+      throw new Error((data as { error?: string }).error || 'No se pudo posponer la parada');
+    }
+    return {};
+  } catch (e: any) {
+    if (isNetworkError(e)) return await enqueue();
+    throw e;
+  }
+}
+
 export async function patchRouteRecorrido(
   routeId: number,
   driverId: string,
@@ -756,13 +900,14 @@ export async function getPendingIncidentCount(): Promise<number> {
  *  chofer tenia una foto o una incidencia pendiente pero ninguna parada, no se
  *  sincronizaba nunca hasta que minimizara y volviera a abrir la app. */
 export async function getPendingTotalCount(): Promise<number> {
-  const [stops, photos, incidents, punches] = await Promise.all([
+  const [stops, photos, incidents, punches, retries] = await Promise.all([
     getPendingStopCount(),
     getPendingPhotoCount(),
     getPendingIncidentCount(),
     getPendingPunchCount(),
+    getPendingRetryCount(),
   ]);
-  return stops + photos + incidents + punches;
+  return stops + photos + incidents + punches + retries;
 }
 
 // ─── Cola offline de FOTOS de comprobante ────────────────────────────────────

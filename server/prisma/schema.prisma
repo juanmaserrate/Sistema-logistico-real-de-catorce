@@ -155,6 +155,11 @@ model Stop {
   /// true = parada de retorno al depósito (Real de Catorce). Al marcarla como
   /// finalizada, el viaje se cierra automáticamente con ESA hora.
   isReturnToBase  Boolean   @default(false)
+  /// Veces que el chofer pasó y no pudo entregar, eligiendo volver más tarde.
+  /// status='RETRY' = pospuesta, sigue pendiente y bloquea el cierre del viaje.
+  retryCount      Int       @default(0)
+  /// Bitácora de los intentos fallidos: [{at, reason, note}] en JSON.
+  retryLog        Json?
   client          Client    @relation(fields: [clientId], references: [id])
   route           Route     @relation(fields: [routeId], references: [id])
 
