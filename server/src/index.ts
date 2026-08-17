@@ -3859,11 +3859,39 @@ app.post('/api/admin/backfill-base-stops', async (req: any, res: any) => {
             orderBy: { id: 'asc' }
         });
 
-        const result = { revisadas: routes.length, yaTenian: 0, marcadas: 0, creadas: 0, sinParadas: 0, detalle: [] as any[] };
+        // Diagnostico: que cliente quedo como deposito y si la parada marcada
+        // es realmente la ULTIMA. isBaseStopName tambien matchea 'DEPOSITO...',
+        // asi que conviene poder confirmar que no agarro un cliente equivocado
+        // — se replicaria en todas las rutas nuevas sin que nadie lo note.
+        const baseFull = await prisma.client.findUnique({
+            where: { id: baseClient.id },
+            select: { id: true, name: true, address: true, latitude: true, longitude: true }
+        });
+        const result = {
+            clienteBase: baseFull,
+            malUbicadas: [] as any[],
+            revisadas: routes.length, yaTenian: 0, marcadas: 0, creadas: 0, sinParadas: 0, detalle: [] as any[]
+        };
         for (const r of routes) {
             const stops = r.stops;
             if (stops.length === 0) { result.sinParadas++; continue; }
-            if (stops.some((s) => s.isReturnToBase)) { result.yaTenian++; continue; }
+            if (stops.some((s) => s.isReturnToBase)) {
+                result.yaTenian++;
+                // Chequeo de sanidad: la parada de base tiene que ser la ultima
+                // y apuntar al deposito. Si no, el viaje se cerraria antes de
+                // tiempo o no cerraria nunca.
+                const flagged = stops.filter((s) => s.isReturnToBase);
+                const ultima = stops[stops.length - 1];
+                if (flagged.length > 1 || flagged[0].id !== ultima.id || !isBaseStopName(flagged[0].client?.name)) {
+                    result.malUbicadas.push({
+                        routeId: r.id,
+                        marcadas: flagged.length,
+                        nombre: flagged[0].client?.name ?? null,
+                        esUltima: flagged[0].id === ultima.id
+                    });
+                }
+                continue;
+            }
             const last = stops[stops.length - 1];
             if (isBaseStopName(last.client?.name)) {
                 // Ya termina en el deposito: solo falta el flag.
