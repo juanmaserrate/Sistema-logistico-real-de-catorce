@@ -3750,6 +3750,11 @@ function normalizeName(s: string): string {
 function isBaseStopName(name: string | null | undefined): boolean {
     const n = normalizeName(name || '');
     if (!n) return false;
+    // 'R14' anclado a la cadena COMPLETA a proposito: asi se llama el deposito
+    // en las plantillas viejas. Sin esto, a las rutas que YA terminaban en el
+    // deposito se les agregaba una SEGUNDA parada de deposito, y el chofer se
+    // quedaba con dos paradas finales que nadie le dijo que tenia que marcar.
+    if (/^R\.?\s*14$/.test(n)) return true;
     return /^(REAL\s*(DE\s*)?(14|CATORCE))\b/.test(n) || /^DEPOSITO\b/.test(n) || n === 'DEPOT';
 }
 
@@ -3787,52 +3792,53 @@ async function ensureBaseClient(tenantId: string): Promise<{ id: string; name: s
  *  final (sync offline, reemplazo de paradas). La condicion de aca es mucho
  *  mas angosta: SOLO la parada marcada como base, y SOLO si la ruta esta
  *  abierta. */
-async function closeRouteFromBaseStop(stop: any): Promise<boolean> {
-    const route = stop?.route;
+async function tryCloseRouteIfComplete(routeId: number): Promise<boolean> {
+    const route = await prisma.route.findUnique({
+        where: { id: routeId },
+        select: { id: true, tripId: true, date: true, actualStartTime: true, actualEndTime: true }
+    });
     if (!route || route.actualEndTime) return false;
-    const st = String(stop.status || '').toUpperCase();
-    if (st !== 'COMPLETED' && st !== 'UNDELIVERABLE') return false;
 
-    // Si quedo alguna parada sin resolver (PENDING / ARRIVED / RETRY), NO cerramos.
-    // El chofer que pospuso una entrega tiene que decir que paso con ella antes
-    // de terminar: o entrego, o no entrego con motivo. Si no, la parada quedaba
-    // en el aire y el viaje figuraba completo igual.
-    const sinResolver = await prisma.stop.count({
-        where: {
-            routeId: route.id,
-            id: { not: stop.id },
-            status: { notIn: ['COMPLETED', 'UNDELIVERABLE'] }
+    const stops = await prisma.stop.findMany({
+        where: { routeId },
+        orderBy: { sequence: 'asc' },
+        select: {
+            id: true, status: true, sequence: true, isReturnToBase: true,
+            actualArrival: true, actualDeparture: true,
+            client: { select: { name: true } }
         }
     });
-    if (sinResolver > 0) {
-        console.log(`[base-stop] Ruta ${route.id}: no se cierra, quedan ${sinResolver} paradas sin resolver`);
-        io.emit('route:updated', { routeId: route.id, type: 'base_marked_pending_stops', pendientes: sinResolver });
-        return false;
-    }
+    if (stops.length === 0) return false;
+
+    // Si queda alguna sin resolver (PENDING / ARRIVED / RETRY) NO cerramos: el
+    // chofer que pospuso una entrega tiene que decir que paso con ella.
+    const sinResolver = stops.filter((s) => {
+        const st = String(s.status || '').toUpperCase();
+        return st !== 'COMPLETED' && st !== 'UNDELIVERABLE';
+    });
+    if (sinResolver.length > 0) return false;
+
+    // La hora de cierre es la de la vuelta al deposito: NO la del server ni la
+    // de la ultima parada que se resolvio. El chofer volvio cuando marco la base.
+    const base = stops.find((s) => s.isReturnToBase)
+        || [...stops].reverse().find((s) => isBaseStopName(s.client?.name));
+    if (!base) return false; // sin parada de base, el cierre lo sigue haciendo el operador
 
     const now = new Date();
-    // La hora que pidio el usuario: la del marcado del chofer, no la del server.
-    // Como la app manda su propio timestamp, un viaje que sincroniza 5 horas
-    // tarde igual queda cerrado a la hora real de vuelta al deposito.
-    let closeAt: Date = stop.actualDeparture || stop.actualArrival || now;
+    let closeAt: Date = base.actualDeparture || base.actualArrival || now;
 
-    // Inferir el inicio si el chofer nunca pudo fichar entrada (sin señal).
+    // Inferir el inicio si el chofer nunca pudo fichar entrada (sin senal).
     let startAt: Date | null = route.actualStartTime || null;
     if (!startAt) {
-        const siblings = await prisma.stop.findMany({
-            where: { routeId: route.id },
-            select: { actualArrival: true, actualDeparture: true }
-        });
         const ms: number[] = [];
-        for (const s of siblings) {
+        for (const s of stops) {
             if (s.actualArrival) ms.push(new Date(s.actualArrival).getTime());
             if (s.actualDeparture) ms.push(new Date(s.actualDeparture).getTime());
         }
         startAt = ms.length ? new Date(Math.min(...ms)) : closeAt;
     }
 
-    // Clamp de cordura — mismo criterio que recorrido-operador. Protege contra
-    // relojes de celular desfasados (ROMs Android con la fecha corrida).
+    // Clamp de cordura contra relojes de celular desfasados.
     const lowerBound = new Date(new Date(route.date || closeAt).getTime() - 12 * 3600 * 1000);
     const upperBound = new Date(now.getTime() + 5 * 60 * 1000);
     const closeMs = closeAt.getTime();
@@ -3842,7 +3848,7 @@ async function closeRouteFromBaseStop(stop: any): Promise<boolean> {
         closeMs > upperBound.getTime() ||
         (startAt && closeMs <= startAt.getTime())
     ) {
-        console.warn(`[base-stop] Hora fuera de rango en ruta ${route.id} (${closeAt.toISOString?.()}) — se usa la hora del servidor`);
+        console.warn('[base-stop] Hora fuera de rango en ruta ' + route.id + ' - se usa la hora del servidor');
         closeAt = now;
     }
 
@@ -3856,9 +3862,7 @@ async function closeRouteFromBaseStop(stop: any): Promise<boolean> {
             data: {
                 status: 'COMPLETED',
                 completedAt: closeAt,
-                // returnTime es el campo que levanta el Motor de Costos para
-                // calcular las horas del mes: sin esto el viaje caia al
-                // fallback de 8h en vez de tener su duracion real.
+                // returnTime lo levanta el Motor de Costos para las horas del mes.
                 returnTime: closeAt
             }
         }).catch((e: any) => console.warn('[base-stop] trip update:', e?.message || e));
@@ -3868,110 +3872,49 @@ async function closeRouteFromBaseStop(stop: any): Promise<boolean> {
         data: { isActive: false }
     }).catch(() => {});
 
-    console.log(`[base-stop] Ruta ${route.id} cerrada al marcar el retorno a base (${closeAt.toISOString()})`);
+    console.log('[base-stop] Ruta ' + route.id + ' cerrada (' + closeAt.toISOString() + ')');
     io.emit('route:updated', { routeId: route.id, type: 'closed_at_base' });
     if (route.tripId) io.emit('trip:updated', { tripId: route.tripId });
     return true;
 }
 
-/** Backfill: agrega la parada de retorno a las rutas que se crearon ANTES de
- *  que existiera el flag. Sin esto, los viajes ya cargados nunca se cierran
- *  solos — que era el 100% de los viajes el dia que salio la feature.
+
+/** Reparacion: cierra los viajes que quedaron colgados con TODO marcado.
+ *  Nace del bug del 18-ago (el cierre solo se intentaba al marcar el deposito,
+ *  asi que si el chofer resolvia una parada DESPUES, el viaje quedaba abierto).
+ *  Queda como herramienta: sirve para cualquier ruta que quedo trabada.
  *
- *  POST /api/admin/backfill-base-stops  { key, from?: 'YYYY-MM-DD', dryRun? }
- *  Por defecto arranca desde HOY: no tocamos historia ya cerrada. */
-app.post('/api/admin/backfill-base-stops', async (req: any, res: any) => {
-    const { key, from, dryRun } = req.body || {};
+ *  POST /api/admin/close-stuck-routes  { key, date?: 'YYYY-MM-DD', dryRun? } */
+app.post('/api/admin/close-stuck-routes', async (req: any, res: any) => {
+    const { key, date, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     try {
-        // Por defecto HOY en Buenos Aires (no el "hoy" UTC del server, que a
-        // partir de las 21:00 de Argentina ya es el dia siguiente y se saltearia
-        // justamente los viajes del dia en curso).
-        const fromYmd = /^\d{4}-\d{2}-\d{2}$/.test(String(from || '')) ? String(from) : buenosAiresYmd();
-        const { start: startOfDay } = utcDayRange(fromYmd);
-        if (isNaN(startOfDay.getTime())) return res.status(400).json({ error: 'from inválido (YYYY-MM-DD)' });
-
-        const tenant = await prisma.tenant.findFirst({ select: { id: true } });
-        if (!tenant) return res.status(500).json({ error: 'No hay tenant' });
-        const baseClient = await ensureBaseClient(tenant.id);
-        if (!baseClient) return res.status(500).json({ error: 'No se pudo resolver el cliente depósito' });
-
+        const ymd = /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? String(date) : buenosAiresYmd();
+        const { start, end } = utcDayRange(ymd);
         const routes = await prisma.route.findMany({
-            where: { date: { gte: startOfDay }, actualEndTime: null },
+            where: { date: { gte: start, lte: end }, actualEndTime: null },
             select: {
-                id: true,
-                stops: {
-                    orderBy: { sequence: 'asc' },
-                    select: { id: true, sequence: true, isReturnToBase: true, client: { select: { name: true } } }
-                }
+                id: true, tripId: true,
+                stops: { select: { status: true, isReturnToBase: true, actualDeparture: true, actualArrival: true, client: { select: { name: true } } } }
             },
             orderBy: { id: 'asc' }
         });
-
-        // Diagnostico: que cliente quedo como deposito y si la parada marcada
-        // es realmente la ULTIMA. isBaseStopName tambien matchea 'DEPOSITO...',
-        // asi que conviene poder confirmar que no agarro un cliente equivocado
-        // — se replicaria en todas las rutas nuevas sin que nadie lo note.
-        const baseFull = await prisma.client.findUnique({
-            where: { id: baseClient.id },
-            select: { id: true, name: true, address: true, latitude: true, longitude: true }
-        });
-        const result = {
-            clienteBase: baseFull,
-            malUbicadas: [] as any[],
-            revisadas: routes.length, yaTenian: 0, marcadas: 0, creadas: 0, sinParadas: 0, detalle: [] as any[]
-        };
+        const cerradas: any[] = [], sinCerrar: any[] = [];
         for (const r of routes) {
-            const stops = r.stops;
-            if (stops.length === 0) { result.sinParadas++; continue; }
-            if (stops.some((s) => s.isReturnToBase)) {
-                result.yaTenian++;
-                // Chequeo de sanidad: la parada de base tiene que ser la ultima
-                // y apuntar al deposito. Si no, el viaje se cerraria antes de
-                // tiempo o no cerraria nunca.
-                const flagged = stops.filter((s) => s.isReturnToBase);
-                const ultima = stops[stops.length - 1];
-                if (flagged.length > 1 || flagged[0].id !== ultima.id || !isBaseStopName(flagged[0].client?.name)) {
-                    result.malUbicadas.push({
-                        routeId: r.id,
-                        marcadas: flagged.length,
-                        nombre: flagged[0].client?.name ?? null,
-                        esUltima: flagged[0].id === ultima.id
-                    });
-                }
+            const pend = r.stops.filter((s: any) => !['COMPLETED', 'UNDELIVERABLE'].includes(String(s.status || '').toUpperCase()));
+            if (r.stops.length === 0 || pend.length > 0) {
+                sinCerrar.push({ routeId: r.id, tripId: r.tripId, pendientes: pend.length, total: r.stops.length });
                 continue;
             }
-            const last = stops[stops.length - 1];
-            if (isBaseStopName(last.client?.name)) {
-                // Ya termina en el deposito: solo falta el flag.
-                if (!dryRun) {
-                    await prisma.stop.update({ where: { id: last.id }, data: { isReturnToBase: true } });
-                }
-                result.marcadas++;
-                result.detalle.push({ routeId: r.id, accion: 'flag', stopId: last.id });
-            } else {
-                if (!dryRun) {
-                    await prisma.stop.create({
-                        data: {
-                            routeId: r.id,
-                            clientId: baseClient.id,
-                            sequence: last.sequence + 1,
-                            status: 'PENDING',
-                            isReturnToBase: true
-                        }
-                    });
-                }
-                result.creadas++;
-                result.detalle.push({ routeId: r.id, accion: 'crear', sequence: last.sequence + 1 });
-            }
+            const base = r.stops.find((s: any) => s.isReturnToBase) || [...r.stops].reverse().find((s: any) => isBaseStopName(s.client?.name));
+            const hora = base ? (base.actualDeparture || base.actualArrival) : null;
+            if (!dryRun) await tryCloseRouteIfComplete(r.id);
+            cerradas.push({ routeId: r.id, tripId: r.tripId, cerradaA: hora ? new Date(hora).toISOString() : null });
         }
-        if (!dryRun && (result.marcadas + result.creadas) > 0) {
-            io.emit('route:updated', { type: 'base_stop_backfill' });
-        }
-        console.log(`[backfill-base-stops] ${dryRun ? '(DRY RUN) ' : ''}`, JSON.stringify({ ...result, detalle: undefined }));
-        res.json({ dryRun: !!dryRun, desde: fromYmd, ...result });
+        console.log('[close-stuck-routes] ' + (dryRun ? '(DRY RUN) ' : '') + cerradas.length + ' cerradas, ' + sinCerrar.length + ' con paradas pendientes');
+        res.json({ dryRun: !!dryRun, fecha: ymd, cerradas, sinCerrar });
     } catch (e: any) {
-        console.error('backfill-base-stops:', e);
+        console.error('close-stuck-routes:', e);
         res.status(500).json({ error: e?.message || 'Error' });
     }
 });
@@ -4016,26 +3959,17 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
             io.to(`driver:${stop.route.driverId}`).emit('route:updated', { routeId: stop.route.id, type: 'stop_status' });
         }
 
-    // === CIERRE AL MARCAR EL RETORNO A BASE (Real de Catorce) ===
-    // Reemplaza al auto-finish generico de abajo. Se dispara SOLO en la parada
-    // de deposito, con la hora que marco el chofer (no la del servidor).
-    // El fallback por nombre cubre las rutas creadas antes del flag.
+    // === CIERRE AUTOMATICO DEL VIAJE ===
+    // BUG (18-ago): antes esto se disparaba SOLO al marcar la parada de deposito.
+    // Si el chofer marcaba el deposito y DESPUES resolvia una parada que le habia
+    // quedado pendiente, el cierre ya se habia negado y nada volvia a intentarlo:
+    // el viaje quedaba abierto para siempre (caso R9 — deposito 14:08, ultima
+    // parada resuelta 14:09).
+    // Ahora se intenta despues de CUALQUIER parada. tryCloseRouteIfComplete
+    // decide: cierra solo si no queda ninguna sin resolver, y siempre con la hora
+    // de la vuelta al deposito.
     try {
-        let isBase = (stop as any).isReturnToBase === true;
-        if (!isBase && isBaseStopName((stop as any).client?.name) && stop.route) {
-            // Fallback para rutas creadas antes del flag. Exigimos que sea la
-            // ULTIMA parada: si el deposito figura al medio del recorrido (una
-            // recarga), marcarla no debe cerrar el viaje.
-            const last = await prisma.stop.findFirst({
-                where: { routeId: stop.route.id },
-                orderBy: { sequence: 'desc' },
-                select: { id: true }
-            });
-            isBase = last?.id === stop.id;
-        }
-        if (isBase) {
-            await closeRouteFromBaseStop(stop);
-        }
+        if (stop.route?.id) await tryCloseRouteIfComplete(stop.route.id);
     } catch (e: any) {
         // Nunca romper la marca del chofer por un fallo al cerrar el viaje:
         // la parada ya quedo guardada, el operador puede cerrar a mano.
