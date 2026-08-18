@@ -1310,7 +1310,9 @@ app.post('/api/v1/tracking/location', trackingLimiter, async (req, res) => {
                 speed: speed != null && Number.isFinite(Number(speed)) ? Number(speed) : null,
                 heading: heading != null && Number.isFinite(Number(heading)) ? Number(heading) : null,
                 offRouteMeters: null,
-                capturedAt: capturedAt ? new Date(capturedAt) : null
+                // sanitizeClientDate descarta relojes fuera de rango: si el celular
+                // tiene la fecha mal, guardamos null y manda la hora del servidor.
+                capturedAt: sanitizeClientDate(capturedAt, null)
             }
         });
         io.emit('location:update', record);
@@ -1895,7 +1897,10 @@ app.get('/api/v1/control/active-routes', async (_req, res) => {
                         speed: row.speed != null ? Number(row.speed) : null,
                         heading: row.heading != null ? Number(row.heading) : null,
                         offRouteMeters: row.offRouteMeters != null ? Number(row.offRouteMeters) : null,
-                        timestamp: (row.capturedAt || row.timestamp)?.toISOString?.() ?? null,
+                        // Hora del SERVIDOR: con la del celular, un reloj desfasado
+                        // marcaba 'Demorado' a un chofer que acababa de reportar.
+                        timestamp: row.timestamp?.toISOString?.() ?? null,
+                        capturedAt: row.capturedAt?.toISOString?.() ?? null,
                         deviceLabel: row.deviceLabel ?? null,
                     };
                 }
@@ -1971,7 +1976,7 @@ app.get('/api/v1/control/driver-status', async (req, res) => {
         // Ultimo ping POR CHOFER (no por ruta): si el chofer arranco el GPS sin
         // ruta seleccionada, los pings van con routeId null y por ruta no se veian.
         const driverIds = [...new Set(routes.map((r: any) => r.driverId).filter(Boolean))] as string[];
-        const lastByDriver: Record<string, { at: Date; lat: number; lng: number }> = {};
+        const lastByDriver: Record<string, { at: Date; atDispositivo: Date | null; lat: number; lng: number }> = {};
         if (driverIds.length > 0) {
             try {
                 const rows = await prisma.$queryRaw<any[]>`
@@ -1983,7 +1988,12 @@ app.get('/api/v1/control/driver-status', async (req, res) => {
                 `;
                 for (const row of rows) {
                     lastByDriver[row.driverId] = {
-                        at: row.capturedAt || row.timestamp,
+                        // La antiguedad se mide con la hora del SERVIDOR, no con la
+                        // del celular: hay telefonos con el reloj desfasado y el panel
+                        // mostraba 'sin senal hace 42 dias' en choferes que estaban
+                        // reportando bien hacia 25 minutos.
+                        at: row.timestamp,
+                        atDispositivo: row.capturedAt || null,
                         lat: Number(row.latitude),
                         lng: Number(row.longitude)
                     };
