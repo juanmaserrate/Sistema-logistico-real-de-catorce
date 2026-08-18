@@ -3929,6 +3929,95 @@ app.post('/api/admin/close-stuck-routes', async (req: any, res: any) => {
     }
 });
 
+/** Diagnostico: por que un chofer "no reporta".
+ *  Responde con hechos en vez de suposiciones: cuantos pings mando hoy / esta
+ *  semana / este mes, cuando fue el ultimo, con que telefono, y si alguna vez
+ *  registro la app. Tambien lista TODOS los dispositivos vistos, para detectar
+ *  el caso "se logueo con otra cuenta" (el telefono reporta, pero bajo otro
+ *  usuario, y el panel lo da por muerto).
+ *
+ *  POST /api/admin/driver-diagnostics  { key, date? } */
+app.post('/api/admin/driver-diagnostics', async (req: any, res: any) => {
+    const { key, date } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const ymd = /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? String(date) : buenosAiresYmd();
+        const { start, end } = utcDayRange(ymd);
+
+        const routes = await prisma.route.findMany({
+            where: { date: { gte: start, lte: end }, driverId: { not: null } },
+            select: {
+                id: true, driverId: true, actualStartTime: true, actualEndTime: true,
+                driver: { select: { fullName: true, username: true, pushToken: true } },
+                trip: { select: { reparto: true, businessUnit: true } },
+                stops: { select: { status: true } }
+            },
+            orderBy: { id: 'asc' }
+        });
+
+        const ids = [...new Set(routes.map((r: any) => r.driverId).filter(Boolean))] as string[];
+        const stats: Record<string, any> = {};
+        if (ids.length) {
+            const rows = await prisma.$queryRaw<any[]>`
+                SELECT "driverId",
+                       COUNT(*) FILTER (WHERE timestamp >= ${start} AND timestamp <= ${end}) AS hoy,
+                       COUNT(*) FILTER (WHERE timestamp >= NOW() - INTERVAL '7 days')  AS semana,
+                       COUNT(*) FILTER (WHERE timestamp >= NOW() - INTERVAL '30 days') AS mes,
+                       MAX(timestamp) AS ultimo,
+                       COUNT(DISTINCT "deviceId") AS dispositivos
+                FROM "DeviceLocation"
+                WHERE "driverId" = ANY(${ids}::text[])
+                GROUP BY "driverId"
+            `;
+            for (const r of rows) stats[r.driverId] = r;
+        }
+
+        // Todos los telefonos vistos en 30 dias — para cruzar a mano si hace falta
+        const dispositivos = await prisma.$queryRaw<any[]>`
+            SELECT DISTINCT ON ("deviceId") "deviceId", "deviceLabel", "driverId", timestamp
+            FROM "DeviceLocation"
+            WHERE timestamp >= NOW() - INTERVAL '30 days'
+            ORDER BY "deviceId", timestamp DESC
+        `;
+
+        const now = Date.now();
+        const choferes = routes.map((r: any) => {
+            const st = stats[r.driverId] || {};
+            const done = r.stops.filter((x: any) => ['COMPLETED', 'UNDELIVERABLE'].includes(String(x.status || '').toUpperCase())).length;
+            const ultimo = st.ultimo ? new Date(st.ultimo) : null;
+            return {
+                reparto: r.trip?.reparto || r.trip?.businessUnit || ('Ruta ' + r.id),
+                chofer: r.driver?.fullName || r.driver?.username || '?',
+                driverId: r.driverId,
+                arranco: r.actualStartTime ? new Date(r.actualStartTime).toISOString() : null,
+                cerrado: !!r.actualEndTime,
+                paradas: done + '/' + r.stops.length,
+                pingsHoy: Number(st.hoy || 0),
+                pings7d: Number(st.semana || 0),
+                pings30d: Number(st.mes || 0),
+                telefonosUsados: Number(st.dispositivos || 0),
+                ultimoPing: ultimo ? ultimo.toISOString() : null,
+                diasSinReportar: ultimo ? Math.round((now - ultimo.getTime()) / 86400000) : null,
+                appRegistrada: !!r.driver?.pushToken
+            };
+        });
+
+        res.json({
+            fecha: ymd,
+            choferes,
+            dispositivos: dispositivos.map((d: any) => ({
+                deviceId: String(d.deviceId).slice(0, 14),
+                etiqueta: d.deviceLabel,
+                driverId: d.driverId,
+                ultimo: d.timestamp ? new Date(d.timestamp).toISOString() : null
+            }))
+        });
+    } catch (e: any) {
+        console.error('driver-diagnostics:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.patch('/api/v1/stops/:id', async (req, res) => {
     // Bug fix: antes prisma.stop.update y el resto del handler estaban fuera de try/catch.
     // Si Prisma rechazaba (id inexistente, datos inválidos), la promesa burbujeaba
