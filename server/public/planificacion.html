@@ -12816,9 +12816,14 @@
             
             body.innerHTML = data.map(t => {
                 const isPropio = t.contractType === 'Propio';
-                // Para viajes propios: mostrar PENDIENTE si no tiene value guardado en DB
-                const hasStoredValue = isPropio && Number(t.value) > 0;
-                const cost = hasStoredValue ? Number(t.value) : (isPropio ? 0 : (Number(t.value) || 0));
+                // Columna COSTO: para tercerizados es la plata que se paga al
+                // proveedor; para los propios no hay factura, así que en vez de
+                // un importe se muestra el tag "Propio". El costo estimado del
+                // Motor de Costos queda en el tooltip para no perder el dato.
+                const cost = (typeof getTripCalculatedCost === 'function')
+                    ? getTripCalculatedCost(t)
+                    : (Number(t.value) || 0);
+                const costoPropioTxt = cost > 0 ? ('$ ' + Math.round(cost).toLocaleString('es-AR')) : 'sin calcular';
                 
                 return `
                     <tr class="hover:bg-[#F4F7FE] transition-colors group" id="weekly-row-${t.id}">
@@ -12875,9 +12880,9 @@
                         <td class="text-center text-[11px] font-bold text-[#2B3674]">
                             ${t.isRefrigerated ? (t.temperature ? `${t.temperature}°` : '<span class="text-[#A3AED0]">--</span>') : '<span class="text-[#A3AED0]">--</span>'}
                         </td>
-                        <td class="text-xs font-black ${isPropio ? 'text-indigo-600' : 'text-indigo-600'}">
-                            ${isPropio && !hasStoredValue
-                                ? `<span class="status-badge bg-amber-100 text-amber-700 text-[9px]">PENDIENTE</span>`
+                        <td class="text-xs font-black text-indigo-600">
+                            ${isPropio
+                                ? `<span class="status-badge bg-emerald-100 text-emerald-700 text-[9px]" title="Flota propia — no se factura. Costo estimado: ${costoPropioTxt}">Propio</span>`
                                 : `$ ${cost.toLocaleString('es-AR')}`}
                         </td>
                         <td class="font-bold text-indigo-600">${resolveTripPlate(t)}</td>
