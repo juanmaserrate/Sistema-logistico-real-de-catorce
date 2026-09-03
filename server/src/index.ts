@@ -3895,6 +3895,108 @@ async function tryCloseRouteIfComplete(routeId: number): Promise<boolean> {
  *  Queda como herramienta: sirve para cualquier ruta que quedo trabada.
  *
  *  POST /api/admin/close-stuck-routes  { key, date?: 'YYYY-MM-DD', dryRun? } */
+/** Backfill: agrega la parada de retorno a las rutas que se crearon ANTES de
+ *  que existiera el flag. Sin esto, los viajes ya cargados nunca se cierran
+ *  solos — que era el 100% de los viajes el dia que salio la feature.
+ *
+ *  POST /api/admin/backfill-base-stops  { key, from?: 'YYYY-MM-DD', dryRun? }
+ *  Por defecto arranca desde HOY: no tocamos historia ya cerrada. */
+app.post('/api/admin/backfill-base-stops', async (req: any, res: any) => {
+    const { key, from, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        // Por defecto HOY en Buenos Aires (no el "hoy" UTC del server, que a
+        // partir de las 21:00 de Argentina ya es el dia siguiente y se saltearia
+        // justamente los viajes del dia en curso).
+        const fromYmd = /^\d{4}-\d{2}-\d{2}$/.test(String(from || '')) ? String(from) : buenosAiresYmd();
+        const { start: startOfDay } = utcDayRange(fromYmd);
+        if (isNaN(startOfDay.getTime())) return res.status(400).json({ error: 'from inválido (YYYY-MM-DD)' });
+
+        const tenant = await prisma.tenant.findFirst({ select: { id: true } });
+        if (!tenant) return res.status(500).json({ error: 'No hay tenant' });
+        const baseClient = await ensureBaseClient(tenant.id);
+        if (!baseClient) return res.status(500).json({ error: 'No se pudo resolver el cliente depósito' });
+
+        const routes = await prisma.route.findMany({
+            where: { date: { gte: startOfDay }, actualEndTime: null },
+            select: {
+                id: true,
+                stops: {
+                    orderBy: { sequence: 'asc' },
+                    select: { id: true, sequence: true, isReturnToBase: true, client: { select: { name: true } } }
+                }
+            },
+            orderBy: { id: 'asc' }
+        });
+
+        // Diagnostico: que cliente quedo como deposito y si la parada marcada
+        // es realmente la ULTIMA. isBaseStopName tambien matchea 'DEPOSITO...',
+        // asi que conviene poder confirmar que no agarro un cliente equivocado
+        // — se replicaria en todas las rutas nuevas sin que nadie lo note.
+        const baseFull = await prisma.client.findUnique({
+            where: { id: baseClient.id },
+            select: { id: true, name: true, address: true, latitude: true, longitude: true }
+        });
+        const result = {
+            clienteBase: baseFull,
+            malUbicadas: [] as any[],
+            revisadas: routes.length, yaTenian: 0, marcadas: 0, creadas: 0, sinParadas: 0, detalle: [] as any[]
+        };
+        for (const r of routes) {
+            const stops = r.stops;
+            if (stops.length === 0) { result.sinParadas++; continue; }
+            if (stops.some((s) => s.isReturnToBase)) {
+                result.yaTenian++;
+                // Chequeo de sanidad: la parada de base tiene que ser la ultima
+                // y apuntar al deposito. Si no, el viaje se cerraria antes de
+                // tiempo o no cerraria nunca.
+                const flagged = stops.filter((s) => s.isReturnToBase);
+                const ultima = stops[stops.length - 1];
+                if (flagged.length > 1 || flagged[0].id !== ultima.id || !isBaseStopName(flagged[0].client?.name)) {
+                    result.malUbicadas.push({
+                        routeId: r.id,
+                        marcadas: flagged.length,
+                        nombre: flagged[0].client?.name ?? null,
+                        esUltima: flagged[0].id === ultima.id
+                    });
+                }
+                continue;
+            }
+            const last = stops[stops.length - 1];
+            if (isBaseStopName(last.client?.name)) {
+                // Ya termina en el deposito: solo falta el flag.
+                if (!dryRun) {
+                    await prisma.stop.update({ where: { id: last.id }, data: { isReturnToBase: true } });
+                }
+                result.marcadas++;
+                result.detalle.push({ routeId: r.id, accion: 'flag', stopId: last.id });
+            } else {
+                if (!dryRun) {
+                    await prisma.stop.create({
+                        data: {
+                            routeId: r.id,
+                            clientId: baseClient.id,
+                            sequence: last.sequence + 1,
+                            status: 'PENDING',
+                            isReturnToBase: true
+                        }
+                    });
+                }
+                result.creadas++;
+                result.detalle.push({ routeId: r.id, accion: 'crear', sequence: last.sequence + 1 });
+            }
+        }
+        if (!dryRun && (result.marcadas + result.creadas) > 0) {
+            io.emit('route:updated', { type: 'base_stop_backfill' });
+        }
+        console.log(`[backfill-base-stops] ${dryRun ? '(DRY RUN) ' : ''}`, JSON.stringify({ ...result, detalle: undefined }));
+        res.json({ dryRun: !!dryRun, desde: fromYmd, ...result });
+    } catch (e: any) {
+        console.error('backfill-base-stops:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/admin/close-stuck-routes', async (req: any, res: any) => {
     const { key, date, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
