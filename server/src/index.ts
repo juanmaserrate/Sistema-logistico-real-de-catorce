@@ -4154,6 +4154,108 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
 });
 
 // ── Reordenamiento de paradas por el chofer ───────────────────────────────────
+/** Correccion manual de los horarios del recorrido por el operador de trafico.
+ *  Los horarios los pone el chofer desde la app, pero cuando algo sale mal
+ *  (se olvido de marcar, ficho tarde, el telefono no sincronizo) el operador
+ *  tiene que poder corregirlos a mano — hasta ahora solo se podia mirar.
+ *
+ *  Se escribe en Route (inicio/fin reales) Y en Trip (returnTime / completedAt),
+ *  porque returnTime es lo que levanta el Motor de Costos para las horas del mes.
+ *  Queda auditado: quien lo cambio, cuando y que valores tenia antes.
+ *
+ *  PATCH /api/v1/routes/:id/horarios  { actualStartTime, actualEndTime } (ISO) */
+app.patch('/api/v1/routes/:id/horarios', async (req, res) => {
+    try {
+        const routeId = Number(req.params.id);
+        if (!Number.isFinite(routeId)) return res.status(400).json({ error: 'ID de ruta inválido' });
+        const body = req.body || {};
+
+        const route = await prisma.route.findUnique({
+            where: { id: routeId },
+            select: { id: true, tripId: true, date: true, status: true, actualStartTime: true, actualEndTime: true }
+        });
+        if (!route) return res.status(404).json({ error: 'Ruta no encontrada' });
+
+        // Acepta ISO completo o null para limpiar. No usamos sanitizeClientDate:
+        // esto lo escribe una persona a proposito, no el reloj de un celular.
+        const parse = (v: any, campo: string): Date | null | undefined => {
+            if (v === undefined) return undefined;      // no lo mandaron: no tocar
+            if (v === null || v === '') return null;    // lo mandaron vacio: limpiar
+            const d = new Date(v);
+            if (!Number.isFinite(d.getTime())) throw new Error(`${campo} inválido`);
+            return d;
+        };
+        let inicio: Date | null | undefined, fin: Date | null | undefined;
+        try {
+            inicio = parse(body.actualStartTime, 'Hora de inicio');
+            fin = parse(body.actualEndTime, 'Hora de fin');
+        } catch (e: any) {
+            return res.status(400).json({ error: e.message });
+        }
+        if (inicio === undefined && fin === undefined) {
+            return res.status(400).json({ error: 'No enviaste ningún horario para cambiar' });
+        }
+
+        const nuevoInicio = inicio === undefined ? route.actualStartTime : inicio;
+        const nuevoFin    = fin    === undefined ? route.actualEndTime   : fin;
+
+        // Cordura: el fin no puede ser anterior al inicio, y una jornada no dura
+        // mas de 24h. Si el operador se equivoca de dia, el Motor de Costos
+        // sumaria horas imposibles.
+        if (nuevoInicio && nuevoFin) {
+            const horas = (nuevoFin.getTime() - nuevoInicio.getTime()) / 3600000;
+            if (horas <= 0) return res.status(400).json({ error: 'La hora de fin tiene que ser posterior a la de inicio' });
+            if (horas > 24) return res.status(400).json({ error: `Esa corrección da ${horas.toFixed(1)} h de viaje. Revisá la fecha.` });
+        }
+
+        const antes = {
+            actualStartTime: route.actualStartTime?.toISOString() ?? null,
+            actualEndTime: route.actualEndTime?.toISOString() ?? null
+        };
+
+        const data: any = {};
+        if (inicio !== undefined) data.actualStartTime = inicio;
+        if (fin !== undefined) data.actualEndTime = fin;
+        // El estado sigue a los horarios: si le ponen fin, queda cerrada.
+        if (nuevoFin) data.status = 'COMPLETED';
+        else if (nuevoInicio) data.status = 'IN_PROGRESS';
+
+        const updated = await prisma.route.update({ where: { id: routeId }, data });
+
+        if (route.tripId) {
+            const tripData: any = {};
+            if (fin !== undefined) {
+                tripData.returnTime = nuevoFin;      // <- lo lee el Motor de Costos
+                tripData.completedAt = nuevoFin;
+                tripData.status = nuevoFin ? 'COMPLETED' : 'OUT_OF_PLANT';
+            }
+            if (inicio !== undefined) tripData.startedAt = nuevoInicio;
+            if (Object.keys(tripData).length) {
+                await prisma.trip.update({ where: { id: route.tripId }, data: tripData })
+                    .catch((e: any) => console.warn('[horarios] trip update:', e?.message || e));
+            }
+        }
+
+        await logAction(req, 'UPDATE', 'Route', routeId, `Horarios ruta ${routeId}`, antes, {
+            actualStartTime: updated.actualStartTime?.toISOString() ?? null,
+            actualEndTime: updated.actualEndTime?.toISOString() ?? null
+        });
+
+        io.emit('route:updated', { routeId, type: 'horarios_editados' });
+        if (route.tripId) io.emit('trip:updated', { tripId: route.tripId });
+
+        res.json({
+            routeId,
+            tripId: route.tripId,
+            actualStartTime: updated.actualStartTime?.toISOString() ?? null,
+            actualEndTime: updated.actualEndTime?.toISOString() ?? null
+        });
+    } catch (e: any) {
+        console.error('PATCH /routes/:id/horarios:', e);
+        res.status(500).json({ error: e?.message || 'Error actualizando los horarios' });
+    }
+});
+
 app.post('/api/v1/routes/:id/stops/reorder', async (req, res) => {
     try {
         const routeId = Number(req.params.id);

@@ -453,6 +453,35 @@
             </div>
 
             <!-- MODAL: Detalle Auditoría -->
+            <!-- Correccion manual de los horarios del recorrido (doble click en la celda) -->
+            <div id="edit-hours-modal" class="hidden fixed inset-0 z-[120] flex items-center justify-center p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);" onclick="if(event.target===this)closeEditHoursModal()">
+                <div class="modal-content w-full max-w-md p-8 bg-white rounded-3xl shadow-2xl" onclick="event.stopPropagation()">
+                    <h3 class="text-xl font-bold text-[#1B2559]">Corregir horarios del recorrido</h3>
+                    <p class="text-xs text-[#A3AED0] mt-1" id="eh-subtitle">&nbsp;</p>
+                    <input type="hidden" id="eh-route-id">
+                    <div class="space-y-4 mt-6">
+                        <div>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Inicio real</label>
+                            <input type="datetime-local" id="eh-start" oninput="_ehUpdateDuration()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Fin real</label>
+                            <input type="datetime-local" id="eh-end" oninput="_ehUpdateDuration()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                        </div>
+                        <div class="bg-[#F4F7FE] rounded-xl p-3">
+                            <p class="text-[10px] font-black text-[#A3AED0] uppercase">Duración resultante</p>
+                            <p class="text-lg font-black text-[#1B2559]" id="eh-duration">--</p>
+                        </div>
+                        <p class="text-[11px] text-amber-700 font-bold">Esta corrección cambia las horas que usa el Motor de Costos y queda registrada en Auditoría.</p>
+                        <p class="text-[11px] text-rose-600 font-bold hidden" id="eh-error"></p>
+                    </div>
+                    <div class="flex gap-3 mt-6">
+                        <button onclick="closeEditHoursModal()" class="flex-1 bg-[#F4F7FE] text-[#1B2559] rounded-xl py-3 text-sm font-bold">Cancelar</button>
+                        <button onclick="saveEditHours()" id="eh-save" class="flex-1 bg-[#451ebb] text-white rounded-xl py-3 text-sm font-bold">Guardar</button>
+                    </div>
+                </div>
+            </div>
+
             <div id="audit-detail-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
                 <div class="bg-white rounded-3xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col" style="max-height: 80vh;">
                     <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center">
@@ -11791,11 +11820,106 @@
             const re = t.routeActualEnd ? new Date(t.routeActualEnd).toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' }) : '—';
             const dur = formatRouteRealDuration(t);
             const st = t.routeExecutionStatus === 'IN_PROGRESS' ? 'En curso' : t.routeActualEnd ? 'Fin' : t.routeActualStart ? 'Sin cerrar' : 'Sin iniciar';
+            // Doble click = corregir a mano. Solo si el viaje tiene ruta vinculada:
+            // sin routeExecutionId no hay horarios que editar.
+            const rid = t.routeExecutionId;
+            const attrs = rid
+                ? ` ondblclick="openEditHoursModal(${rid})" title="Doble click para corregir los horarios" style="cursor:pointer"`
+                : '';
             return `
-                <div class="text-[11px] font-bold text-[#2B3674]">${rs} → ${re}</div>
-                <div class="text-[10px] text-emerald-700 font-black">REAL ${dur}</div>
-                <div class="text-[9px] text-[#A3AED0] font-bold uppercase">${st}</div>
+                <div${attrs}>
+                    <div class="text-[11px] font-bold text-[#2B3674]">${rs} → ${re}</div>
+                    <div class="text-[10px] text-emerald-700 font-black">REAL ${dur}</div>
+                    <div class="text-[9px] text-[#A3AED0] font-bold uppercase">${st}${rid ? ' · ✎' : ''}</div>
+                </div>
             `;
+        }
+
+        // ── Corrección manual de horarios (doble click en RECORRIDO REAL) ──────
+        // Los marca el chofer desde la app, pero cuando se olvida o el teléfono no
+        // sincroniza, el operador tiene que poder corregirlos. Antes eran de solo
+        // lectura y no había ninguna forma de arreglarlos desde la web.
+        function _ehToLocalInput(iso) {
+            if (!iso) return '';
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return '';
+            // datetime-local espera hora LOCAL sin zona: descontamos el offset.
+            return new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16);
+        }
+
+        function _ehFindTrip(routeId) {
+            return (planningData || []).find(x => x.routeExecutionId === routeId) || null;
+        }
+
+        function openEditHoursModal(routeId) {
+            const t = _ehFindTrip(routeId);
+            document.getElementById('eh-route-id').value = routeId;
+            document.getElementById('eh-subtitle').textContent =
+                (t?.reparto || t?.businessUnit || ('Ruta ' + routeId)) + (t?.driver ? ' · ' + t.driver : '');
+            document.getElementById('eh-start').value = _ehToLocalInput(t?.routeActualStart);
+            document.getElementById('eh-end').value = _ehToLocalInput(t?.routeActualEnd);
+            const err = document.getElementById('eh-error');
+            err.classList.add('hidden');
+            err.textContent = '';
+            _ehUpdateDuration();
+            document.getElementById('edit-hours-modal').classList.remove('hidden');
+        }
+
+        function closeEditHoursModal() {
+            document.getElementById('edit-hours-modal').classList.add('hidden');
+        }
+
+        function _ehUpdateDuration() {
+            const a = document.getElementById('eh-start').value;
+            const b = document.getElementById('eh-end').value;
+            const el = document.getElementById('eh-duration');
+            if (!a || !b) { el.textContent = '--'; return; }
+            const ms = new Date(b) - new Date(a);
+            if (!(ms > 0)) { el.textContent = 'El fin es anterior al inicio'; return; }
+            const h = Math.floor(ms / 3600000), m = Math.round((ms % 3600000) / 60000);
+            el.textContent = h + 'h ' + String(m).padStart(2, '0') + 'm';
+        }
+
+        async function saveEditHours() {
+            const routeId = Number(document.getElementById('eh-route-id').value);
+            const a = document.getElementById('eh-start').value;
+            const b = document.getElementById('eh-end').value;
+            const err = document.getElementById('eh-error');
+            const btn = document.getElementById('eh-save');
+            err.classList.add('hidden');
+            btn.disabled = true;
+            btn.textContent = 'Guardando...';
+            try {
+                const res = await fetch(`${API_URL}/routes/${routeId}/horarios`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
+                    body: JSON.stringify({
+                        actualStartTime: a ? new Date(a).toISOString() : null,
+                        actualEndTime: b ? new Date(b).toISOString() : null
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error del servidor');
+                // Reflejarlo en memoria para que la tabla lo muestre al instante
+                const t = _ehFindTrip(routeId);
+                if (t) {
+                    t.routeActualStart = data.actualStartTime;
+                    t.routeActualEnd = data.actualEndTime;
+                    t.routeExecutionStatus = data.actualEndTime ? 'COMPLETED' : 'IN_PROGRESS';
+                }
+                closeEditHoursModal();
+                // filterWeeklyData reaplica filtros y orden, y redibuja la tabla
+                if (typeof filterWeeklyData === 'function') filterWeeklyData();
+                if (typeof addNotification === 'function') {
+                    addNotification('success', 'Horarios corregidos', 'El cambio quedó registrado en Auditoría.');
+                }
+            } catch (e) {
+                err.textContent = e.message || String(e);
+                err.classList.remove('hidden');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Guardar';
+            }
         }
 
         function getMonthKeyFromDate(dateValue) {
