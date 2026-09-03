@@ -4044,6 +4044,18 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
             const v = body.deliveryWithoutIssues;
             data.deliveryWithoutIssues = v === null ? null : Boolean(v);
         }
+        // Snapshot previo SOLO si el cambio viene del operador desde la web
+        // (la app del chofer no manda X-Actor-Name). Sin este filtro, cada marca
+        // de cada chofer llenaria la auditoria de ruido y taparia lo que importa:
+        // las correcciones hechas a mano despues del viaje.
+        const esOperador = !!String(req.headers['x-actor-name'] || '').trim();
+        const previo = esOperador
+            ? await prisma.stop.findUnique({
+                where: { id: stopId },
+                select: { status: true, actualArrival: true, actualDeparture: true, observations: true }
+            })
+            : null;
+
         const stop = await prisma.stop.update({
             where: { id: stopId },
             data,
@@ -4052,6 +4064,24 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
                 route: { select: { id: true, tripId: true, driverId: true, date: true, actualEndTime: true, actualStartTime: true } }
             }
         });
+
+        if (esOperador && previo) {
+            await logAction(
+                req, 'UPDATE', 'Stop', stopId,
+                `${stop.client?.name || 'Parada'} (viaje ${stop.route?.tripId ?? '?'})`,
+                {
+                    status: previo.status,
+                    actualArrival: previo.actualArrival?.toISOString() ?? null,
+                    actualDeparture: previo.actualDeparture?.toISOString() ?? null
+                },
+                {
+                    status: stop.status,
+                    actualArrival: stop.actualArrival?.toISOString() ?? null,
+                    actualDeparture: stop.actualDeparture?.toISOString() ?? null
+                }
+            );
+        }
+
         io.emit('stop:updated', { stop });
         // Notificar a Torre de Control y a la app del chofer
         if (stop.route?.driverId) {
