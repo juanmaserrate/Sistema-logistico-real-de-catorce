@@ -1961,7 +1961,6 @@
                             <select id="control-trail-route" onchange="loadControlTrailAndSummary()" class="bg-[#F4F7FE] border-0 rounded-xl px-4 py-2.5 text-xs font-bold text-[#1B2559] min-w-[200px] outline-none" title="Ver detalle completo de un solo reparto">
                                 <option value="">— Detalle de un reparto —</option>
                             </select>
-                            <button type="button" onclick="loadControlTrailAllActive()" class="px-4 py-2.5 rounded-xl bg-emerald-600 text-white text-xs font-black uppercase tracking-widest hover:bg-emerald-700" title="Dibujar trazas GPS de todos los repartos en el mapa">Trazas en mapa</button>
                             <button type="button" onclick="loadAllActiveRoutesPanel()" class="px-4 py-2.5 rounded-xl bg-[#F4F7FE] text-[#1B2559] text-xs font-black uppercase tracking-widest hover:bg-indigo-50" title="Refrescar tabla de paradas">Refrescar</button>
                         </div>
                     </div>
@@ -5598,7 +5597,13 @@
                         .then(() => { try { renderControlMap(controlLiveData); } catch (_) {} })
                         .catch(() => {});
                     drawControlPlannedRoutes(controlLiveData).catch((err) => console.warn('Planned routes:', err));
-                    loadControlTrailAllActive().catch((err) => console.warn('Auto trail:', err));
+                    // Las trazas GPS ya NO se dibujan solas en el mapa de flota.
+                    // Cuando el telefono deja de reportar (cosa que pasa seguido),
+                    // el mapa unia el ultimo punto con el siguiente por una recta
+                    // que cortaba manzanas enteras: se veia un manojo de rayos
+                    // naranjas saliendo del camion que no significaban nada.
+                    // El recorrido de UN reparto se sigue viendo eligiendolo en
+                    // "Detalle de un reparto".
                 }
             } catch (e) {
                 console.error('Control live:', e);
