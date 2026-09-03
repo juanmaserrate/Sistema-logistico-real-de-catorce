@@ -130,9 +130,6 @@
                     <a href="#dashboard" id="btn-dashboard" class="header-nav-item">
                         <i data-lucide="line-chart" class="w-4 h-4"></i> Dashboard logístico
                     </a>
-                    <a href="#vrp" id="btn-vrp" class="header-nav-item">
-                        <i data-lucide="map-pinned" class="w-4 h-4"></i> Mapa y Ruteo
-                    </a>
                     <a href="#costs" id="btn-costs" class="header-nav-item">
                         <i data-lucide="bar-chart-3" class="w-4 h-4"></i> Motor de Costos
                     </a>
@@ -1265,142 +1262,6 @@
                 </div>
             </div>
             <!-- VIEW: MAPA Y RUTEO (Google Maps) -->
-            <div id="view-vrp" class="hidden view-animate space-y-6">
-                <!-- PANEL DE DATOS (ARRIBA, ancho completo) -->
-                <div class="card-dark p-8">
-                    <div class="flex items-center justify-between mb-8 pb-6 border-b border-[#F4F7FE]">
-                        <div>
-                            <h3 class="text-2xl font-black text-[#1B2559] tracking-tight">Mapa y ruteo</h3>
-                            <p class="text-sm text-[#A3AED0] font-medium mt-1">Cargá un reparto, elegí el punto de partida y optimizá el recorrido.</p>
-                        </div>
-                        <button type="button" onclick="clearSelectedStops()" class="text-xs font-black text-rose-500 hover:text-rose-700 uppercase tracking-widest px-4 py-3 rounded-xl hover:bg-rose-50">Limpiar ruta</button>
-                    </div>
-
-                    <!-- PASO 1: Cargar reparto -->
-                    <div class="mb-8">
-                        <label class="text-[11px] font-black text-[#A3AED0] uppercase mb-3 block tracking-widest">Paso 1 — Cargar reparto (plantilla)</label>
-                        <div class="flex flex-wrap gap-3 mb-3 items-stretch">
-                            <select id="vrp-template-select" class="flex-1 min-w-[320px] bg-[#F4F7FE] border-0 rounded-2xl p-4 text-sm font-bold text-[#1B2559] outline-none">
-                                <option value="">— Seleccionar reparto —</option>
-                            </select>
-                            <button type="button" onclick="loadVrpFromTemplate(document.getElementById('vrp-template-select').value)" class="px-6 py-4 rounded-2xl bg-indigo-600 text-white text-xs font-black uppercase tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-2">
-                                <i data-lucide="download" class="w-4 h-4"></i> Cargar
-                            </button>
-                            <button type="button" onclick="vrpAddTemplateLayer(document.getElementById('vrp-template-select').value)" class="px-6 py-4 rounded-2xl bg-emerald-600 text-white text-xs font-black uppercase tracking-widest hover:bg-emerald-700 shadow-lg shadow-emerald-200 flex items-center gap-2" title="Agregar como capa al mapa">
-                                <i data-lucide="layers" class="w-4 h-4"></i> + Capa
-                            </button>
-                        </div>
-                        <div id="vrp-layers-list" class="flex flex-wrap gap-2 mb-3"></div>
-                        <label class="flex items-center gap-2 cursor-pointer select-none">
-                            <input type="checkbox" id="vrp-solo-reparto-mapa" class="rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500" onchange="updateVrpMarkersStatusDebounced()">
-                            <span class="text-xs font-bold text-[#2B3674]">Mostrar en el mapa sólo las escuelas de este reparto</span>
-                        </label>
-                    </div>
-
-                    <!-- PASO 2 y 3: Partida + Buscar -->
-                    <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                        <div>
-                            <label class="text-[11px] font-black text-[#A3AED0] uppercase mb-3 block tracking-widest">Paso 2 — Punto de partida</label>
-                            <select id="vrp-origin-select" onchange="updateOrigin()" class="w-full bg-[#F4F7FE] border-0 rounded-2xl p-4 text-sm font-bold text-[#1B2559] outline-none">
-                                <option value="dep_1">Depósito Principal (Burzaco)</option>
-                                <option value="dep_2">Segundo Depósito (Lomas)</option>
-                            </select>
-                        </div>
-                        <div>
-                            <label class="text-[11px] font-black text-[#A3AED0] uppercase mb-3 block tracking-widest">Paso 3 — Buscar escuela en el mapa</label>
-                            <div class="flex gap-2">
-                                <input type="text" id="vrp-client-search" list="vrp-client-datalist" placeholder="Nombre, zona o dirección…" autocomplete="off" class="flex-1 bg-[#F4F7FE] border-0 rounded-2xl px-4 py-4 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500/25" onkeydown="if(event.key==='Enter'){event.preventDefault();vrpGoToSearchClient();}">
-                                <button type="button" onclick="vrpGoToSearchClient()" class="shrink-0 px-5 py-4 rounded-2xl bg-indigo-600 text-white text-xs font-black uppercase hover:bg-indigo-700">Ir</button>
-                            </div>
-                            <datalist id="vrp-client-datalist"></datalist>
-                            <label class="mt-3 flex items-center gap-2 cursor-pointer select-none">
-                                <input type="checkbox" id="vrp-zoom-on-select" class="rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500">
-                                <span class="text-xs font-bold text-[#2B3674]">Acercar el mapa al elegir una escuela</span>
-                            </label>
-                        </div>
-                    </div>
-
-                    <!-- Filtros -->
-                    <div class="mb-8">
-                        <label class="text-[11px] font-black text-[#A3AED0] uppercase mb-3 block tracking-widest">Filtros del listado</label>
-                        <div class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                            <select id="vrp-map-filter-zone" onchange="onVrpMapFilterZoneChange()" class="bg-[#F4F7FE] border-0 rounded-2xl p-4 text-sm font-bold text-[#1B2559] outline-none">
-                                <option value="">Todas las zonas</option>
-                            </select>
-                            <select id="vrp-map-filter-locality" onchange="onVrpMapFiltersChange()" class="bg-[#F4F7FE] border-0 rounded-2xl p-4 text-sm font-bold text-[#1B2559] outline-none">
-                                <option value="">Todas las localidades</option>
-                            </select>
-                            <select id="vrp-map-filter-bu" onchange="onVrpMapFiltersChange()" class="bg-[#F4F7FE] border-0 rounded-2xl p-4 text-sm font-bold text-[#1B2559] outline-none">
-                                <option value="">Todas las U.N.</option>
-                            </select>
-                            <input type="text" id="vrp-search-schools" oninput="filterVrpList()" placeholder="Filtrar escuelas…" class="bg-[#F4F7FE] border-0 rounded-2xl px-4 py-4 text-sm font-bold text-[#1B2559] outline-none">
-                        </div>
-                    </div>
-
-                    <!-- Listados -->
-                    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-                        <div>
-                            <div class="flex justify-between items-center mb-3">
-                                <span class="text-[11px] font-black text-[#A3AED0] uppercase tracking-widest">Escuelas (<span id="vrp-selected-count">0</span> en ruta)</span>
-                            </div>
-                            <div id="vrp-schools-list" class="max-h-[320px] overflow-y-auto custom-scrollbar rounded-2xl border border-[#E8ECF8] bg-white/80 p-3 space-y-1"></div>
-                        </div>
-                        <div>
-                            <label class="text-[11px] font-black text-[#A3AED0] uppercase mb-3 block tracking-widest">Orden de paradas</label>
-                            <div class="flex items-center gap-3 mb-3">
-                                <button type="button" id="vrp-tour-prev" onclick="vrpRouteTourAdvance(-1)" disabled class="flex items-center justify-center w-11 h-11 rounded-xl bg-white border border-[#E0E5F2] text-[#1B2559] hover:bg-indigo-50 hover:border-indigo-200 disabled:opacity-40 disabled:pointer-events-none shrink-0">
-                                    <i data-lucide="chevron-left" class="w-5 h-5"></i>
-                                </button>
-                                <p id="vrp-route-tour-label" class="flex-1 text-center text-xs font-bold text-[#2B3674] leading-tight px-2">Sin paradas en la ruta</p>
-                                <button type="button" id="vrp-tour-next" onclick="vrpRouteTourAdvance(1)" disabled class="flex items-center justify-center w-11 h-11 rounded-xl bg-white border border-[#E0E5F2] text-[#1B2559] hover:bg-indigo-50 hover:border-indigo-200 disabled:opacity-40 disabled:pointer-events-none shrink-0">
-                                    <i data-lucide="chevron-right" class="w-5 h-5"></i>
-                                </button>
-                            </div>
-                            <div id="vrp-selected-sequence" class="min-h-[280px] max-h-[320px] overflow-y-auto custom-scrollbar bg-[#F4F7FE]/60 rounded-2xl p-4 space-y-2 border border-dashed border-[#E0E5F2]">
-                                <div class="text-center py-16 text-[#A3AED0] text-sm font-medium italic">Cargá un reparto o seleccioná escuelas arriba</div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Acciones -->
-                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4 items-stretch">
-                        <button type="button" onclick="runVrpOptimization()" id="vrp-btn-optimize" class="bg-indigo-600 py-4 rounded-2xl font-black text-xs text-white flex items-center justify-center gap-2 hover:bg-indigo-700 shadow-lg shadow-indigo-200 uppercase tracking-widest">
-                            <i data-lucide="zap" class="w-5 h-5"></i> Optimizar
-                        </button>
-                        <button type="button" onclick="runVrpOptimization({fixed:true})" id="vrp-btn-fixed" class="bg-[#11047A] py-4 rounded-2xl font-black text-xs text-white flex items-center justify-center gap-2 hover:bg-[#1e0a9e] shadow-lg uppercase tracking-widest">
-                            <i data-lucide="list-ordered" class="w-5 h-5"></i> Orden actual
-                        </button>
-                        <div id="vrp-route-summary" class="hidden rounded-2xl bg-[#1B2559] text-white p-4 flex items-center justify-around gap-4">
-                            <div class="text-center"><span class="text-[10px] text-white/60 uppercase tracking-widest">Distancia</span><p id="vrp-sum-km" class="text-lg font-black text-emerald-300 mt-1">—</p></div>
-                            <div class="text-center"><span class="text-[10px] text-white/60 uppercase tracking-widest">Tiempo</span><p id="vrp-sum-time" class="text-lg font-black mt-1">—</p></div>
-                        </div>
-                    </div>
-                    <div id="vrp-results" class="hidden border-t border-[#F4F7FE] pt-5 mt-6">
-                        <p class="text-[11px] font-black text-[#A3AED0] uppercase tracking-widest mb-3">Detalle del recorrido</p>
-                        <div id="vrp-steps-list" class="text-sm space-y-2 max-h-[280px] overflow-y-auto custom-scrollbar"></div>
-                    </div>
-                </div>
-
-                <!-- MAPA (ABAJO, ancho completo) -->
-                <div class="relative card-dark vrp-map-host map-no-hover-lift overflow-hidden min-h-[540px] rounded-3xl border border-[#E8ECF8]" style="height: calc(100vh - 260px); min-height: 540px;">
-                    <div id="map" class="h-full w-full bg-[#F4F7FE]"></div>
-                        <div class="absolute top-4 right-4 z-[5] flex flex-col gap-2 items-end">
-                            <button type="button" onclick="toggleTraffic()" id="traffic-btn" class="bg-white/95 px-4 py-3 rounded-2xl shadow-xl text-[#1B2559] text-[10px] font-black uppercase tracking-wider border border-[#F4F7FE] hover:bg-indigo-50 flex items-center gap-2">
-                                <i data-lucide="layers" class="w-4 h-4"></i> Tráfico
-                            </button>
-                            <div class="bg-white/95 px-4 py-3 rounded-2xl shadow-lg border border-[#F4F7FE] text-[10px] font-bold text-[#2B3674] max-w-[200px]">
-                                <span class="w-2 h-2 rounded-full bg-emerald-500 inline-block mr-1"></span> Escuela
-                                <span class="w-2 h-2 rounded-full bg-[#1B2559] inline-block ml-2 mr-1"></span> Orden ruta
-                                <div class="mt-2 pt-2 border-t border-[#F4F7FE] flex items-center gap-2">
-                                    <span id="traffic-indicator" class="w-2 h-2 rounded-full bg-[#E0E5F2] shrink-0"></span>
-                                    <span class="text-[#A3AED0]">Tráfico: <span id="traffic-status" class="text-[#1B2559]">OFF</span></span>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-            </div>
-
-            <!-- VIEW: MANTENIMIENTO VEHICULAR -->
             <div id="view-maintenance" class="hidden view-animate space-y-8">
                 <div class="card-dark p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
                     <div>
@@ -3547,8 +3408,8 @@
 
         // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
         const ACCESS_PROFILES = {
-            SUPERADMIN: ['control','drivers-status','hdr','weekly','payments','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'],
-            TRAFICO: ['control','drivers-status','hdr','weekly','payments','dashboard','vrp','budget','fleets','maintenance','routes','users','employees','schools','reports','incidents'],
+            SUPERADMIN: ['control','drivers-status','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'],
+            TRAFICO: ['control','drivers-status','hdr','weekly','payments','dashboard','budget','fleets','maintenance','routes','users','employees','schools','reports','incidents'],
             RRHH: ['salaries','employees'],
             ADMINISTRACION: ['weekly','payments','dashboard','budget','salaries','schools','reports']
         };
@@ -3584,7 +3445,7 @@
             }
 
             // Hide/show nav buttons based on access
-            const allSections = ['control','drivers-status','hdr','weekly','payments','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports'];
+            const allSections = ['control','drivers-status','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports'];
             allSections.forEach(sec => {
                 const btn = document.getElementById('btn-' + sec);
                 if (btn) {
@@ -3750,7 +3611,7 @@
             return { ...stored, ...hardcoded };
         }
 
-        const ALL_MODULES = ['control','drivers-status','hdr','weekly','payments','dashboard','vrp','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'];
+        const ALL_MODULES = ['control','drivers-status','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'];
 
         function renderProfileAssignments() {
             const tbody = document.getElementById('profile-assignments-body');
@@ -3884,7 +3745,6 @@
                 weekly: 'Planificación Semanal',
                 payments: 'Planilla de Pagos a Tercerizados',
                 dashboard: 'Dashboard logístico',
-                vrp: 'Optimizador de Rutas',
                 costs: 'Motor de Costos Operativos',
                 maintenance: 'Mantenimiento de Flota',
                 employees: 'Gestión de Personal',
@@ -3905,7 +3765,6 @@
                 weekly: 'Gestión centralizada de la operación logística de Real de Catorce',
                 payments: 'Resumen de viajes tercerizados a pagar agrupados por proveedor, unidad y reparto',
                 dashboard: 'Costos propio vs tercerizado y distribución por unidad, zona y localidad',
-                vrp: 'Asignación inteligente de paradas y optimización de secuencias',
                 costs: 'Motor financiero para el cálculo de rentabilidad y gastos fijos/variables',
                 maintenance: 'Seguimiento técnico preventivo y correctivo de la flota propia',
                 employees: 'Acceso unificado a legajos de choferes, auxiliares y liquidaciones',
@@ -3940,7 +3799,6 @@
             if(id === 'schools') loadSchools();
             if(id === 'salaries') loadSalariesTable();
             if(id === 'employees') { loadProvidersList(); loadEmployeesSection(); loadSalariesTable(); }
-            if(id === 'vrp') setTimeout(initVrpMap, 100);
             if(id === 'maintenance') { loadMaintenanceData(); checkExpiryAlerts(); }
             if(id === 'control') {
                 checkExpiryAlerts();
@@ -4666,7 +4524,6 @@
                     routeTemplateNameSort(x?.name, y?.name)
                 );
                 renderRouteTemplatesList();
-                renderVrpTemplateSelect();
                 console.log(`Loaded ${routeTemplates.length} route templates`);
             } catch (e) { 
                 console.error("Error loading route templates", e); 
@@ -11177,9 +11034,6 @@
                 } else {
                     console.log(`Successfully loaded ${allSchools.length} schools`);
                 }
-                vrpRefreshClientDatalist();
-                populateVrpMapFilters();
-                if (vrpMap && window.google?.maps) void loadVrpMarkers();
                 populateSchoolZoneSelect();
                 populateSchoolBuFilters();
                 filterSchools();
@@ -16210,15 +16064,9 @@
         const originalShowSection = showSection;
         window.showSection = function(id) {
             originalShowSection(id);
-            if (id === 'vrp') {
-                setTimeout(() => {
-                    initVrpMap();
-                    renderVrpList();
-                }, 100);
-            } else if (id === 'control') {
+            if (id === 'control') {
                 startControlAutoRefresh();
             } else {
-                stopVrpAutoReopt();
                 stopControlAutoRefresh();
             }
             if (id === 'costs') loadCostsData();
