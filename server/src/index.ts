@@ -4018,6 +4018,83 @@ app.post('/api/admin/driver-diagnostics', async (req: any, res: any) => {
     }
 });
 
+/** Limpieza: saca la parada de deposito DUPLICADA.
+ *  Cuando salio el cierre automatico, isBaseStopName no reconocia 'R14' (que es
+ *  como se llama el deposito en las plantillas), asi que a las rutas que YA
+ *  terminaban en el deposito se les agrego una segunda parada 'REAL DE CATORCE'.
+ *  El chofer quedaba con dos paradas finales seguidas y el viaje no cerraba.
+ *
+ *  Borra la agregada y le pasa la marca de retorno a la original. Solo toca
+ *  paradas SIN NINGUN progreso del chofer y rutas todavia abiertas.
+ *
+ *  POST /api/admin/dedupe-base-stops  { key, date?, dryRun? } */
+app.post('/api/admin/dedupe-base-stops', async (req: any, res: any) => {
+    const { key, date, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const ymd = /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? String(date) : buenosAiresYmd();
+        const { start } = utcDayRange(ymd);
+
+        const routes = await prisma.route.findMany({
+            where: { date: { gte: start }, actualEndTime: null },
+            select: {
+                id: true, tripId: true,
+                stops: {
+                    orderBy: { sequence: 'asc' },
+                    select: {
+                        id: true, sequence: true, status: true, isReturnToBase: true,
+                        actualArrival: true, actualDeparture: true, proofPhotoUrl: true,
+                        signatureUrl: true, retryCount: true,
+                        client: { select: { name: true } }
+                    }
+                }
+            },
+            orderBy: { id: 'asc' }
+        });
+
+        const sinProgreso = (s: any) =>
+            String(s.status || 'PENDING').toUpperCase() === 'PENDING' &&
+            !s.actualArrival && !s.actualDeparture && !s.proofPhotoUrl && !s.signatureUrl &&
+            !(s.retryCount > 0);
+
+        const limpiadas: any[] = [], omitidas: any[] = [];
+        for (const r of routes) {
+            const st = r.stops;
+            if (st.length < 2) continue;
+            const ultima = st[st.length - 1];
+            const anterior = st[st.length - 2];
+
+            // Solo el caso exacto del bug: las DOS ultimas son deposito.
+            const dosDepositos = isBaseStopName(ultima.client?.name) && isBaseStopName(anterior.client?.name);
+            if (!dosDepositos) continue;
+
+            if (!sinProgreso(ultima)) {
+                omitidas.push({ routeId: r.id, motivo: 'la duplicada ya tiene progreso del chofer', stopId: ultima.id });
+                continue;
+            }
+
+            if (!dryRun) {
+                await prisma.$transaction([
+                    prisma.stop.delete({ where: { id: ultima.id } }),
+                    prisma.stop.update({ where: { id: anterior.id }, data: { isReturnToBase: true } })
+                ]);
+            }
+            limpiadas.push({
+                routeId: r.id, tripId: r.tripId,
+                borrada: { stopId: ultima.id, nombre: ultima.client?.name, sequence: ultima.sequence },
+                ahoraEsBase: { stopId: anterior.id, nombre: anterior.client?.name, sequence: anterior.sequence }
+            });
+        }
+
+        if (!dryRun && limpiadas.length) io.emit('route:updated', { type: 'base_stop_dedupe' });
+        console.log('[dedupe-base-stops] ' + (dryRun ? '(DRY RUN) ' : '') + limpiadas.length + ' limpiadas, ' + omitidas.length + ' omitidas');
+        res.json({ dryRun: !!dryRun, desde: ymd, revisadas: routes.length, limpiadas, omitidas });
+    } catch (e: any) {
+        console.error('dedupe-base-stops:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.patch('/api/v1/stops/:id', async (req, res) => {
     // Bug fix: antes prisma.stop.update y el resto del handler estaban fuera de try/catch.
     // Si Prisma rechazaba (id inexistente, datos inválidos), la promesa burbujeaba
