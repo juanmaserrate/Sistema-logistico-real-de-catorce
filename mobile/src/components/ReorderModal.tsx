@@ -10,9 +10,8 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  ScrollView,
 } from 'react-native';
-import DraggableFlatList, { RenderItemParams, ScaleDecorator } from 'react-native-draggable-flatlist';
-import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import type { Stop } from '../types';
 import { reorderRouteStops } from '../api';
 
@@ -44,7 +43,9 @@ export default function ReorderModal({ visible, routeId, stops, driverName, onCl
   // comparación `hasChanged` daban resultados inconsistentes y el orden que el
   // chofer arrastraba se perdía cuando llegaba un refresh externo de routes.
   const pendingStops = React.useMemo(
-    () => stops.filter((s) => s.status === 'PENDING'),
+    // Pendientes y pospuestas (RETRY). La vuelta al depósito queda afuera: si
+    // se moviera antes de una escuela, el viaje se cerraría antes de tiempo.
+    () => stops.filter((s) => (s.status === 'PENDING' || s.status === 'RETRY') && !s.isReturnToBase),
     [stops]
   );
   // Snapshot inicial — se usa como "orden original" para la comparación y NO se
@@ -107,34 +108,17 @@ export default function ReorderModal({ visible, routeId, stops, driverName, onCl
     }
   }, [customReason, driverName, justification, onClose, onSaved, orderedStops, pendingStops, routeId]);
 
-  const renderItem = useCallback(({ item, drag, isActive, getIndex }: RenderItemParams<Stop>) => {
-    const idx = getIndex() ?? 0;
-    return (
-      <ScaleDecorator>
-        <Pressable
-          onLongPress={drag}
-          disabled={isActive}
-          style={[styles.stopRow, isActive && styles.stopRowActive]}
-        >
-          <View style={styles.dragHandle}>
-            <Text style={styles.dragIcon}>☰</Text>
-          </View>
-          <View style={styles.seqBadge}>
-            <Text style={styles.seqTxt}>{idx + 1}</Text>
-          </View>
-          <View style={styles.stopInfo}>
-            <Text style={styles.stopName} numberOfLines={1}>
-              {item.client?.name || `Parada ${item.sequence}`}
-            </Text>
-            {item.client?.address ? (
-              <Text style={styles.stopAddr} numberOfLines={1}>
-                {item.client.address}
-              </Text>
-            ) : null}
-          </View>
-        </Pressable>
-      </ScaleDecorator>
-    );
+  /** Mover una parada una posición arriba (-1) o abajo (+1).
+   *  Reemplaza el arrastre: react-native-draggable-flatlist 4.0.3 no es
+   *  compatible con Reanimated 4 — numeraba mal (2,3,4,4,5…) y se trababa. */
+  const move = useCallback((index: number, delta: -1 | 1) => {
+    setOrderedStops((prev) => {
+      const to = index + delta;
+      if (to < 0 || to >= prev.length) return prev;
+      const next = [...prev];
+      [next[index], next[to]] = [next[to], next[index]];
+      return next;
+    });
   }, []);
 
   if (!visible) return null;
@@ -151,17 +135,48 @@ export default function ReorderModal({ visible, routeId, stops, driverName, onCl
             <>
               <Text style={styles.title}>Reordenar paradas</Text>
               <Text style={styles.hint}>
-                Mantené presionado ☰ y arrastrá para cambiar el orden.
+                Usá ▲ ▼ para subir o bajar cada parada.
               </Text>
-              <GestureHandlerRootView style={styles.list}>
-                <DraggableFlatList
-                  data={orderedStops}
-                  onDragEnd={({ data }) => setOrderedStops(data)}
-                  keyExtractor={(item) => String(item.id)}
-                  renderItem={renderItem}
-                  showsVerticalScrollIndicator={false}
-                />
-              </GestureHandlerRootView>
+              <ScrollView style={styles.list} showsVerticalScrollIndicator={false}>
+                {orderedStops.map((item, idx) => {
+                  const movida = initialOrderRef.current[idx]?.id !== item.id;
+                  return (
+                    <View key={item.id} style={[styles.stopRow, movida && styles.stopRowActive]}>
+                      <View style={styles.seqBadge}>
+                        <Text style={styles.seqTxt}>{idx + 1}</Text>
+                      </View>
+                      <View style={styles.stopInfo}>
+                        <Text style={styles.stopName} numberOfLines={1}>
+                          {item.client?.name || `Parada ${item.sequence}`}
+                        </Text>
+                        {item.client?.address ? (
+                          <Text style={styles.stopAddr} numberOfLines={1}>
+                            {item.client.address}
+                          </Text>
+                        ) : null}
+                      </View>
+                      <Pressable
+                        style={[styles.arrowBtn, idx === 0 && styles.arrowBtnOff]}
+                        onPress={() => move(idx, -1)}
+                        disabled={idx === 0}
+                        hitSlop={4}
+                        accessibilityLabel={`Subir ${item.client?.name || 'parada'}`}
+                      >
+                        <Text style={styles.arrowTxt}>▲</Text>
+                      </Pressable>
+                      <Pressable
+                        style={[styles.arrowBtn, idx === orderedStops.length - 1 && styles.arrowBtnOff]}
+                        onPress={() => move(idx, 1)}
+                        disabled={idx === orderedStops.length - 1}
+                        hitSlop={4}
+                        accessibilityLabel={`Bajar ${item.client?.name || 'parada'}`}
+                      >
+                        <Text style={styles.arrowTxt}>▼</Text>
+                      </Pressable>
+                    </View>
+                  );
+                })}
+              </ScrollView>
               <View style={styles.actions}>
                 <Pressable style={styles.cancelBtn} onPress={onClose}>
                   <Text style={styles.cancelTxt}>Cancelar</Text>
@@ -254,7 +269,10 @@ const styles = StyleSheet.create({
   },
   title: { fontSize: 20, fontWeight: '900', color: '#191c1e', marginBottom: 4 },
   hint: { fontSize: 13, color: '#74777b', lineHeight: 18, marginBottom: 16 },
-  list: { maxHeight: 400 },
+  list: { maxHeight: 420 },
+  arrowBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#451ebb', alignItems: 'center', justifyContent: 'center', marginLeft: 6 },
+  arrowBtnOff: { backgroundColor: '#dfe1e4' },
+  arrowTxt: { color: '#ffffff', fontSize: 16, fontWeight: '900' },
   stopRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -272,14 +290,6 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 8,
   },
-  dragHandle: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: 8,
-  },
-  dragIcon: { fontSize: 18, color: '#74777b' },
   seqBadge: {
     width: 32,
     height: 32,
