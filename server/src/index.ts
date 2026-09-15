@@ -660,7 +660,13 @@ app.get('/api/v1/preflight', async (_req, res) => {
 app.post('/api/auth/login', loginLimiter, async (req, res) => {
     try {
         const { username, password } = req.body;
-        const user = await prisma.user.findUnique({ where: { username } });
+        // La app movil manda el usuario en MAYUSCULAS y sin espacios, pero en la
+        // base hay usuarios creados en minusculas (ej. "juan"): con busqueda exacta
+        // no los encontraba y respondia "Credenciales invalidas" aunque la clave
+        // fuera correcta. Primero exacto; si no, sin distinguir mayusculas.
+        const uname = String(username || '').trim();
+        const user = (await prisma.user.findUnique({ where: { username: uname } }))
+            || (uname ? await prisma.user.findFirst({ where: { username: { equals: uname, mode: 'insensitive' } } }) : null);
         if (!user) return res.status(401).json({ error: "Credenciales inválidas" });
 
         if (String(user.role || '').toUpperCase() === 'BLOCKED') {
