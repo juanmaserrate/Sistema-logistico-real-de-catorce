@@ -4999,6 +4999,36 @@ app.get('/api/v1/costs/month-hours', async (req: any, res: any) => {
     }
 });
 
+// Guarda los parametros del Motor de Costos de UN mes (sin recalcular viajes).
+// Mezcla sobre costs_data para no pisar los otros meses si dos usuarios guardan a la vez.
+app.post('/api/v1/costs/params', async (req: any, res: any) => {
+    try {
+        const { month, costsParams } = req.body || {};
+        if (!month || MONTH_TO_NUM[String(month).toLowerCase()] === undefined) return res.status(400).json({ error: 'Mes inválido' });
+        if (!costsParams || typeof costsParams !== 'object') return res.status(400).json({ error: 'Faltan costsParams' });
+        const num = (v: any) => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 ? n : 0; };
+        const clean: any = { fijo: {}, variable: {}, horas_reales: num(costsParams.horas_reales), fallback_hours: num(costsParams.fallback_hours) || 8 };
+        for (const t of ['fijo', 'variable']) {
+            for (const [k, v] of Object.entries(costsParams[t] || {})) clean[t][String(k).slice(0, 40)] = num(v);
+        }
+        clean.savedAt = new Date().toISOString();
+        clean.savedBy = String(req.headers['x-actor-name'] || '').trim().slice(0, 80) || null;
+
+        const existing = await prisma.appSettings.findUnique({ where: { key: 'costs_data' } });
+        let all: Record<string, any> = {};
+        if (existing) { try { all = JSON.parse(existing.value) || {}; } catch {} }
+        all[String(month).toLowerCase()] = clean;
+        await prisma.appSettings.upsert({
+            where: { key: 'costs_data' },
+            update: { value: JSON.stringify(all) },
+            create: { key: 'costs_data', value: JSON.stringify(all) }
+        });
+        res.json({ ok: true, month: String(month).toLowerCase(), data: clean });
+    } catch (e: any) {
+        res.status(500).json({ error: 'No se pudo guardar: ' + (e?.message || e) });
+    }
+});
+
 app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
     try {
         const { month, year: yearArg, costsParams, salariesData } = req.body || {};
@@ -5011,7 +5041,11 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
         const existingSetting = await prisma.appSettings.findUnique({ where: { key: 'costs_data' } });
         let allCosts: Record<string, any> = {};
         if (existingSetting) { try { allCosts = JSON.parse(existingSetting.value); } catch {} }
-        allCosts[month] = costsParams;
+        allCosts[month] = {
+            ...costsParams,
+            savedAt: new Date().toISOString(),
+            savedBy: String(req.headers['x-actor-name'] || '').trim().slice(0, 80) || null,
+        };
         await prisma.appSettings.upsert({
             where: { key: 'costs_data' },
             update: { value: JSON.stringify(allCosts) },

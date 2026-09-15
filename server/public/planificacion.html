@@ -1695,7 +1695,7 @@
                         </div>
                         <div class="flex items-center gap-3 bg-amber-50 px-6 py-4 rounded-2xl" title="Horas que se asumen para un viaje propio cuando no tiene horario de salida/llegada cargado ni GPS. Antes era fijo en 8.">
                             <span class="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Hs viaje sin horario:</span>
-                            <input type="number" id="cost-fallback-hours" min="1" max="24" step="0.5" class="w-16 bg-transparent border-none text-sm font-extrabold text-amber-700 outline-none">
+                            <input type="number" id="cost-fallback-hours" min="1" max="24" step="0.5" oninput="calculateCosts()" class="w-16 bg-transparent border-none text-sm font-extrabold text-amber-700 outline-none">
                         </div>
                         <button type="button" id="btn-auto-horas" onclick="autoFillHorasReales()"
                             title="Suma automaticamente las horas de TODOS los viajes Propios del mes (las que antes sumabas a mano)"
@@ -1707,9 +1707,15 @@
                             class="px-5 py-4 rounded-2xl bg-white border border-[#E0E5F2] hover:bg-[#F4F7FE] text-[#1B2559] text-[11px] font-black uppercase tracking-wide flex items-center gap-2">
                             <i data-lucide="copy" class="w-4 h-4"></i> Copiar mes anterior
                         </button>
+                        <button type="button" id="btn-save-costs" onclick="guardarCostosDelMes()"
+                            title="Guarda los datos de este mes para que los vean todos los usuarios (no recalcula los viajes)"
+                            class="px-5 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black uppercase tracking-wide shadow-lg shadow-indigo-100 flex items-center gap-2">
+                            <i data-lucide="save" class="w-4 h-4"></i> Guardar
+                        </button>
                     </div>
                 </div>
-                <p id="horas-auto-detail" class="text-xs font-medium text-[#A3AED0] px-2 -mt-4"></p>
+                <p id="costs-save-status" class="text-xs font-bold text-[#A3AED0] px-2 -mt-4"></p>
+                <p id="horas-auto-detail" class="text-xs font-medium text-[#A3AED0] px-2 -mt-6"></p>
 
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <!-- COSTOS FIJOS -->
@@ -3071,41 +3077,109 @@
             return globalCostsDatabase;
         }
 
-        async function saveCostsToApi() {
-             try {
-                await fetch(`${API_URL}/settings`, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({ key: 'costs_data', value: globalCostsDatabase })
-                });
-            } catch(e) { console.error("Error saving costs", e); }
+        // Cambios sin guardar en el form del Motor de Costos (mes al que pertenecen)
+        let costsDirtyMonth = null;
+        let costsFormMonth = null;
+
+        function costsReadForm() {
+            const p = {
+                fijo: {}, variable: {},
+                horas_reales: parseFloat(document.getElementById('cost-horas-reales')?.value) || 0,
+                fallback_hours: parseFloat(document.getElementById('cost-fallback-hours')?.value) || 8
+            };
+            document.querySelectorAll('[data-cost-type]').forEach(inp => {
+                p[inp.getAttribute('data-cost-type')][inp.getAttribute('data-id')] = parseFloat(inp.value) || 0;
+            });
+            return p;
         }
-        
+
+        function renderCostsSaveStatus() {
+            const el = document.getElementById('costs-save-status');
+            if (!el) return;
+            const month = document.getElementById('costs-month-select')?.value;
+            if (costsDirtyMonth && costsDirtyMonth === month) {
+                el.innerHTML = '<span class="text-amber-600">● Cambios sin guardar — tocá "Guardar" para que los vean los demás usuarios</span>';
+                return;
+            }
+            const d = globalCostsDatabase[month];
+            if (d && d.savedAt) {
+                const f = new Date(d.savedAt).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+                el.innerHTML = `<span class="text-emerald-600">✓ Guardado</span> el ${f}${d.savedBy ? ` por <b>${escapeHtml(d.savedBy)}</b>` : ''}`;
+            } else if (d) {
+                el.innerHTML = '<span class="text-emerald-600">✓ Guardado</span>';
+            } else {
+                el.innerHTML = 'Este mes todavía no tiene datos guardados.';
+            }
+        }
+
+        // Si otro usuario guarda, esta pantalla se actualiza sola (salvo que haya cambios sin guardar)
+        setInterval(() => {
+            const view = document.getElementById('view-costs');
+            if (!view || view.classList.contains('hidden') || document.hidden || costsDirtyMonth) return;
+            loadCostsData();
+        }, 30000);
+
+        async function guardarCostosDelMes() {
+            const btn = document.getElementById('btn-save-costs');
+            const month = document.getElementById('costs-month-select').value;
+            const costsParams = costsReadForm();
+            if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+            try {
+                const res = await fetch(`${API_URL}/costs/params`, {
+                    method: 'POST',
+                    headers: getActorHeaders(),
+                    body: JSON.stringify({ month, costsParams })
+                });
+                const d = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(d.error || 'Error del servidor');
+                globalCostsDatabase[month] = d.data;
+                costsDirtyMonth = null;
+                renderCostsSaveStatus();
+                if (typeof addNotification === 'function') addNotification('success', 'Motor de Costos', `Datos de ${month} guardados para todos los usuarios.`);
+            } catch (e) {
+                if (typeof addNotification === 'function') addNotification('error', 'Motor de Costos', 'No se pudo guardar: ' + (e.message || e));
+                else alert('No se pudo guardar: ' + (e.message || e));
+            } finally {
+                if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+            }
+        }
+
         async function loadCostsData() {
             const monthSelect = document.getElementById('costs-month-select');
             const month = monthSelect ? monthSelect.value : 'enero';
+            if (costsDirtyMonth && costsFormMonth && month !== costsFormMonth) {
+                if (!confirm(`Tenés cambios sin guardar en ${costsFormMonth}. ¿Descartarlos y ver ${month}?`)) {
+                    monthSelect.value = costsFormMonth;
+                    return;
+                }
+                costsDirtyMonth = null;
+            }
             try {
-                const res = await fetch(`${API_URL}/settings/costs_data`);
+                const res = await fetch(`${API_URL}/settings/costs_data`, { cache: 'no-store' });
                 if (res.ok) {
                     const data = await res.json();
                     if (data && typeof data === 'object') globalCostsDatabase = data;
                 }
             } catch (e) { console.error("Error fetching remote costs", e); }
 
-            const monthData = getCostsDatabase()[month] || getCostsDatabase()['enero'];
-            if (monthData) {
-                const hsEl = document.getElementById('cost-horas-reales');
-                if (hsEl) hsEl.value = monthData.horas_reales || 465;
-                const fbEl = document.getElementById('cost-fallback-hours');
-                if (fbEl) fbEl.value = monthData.fallback_hours || 8;
-
-                document.querySelectorAll('.cost-input').forEach(input => {
-                    const type = input.dataset.costType;
-                    const id = input.dataset.id;
-                    input.value = monthData[type]?.[id] || 0;
-                });
+            // Si hay cambios sin guardar de este mismo mes, no los pisamos
+            if (costsDirtyMonth === month) {
+                globalCostsDatabase[month] = { ...(globalCostsDatabase[month] || {}), ...costsReadForm() };
+                renderCostsSaveStatus();
+                return;
             }
-            await calculateCosts(false);
+
+            const monthData = getCostsDatabase()[month];
+            const hsEl = document.getElementById('cost-horas-reales');
+            if (hsEl) hsEl.value = monthData?.horas_reales || '';
+            const fbEl = document.getElementById('cost-fallback-hours');
+            if (fbEl) fbEl.value = monthData?.fallback_hours || 8;
+            document.querySelectorAll('.cost-input').forEach(input => {
+                input.value = monthData?.[input.dataset.costType]?.[input.dataset.id] || 0;
+            });
+            costsFormMonth = month;
+            calculateCosts(false);
+            renderCostsSaveStatus();
 
             // Hint no intrusivo: mostrar cuantas horas calcula el SISTEMA para este
             // mes (sin pisar el valor guardado). El boton "Traer horas del mes"
@@ -17359,7 +17433,7 @@
         // globalCostsDatabase and DEFAULT_COSTS are now at the top of the first script block.
 
 
-        function calculateCosts() {
+        function calculateCosts(fromUser) {
             const month = document.getElementById('costs-month-select').value;
             const horasReales = parseFloat(document.getElementById('cost-horas-reales').value) || 1;
             
@@ -17391,6 +17465,12 @@
             document.getElementById('total-final-mes').innerText = `$ ${totalMes.toLocaleString()}`;
             document.getElementById('total-final-hs').innerText = `$ ${Math.round(totalMes / horasReales).toLocaleString()}`;
 
+            // Solo al cargar desde el servidor (fromUser === false) no hay cambios que registrar
+            if (fromUser === false) return;
+            costsDirtyMonth = month;
+            costsFormMonth = month;
+            renderCostsSaveStatus();
+
             // Sync back to database for current session
             if (!globalCostsDatabase[month]) globalCostsDatabase[month] = { fijo: {}, variable: {}, horas_reales: horasReales };
             globalCostsDatabase[month].horas_reales = horasReales;
@@ -17402,7 +17482,7 @@
                 globalCostsDatabase[month][type][id] = parseFloat(input.value) || 0;
             });
             
-            // No auto-save: los costos se guardan solo al presionar "CALCULAR COSTOS DEL MES"
+            // No auto-save: se guardan con "Guardar" o con "CALCULAR COSTOS DEL MES"
         }
 
         // ── Horas reales automaticas ─────────────────────────────────────
@@ -17514,6 +17594,10 @@
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Error en servidor');
+
+                costsDirtyMonth = null;
+                globalCostsDatabase[month] = { ...costsParams, savedAt: new Date().toISOString(), savedBy: localStorage.getItem('r14.loggedUser') || null };
+                renderCostsSaveStatus();
 
                 // Recargar tabla de planificación para mostrar nuevos precios
                 await loadWeeklyData();
