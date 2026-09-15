@@ -1033,7 +1033,10 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                           <Text style={styles.tlDoneOk}>✓ Sin problemas</Text>
                         ) : null}
                         {(st.cratesDelivered != null || st.cratesRecovered != null) ? (
-                          <Text style={styles.tlCrates}>📦 Dejó {st.cratesDelivered ?? 0} · Recuperó {st.cratesRecovered ?? 0}</Text>
+                          <Text style={styles.tlCrates}>
+                            📦 {[st.cratesDelivered != null ? `Bajó ${st.cratesDelivered}` : null,
+                              st.cratesRecovered != null ? `Recuperó ${st.cratesRecovered}` : null].filter(Boolean).join(' · ')}
+                          </Text>
                         ) : null}
                         {st.observations ? (
                           <Text style={styles.tlObs} numberOfLines={2}>{st.observations}</Text>

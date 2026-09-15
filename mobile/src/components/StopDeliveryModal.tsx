@@ -51,26 +51,71 @@ const RETRY_REASONS = [
   { code: 'otro', label: 'Otro (ver observaciones)' },
 ];
 
-/** Contador de cajones: botones grandes − / + y el número editable. */
-function CrateCounter({ label, value, onChange }: { label: string; value: number; onChange: (n: number) => void }) {
-  const set = (n: number) => onChange(Math.max(0, Math.min(999, Math.round(n) || 0)));
+/** Selector de cajones pensado para usar parado en la puerta, con una mano:
+ *  - "No aplica" es el valor por defecto: si el chofer no toca nada, no se
+ *    registra nada (no es obligatorio).
+ *  - Un toque en 1..10 elige la cantidad.
+ *  - Para más de 10, aparece − / + y el número se puede escribir. */
+const CRATE_QUICK = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+
+function CratePicker({ label, value, onChange }: {
+  label: string;
+  value: number | null;
+  onChange: (n: number | null) => void;
+}) {
+  const clamp = (n: number) => Math.max(1, Math.min(999, Math.round(n) || 1));
+  const noAplica = value == null;
   return (
-    <View style={styles.crateRow}>
-      <Text style={styles.crateLabel}>{label}</Text>
-      <Pressable style={styles.crateBtn} onPress={() => set(value - 1)} hitSlop={6} accessibilityLabel={`Restar ${label}`}>
-        <Text style={styles.crateBtnTxt}>−</Text>
-      </Pressable>
-      <TextInput
-        style={styles.crateInput}
-        keyboardType="number-pad"
-        value={String(value)}
-        onChangeText={(t) => set(Number(t.replace(/[^0-9]/g, '')))}
-        selectTextOnFocus
-        maxLength={3}
-      />
-      <Pressable style={styles.crateBtn} onPress={() => set(value + 1)} hitSlop={6} accessibilityLabel={`Sumar ${label}`}>
-        <Text style={styles.crateBtnTxt}>+</Text>
-      </Pressable>
+    <View style={styles.cratePick}>
+      <View style={styles.crateHead}>
+        <Text style={styles.crateLabel}>{label}</Text>
+        <Text style={[styles.crateValue, noAplica && styles.crateValueNA]}>
+          {noAplica ? 'No aplica' : value}
+        </Text>
+      </View>
+      <View style={styles.crateGrid}>
+        <Pressable
+          style={[styles.crateChip, styles.crateChipNA, noAplica && styles.crateChipOn]}
+          onPress={() => onChange(null)}
+          accessibilityLabel={`${label}: no aplica`}
+        >
+          <Text style={[styles.crateChipTxt, noAplica && styles.crateChipTxtOn]}>No aplica</Text>
+        </Pressable>
+        {CRATE_QUICK.map((n) => (
+          <Pressable
+            key={n}
+            style={[styles.crateChip, value === n && styles.crateChipOn]}
+            onPress={() => onChange(n)}
+            accessibilityLabel={`${label}: ${n}`}
+          >
+            <Text style={[styles.crateChipTxt, value === n && styles.crateChipTxtOn]}>{n}</Text>
+          </Pressable>
+        ))}
+      </View>
+      {!noAplica ? (
+        <View style={styles.crateRow}>
+          <Text style={styles.crateHint}>¿Más de 10? Ajustá acá</Text>
+          <Pressable style={styles.crateBtn} onPress={() => onChange(value! > 1 ? value! - 1 : null)} hitSlop={6}
+            accessibilityLabel={`Restar ${label}`}>
+            <Text style={styles.crateBtnTxt}>−</Text>
+          </Pressable>
+          <TextInput
+            style={styles.crateInput}
+            keyboardType="number-pad"
+            value={String(value)}
+            onChangeText={(t) => {
+              const n = Number(t.replace(/[^0-9]/g, ''));
+              onChange(n > 0 ? clamp(n) : null);
+            }}
+            selectTextOnFocus
+            maxLength={3}
+          />
+          <Pressable style={styles.crateBtn} onPress={() => onChange(clamp(value! + 1))} hitSlop={6}
+            accessibilityLabel={`Sumar ${label}`}>
+            <Text style={styles.crateBtnTxt}>+</Text>
+          </Pressable>
+        </View>
+      ) : null}
     </View>
   );
 }
@@ -87,11 +132,9 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
   const [retryReason, setRetryReason] = useState<string>('');
   // null = al final del recorrido (antes del depósito)
   const [retryAfterStopId, setRetryAfterStopId] = useState<number | null>(null);
-  // Cajones: solo se mandan si el chofer tocó los contadores (así un 0 real no
-  // se confunde con "no lo cargó").
-  const [cratesDelivered, setCratesDelivered] = useState(0);
-  const [cratesRecovered, setCratesRecovered] = useState(0);
-  const [cratesTouched, setCratesTouched] = useState(false);
+  // Cajones: null = "No aplica" (valor por defecto, no es obligatorio cargarlo).
+  const [cratesDelivered, setCratesDelivered] = useState<number | null>(null);
+  const [cratesRecovered, setCratesRecovered] = useState<number | null>(null);
 
   useEffect(() => { getLiteMode().then(setLiteModeState); }, []);
 
@@ -104,9 +147,8 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
       setUndeliverableReason('');
       setRetryReason('');
       setRetryAfterStopId(null);
-      setCratesDelivered(stop.cratesDelivered ?? 0);
-      setCratesRecovered(stop.cratesRecovered ?? 0);
-      setCratesTouched(stop.cratesDelivered != null || stop.cratesRecovered != null);
+      setCratesDelivered(stop.cratesDelivered ?? null);
+      setCratesRecovered(stop.cratesRecovered ?? null);
     }
   }, [visible, stop]);
 
@@ -122,9 +164,9 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
     if (photoUri) return true;
     if (deliveryOk) return true;
     if (undeliverableReason) return true;
-    if (cratesTouched) return true;
+    if (cratesDelivered != null || cratesRecovered != null) return true;
     return false;
-  }, [observations, photoUri, deliveryOk, undeliverableReason, cratesTouched]);
+  }, [observations, photoUri, deliveryOk, undeliverableReason, cratesDelivered, cratesRecovered]);
 
   const confirmClose = useCallback(() => {
     if (saving) return;
@@ -186,7 +228,8 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
         observations: observations.trim() || undefined,
         // M7 fix: enviar false explícito en lugar de null para "entrega con problemas"
         deliveryWithoutIssues: deliveryOk,
-        ...(cratesTouched ? { cratesDelivered, cratesRecovered } : {}),
+        cratesDelivered,
+        cratesRecovered,
       });
       // 2) La foto sigue sola en segundo plano; no bloquea al chofer.
       if (photoUri) uploadPhotoInBackground(stop.id, photoUri, liteMode);
@@ -203,7 +246,7 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
     } finally {
       setSaving(false);
     }
-  }, [deliveryOk, observations, onClose, onSaved, stop, photoUri, liteMode, uploadPhotoInBackground, cratesTouched, cratesDelivered, cratesRecovered]);
+  }, [deliveryOk, observations, onClose, onSaved, stop, photoUri, liteMode, uploadPhotoInBackground, cratesDelivered, cratesRecovered]);
 
   /** "No pude ahora, vuelvo más tarde": la parada NO se cierra, se reubica en
    *  el recorrido y sigue contando como pendiente. El viaje no se puede
@@ -259,7 +302,9 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
         reasonCode: undeliverableReason,
         observations: observations.trim() || undefined,
         deliveryWithoutIssues: null,
-        ...(cratesTouched ? { cratesDelivered: 0, cratesRecovered } : {}),
+        // No entregó: no bajó cajones, pero pudo recuperar vacíos.
+        cratesDelivered: null,
+        cratesRecovered,
       });
       if (photoUri) uploadPhotoInBackground(stop.id, photoUri, liteMode);
       if ((result as { queued?: boolean })?.queued) {
@@ -275,7 +320,7 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
     } finally {
       setSaving(false);
     }
-  }, [observations, onClose, onSaved, stop, undeliverableReason, photoUri, liteMode, uploadPhotoInBackground, cratesTouched, cratesRecovered]);
+  }, [observations, onClose, onSaved, stop, undeliverableReason, photoUri, liteMode, uploadPhotoInBackground, cratesRecovered]);
 
   if (!stop) return null;
   const title = stop.client?.name || `Parada ${stop.sequence}`;
@@ -383,11 +428,9 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
                 </Pressable>
                 {!isBase ? (
                   <View style={styles.cratesBox}>
-                    <Text style={styles.cratesTitle}>📦 Cajones</Text>
-                    <CrateCounter label="Dejé" value={cratesDelivered}
-                      onChange={(n) => { setCratesDelivered(n); setCratesTouched(true); }} />
-                    <CrateCounter label="Recuperé" value={cratesRecovered}
-                      onChange={(n) => { setCratesRecovered(n); setCratesTouched(true); }} />
+                    <Text style={styles.cratesTitle}>📦 Cajones <Text style={styles.cratesOptional}>(opcional)</Text></Text>
+                    <CratePicker label="Bajé" value={cratesDelivered} onChange={setCratesDelivered} />
+                    <CratePicker label="Recuperé" value={cratesRecovered} onChange={setCratesRecovered} />
                   </View>
                 ) : null}
                 <Pressable style={styles.photoBtn} onPress={() => void pickPhoto()}>
@@ -493,9 +536,8 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
                   </Pressable>
                 ))}
                 <View style={styles.cratesBox}>
-                  <Text style={styles.cratesTitle}>📦 Cajones vacíos</Text>
-                  <CrateCounter label="Recuperé" value={cratesRecovered}
-                    onChange={(n) => { setCratesRecovered(n); setCratesTouched(true); }} />
+                  <Text style={styles.cratesTitle}>📦 Cajones vacíos <Text style={styles.cratesOptional}>(opcional)</Text></Text>
+                  <CratePicker label="Recuperé" value={cratesRecovered} onChange={setCratesRecovered} />
                 </View>
                 <TextInput
                   style={[styles.input, { marginTop: 10 }]}
@@ -672,12 +714,24 @@ const styles = StyleSheet.create({
   checkMark: { color: '#006d43', fontWeight: '900', fontSize: 16 },
   checkLabel: { flex: 1, fontSize: 15, fontWeight: '600', color: '#44474a' },
   cratesBox: { marginTop: 14, padding: 12, borderRadius: 14, backgroundColor: '#f2f3f6' },
-  cratesTitle: { fontSize: 13, fontWeight: '800', color: '#44474a', marginBottom: 6 },
-  crateRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
-  crateLabel: { flex: 1, fontSize: 15, fontWeight: '700', color: '#191c1e' },
-  crateBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#451ebb', alignItems: 'center', justifyContent: 'center' },
+  cratesTitle: { fontSize: 14, fontWeight: '800', color: '#44474a', marginBottom: 4 },
+  cratesOptional: { fontSize: 12, fontWeight: '600', color: '#74777b' },
+  cratePick: { marginTop: 10 },
+  crateHead: { flexDirection: 'row', alignItems: 'baseline', marginBottom: 6 },
+  crateLabel: { flex: 1, fontSize: 16, fontWeight: '800', color: '#191c1e' },
+  crateValue: { fontSize: 22, fontWeight: '900', color: '#451ebb' },
+  crateValueNA: { fontSize: 14, fontWeight: '700', color: '#74777b' },
+  crateGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
+  crateChip: { width: 52, height: 46, borderRadius: 12, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  crateChipNA: { width: 108 },
+  crateChipOn: { backgroundColor: '#451ebb' },
+  crateChipTxt: { fontSize: 17, fontWeight: '800', color: '#44474a' },
+  crateChipTxtOn: { color: '#fff' },
+  crateRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
+  crateHint: { flex: 1, fontSize: 12, color: '#74777b' },
+  crateBtn: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#451ebb', alignItems: 'center', justifyContent: 'center' },
   crateBtnTxt: { color: '#fff', fontSize: 24, fontWeight: '900', lineHeight: 26 },
-  crateInput: { width: 64, height: 48, marginHorizontal: 8, borderRadius: 12, backgroundColor: '#fff', textAlign: 'center', fontSize: 20, fontWeight: '900', color: '#191c1e' },
+  crateInput: { width: 60, height: 46, marginHorizontal: 8, borderRadius: 12, backgroundColor: '#fff', textAlign: 'center', fontSize: 20, fontWeight: '900', color: '#191c1e' },
   photoBtn: { paddingVertical: 12, marginBottom: 8 },
   photoBtnTxt: { color: '#451ebb', fontWeight: '800', fontSize: 15 },
   preview: {
