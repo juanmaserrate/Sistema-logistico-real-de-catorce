@@ -472,28 +472,24 @@ async function upsertDriverUserForPlanning(driverName: string | null | undefined
  * Prioriza trip.assignedMobileUser (chofer nombrado) > trip.reparto > trip.driver (legacy).
  * Devuelve el User correspondiente o null si no se puede resolver.
  */
-async function resolveRepartoUserForTrip(trip: { reparto?: string | null; driver?: string | null; assignedMobileUser?: string | null }, tenantId: string) {
-    // Helper: busca DRIVER user probando con espacios y con guiones bajos
-    async function findDriverUser(name: string) {
-        const upper = name.toUpperCase();
-        // Probar tal cual viene
-        let user = await prisma.user.findFirst({ where: { username: upper, role: 'DRIVER' } });
+/** Busca el usuario DRIVER por nombre, probando con espacios y con guiones bajos.
+ *  Sin distinguir mayusculas: antes buscaba "JUAN" exacto y un chofer creado como
+ *  "juan" nunca era encontrado, asi que sus viajes quedaban asignados a otro
+ *  usuario y en su app no le aparecia nada. */
+async function findDriverUser(name: string) {
+    const base = String(name || '').trim();
+    if (!base) return null;
+    const variantes = [...new Set([base, base.replace(/\s+/g, '_'), base.replace(/_/g, ' ')])];
+    for (const v of variantes) {
+        const user = await prisma.user.findFirst({
+            where: { username: { equals: v, mode: 'insensitive' }, role: 'DRIVER' }
+        });
         if (user) return user;
-        // Probar reemplazando espacios por guión bajo (los usernames usan _)
-        const withUnderscore = upper.replace(/\s+/g, '_');
-        if (withUnderscore !== upper) {
-            user = await prisma.user.findFirst({ where: { username: withUnderscore, role: 'DRIVER' } });
-            if (user) return user;
-        }
-        // Probar reemplazando guiones bajos por espacios (por si viene al revés)
-        const withSpaces = upper.replace(/_/g, ' ');
-        if (withSpaces !== upper && withSpaces !== withUnderscore) {
-            user = await prisma.user.findFirst({ where: { username: withSpaces, role: 'DRIVER' } });
-            if (user) return user;
-        }
-        return null;
     }
+    return null;
+}
 
+async function resolveRepartoUserForTrip(trip: { reparto?: string | null; driver?: string | null; assignedMobileUser?: string | null }, tenantId: string) {
     // 1. Prioridad máxima: chofer asignado con nombre propio
     const mobileUser = String(trip.assignedMobileUser ?? '').trim();
     if (mobileUser) {
@@ -4209,6 +4205,46 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
     }
 });
 
+/** Resincroniza el chofer de las rutas con el "Usuario App" cargado en el viaje.
+ *  Nace del bug de mayusculas: a juan (guardado en minusculas) no lo encontraba,
+ *  y la ruta quedaba asignada al usuario del reparto. Solo toca rutas de hoy en
+ *  adelante que todavia no arrancaron.
+ *  POST /api/admin/resync-mobile-users { key, dryRun? } */
+app.post('/api/admin/resync-mobile-users', async (req: any, res: any) => {
+    const { key, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const { start } = utcDayRange(buenosAiresYmd());
+        const routes = await prisma.route.findMany({
+            where: { date: { gte: start }, actualStartTime: null, actualEndTime: null, tripId: { not: null } },
+            select: {
+                id: true, date: true, driverId: true,
+                driver: { select: { username: true } },
+                trip: { select: { id: true, reparto: true, assignedMobileUser: true } }
+            },
+            orderBy: { date: 'asc' }
+        });
+        const cambios: any[] = [], sinUsuario: any[] = [];
+        for (const r of routes as any[]) {
+            const mu = String(r.trip?.assignedMobileUser || '').trim();
+            if (!mu) continue;
+            const user = await findDriverUser(mu);
+            if (!user) { sinUsuario.push({ tripId: r.trip.id, usuarioApp: mu }); continue; }
+            if (user.id === r.driverId) continue;
+            if (!dryRun) await prisma.route.update({ where: { id: r.id }, data: { driverId: user.id } });
+            cambios.push({
+                tripId: r.trip.id, routeId: r.id, fecha: new Date(r.date).toISOString().slice(0, 10),
+                reparto: r.trip.reparto, antes: r.driver?.username || null, ahora: user.username
+            });
+        }
+        if (!dryRun && cambios.length) io.emit('route:updated', { type: 'mobile_user_resync' });
+        res.json({ dryRun: !!dryRun, revisadas: routes.length, cambios, sinUsuario });
+    } catch (e: any) {
+        console.error('resync-mobile-users:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.patch('/api/v1/stops/:id', async (req, res) => {
     // Bug fix: antes prisma.stop.update y el resto del handler estaban fuera de try/catch.
     // Si Prisma rechazaba (id inexistente, datos inválidos), la promesa burbujeaba
@@ -6303,7 +6339,7 @@ async function sendExpoPush(pushToken: string, title: string, body: string, data
 async function notifyDriver(driverUsername: string, title: string, body: string, data?: any) {
     try {
         const name = driverUsername.trim().toUpperCase();
-        const user = await prisma.user.findFirst({ where: { username: name }, select: { pushToken: true } });
+        const user = await prisma.user.findFirst({ where: { username: { equals: String(name || '').trim(), mode: 'insensitive' } }, select: { pushToken: true } });
         if (user?.pushToken) await sendExpoPush(user.pushToken, title, body, data);
     } catch (_) {}
 }
