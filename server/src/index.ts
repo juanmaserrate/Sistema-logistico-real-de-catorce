@@ -175,6 +175,7 @@ const PROTECTED_PREFIXES = [
     '/api/v1/audit',
     '/api/v1/salaries',
     '/api/upload-photo',
+    '/api/v1/crates',
 ];
 app.use((req: any, res: any, next: any) => {
     if (PROTECTED_PREFIXES.some(p => req.path.startsWith(p) || (req.originalUrl || '').includes(p))) {
@@ -4124,6 +4125,84 @@ app.post('/api/admin/dedupe-base-stops', async (req: any, res: any) => {
     }
 });
 
+/** Modulo Cajones: cuantos cajones se dejaron y recuperaron.
+ *  GET /api/v1/crates/summary?from=YYYY-MM-DD&to=YYYY-MM-DD[&reparto=R7]
+ *  Suma lo que cargo el chofer en cada parada (Stop.cratesDelivered /
+ *  cratesRecovered). Devuelve totales, por reparto y por establecimiento.
+ *  saldo = dejados - recuperados = cajones que quedaron en la calle. */
+app.get('/api/v1/crates/summary', async (req: any, res: any) => {
+    try {
+        const ymd = (v: any) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null;
+        const hoy = buenosAiresYmd();
+        const from = ymd(req.query.from) || (hoy.slice(0, 8) + '01');
+        const to = ymd(req.query.to) || hoy;
+        const { start } = utcDayRange(from);
+        const { end } = utcDayRange(to);
+        const repartoFiltro = String(req.query.reparto || '').trim().toUpperCase();
+
+        const stops = await prisma.stop.findMany({
+            where: {
+                isReturnToBase: false,
+                route: { date: { gte: start, lte: end } },
+                OR: [{ cratesDelivered: { not: null } }, { cratesRecovered: { not: null } }]
+            },
+            select: {
+                cratesDelivered: true, cratesRecovered: true, actualArrival: true, actualDeparture: true,
+                client: { select: { id: true, name: true, address: true } },
+                route: {
+                    select: {
+                        date: true,
+                        driver: { select: { fullName: true, username: true } },
+                        trip: { select: { reparto: true, businessUnit: true } }
+                    }
+                }
+            }
+        });
+
+        const porReparto = new Map<string, any>();
+        const porEstab = new Map<string, any>();
+        const tot = { dejados: 0, recuperados: 0, paradas: 0 };
+
+        for (const s of stops as any[]) {
+            const reparto = String(s.route?.trip?.reparto || s.route?.driver?.fullName || 'SIN REPARTO').trim();
+            if (repartoFiltro && reparto.toUpperCase() !== repartoFiltro) continue;
+            const usuario = s.route?.driver?.fullName || s.route?.driver?.username || '-';
+            const d = s.cratesDelivered || 0, r = s.cratesRecovered || 0;
+            const fecha = s.actualDeparture || s.actualArrival || s.route?.date;
+            tot.dejados += d; tot.recuperados += r; tot.paradas++;
+
+            const kr = reparto.toUpperCase();
+            const rep = porReparto.get(kr) || { reparto, usuarios: new Set<string>(), dejados: 0, recuperados: 0, paradas: 0 };
+            rep.usuarios.add(usuario); rep.dejados += d; rep.recuperados += r; rep.paradas++;
+            porReparto.set(kr, rep);
+
+            const ke = s.client?.id || 'sin-cliente';
+            const est = porEstab.get(ke) || {
+                clientId: s.client?.id || null, establecimiento: s.client?.name || '-', direccion: s.client?.address || null,
+                repartos: new Set<string>(), dejados: 0, recuperados: 0, visitas: 0, ultimaVisita: null as any
+            };
+            est.repartos.add(reparto); est.dejados += d; est.recuperados += r; est.visitas++;
+            if (fecha && (!est.ultimaVisita || new Date(fecha) > new Date(est.ultimaVisita))) est.ultimaVisita = new Date(fecha).toISOString();
+            porEstab.set(ke, est);
+        }
+
+        const conSaldo = (x: any) => ({ ...x, saldo: x.dejados - x.recuperados });
+        res.json({
+            desde: from, hasta: to,
+            totales: conSaldo(tot),
+            porReparto: [...porReparto.values()]
+                .map((x) => conSaldo({ ...x, usuarios: [...x.usuarios] }))
+                .sort((a, b) => a.reparto.localeCompare(b.reparto, 'es', { numeric: true })),
+            porEstablecimiento: [...porEstab.values()]
+                .map((x) => conSaldo({ ...x, repartos: [...x.repartos] }))
+                .sort((a, b) => b.saldo - a.saldo || a.establecimiento.localeCompare(b.establecimiento, 'es'))
+        });
+    } catch (e: any) {
+        console.error('GET /crates/summary:', e);
+        res.status(500).json({ error: e?.message || 'Error calculando cajones' });
+    }
+});
+
 app.patch('/api/v1/stops/:id', async (req, res) => {
     // Bug fix: antes prisma.stop.update y el resto del handler estaban fuera de try/catch.
     // Si Prisma rechazaba (id inexistente, datos inválidos), la promesa burbujeaba
@@ -4149,6 +4228,17 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
         if (body.deliveryWithoutIssues !== undefined) {
             const v = body.deliveryWithoutIssues;
             data.deliveryWithoutIssues = v === null ? null : Boolean(v);
+        }
+        // Cajones dejados / recuperados en la parada. Entero 0..999; null borra.
+        for (const campo of ['cratesDelivered', 'cratesRecovered'] as const) {
+            if (body[campo] === undefined) continue;
+            if (body[campo] === null || body[campo] === '') { data[campo] = null; continue; }
+            const n = Number(body[campo]);
+            if (!Number.isInteger(n) || n < 0 || n > 999) {
+                res.status(400).json({ error: `${campo} debe ser un entero entre 0 y 999` });
+                return;
+            }
+            data[campo] = n;
         }
         // Snapshot previo SOLO si el cambio viene del operador desde la web
         // (la app del chofer no manda X-Actor-Name). Sin este filtro, cada marca

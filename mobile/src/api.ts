@@ -343,6 +343,8 @@ interface OfflineStopAction {
     observations?: string;
     proofPhotoUrl?: string | null;
     deliveryWithoutIssues?: boolean | null;
+    cratesDelivered?: number | null;
+    cratesRecovered?: number | null;
     reasonCode?: string | null;
   };
   timestamp: string;
@@ -447,6 +449,8 @@ export async function patchStop(
     observations?: string;
     proofPhotoUrl?: string | null;
     deliveryWithoutIssues?: boolean | null;
+    cratesDelivered?: number | null;
+    cratesRecovered?: number | null;
     reasonCode?: string | null;
   }
 ): Promise<unknown> {

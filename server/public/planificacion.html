@@ -118,6 +118,9 @@
                     <a href="#drivers-status" id="btn-drivers-status" class="header-nav-item">
                         <i data-lucide="radio" class="w-4 h-4"></i> Estado de Choferes
                     </a>
+                    <a href="#crates" id="btn-crates" class="header-nav-item">
+                        <i data-lucide="package" class="w-4 h-4"></i> Cajones
+                    </a>
                     <a href="#hdr" id="btn-hdr" class="header-nav-item">
                         <i data-lucide="history" class="w-4 h-4"></i> HDR
                     </a>
@@ -1890,6 +1893,52 @@
                 </div>
             </div>
 
+            <!-- VIEW: CAJONES (dejados / recuperados) -->
+            <div id="view-crates" class="hidden view-animate space-y-6">
+                <div class="card-dark overflow-hidden">
+                    <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+                        <div>
+                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Cajones</h4>
+                            <p class="text-xs text-[#A3AED0] mt-1">Lo que cargan los choferes en la app al finalizar cada parada. <b>Saldo</b> = dejados &minus; recuperados = cajones que quedaron en el establecimiento.</p>
+                        </div>
+                        <div class="flex flex-wrap items-end gap-2">
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase">Desde<input type="date" id="crates-from" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></label>
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase">Hasta<input type="date" id="crates-to" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></label>
+                            <button onclick="loadCratesModule()" class="bg-[#451ebb] text-white rounded-lg px-4 py-2 text-sm font-bold">Actualizar</button>
+                        </div>
+                    </div>
+                    <div class="p-6 bg-white space-y-6">
+                        <div id="crates-kpis" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+                        <div>
+                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-wider mb-2">Por reparto <span class="font-normal normal-case text-[#A3AED0]">&mdash; click en un reparto para ver sus establecimientos</span></h5>
+                            <div class="overflow-x-auto"><table class="w-full text-sm">
+                                <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left">
+                                    <th class="py-2 px-2">Reparto</th><th class="py-2 px-2">Usuario</th><th class="py-2 px-2 text-right">Paradas</th>
+                                    <th class="py-2 px-2 text-right">Dejados</th><th class="py-2 px-2 text-right">Recuperados</th><th class="py-2 px-2 text-right">Saldo</th>
+                                </tr></thead>
+                                <tbody id="crates-by-reparto"></tbody>
+                            </table></div>
+                        </div>
+                        <div>
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-wider">Detalle por establecimiento <span id="crates-est-filter-label" class="font-normal normal-case text-[#A3AED0]"></span></h5>
+                                <div class="flex items-center gap-2">
+                                    <input id="crates-est-search" oninput="renderCratesEstablishments()" placeholder="Buscar establecimiento..." class="bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm text-[#1B2559] w-56">
+                                    <button id="crates-clear-reparto" onclick="setCratesRepartoFilter(null)" class="hidden text-xs font-bold text-indigo-600 hover:underline">Ver todos</button>
+                                </div>
+                            </div>
+                            <div class="overflow-x-auto"><table class="w-full text-sm">
+                                <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left">
+                                    <th class="py-2 px-2">Establecimiento</th><th class="py-2 px-2">Reparto</th><th class="py-2 px-2 text-right">Visitas</th>
+                                    <th class="py-2 px-2 text-right">Dejados</th><th class="py-2 px-2 text-right">Recuperados</th><th class="py-2 px-2 text-right">Saldo</th><th class="py-2 px-2">&Uacute;ltima visita</th>
+                                </tr></thead>
+                                <tbody id="crates-by-est"></tbody>
+                            </table></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- VIEW: ESTADO DE CHOFERES (¿quién reporta señal?) -->
             <div id="view-drivers-status" class="hidden view-animate space-y-6">
                 <div class="card-dark overflow-hidden">
@@ -3407,8 +3456,8 @@
 
         // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
         const ACCESS_PROFILES = {
-            SUPERADMIN: ['control','drivers-status','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'],
-            TRAFICO: ['control','drivers-status','hdr','weekly','payments','dashboard','budget','fleets','maintenance','routes','users','employees','schools','reports','incidents'],
+            SUPERADMIN: ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'],
+            TRAFICO: ['control','drivers-status','crates','hdr','weekly','payments','dashboard','budget','fleets','maintenance','routes','users','employees','schools','reports','incidents'],
             RRHH: ['salaries','employees'],
             ADMINISTRACION: ['weekly','payments','dashboard','budget','salaries','schools','reports']
         };
@@ -3444,7 +3493,7 @@
             }
 
             // Hide/show nav buttons based on access
-            const allSections = ['control','drivers-status','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports'];
+            const allSections = ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports'];
             allSections.forEach(sec => {
                 const btn = document.getElementById('btn-' + sec);
                 if (btn) {
@@ -3610,7 +3659,7 @@
             return { ...stored, ...hardcoded };
         }
 
-        const ALL_MODULES = ['control','drivers-status','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'];
+        const ALL_MODULES = ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'];
 
         function renderProfileAssignments() {
             const tbody = document.getElementById('profile-assignments-body');
@@ -3739,6 +3788,7 @@
             const titles = {
                 control: 'Torre de Control / En Vivo',
                 'drivers-status': 'Estado de Choferes',
+                crates: 'Cajones',
                 hdr: 'Historial de Rutas (HDR)',
                 fleets: 'Flotas — Datos de vehículos',
                 weekly: 'Planificación Semanal',
@@ -3759,6 +3809,7 @@
             const descs = {
                 control: 'Monitoreo en tiempo real de operaciones y estados de tránsito',
                 'drivers-status': 'Quién está reportando señal y quién no, entre los choferes con viaje asignado',
+                crates: 'Cajones dejados y recuperados por reparto y por establecimiento',
                 hdr: 'Recorridos finalizados con paradas, horarios y trazado GPS de la flota',
                 fleets: 'Configuración de cada camión reutilizable en presupuestos (valor, consumo, mantenimiento, etc.)',
                 weekly: 'Gestión centralizada de la operación logística de Real de Catorce',
@@ -3812,6 +3863,7 @@
                 if (typeof stopAllActiveRoutesPolling === 'function') stopAllActiveRoutesPolling();
             }
             // Estado de Choferes: refresco cada 15s solo mientras la vista esté abierta
+            if (id === 'crates') loadCratesModule();
             if (id === 'drivers-status') startDriverStatusPolling();
             else stopDriverStatusPolling();
             if(id === 'payments') { if (typeof loadPaymentsView === 'function') loadPaymentsView(); }
@@ -3940,6 +3992,103 @@
         }
         function stopDriverStatusPolling() {
             if (_dsPollTimer) { clearInterval(_dsPollTimer); _dsPollTimer = null; }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // CAJONES — dejados y recuperados (lo carga el chofer en la app)
+        // ═══════════════════════════════════════════════════════════════════
+        let _cratesData = null;
+        let _cratesReparto = null; // filtro de la tabla de establecimientos
+
+        function _cratesYmd(d) {
+            return d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+        }
+        function _cratesEsc(v) {
+            return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+        function _cratesSaldoCell(n) {
+            const cls = n > 0 ? 'text-amber-600' : (n < 0 ? 'text-emerald-600' : 'text-[#A3AED0]');
+            return `<td class="py-2 px-2 text-right font-black ${cls}">${n > 0 ? '+' : ''}${n}</td>`;
+        }
+
+        async function loadCratesModule() {
+            const fromEl = document.getElementById('crates-from');
+            const toEl = document.getElementById('crates-to');
+            if (!fromEl || !toEl) return;
+            if (!toEl.value) toEl.value = _cratesYmd(new Date());
+            if (!fromEl.value) fromEl.value = toEl.value.slice(0, 8) + '01';
+            const body = document.getElementById('crates-by-reparto');
+            if (body) body.innerHTML = '<tr><td colspan="6" class="py-3 px-2 text-[#A3AED0]">Cargando...</td></tr>';
+            try {
+                const res = await fetch(`${API_URL}/crates/summary?from=${fromEl.value}&to=${toEl.value}`, { headers: getActorHeaders() });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error del servidor');
+                _cratesData = data;
+                renderCratesModule();
+            } catch (e) {
+                if (body) body.innerHTML = `<tr><td colspan="6" class="py-3 px-2 text-rose-600 font-bold">Error: ${_cratesEsc(e.message || e)}</td></tr>`;
+            }
+        }
+
+        function setCratesRepartoFilter(reparto) {
+            _cratesReparto = reparto;
+            renderCratesModule();
+        }
+
+        function renderCratesModule() {
+            const d = _cratesData;
+            if (!d) return;
+            const t = d.totales;
+            const kpis = [
+                { label: 'Dejados', val: t.dejados, cls: 'text-[#451ebb]' },
+                { label: 'Recuperados', val: t.recuperados, cls: 'text-emerald-600' },
+                { label: 'Saldo en la calle', val: t.saldo, cls: t.saldo > 0 ? 'text-amber-600' : 'text-[#1B2559]' },
+                { label: 'Paradas registradas', val: t.paradas, cls: 'text-[#1B2559]' }
+            ];
+            document.getElementById('crates-kpis').innerHTML = kpis.map(k => `
+                <div class="bg-[#F4F7FE] rounded-xl p-3">
+                    <p class="text-[10px] font-bold text-[#A3AED0] uppercase tracking-wider">${k.label}</p>
+                    <p class="text-2xl font-black ${k.cls} mt-1">${k.val}</p>
+                </div>`).join('');
+
+            const rows = d.porReparto || [];
+            document.getElementById('crates-by-reparto').innerHTML = rows.length ? rows.map((r, idx) => {
+                const on = _cratesReparto === r.reparto;
+                return `<tr data-idx="${idx}" onclick="setCratesRepartoFilter(_cratesData.porReparto[${idx}].reparto)" class="cursor-pointer border-t border-[#F4F7FE] ${on ? 'bg-indigo-50' : 'hover:bg-[#F4F7FE]'}">
+                    <td class="py-2 px-2 font-black text-[#1B2559]">${_cratesEsc(r.reparto)}</td>
+                    <td class="py-2 px-2 text-[#A3AED0] text-xs">${_cratesEsc((r.usuarios || []).join(', '))}</td>
+                    <td class="py-2 px-2 text-right">${r.paradas}</td>
+                    <td class="py-2 px-2 text-right font-bold">${r.dejados}</td>
+                    <td class="py-2 px-2 text-right font-bold">${r.recuperados}</td>
+                    ${_cratesSaldoCell(r.saldo)}
+                </tr>`;
+            }).join('') : '<tr><td colspan="6" class="py-3 px-2 text-[#A3AED0]">Todavia no hay cajones cargados en este periodo.</td></tr>';
+            renderCratesEstablishments();
+        }
+
+        function renderCratesEstablishments() {
+            const d = _cratesData;
+            const tbody = document.getElementById('crates-by-est');
+            if (!d || !tbody) return;
+            const q = (document.getElementById('crates-est-search')?.value || '').trim().toLowerCase();
+            const list = (d.porEstablecimiento || []).filter(e =>
+                (!_cratesReparto || (e.repartos || []).includes(_cratesReparto)) &&
+                (!q || String(e.establecimiento).toLowerCase().includes(q))
+            );
+            const lbl = document.getElementById('crates-est-filter-label');
+            if (lbl) lbl.textContent = _cratesReparto ? `— reparto ${_cratesReparto}` : '';
+            document.getElementById('crates-clear-reparto')?.classList.toggle('hidden', !_cratesReparto);
+            const fmt = iso => iso ? new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '—';
+            tbody.innerHTML = list.length ? list.map(e => `
+                <tr class="border-t border-[#F4F7FE]">
+                    <td class="py-2 px-2"><p class="font-bold text-[#1B2559]">${_cratesEsc(e.establecimiento)}</p>${e.direccion ? `<p class="text-[10px] text-[#A3AED0]">${_cratesEsc(e.direccion)}</p>` : ''}</td>
+                    <td class="py-2 px-2 text-xs">${_cratesEsc((e.repartos || []).join(', '))}</td>
+                    <td class="py-2 px-2 text-right">${e.visitas}</td>
+                    <td class="py-2 px-2 text-right font-bold">${e.dejados}</td>
+                    <td class="py-2 px-2 text-right font-bold">${e.recuperados}</td>
+                    ${_cratesSaldoCell(e.saldo)}
+                    <td class="py-2 px-2 text-xs text-[#A3AED0]">${fmt(e.ultimaVisita)}</td>
+                </tr>`).join('') : '<tr><td colspan="7" class="py-3 px-2 text-[#A3AED0]">Sin establecimientos para mostrar.</td></tr>';
         }
 
         // ─── REPORTS MODULE ─────────────────────────────────────────────────

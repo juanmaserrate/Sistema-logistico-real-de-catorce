@@ -51,6 +51,30 @@ const RETRY_REASONS = [
   { code: 'otro', label: 'Otro (ver observaciones)' },
 ];
 
+/** Contador de cajones: botones grandes − / + y el número editable. */
+function CrateCounter({ label, value, onChange }: { label: string; value: number; onChange: (n: number) => void }) {
+  const set = (n: number) => onChange(Math.max(0, Math.min(999, Math.round(n) || 0)));
+  return (
+    <View style={styles.crateRow}>
+      <Text style={styles.crateLabel}>{label}</Text>
+      <Pressable style={styles.crateBtn} onPress={() => set(value - 1)} hitSlop={6} accessibilityLabel={`Restar ${label}`}>
+        <Text style={styles.crateBtnTxt}>−</Text>
+      </Pressable>
+      <TextInput
+        style={styles.crateInput}
+        keyboardType="number-pad"
+        value={String(value)}
+        onChangeText={(t) => set(Number(t.replace(/[^0-9]/g, '')))}
+        selectTextOnFocus
+        maxLength={3}
+      />
+      <Pressable style={styles.crateBtn} onPress={() => set(value + 1)} hitSlop={6} accessibilityLabel={`Sumar ${label}`}>
+        <Text style={styles.crateBtnTxt}>+</Text>
+      </Pressable>
+    </View>
+  );
+}
+
 export default function StopDeliveryModal({ visible, stop, remainingStops = [], onClose, onSaved }: Props) {
   const insets = useSafeAreaInsets();
   const [tab, setTab] = useState<Tab>('delivered');
@@ -63,6 +87,11 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
   const [retryReason, setRetryReason] = useState<string>('');
   // null = al final del recorrido (antes del depósito)
   const [retryAfterStopId, setRetryAfterStopId] = useState<number | null>(null);
+  // Cajones: solo se mandan si el chofer tocó los contadores (así un 0 real no
+  // se confunde con "no lo cargó").
+  const [cratesDelivered, setCratesDelivered] = useState(0);
+  const [cratesRecovered, setCratesRecovered] = useState(0);
+  const [cratesTouched, setCratesTouched] = useState(false);
 
   useEffect(() => { getLiteMode().then(setLiteModeState); }, []);
 
@@ -75,6 +104,9 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
       setUndeliverableReason('');
       setRetryReason('');
       setRetryAfterStopId(null);
+      setCratesDelivered(stop.cratesDelivered ?? 0);
+      setCratesRecovered(stop.cratesRecovered ?? 0);
+      setCratesTouched(stop.cratesDelivered != null || stop.cratesRecovered != null);
     }
   }, [visible, stop]);
 
@@ -90,8 +122,9 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
     if (photoUri) return true;
     if (deliveryOk) return true;
     if (undeliverableReason) return true;
+    if (cratesTouched) return true;
     return false;
-  }, [observations, photoUri, deliveryOk, undeliverableReason]);
+  }, [observations, photoUri, deliveryOk, undeliverableReason, cratesTouched]);
 
   const confirmClose = useCallback(() => {
     if (saving) return;
@@ -153,6 +186,7 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
         observations: observations.trim() || undefined,
         // M7 fix: enviar false explícito en lugar de null para "entrega con problemas"
         deliveryWithoutIssues: deliveryOk,
+        ...(cratesTouched ? { cratesDelivered, cratesRecovered } : {}),
       });
       // 2) La foto sigue sola en segundo plano; no bloquea al chofer.
       if (photoUri) uploadPhotoInBackground(stop.id, photoUri, liteMode);
@@ -169,7 +203,7 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
     } finally {
       setSaving(false);
     }
-  }, [deliveryOk, observations, onClose, onSaved, stop, photoUri, liteMode, uploadPhotoInBackground]);
+  }, [deliveryOk, observations, onClose, onSaved, stop, photoUri, liteMode, uploadPhotoInBackground, cratesTouched, cratesDelivered, cratesRecovered]);
 
   /** "No pude ahora, vuelvo más tarde": la parada NO se cierra, se reubica en
    *  el recorrido y sigue contando como pendiente. El viaje no se puede
@@ -225,6 +259,7 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
         reasonCode: undeliverableReason,
         observations: observations.trim() || undefined,
         deliveryWithoutIssues: null,
+        ...(cratesTouched ? { cratesDelivered: 0, cratesRecovered } : {}),
       });
       if (photoUri) uploadPhotoInBackground(stop.id, photoUri, liteMode);
       if ((result as { queued?: boolean })?.queued) {
@@ -240,7 +275,7 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
     } finally {
       setSaving(false);
     }
-  }, [observations, onClose, onSaved, stop, undeliverableReason, photoUri, liteMode, uploadPhotoInBackground]);
+  }, [observations, onClose, onSaved, stop, undeliverableReason, photoUri, liteMode, uploadPhotoInBackground, cratesTouched, cratesRecovered]);
 
   if (!stop) return null;
   const title = stop.client?.name || `Parada ${stop.sequence}`;
@@ -346,6 +381,15 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
                   </View>
                   <Text style={styles.checkLabel}>Entrega sin problemas (opcional)</Text>
                 </Pressable>
+                {!isBase ? (
+                  <View style={styles.cratesBox}>
+                    <Text style={styles.cratesTitle}>📦 Cajones</Text>
+                    <CrateCounter label="Dejé" value={cratesDelivered}
+                      onChange={(n) => { setCratesDelivered(n); setCratesTouched(true); }} />
+                    <CrateCounter label="Recuperé" value={cratesRecovered}
+                      onChange={(n) => { setCratesRecovered(n); setCratesTouched(true); }} />
+                  </View>
+                ) : null}
                 <Pressable style={styles.photoBtn} onPress={() => void pickPhoto()}>
                   <Text style={styles.photoBtnTxt}>
                     {photoUri ? 'Cambiar foto de comprobante' : 'Tomar foto (opcional)'}
@@ -448,6 +492,11 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
                     </Text>
                   </Pressable>
                 ))}
+                <View style={styles.cratesBox}>
+                  <Text style={styles.cratesTitle}>📦 Cajones vacíos</Text>
+                  <CrateCounter label="Recuperé" value={cratesRecovered}
+                    onChange={(n) => { setCratesRecovered(n); setCratesTouched(true); }} />
+                </View>
                 <TextInput
                   style={[styles.input, { marginTop: 10 }]}
                   placeholder="Observaciones adicionales (opcional)"
@@ -622,6 +671,13 @@ const styles = StyleSheet.create({
   checkBoxOn: { borderColor: '#006d43', backgroundColor: '#ecfdf5' },
   checkMark: { color: '#006d43', fontWeight: '900', fontSize: 16 },
   checkLabel: { flex: 1, fontSize: 15, fontWeight: '600', color: '#44474a' },
+  cratesBox: { marginTop: 14, padding: 12, borderRadius: 14, backgroundColor: '#f2f3f6' },
+  cratesTitle: { fontSize: 13, fontWeight: '800', color: '#44474a', marginBottom: 6 },
+  crateRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
+  crateLabel: { flex: 1, fontSize: 15, fontWeight: '700', color: '#191c1e' },
+  crateBtn: { width: 48, height: 48, borderRadius: 24, backgroundColor: '#451ebb', alignItems: 'center', justifyContent: 'center' },
+  crateBtnTxt: { color: '#fff', fontSize: 24, fontWeight: '900', lineHeight: 26 },
+  crateInput: { width: 64, height: 48, marginHorizontal: 8, borderRadius: 12, backgroundColor: '#fff', textAlign: 'center', fontSize: 20, fontWeight: '900', color: '#191c1e' },
   photoBtn: { paddingVertical: 12, marginBottom: 8 },
   photoBtnTxt: { color: '#451ebb', fontWeight: '800', fontSize: 15 },
   preview: {

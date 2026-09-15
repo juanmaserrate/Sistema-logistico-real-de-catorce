@@ -160,6 +160,10 @@ model Stop {
   retryCount      Int       @default(0)
   /// Bitácora de los intentos fallidos: [{at, reason, note}] en JSON.
   retryLog        Json?
+  /// Cajones que el chofer DEJÓ en el establecimiento en esta parada (null = no lo cargó)
+  cratesDelivered Int?
+  /// Cajones que el chofer RECUPERÓ (vacíos) en esta parada (null = no lo cargó)
+  cratesRecovered Int?
   client          Client    @relation(fields: [clientId], references: [id])
   route           Route     @relation(fields: [routeId], references: [id])
 

@@ -1032,6 +1032,9 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                         {st.deliveryWithoutIssues ? (
                           <Text style={styles.tlDoneOk}>✓ Sin problemas</Text>
                         ) : null}
+                        {(st.cratesDelivered != null || st.cratesRecovered != null) ? (
+                          <Text style={styles.tlCrates}>📦 Dejó {st.cratesDelivered ?? 0} · Recuperó {st.cratesRecovered ?? 0}</Text>
+                        ) : null}
                         {st.observations ? (
                           <Text style={styles.tlObs} numberOfLines={2}>{st.observations}</Text>
                         ) : null}
@@ -1365,6 +1368,7 @@ const styles = StyleSheet.create({
   /* Parada pospuesta ("vuelvo más tarde") */
   tlBadgeRetry: { backgroundColor: colors.warningBg },
   tlBadgeRetryTxt: { color: colors.warning },
+  tlCrates: { fontSize: font.sm, color: colors.textSecondary, fontWeight: font.bold, marginTop: spacing.xs },
   tlRetryReason: { fontSize: font.sm, color: colors.warning, fontWeight: font.bold, marginTop: spacing.xs },
   /* Parada de retorno a base (Real de Catorce) */
   basePendingBanner: {
