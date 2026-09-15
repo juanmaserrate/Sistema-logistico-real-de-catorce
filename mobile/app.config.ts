@@ -23,7 +23,7 @@ const config: ExpoConfig = {
   splash: {
     image: './assets/splash-icon.png',
     resizeMode: 'contain',
-    backgroundColor: '#0f172a',
+    backgroundColor: '#141F46',
   },
   ios: {
     supportsTablet: true,
@@ -43,7 +43,7 @@ const config: ExpoConfig = {
   android: {
     package: 'com.r14.seguimiento',
     adaptiveIcon: {
-      backgroundColor: '#0f172a',
+      backgroundColor: '#141F46',
       foregroundImage: './assets/android-icon-foreground.png',
       backgroundImage: './assets/android-icon-background.png',
       monochromeImage: './assets/android-icon-monochrome.png',

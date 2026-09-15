@@ -4,7 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Real de Catorce | Gestión Logística</title>
-    <link rel="icon" type="image/png" href="/logo-r14.png">
+    <link rel="icon" type="image/png" href="/img/r14-favicon.png">
+    <link rel="apple-touch-icon" href="/img/r14-favicon.png">
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -29,15 +30,8 @@
     <div id="login-gate" class="fixed inset-0 z-[9999] flex items-center justify-center" style="background: linear-gradient(135deg, #11047A 0%, #2B0880 60%, #4318FF 100%);">
         <div class="w-full max-w-md mx-4">
             <div class="text-center mb-10">
-                <div class="inline-flex items-center gap-3 mb-4">
-                    <div class="w-14 h-14 rounded-2xl bg-white/10 border border-white/20 flex items-center justify-center overflow-hidden">
-                        <img src="/logo-r14.png" alt="R14" class="w-12 h-12">
-                    </div>
-                    <div class="text-left">
-                        <h1 class="text-3xl font-extrabold text-white tracking-tight">Real de Catorce</h1>
-                        <p class="text-white/50 text-xs font-bold uppercase tracking-[0.2em]">Sistema Logístico</p>
-                    </div>
-                </div>
+                <img src="/img/r14-logo-blanco.png" alt="R14 · Real de Catorce" class="mx-auto h-28 w-auto select-none" draggable="false">
+                <p class="text-white/50 text-xs font-bold uppercase tracking-[0.25em] mt-5">Sistema Logístico</p>
             </div>
             <div class="bg-white rounded-3xl p-10 shadow-2xl">
                 <h2 class="text-xl font-bold text-[#1B2559] mb-1">Iniciar sesión</h2>
@@ -68,9 +62,7 @@
         <header class="app-header min-w-0 max-w-full box-border">
             <div class="top-nav">
                 <div class="flex items-center gap-3 min-w-0">
-                    <div class="bg-white/15 p-1.5 rounded-2xl shrink-0 shadow-lg shadow-black/10 ring-1 ring-white/10 overflow-hidden">
-                        <img src="/logo-r14.png" alt="R14" class="w-8 h-8">
-                </div>
+                    <img src="/img/r14-marca-blanco.png" alt="R14" class="h-8 w-auto shrink-0 select-none" draggable="false">
                     <div class="min-w-0">
                         <h1 class="text-lg sm:text-xl font-extrabold tracking-tight text-white leading-none uppercase truncate">Real de Catorce</h1>
                         <p class="text-[10px] font-bold text-white/45 uppercase tracking-widest mt-1 hidden sm:block">Gestión logística</p>
@@ -6872,7 +6864,7 @@
             if (!src.length) { addNotification('warning', 'Exportar', 'No hay rutas para exportar.'); return; }
             src.sort((a, b) => routeTemplateNameSort(a?.name, b?.name));
             let logo = '';
-            try { if (typeof budgetLoadLogo === 'function') logo = (await budgetLoadLogo()) || ''; } catch (_) {}
+            try { if (typeof budgetLoadLogo === 'function') logo = (await budgetLoadLogo('azul')) || ''; } catch (_) {}
             const body = src.map(t => rtExportCardHtml(t, logo)).join('');
             const w = window.open('', '_blank');
             if (!w) { addNotification('error', 'Exportar', 'El navegador bloqueó la ventana. Permití las ventanas emergentes.'); return; }
@@ -6888,7 +6880,7 @@
   body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 0; }
   .route-card { border: 1px solid #1B2559; border-radius: 8px; margin-bottom: 14px; break-inside: avoid; page-break-inside: avoid; overflow: hidden; }
   .route-head { display: flex; align-items: center; gap: 10px; padding: 7px 12px; border-bottom: 2px solid #1B2559; }
-  .route-head img { width: 38px; height: 38px; object-fit: contain; filter: brightness(0); }
+  .route-head img { height: 34px; width: auto; object-fit: contain; }
   .rt-title { font-size: 9px; color: #888; font-weight: bold; text-transform: uppercase; letter-spacing: 2px; }
   .rt-name { font-size: 17px; font-weight: bold; color: #1B2559; letter-spacing: 1px; }
   .rt-meta { margin-left: auto; text-align: right; font-size: 9px; color: #555; }
@@ -9713,10 +9705,13 @@
 
         // ── PDFs ───────────────────────────────────────────────────────────
         // Cargar el logo como dataURL una sola vez
-        async function budgetLoadLogo() {
-            if (window.__budLogoDataUrl) return window.__budLogoDataUrl;
+        // variante: 'blanco' para encabezados de color (PDF de presupuesto),
+        // 'azul' para impresiones sobre papel blanco (hoja de ruta, rutas).
+        async function budgetLoadLogo(variante = 'blanco') {
+            window.__budLogoDataUrl = window.__budLogoDataUrl || {};
+            if (window.__budLogoDataUrl[variante]) return window.__budLogoDataUrl[variante];
             try {
-                const resp = await fetch('/logo-r14.png', { cache: 'force-cache' });
+                const resp = await fetch(`/img/r14-logo-${variante === 'azul' ? 'azul' : 'blanco'}.png`, { cache: 'force-cache' });
                 if (!resp.ok) return null;
                 const blob = await resp.blob();
                 const dataUrl = await new Promise((res, rej) => {
@@ -9725,7 +9720,7 @@
                     r.onerror = rej;
                     r.readAsDataURL(blob);
                 });
-                window.__budLogoDataUrl = dataUrl;
+                window.__budLogoDataUrl[variante] = dataUrl;
                 return dataUrl;
             } catch (e) {
                 console.warn('[budget] No se pudo cargar el logo:', e);
@@ -9749,7 +9744,7 @@
                 const drawHeader = () => {
                     doc.setFillColor(0, 0, 0);
                     doc.rect(0, 0, 210, 34, 'F');
-                    if (logo) { try { doc.addImage(logo, 'PNG', 12, 6, 22, 22); } catch {} }
+                    if (logo) { try { doc.addImage(logo, 'PNG', 10, 7, 28.3, 20); } catch {} }
                     doc.setTextColor(255);
                     doc.setFont('helvetica', 'bold'); doc.setFontSize(20);
                     doc.text('REAL DE CATORCE', 40, 18);
@@ -9892,7 +9887,7 @@
             const logo = await budgetLoadLogo();
             doc.setFillColor(0, 0, 0);
             doc.rect(0, 0, 210, 34, 'F');
-            if (logo) { try { doc.addImage(logo, 'PNG', 12, 6, 22, 22); } catch {} }
+            if (logo) { try { doc.addImage(logo, 'PNG', 10, 7, 28.3, 20); } catch {} }
             doc.setTextColor(255);
             doc.setFont('helvetica', 'bold'); doc.setFontSize(20);
             doc.text('REAL DE CATORCE', 40, 18);
@@ -10151,7 +10146,7 @@
                 const fmtH = (h) => `${(Number(h)||0).toFixed(2)} h`;
                 doc.setFillColor(27, 37, 89); // azul marca R14
                 doc.rect(0, 0, 210, 26, 'F');
-                if (logo) { try { doc.addImage(logo, 'PNG', 12, 4, 18, 18); } catch {} }
+                if (logo) { try { doc.addImage(logo, 'PNG', 8, 5, 22.6, 16); } catch {} }
                 doc.setTextColor(255);
                 doc.setFont('helvetica', 'bold'); doc.setFontSize(14);
                 doc.text('CUENTA PASO A PASO', 34, 13);
@@ -10326,7 +10321,7 @@
             const logo = await budgetLoadLogo();
             doc.setFillColor(27, 37, 89); // azul marca R14
             doc.rect(0, 0, 210, 26, 'F');
-            if (logo) { try { doc.addImage(logo, 'PNG', 12, 4, 18, 18); } catch {} }
+            if (logo) { try { doc.addImage(logo, 'PNG', 8, 5, 22.6, 16); } catch {} }
             doc.setTextColor(255);
             doc.setFont('helvetica', 'bold');
             doc.setFontSize(14);
@@ -13567,7 +13562,7 @@
             try {
                 if (!Array.isArray(ids) || !ids.length) return;
                 let logo = '';
-                try { if (typeof budgetLoadLogo === 'function') logo = (await budgetLoadLogo()) || ''; } catch (_) {}
+                try { if (typeof budgetLoadLogo === 'function') logo = (await budgetLoadLogo('azul')) || ''; } catch (_) {}
                 const pages = [];
                 for (const id of ids) {
                     const trip = (planningData || []).find((t) => String(t.id) === String(id));
@@ -13608,7 +13603,7 @@
   .hdr { page-break-after: always; }
   .hdr:last-child { page-break-after: auto; }
   .hdr-top { display: flex; align-items: center; gap: 12px; border-bottom: 3px solid #1B2559; padding-bottom: 6px; margin-bottom: 8px; }
-  .hdr-top img { width: 54px; height: 54px; object-fit: contain; }
+  .hdr-top img { height: 54px; width: auto; object-fit: contain; }
   .hdr-title { flex: 1; }
   .hdr-title h1 { margin: 0; font-size: 18px; letter-spacing: 2px; color: #1B2559; }
   .hdr-title .sub { font-size: 11px; color: #555; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; }
@@ -13674,7 +13669,7 @@
 
             return `<div class="hdr">
                 <div class="hdr-top">
-                    ${logo ? `<img src="${logo}" alt="Real de Catorce" style="width:64px;height:64px;object-fit:contain;filter:brightness(0);-webkit-print-color-adjust:exact;print-color-adjust:exact;">` : ''}
+                    ${logo ? `<img src="${logo}" alt="Real de Catorce" style="height:56px;width:auto;object-fit:contain;-webkit-print-color-adjust:exact;print-color-adjust:exact;">` : ''}
                     <div class="hdr-title">
                         <h1>HOJA DE RUTA</h1>
                         <div class="sub">Reparto ${esc(reparto)} · ${esc(fecha)}</div>

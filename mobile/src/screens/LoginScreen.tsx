@@ -8,6 +8,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ActivityIndicator,
+  Image,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { login } from '../api';
@@ -58,12 +59,13 @@ export default function LoginScreen({ onLoggedIn }: Props) {
     >
       <StatusBar style="light" />
       <View style={styles.hero}>
-        <View style={styles.brandRow}>
-          <View style={styles.brandBadge}>
-            <Text style={styles.brandBadgeTxt}>R14</Text>
-          </View>
-        </View>
-        <Text style={styles.brand}>Real de Catorce</Text>
+        {/* Logo oficial (versión blanca, el fondo de esta pantalla es oscuro) */}
+        <Image
+          source={require('../../assets/r14-logo-blanco.png')}
+          style={styles.logo}
+          resizeMode="contain"
+          accessibilityLabel="R14 · Real de Catorce"
+        />
         <Text style={styles.sub}>Seguimiento satelital</Text>
         <Text style={styles.tag}>Recorrido en vivo  ·  Planificación</Text>
       </View>
@@ -125,18 +127,7 @@ export default function LoginScreen({ onLoggedIn }: Props) {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.heroBg },
   hero: { paddingTop: 64, paddingHorizontal: spacing['2xl'], paddingBottom: spacing.xl },
-  brandRow: { marginBottom: spacing.lg },
-  brandBadge: {
-    width: 52,
-    height: 52,
-    borderRadius: radius.lg,
-    backgroundColor: colors.primaryGlow,
-    borderWidth: 0,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  brandBadgeTxt: { fontSize: font.xl, fontWeight: font.black, color: colors.primaryLight, letterSpacing: 1 },
-  brand: { fontSize: font['3xl'], fontWeight: font.black, color: colors.heroText, letterSpacing: -0.5 },
+  logo: { width: 190, height: 134, marginBottom: spacing.lg },
   sub: { fontSize: font.lg, color: colors.heroSub, marginTop: spacing.xs, fontWeight: font.semibold },
   tag: { fontSize: font.base, color: colors.heroTag, marginTop: spacing.md },
   card: {
