@@ -4946,6 +4946,44 @@ app.post('/api/admin/clients-set-bu', async (req: any, res: any) => {
     }
 });
 
+/** Diagnostico: ultimos cambios de viajes (auditoria) + estado actual de sus rutas.
+ *  GET /api/admin/recent-trip-changes?key=...&hours=6 */
+app.get('/api/admin/recent-trip-changes', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const horas = Math.min(Number(req.query.hours) || 6, 72);
+        const desde = new Date(Date.now() - horas * 3600000);
+        const logs = await prisma.auditLog.findMany({
+            where: { createdAt: { gte: desde }, entity: { in: ['trip', 'route', 'Stop'] } },
+            orderBy: { createdAt: 'desc' },
+            take: 60
+        });
+        const tripIds = [...new Set(logs.filter((l) => l.entity === 'trip' && l.entityId).map((l) => Number(l.entityId)))].filter(Number.isFinite);
+        const rutas = await prisma.route.findMany({
+            where: { tripId: { in: tripIds } },
+            select: { id: true, tripId: true, date: true, status: true, driverId: true, actualStartTime: true, actualEndTime: true, updatedAt: true,
+                driver: { select: { username: true } },
+                trip: { select: { date: true, status: true, reparto: true, driver: true, assignedMobileUser: true } },
+                _count: { select: { stops: true } } }
+        });
+        const recortar = (j: string | null) => {
+            if (!j) return null;
+            try {
+                const o = JSON.parse(j);
+                const k = ['date', 'status', 'reparto', 'driver', 'assignedMobileUser', 'tripType', 'startedAt', 'completedAt'];
+                const r: any = {}; for (const x of k) if (o && x in o) r[x] = o[x];
+                return r;
+            } catch { return String(j).slice(0, 200); }
+        };
+        res.json({
+            cambios: logs.map((l) => ({ cuando: l.createdAt, quien: l.userName, accion: l.action, entidad: l.entity, id: l.entityId, nombre: l.entityName, antes: recortar(l.before), despues: recortar(l.after) })),
+            rutas
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
