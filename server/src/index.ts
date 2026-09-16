@@ -4303,6 +4303,71 @@ app.post('/api/admin/create-trip-from-template', async (req: any, res: any) => {
     }
 });
 
+/** Lista los clientes con su direccion (solo lectura, para auditar o comparar
+ *  contra una planilla). GET /api/admin/clients-dump?key=...&q= */
+app.get('/api/admin/clients-dump', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const q = String(req.query.q || '').trim();
+        const clients = await prisma.client.findMany({
+            where: q ? { name: { contains: q, mode: 'insensitive' } } : undefined,
+            select: { id: true, name: true, address: true, localidad: true, partido: true, latitude: true, longitude: true, businessUnits: true },
+            orderBy: { name: 'asc' }
+        });
+        res.json({ total: clients.length, clients });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Corrige direcciones de clientes en lote, con copia de respaldo previa.
+ *  Al cambiar la direccion se borran las coordenadas viejas (quedaban apuntando
+ *  al lugar equivocado); se vuelven a geocodificar cuando haga falta.
+ *  POST /api/admin/update-client-addresses { key, updates: [{id, address, localidad?}], dryRun? } */
+app.post('/api/admin/update-client-addresses', async (req: any, res: any) => {
+    const { key, updates, dryRun, keepCoords } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!Array.isArray(updates) || !updates.length) return res.status(400).json({ error: 'Falta updates' });
+    try {
+        const ids = updates.map((u: any) => String(u.id));
+        const actuales = await prisma.client.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, name: true, address: true, localidad: true, latitude: true, longitude: true }
+        });
+        const porId = new Map(actuales.map((c) => [c.id, c]));
+        const cambios: any[] = [], sinCliente: string[] = [], iguales: any[] = [];
+        for (const u of updates as any[]) {
+            const c = porId.get(String(u.id));
+            if (!c) { sinCliente.push(String(u.id)); continue; }
+            const nueva = String(u.address || '').trim();
+            if (!nueva) continue;
+            if ((c.address || '').trim() === nueva) { iguales.push({ id: c.id, name: c.name }); continue; }
+            cambios.push({ id: c.id, name: c.name, antes: c.address, ahora: nueva, localidad: u.localidad ?? c.localidad });
+        }
+        if (dryRun) return res.json({ dryRun: true, cambios, iguales: iguales.length, sinCliente });
+
+        const backupKey = `clients_address_backup_${new Date().toISOString().replace(/[:.]/g, '-')}`;
+        await prisma.appSettings.create({
+            data: { key: backupKey, value: JSON.stringify(actuales) }
+        });
+        for (const c of cambios) {
+            await prisma.client.update({
+                where: { id: c.id },
+                data: {
+                    address: c.ahora,
+                    ...(c.localidad ? { localidad: c.localidad } : {}),
+                    // Coordenadas viejas = direccion vieja. Se limpian salvo que se pida lo contrario.
+                    ...(keepCoords ? {} : { latitude: null, longitude: null })
+                }
+            });
+        }
+        res.json({ ok: true, actualizados: cambios.length, iguales: iguales.length, sinCliente, backupKey, cambios });
+    } catch (e: any) {
+        console.error('update-client-addresses:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
