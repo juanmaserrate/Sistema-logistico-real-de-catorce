@@ -4474,46 +4474,59 @@ app.post('/api/admin/cleanup-clients', async (req: any, res: any) => {
 });
 
 /** Ubica en el mapa a los establecimientos que no tienen coordenadas, usando
- *  Mapbox y la direccion cargada. Es exigente a proposito: si no puede ubicar
- *  la altura exacta en el municipio que corresponde, la deja sin coordenadas.
- *  Una direccion mal ubicada manda al chofer al lugar equivocado.
+ *  Mapbox y la direccion cargada. Es exigente a proposito: verifica que la calle
+ *  que devuelve Mapbox sea la pedida y que caiga dentro del municipio. Si no,
+ *  la deja sin ubicar: un pin mal puesto manda al chofer al lugar equivocado.
  *  POST /api/admin/geocode-clients { key, dryRun?, limit?, ids? } */
-
-/** Municipio segun como termina la direccion o la localidad cargada.
- *  Las direcciones de Lanus vienen con un codigo de zona al final (", 4", ", 17"). */
-const LOCALIDAD_A_PARTIDO: Array<[RegExp, string]> = [
-    [/\b(LANUS|MONTE CHINGOLO|REMEDIOS DE ESCALADA|VALENTIN ALSINA|GERLI|VILLA CARAZA|VILLA DIAMANTE)\b/, 'Lanús'],
-    [/\b(LOMAS DE ZAMORA|BANFIELD|TEMPERLEY|TURDERA|LLAVALLOL|PARQUE BARON|VILLA FIORITO|INGENIERO BUDGE)\b/, 'Lomas de Zamora'],
-    [/\b(ALMIRANTE BROWN|BURZACO|ADROGUE|CLAYPOLE|LONGCHAMPS|RAFAEL CALZADA|GLEW|MINISTRO RIVADAVIA|SAN JOSE|MALVINAS ARGENTINAS|DON ORIONE|SAN FRANCISCO DE ASIS)\b/, 'Almirante Brown'],
-    [/\b(QUILMES|BERNAL|EZPELETA|SOLANO|SAN FRANCISCO SOLANO|LA RIBERA|VILLA LUJAN)\b/, 'Quilmes'],
-    [/\b(ESTEBAN ECHEVERRIA|MONTE GRANDE|LUIS GUILLON|9 DE ABRIL|EL JAGUEL)\b/, 'Esteban Echeverría'],
+const GEO_LOCALIDADES: Array<[string, string]> = [
+    ['LANUS', 'Lanús'], ['MONTE CHINGOLO', 'Lanús'], ['REMEDIOS DE ESCALADA', 'Lanús'], ['GERLI', 'Lanús'],
+    ['VALENTIN ALSINA', 'Lanús'], ['VILLA CARAZA', 'Lanús'], ['VILLA DIAMANTE', 'Lanús'],
+    ['LOMAS DE ZAMORA', 'Lomas de Zamora'], ['BANFIELD', 'Lomas de Zamora'], ['TEMPERLEY', 'Lomas de Zamora'],
+    ['PARQUE BARON', 'Lomas de Zamora'], ['VILLA FIORITO', 'Lomas de Zamora'], ['INGENIERO BUDGE', 'Lomas de Zamora'],
+    ['DON ORIONE', 'Almirante Brown'], ['CLAYPOLE', 'Almirante Brown'], ['LONGCHAMPS', 'Almirante Brown'],
+    ['RAFAEL CALZADA', 'Almirante Brown'], ['BURZACO', 'Almirante Brown'], ['GLEW', 'Almirante Brown'],
+    ['ADROGUE', 'Almirante Brown'], ['ALMIRANTE BROWN', 'Almirante Brown'], ['SAN FRANCISCO DE ASIS', 'Almirante Brown'],
+    ['MINISTRO RIVADAVIA', 'Almirante Brown'], ['MALVINAS ARGENTINAS', 'Almirante Brown'],
+    ['QUILMES', 'Quilmes'], ['BERNAL', 'Quilmes'], ['SOLANO', 'Quilmes'], ['EZPELETA', 'Quilmes'], ['LA RIBERA', 'Quilmes'],
 ];
-
-function normaliza(t: string): string {
-    return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+const GEO_BBOX: Record<string, string> = {
+    'Lanús': '-58.43,-34.75,-58.34,-34.66',
+    'Lomas de Zamora': '-58.52,-34.85,-58.34,-34.70',
+    'Almirante Brown': '-58.48,-34.95,-58.27,-34.75',
+    'Quilmes': '-58.33,-34.83,-58.19,-34.66',
+};
+const GEO_BBOX_AMBA = '-58.60,-35.00,-58.15,-34.62';
+// Palabras que no distinguen una calle de otra (Avenida San Martin vs San Martin)
+const GEO_GENERICAS = new Set(['AVENIDA', 'AV', 'AVDA', 'CALLE', 'PJE', 'PASAJE', 'DR', 'DOCTOR', 'CNEL', 'CORONEL', 'GRAL', 'GENERAL', 'PRESIDENTE', 'PTE', 'MONS', 'MONSENOR', 'PADRE', 'SAN', 'DE', 'DEL', 'LA', 'LOS', 'LAS', 'EL', 'Y', 'ESQ', 'MZA', 'MANZANA', 'INGENIERO', 'ING', 'PROF', 'PROFESOR', 'JUAN', 'JOSE', 'MARIA', 'BO', 'BARRIO']);
+function geoNorm(s: string): string {
+    return String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase();
 }
-
-/** Parte la direccion cargada en calle+altura y municipio. */
-function partirDireccion(address: string, localidad?: string | null, partido?: string | null) {
-    let d = String(address || '')
-        .replace(/\s*[·|]\s*Maps:.*$/i, '')
-        .replace(/\([^)]*\)/g, ' ')
-        .trim();
-    const contexto = normaliza([d, localidad, partido].filter(Boolean).join(' '));
-    let muni: string | null = partido || null;
-    for (const [re, nombre] of LOCALIDAD_A_PARTIDO) {
-        if (re.test(contexto)) { muni = nombre; break; }
+function geoTokens(s: string): Set<string> {
+    return new Set(geoNorm(s).split(/[^A-Z0-9]+/).filter((t) => t && !GEO_GENERICAS.has(t)));
+}
+/** De la direccion cargada saca "calle + altura" y el municipio. */
+function geoPartirDireccion(address: string, localidad?: string | null, partido?: string | null) {
+    let d = String(address || '').replace(/\s*[·|]\s*Maps:.*$/i, '').replace(/\([^)]*\)/g, ' ').trim();
+    const ctx = geoNorm([d, localidad, partido].filter(Boolean).join(' '));
+    let loc: string | null = null, muni: string | null = null;
+    for (const [clave, m] of GEO_LOCALIDADES) {
+        if (new RegExp(`\\b${clave}\\b`).test(ctx)) { loc = clave; muni = m; break; }
     }
-    // El codigo de zona de Lanus (", 17") no es una localidad: se saca de la busqueda
-    d = d.replace(/,\s*\d{1,2}\s*$/, '');
-    // Corta las referencias entre calles: Mapbox no las entiende y baja la precision
-    d = d.split(/\s+(?:E\/|e\/|entre\s)/)[0];
-    d = d.replace(/,\s*[^,]*$/, (m) => (/\d/.test(m) ? m : ''));
-    d = d.replace(/\s{2,}/g, ' ').replace(/[,\s]+$/, '').trim();
-    const tieneAltura = /\d{2,5}\s*$/.test(d);
-    return { calle: d, muni, tieneAltura };
+    d = d.replace(/,\s*\d{1,2}\s*$/, '');                 // codigo de zona de Lanus
+    const numeros = d.match(/\b\d{2,5}\b/g) || [];
+    // Corta en la primera referencia a otra calle: "e/", "entre", "esquina", " y "
+    let base = d.split(/\s+(?:[Ee]\/|entre\s|esq\.?\s|[Ee]squina\s|[Yy]\s)/)[0];
+    base = base.replace(/,\s*[A-Za-zÁÉÍÓÚÑáéíóúñ.\s]+$/, '').replace(/\s{2,}/g, ' ');
+    base = base.replace(/^[\s,.]+|[\s,.]+$/g, '');
+    let calle = base;
+    if (!/\d{2,5}\s*$/.test(calle)) {
+        // La altura puede estar despues del "entre ...": "Hladnik e/Orione y Colon 3949"
+        const alt = numeros[numeros.length - 1];
+        const soloTexto = calle.replace(/\b\d{1,5}\b/g, '').replace(/\s{2,}/g, ' ').trim();
+        if (alt && soloTexto) calle = `${soloTexto} ${alt}`;
+    }
+    return { calle, loc, muni, tieneAltura: /\d{2,5}\s*$/.test(calle) };
 }
-
 app.post('/api/admin/geocode-clients', async (req: any, res: any) => {
     const { key, dryRun, limit, ids } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
@@ -4532,50 +4545,54 @@ app.post('/api/admin/geocode-clients', async (req: any, res: any) => {
             },
             select: { id: true, name: true, address: true, localidad: true, partido: true },
             orderBy: { name: 'asc' },
-            take: Math.min(Number(limit) || 250, 500)
+            take: Math.min(Number(limit) || 300, 600)
         });
 
         const ubicados: any[] = [], sinUbicar: any[] = [];
         for (const c of clients) {
-            const { calle, muni, tieneAltura } = partirDireccion(c.address || '', c.localidad, c.partido);
-            if (!calle || !tieneAltura) {
-                sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: 'sin altura (esquina o manzana)' });
+            const { calle, loc, muni, tieneAltura } = geoPartirDireccion(c.address || '', c.localidad, c.partido);
+            if (!tieneAltura) {
+                sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: 'la direccion no tiene altura (es una esquina o una manzana)' });
                 continue;
             }
-            if (dryRun) { ubicados.push({ id: c.id, name: c.name, busca: calle, muni }); continue; }
+            const bbox = (muni && GEO_BBOX[muni]) || GEO_BBOX_AMBA;
+            const localidadTexto = loc ? loc.charAt(0) + loc.slice(1).toLowerCase() : null;
+            const q = [calle, localidadTexto, 'Buenos Aires', 'Argentina'].filter(Boolean).join(', ');
+            if (dryRun) { ubicados.push({ id: c.id, name: c.name, busca: q, muni }); continue; }
             try {
-                const url = 'https://api.mapbox.com/search/geocode/v6/forward'
-                    + `?address_line1=${encodeURIComponent(calle)}`
-                    + (muni ? `&place=${encodeURIComponent(muni)}` : '')
-                    + '&region=Buenos%20Aires&country=ar&limit=1&language=es'
-                    + '&types=address&proximity=-58.40,-34.78'
-                    + `&access_token=${encodeURIComponent(token)}`;
-                const r = await fetchWithTimeout(url, {}, 8000);
-                const j: any = await r.json().catch(() => ({}));
-                const f = j?.features?.[0];
-                const lon = f?.properties?.coordinates?.longitude ?? f?.geometry?.coordinates?.[0];
-                const lat = f?.properties?.coordinates?.latitude ?? f?.geometry?.coordinates?.[1];
-                const mc = f?.properties?.match_code || {};
-                const ctx = f?.properties?.context || {};
-                const muniDevuelto = ctx?.place?.name || ctx?.locality?.name || '';
-                const okMuni = !muni || normaliza(muniDevuelto).includes(normaliza(muni).split(' ')[0]);
-                // exact/high = calle y altura encontradas; number 'inferred' = altura estimada
-                const okAltura = mc?.address_number === 'matched' || mc?.address_number === 'inferred';
-                const okConf = ['exact', 'high'].includes(String(mc?.confidence || '').toLowerCase());
-                if (!f || lat == null || !okMuni || !okAltura || !okConf) {
-                    sinUbicar.push({
-                        id: c.id, name: c.name, direccion: c.address,
-                        motivo: !f ? 'Mapbox no la encontro' : !okMuni ? `cayo en ${muniDevuelto || 'otro lado'}` : `poco preciso (${mc?.confidence || '?'}/${mc?.address_number || '?'})`
-                    });
+                let f: any = null;
+                for (const conTipo of [true, false]) {
+                    const url = 'https://api.mapbox.com/search/geocode/v6/forward'
+                        + `?q=${encodeURIComponent(q)}&country=ar&limit=1&language=es`
+                        + (conTipo ? '&types=address' : '')
+                        + `&bbox=${bbox}&access_token=${encodeURIComponent(token)}`;
+                    const r = await fetchWithTimeout(url, {}, 8000);
+                    const j: any = await r.json().catch(() => ({}));
+                    f = j?.features?.[0] || null;
+                    if (f) break;
+                }
+                if (!f) { sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: 'Mapbox no encontro esa direccion' }); continue; }
+                const lon = f.properties?.coordinates?.longitude, lat = f.properties?.coordinates?.latitude;
+                const calleDevuelta = f.properties?.context?.street?.name || '';
+                const pedidos = geoTokens(calle.replace(/\s*\d{1,5}\s*$/, ''));
+                const dados = geoTokens(calleDevuelta);
+                const comunes = [...pedidos].filter((t) => dados.has(t)).length;
+                const coincide = pedidos.size > 0 && dados.size > 0
+                    && (comunes === pedidos.size || comunes === dados.size || comunes / pedidos.size >= 0.6);
+                if (lat == null || lon == null || !coincide) {
+                    sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: `Mapbox devolvio otra calle (${calleDevuelta || 'sin calle'})` });
                     continue;
                 }
                 await prisma.client.update({ where: { id: c.id }, data: { latitude: lat, longitude: lon } });
-                ubicados.push({ id: c.id, name: c.name, direccion: c.address, lat, lon, muni: muniDevuelto, conf: mc?.confidence });
+                ubicados.push({ id: c.id, name: c.name, direccion: c.address, calleDevuelta, lat, lon });
             } catch (e: any) {
                 sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: e?.message || 'error de red' });
             }
         }
-        res.json({ dryRun: !!dryRun, revisados: clients.length, ubicados: ubicados.length, sinUbicar: sinUbicar.length, detalleUbicados: ubicados.slice(0, 250), detalleSinUbicar: sinUbicar.slice(0, 250) });
+        res.json({
+            dryRun: !!dryRun, revisados: clients.length, ubicados: ubicados.length, sinUbicar: sinUbicar.length,
+            detalleUbicados: ubicados.slice(0, 300), detalleSinUbicar: sinUbicar.slice(0, 300)
+        });
     } catch (e: any) {
         console.error('geocode-clients:', e);
         res.status(500).json({ error: e?.message || 'Error' });
