@@ -4984,6 +4984,31 @@ app.get('/api/admin/recent-trip-changes', async (req: any, res: any) => {
     }
 });
 
+/** Repara un viaje: vuelve a poner el Usuario App (y opcionalmente el estado)
+ *  y le devuelve la ruta a ese telefono.
+ *  POST /api/admin/fix-trip-assignment { key, tripId, mobileUser, status? } */
+app.post('/api/admin/fix-trip-assignment', async (req: any, res: any) => {
+    const { key, tripId, mobileUser, status } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const id = Number(tripId);
+        const user = await findDriverUser(String(mobileUser || ''));
+        if (!user) return res.status(404).json({ error: 'No existe ese usuario de app' });
+        const trip = await prisma.trip.update({
+            where: { id },
+            data: { assignedMobileUser: user.username, ...(status ? { status: String(status) } : {}) }
+        });
+        const route = await prisma.route.findUnique({ where: { tripId: id } });
+        if (route) await prisma.route.update({ where: { id: route.id }, data: { driverId: user.id } });
+        await logAction(req, 'UPDATE', 'trip', id, trip.driver || String(id), null, { assignedMobileUser: user.username, status: trip.status, reparacion: true });
+        io.to(`driver:${user.id}`).emit('route:updated', { routeId: route?.id, tripId: id, type: 'reassigned' });
+        io.emit('trip:updated', { trip: { id } });
+        res.json({ ok: true, tripId: id, usuarioApp: user.username, estado: trip.status, rutaId: route?.id ?? null });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
@@ -6159,12 +6184,19 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
             });
         } else {
             try {
-                const repartoUser = await resolveRepartoUserForTrip(trip, tenantId);
-                if (repartoUser) {
-                    await prisma.route.update({
-                        where: { id: route.id },
-                        data: { driverId: repartoUser.id, date: new Date(trip.date) }
-                    });
+                const enCurso = !!route.actualStartTime;
+                const conUsuarioApp = !!String(trip.assignedMobileUser || '').trim();
+                if (enCurso && !conUsuarioApp) {
+                    // En curso y sin Usuario App explicito: se queda en el telefono actual
+                    await prisma.route.update({ where: { id: route.id }, data: { date: new Date(trip.date) } });
+                } else {
+                    const repartoUser = await resolveRepartoUserForTrip(trip, tenantId);
+                    if (repartoUser) {
+                        await prisma.route.update({
+                            where: { id: route.id },
+                            data: { driverId: repartoUser.id, date: new Date(trip.date) }
+                        });
+                    }
                 }
             } catch {
                 /* mantiene reparto actual en ruta */

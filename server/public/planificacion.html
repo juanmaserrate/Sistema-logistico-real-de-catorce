@@ -19287,6 +19287,22 @@
             return true;
         }
 
+        /** Elige en un <select> la opcion que coincide sin importar mayusculas.
+         *  Si el valor guardado no esta en la lista, lo agrega: asi editar un
+         *  viaje nunca borra en silencio el dato que ya tenia. */
+        function seleccionarOpcionSinMayusculas(select, valor) {
+            if (!select) return;
+            const v = String(valor || '').trim();
+            if (!v) { select.value = ''; return; }
+            const op = [...select.options].find(o => o.value.trim().toLowerCase() === v.toLowerCase());
+            if (op) { select.value = op.value; return; }
+            const nueva = document.createElement('option');
+            nueva.value = v;
+            nueva.textContent = v;
+            select.appendChild(nueva);
+            select.value = v;
+        }
+
         async function saveTripDeliveryStops(tripId) {
             return putTripDeliveryStops(tripId, tripDeliveryRows.map((r) => r.clientId));
         }
@@ -19800,9 +19816,8 @@
             document.getElementById('new-trip-aux2').value = trip.auxiliar2 || '';
             document.getElementById('new-trip-aux3').value = trip.auxiliar3 || '';
             document.getElementById('new-trip-zone').value = trip.zone || '';
-            document.getElementById('new-trip-reparto').value = (trip.reparto || trip.tripType || '').toUpperCase();
-            if (document.getElementById('new-trip-mobile-user'))
-                document.getElementById('new-trip-mobile-user').value = (trip.assignedMobileUser || '').toUpperCase();
+            seleccionarOpcionSinMayusculas(document.getElementById('new-trip-reparto'), trip.reparto || trip.tripType || '');
+            seleccionarOpcionSinMayusculas(document.getElementById('new-trip-mobile-user'), trip.assignedMobileUser || '');
 
             // Refrigerado + Temperatura
             const refSel = document.getElementById('new-trip-refrigerated');
@@ -19939,6 +19954,7 @@
                 if (id) {
                     const oneDate = targetDates[0];
                     const tripData = { ...baseTripData, date: new Date(oneDate + 'T12:00:00').toISOString() };
+                    delete tripData.status; // el estado lo manejan Iniciar/Finalizar y la app, no este formulario
             if (document.getElementById('new-trip-exit').value) {
                 const [h, m] = document.getElementById('new-trip-exit').value.split(':');
                         const d = new Date(oneDate + 'T00:00:00');
