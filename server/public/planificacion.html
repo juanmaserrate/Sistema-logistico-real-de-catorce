@@ -12874,7 +12874,7 @@
             // Evitar duplicados
             const already = weeklyTripStopsBuffers[tripId].some(r => String(r.clientId) === String(s.id));
             if (!already) {
-                weeklyTripStopsBuffers[tripId].push({
+                agregarParadaAntesDelDeposito(weeklyTripStopsBuffers[tripId], {
                     clientId: s.id,
                     name: s.name || s.id,
                     address: s.address || ''
@@ -12895,16 +12895,8 @@
         async function weeklyStopsSave(tripId) {
             const rows = weeklyTripStopsBuffers[tripId] || [];
             try {
-                const res = await fetch(`${API_URL}/trips/${tripId}/delivery-stops`, {
-                    method: 'PUT',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ clientIds: rows.map((r) => r.clientId) })
-                });
-                const data = await res.json().catch(() => ({}));
-                if (!res.ok) {
-                    alert(data.error || 'No se pudo guardar');
-                    return;
-                }
+                const guardado = await putTripDeliveryStops(tripId, rows.map((r) => r.clientId));
+                if (!guardado) return;
                 if (typeof addNotification === 'function') {
                     addNotification('success', 'Paradas', 'Orden y paradas guardados para el viaje #' + tripId);
                 }
@@ -18796,11 +18788,24 @@
             if (cnt) cnt.textContent = scored.length + ' resultado(s)' + (scored.length > CAP ? ` (mostrando ${CAP})` : '');
         }
 
+        /** La vuelta al deposito (Real de Catorce / R14) va siempre ultima: es la
+         *  que cierra el viaje. Una parada nueva se agrega ANTES de ella; si se
+         *  agregaba despues, el servidor creaba un segundo deposito al final. */
+        function esParadaDeposito(nombre) {
+            const n = String(nombre || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+            return n.includes('REAL DE CATORCE') || /^R\.?\s*14$/.test(n);
+        }
+        function agregarParadaAntesDelDeposito(lista, fila) {
+            const ultima = lista[lista.length - 1];
+            if (ultima && esParadaDeposito(ultima.name)) lista.splice(lista.length - 1, 0, fila);
+            else lista.push(fila);
+        }
+
         function tripDeliveryAddById(id) {
             const s = allSchools.find((x) => x.id === id);
             if (!s) return;
             if (tripDeliveryRows.some((r) => r.clientId === id)) return;
-            tripDeliveryRows.push({ clientId: s.id, name: s.name || s.id, address: s.address || '' });
+            agregarParadaAntesDelDeposito(tripDeliveryRows, { clientId: s.id, name: s.name || s.id, address: s.address || '' });
             renderTripDeliveryList();
             filterTripDeliveryResults();
         }
@@ -18944,21 +18949,56 @@
             renderTripDeliveryList();
         }
 
-        async function saveTripDeliveryStops(tripId) {
-            const res = await fetch(`${API_URL}/trips/${tripId}/delivery-stops`, {
+        /** Guarda las paradas de un viaje. Si el viaje ya arranco, el servidor
+         *  lo frena para no perder lo que marco el chofer; aca se le pregunta al
+         *  operador y se reintenta en modo seguro: las paradas ya marcadas quedan
+         *  intactas y solo se agregan o reordenan las pendientes.
+         *  Devuelve false si el operador cancelo. */
+        async function putTripDeliveryStops(tripId, clientIds) {
+            const enviar = (forzar) => fetch(`${API_URL}/trips/${tripId}/delivery-stops`, {
                 method: 'PUT',
-                headers: getActorHeaders(),
-                body: JSON.stringify({ clientIds: tripDeliveryRows.map((r) => r.clientId) })
+                headers: { ...getActorHeaders(), ...(forzar ? { 'X-Force-Replace': 'true' } : {}) },
+                body: JSON.stringify({ clientIds })
             });
-            const data = await res.json().catch(() => ({}));
+            let res = await enviar(false);
+            let data = await res.json().catch(() => ({}));
+
+            if (res.status === 409 && data.code === 'ROUTE_STARTED_PROTECTED') {
+                // Un viaje ya FINALIZADO no se puede ampliar: el chofer lo ve como
+                // concluido en la app y no tendria como marcar la parada nueva.
+                let finalizado = false;
+                try {
+                    const r = await fetch(`${API_URL}/trips/${tripId}/delivery-stops`, { headers: getActorHeaders() });
+                    const d = await r.json();
+                    finalizado = !!d?.actualEndTime;
+                } catch (_) {}
+                if (finalizado) {
+                    throw new Error('El viaje #' + tripId + ' ya está finalizado: el chofer no puede marcar paradas nuevas. Creá un viaje nuevo para esas entregas.');
+                }
+                const marcadas = Number(data.stopsWithProgress) || 0;
+                const ok = confirm(
+                    'El viaje #' + tripId + ' ya está en curso' + (marcadas ? ' (' + marcadas + ' parada' + (marcadas === 1 ? '' : 's') + ' ya marcada' + (marcadas === 1 ? '' : 's') + ')' : '') + '.\n\n'
+                    + 'Las paradas que el chofer ya marcó quedan igual, con su hora y foto. '
+                    + 'Solo se agregan o reordenan las pendientes, y al chofer le llegan al toque.\n\n'
+                    + '¿Guardar los cambios?'
+                );
+                if (!ok) return false;
+                res = await enviar(true);
+                data = await res.json().catch(() => ({}));
+            }
+
             if (!res.ok) {
                 const miss = Array.isArray(data.missingClientIds) ? data.missingClientIds : [];
-                const hint =
-                    miss.length > 0
-                        ? ' Revisá el directorio de escuelas o quitá esas paradas (IDs no encontrados).'
-                        : '';
+                const hint = miss.length > 0
+                    ? ' Revisá el directorio de escuelas o quitá esas paradas (IDs no encontrados).'
+                    : '';
                 throw new Error((data.error || 'No se pudieron guardar las paradas') + hint);
             }
+            return true;
+        }
+
+        async function saveTripDeliveryStops(tripId) {
+            return putTripDeliveryStops(tripId, tripDeliveryRows.map((r) => r.clientId));
         }
 
         /** Minutos desde la ultima senial GPS del telefono asignado a un viaje.
@@ -19630,7 +19670,10 @@
                     body: JSON.stringify(tripData)
                 });
                     if (!res.ok) throw new Error('Error al actualizar el viaje');
-                    await saveTripDeliveryStops(parseInt(id, 10));
+                    const paradasGuardadas = await saveTripDeliveryStops(parseInt(id, 10));
+                    if (paradasGuardadas === false && typeof addNotification === 'function') {
+                        addNotification('info', 'Paradas sin cambios', 'Se guardaron los datos del viaje, pero no las paradas.');
+                    }
                 } else {
                     const payloads = targetDates.map(day => {
                         const tripData = { ...baseTripData, date: new Date(day + 'T12:00:00').toISOString() };
