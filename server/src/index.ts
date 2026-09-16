@@ -4599,6 +4599,97 @@ app.post('/api/admin/geocode-clients', async (req: any, res: any) => {
     }
 });
 
+/** Ubica los establecimientos cuya direccion es una ESQUINA ("Liniers y
+ *  Monteverde"), que el buscador de direcciones no sabe resolver. Busca en
+ *  OpenStreetMap el punto donde se cruzan las dos calles, dentro del municipio.
+ *  POST /api/admin/geocode-corners { key, dryRun?, limit?, ids? } */
+const GEO_BBOX_OSM: Record<string, string> = {
+    // formato de Overpass: sur,oeste,norte,este
+    'Lanús': '-34.75,-58.43,-34.66,-58.34',
+    'Lomas de Zamora': '-34.85,-58.52,-34.70,-58.34',
+    'Almirante Brown': '-34.95,-58.48,-34.75,-58.27',
+    'Quilmes': '-34.83,-58.33,-34.66,-58.19',
+};
+const GEO_BBOX_OSM_AMBA = '-35.00,-58.60,-34.62,-58.15';
+
+/** Saca las dos calles que se cruzan de una direccion tipo "A y B" o "A e/ B y C". */
+function geoCallesDeEsquina(address: string): [string, string] | null {
+    let d = String(address || '')
+        .replace(/\s*[·|]\s*Maps:.*$/i, '')
+        .replace(/\([^)]*\)/g, ' ')
+        .replace(/,\s*\d{1,2}\s*$/, '')
+        .replace(/\bS\/N\b/gi, ' ')
+        .trim();
+    // Saca la localidad del final ("..., DON ORIONE")
+    d = d.replace(/,\s*[^,\d]+$/, '').trim();
+    const partes = d.split(/\s+(?:[Ee]\/|entre\s+|esq(?:uina)?\.?\s+|[Yy]\s+|[Ee]\s+)/).map((x) => x.trim()).filter(Boolean);
+    if (partes.length < 2) return null;
+    const limpiar = (x: string) => x
+        .replace(/\bB[°ºo]?\s+[A-ZÁÉÍÓÚÑ ]+$/i, ' ')
+        .replace(/\b\d{2,5}\b/g, ' ')
+        .replace(/[.,]/g, ' ')
+        .replace(/\s{2,}/g, ' ')
+        .trim();
+    const a = limpiar(partes[0]), b = limpiar(partes[1]);
+    if (!a || !b || a.length < 3 || b.length < 3) return null;
+    return [a, b];
+}
+
+/** La palabra mas distintiva de la calle, para buscar en OpenStreetMap. */
+function geoPalabraClave(calle: string): string {
+    const t = [...geoTokens(calle)];
+    if (!t.length) return geoNorm(calle).replace(/[^A-Z0-9 ]/g, '').trim();
+    return t.sort((x, y) => y.length - x.length)[0];
+}
+
+app.post('/api/admin/geocode-corners', async (req: any, res: any) => {
+    const { key, dryRun, limit, ids } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const clients = await prisma.client.findMany({
+            where: {
+                ...(Array.isArray(ids) && ids.length ? { id: { in: ids.map(String) } } : {}),
+                address: { not: null },
+                OR: [{ latitude: null }, { longitude: null }]
+            },
+            select: { id: true, name: true, address: true, localidad: true, partido: true },
+            orderBy: { name: 'asc' },
+            take: Math.min(Number(limit) || 40, 80)
+        });
+
+        const ubicados: any[] = [], sinUbicar: any[] = [];
+        for (const c of clients) {
+            const calles = geoCallesDeEsquina(c.address || '');
+            if (!calles) { sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: 'no parece una esquina' }); continue; }
+            const { muni } = geoPartirDireccion(c.address || '', c.localidad, c.partido);
+            const bbox = (muni && GEO_BBOX_OSM[muni]) || GEO_BBOX_OSM_AMBA;
+            const [a, b] = calles.map(geoPalabraClave);
+            if (dryRun) { ubicados.push({ id: c.id, name: c.name, direccion: c.address, busca: `${a} x ${b}`, muni }); continue; }
+            try {
+                const q = `[out:json][timeout:25];way(${bbox})["name"~"${a}",i]->.w1;way(${bbox})["name"~"${b}",i]->.w2;node(w.w1)(w.w2);out 1;`;
+                const r = await fetchWithTimeout('https://overpass-api.de/api/interpreter', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'R14-logistica/1.0' },
+                    body: `data=${encodeURIComponent(q)}`
+                }, 45000);
+                const j: any = await r.json().catch(() => ({}));
+                const n = j?.elements?.[0];
+                if (!n?.lat) { sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: `no encontro el cruce ${a} x ${b}` }); continue; }
+                await prisma.client.update({ where: { id: c.id }, data: { latitude: n.lat, longitude: n.lon } });
+                ubicados.push({ id: c.id, name: c.name, direccion: c.address, cruce: `${a} x ${b}`, lat: n.lat, lon: n.lon });
+            } catch (e: any) {
+                sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: e?.message || 'error de red' });
+            }
+            // OpenStreetMap es gratis y comunitario: una consulta por segundo como maximo
+            await new Promise((r) => setTimeout(r, 1200));
+        }
+        res.json({ dryRun: !!dryRun, revisados: clients.length, ubicados: ubicados.length, sinUbicar: sinUbicar.length, detalleUbicados: ubicados.slice(0, 100), detalleSinUbicar: sinUbicar.slice(0, 100) });
+    } catch (e: any) {
+        console.error('geocode-corners:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
