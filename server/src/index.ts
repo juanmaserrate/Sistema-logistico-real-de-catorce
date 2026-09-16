@@ -4612,7 +4612,8 @@ const GEO_BBOX_OSM: Record<string, string> = {
 };
 const GEO_BBOX_OSM_AMBA = '-35.00,-58.60,-34.62,-58.15';
 
-/** Saca las dos calles que se cruzan de una direccion tipo "A y B" o "A e/ B y C". */
+/** Saca las dos calles que se cruzan de una direccion tipo "A y B", "A e/ B y C"
+ *  o "Manzana 27 Calle 26 e/9 y 7" (el barrio Don Orione usa calles numeradas). */
 function geoCallesDeEsquina(address: string): [string, string] | null {
     let d = String(address || '')
         .replace(/\s*[·|]\s*Maps:.*$/i, '')
@@ -4620,26 +4621,31 @@ function geoCallesDeEsquina(address: string): [string, string] | null {
         .replace(/,\s*\d{1,2}\s*$/, '')
         .replace(/\bS\/N\b/gi, ' ')
         .trim();
-    // Saca la localidad del final ("..., DON ORIONE")
-    d = d.replace(/,\s*[^,\d]+$/, '').trim();
-    const partes = d.split(/\s+(?:[Ee]\/|entre\s+|esq(?:uina)?\.?\s+|[Yy]\s+|[Ee]\s+)/).map((x) => x.trim()).filter(Boolean);
+    d = d.replace(/,\s*[^,\d]+$/, '').trim();          // saca la localidad del final
+    d = d.replace(/\bmanzana\s*\d+|\bmza\.?\s*\d+/gi, ' ').replace(/\s{2,}/g, ' ').trim();
+    const partes = d.split(/\s+(?:e\/|entre\s+|esq(?:uina)?\.?\s+|y\s+|e\s+)/i)
+        .map((x) => x.replace(/^[\s,.-]+|[\s,.-]+$/g, ''))
+        .filter(Boolean);
     if (partes.length < 2) return null;
     const limpiar = (x: string) => x
         .replace(/\bB[°ºo]?\s+[A-ZÁÉÍÓÚÑ ]+$/i, ' ')
-        .replace(/\b\d{2,5}\b/g, ' ')
         .replace(/[.,]/g, ' ')
         .replace(/\s{2,}/g, ' ')
         .trim();
     const a = limpiar(partes[0]), b = limpiar(partes[1]);
-    if (!a || !b || a.length < 3 || b.length < 3) return null;
+    if (!a || !b) return null;
     return [a, b];
 }
 
-/** La palabra mas distintiva de la calle (suele ser la ultima: el apellido),
- *  convertida en un patron que ignora acentos — OpenStreetMap los escribe. */
+/** Patron para buscar la calle en OpenStreetMap. Usa la palabra mas distintiva
+ *  (suele ser la ultima) e ignora acentos. Las calles numeradas del barrio Don
+ *  Orione figuran como "26- Nombre", asi que se busca por el numero adelante. */
 function geoPalabraClave(calle: string): string {
-    const tokens = geoNorm(calle).split(/[^A-Z0-9]+/).filter((t) => t.length > 2 && !GEO_GENERICAS.has(t));
-    const elegida = tokens.length ? tokens[tokens.length - 1] : geoNorm(calle).replace(/[^A-Z0-9]/g, '');
+    const limpia = calle.replace(/\bcalle\b/gi, ' ').replace(/\s{2,}/g, ' ').trim();
+    const soloNumero = limpia.match(/^(\d{1,3})$/);
+    if (soloNumero) return `^${soloNumero[1]}[ -]`;
+    const tokens = geoNorm(limpia).split(/[^A-Z0-9]+/).filter((t) => t.length > 2 && !GEO_GENERICAS.has(t));
+    const elegida = tokens.length ? tokens[tokens.length - 1] : geoNorm(limpia).replace(/[^A-Z0-9]/g, '');
     const acentos: Record<string, string> = { A: '[aáAÁ]', E: '[eéEÉ]', I: '[iíIÍ]', O: '[oóOÓ]', U: '[uúüUÚÜ]', N: '[nñNÑ]', C: '[cçCÇ]' };
     return elegida.split('').map((ch) => acentos[ch] || ch).join('');
 }
