@@ -1252,8 +1252,34 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8" id="schools-grid">
-                    <!-- Cards Injected -->
+                <p class="text-[11px] text-[#A3AED0] font-medium -mt-4 px-2">
+                    Tocá cualquier celda para editarla: se guarda sola al salir o con Enter (Esc cancela).
+                    <b>Ficha</b> abre el detalle completo (menú, cupos y unidades de negocio).
+                </p>
+                <div class="card-dark overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-left text-[11px] whitespace-nowrap">
+                            <thead class="bg-[#F8FAFF] sticky top-0 z-10">
+                                <tr class="text-[#A3AED0] uppercase tracking-widest text-[9px]">
+                                    <th class="px-2 py-3 w-8"></th>
+                                    <th class="px-2 py-3 min-w-[190px]">Establecimiento</th>
+                                    <th class="px-2 py-3 min-w-[230px]">Dirección</th>
+                                    <th class="px-2 py-3 min-w-[120px]">Localidad</th>
+                                    <th class="px-2 py-3 min-w-[120px]">Partido</th>
+                                    <th class="px-2 py-3 min-w-[110px]">Barrio</th>
+                                    <th class="px-2 py-3 min-w-[90px]">Zona</th>
+                                    <th class="px-2 py-3 min-w-[120px]">Tipo</th>
+                                    <th class="px-2 py-3 min-w-[130px]">Unidades</th>
+                                    <th class="px-2 py-3 text-center w-24">Ventana</th>
+                                    <th class="px-2 py-3 text-center w-16">Serv.</th>
+                                    <th class="px-2 py-3 text-center w-20">Mapa</th>
+                                    <th class="px-2 py-3 text-center w-14">Foto</th>
+                                    <th class="px-2 py-3 text-center w-16"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="schools-tbody" class="divide-y divide-[#F4F7FE]"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
             <!-- VIEW: MAPA Y RUTEO (Google Maps) -->
@@ -11267,56 +11293,142 @@
             }
         }
 
-        function renderSchools(schools) {
-            const grid = document.getElementById('schools-grid');
-            if(!grid) return;
-            grid.innerHTML = schools.map(c => `
-                <div onclick="openSchoolModal('${c.id}')" class="card-dark p-6 hover:border-indigo-500/50 transition-all group cursor-pointer ${selectedSchoolsForDelete.has(c.id) ? 'ring-2 ring-rose-300 border-rose-300' : ''}">
-                    <div class="flex justify-between items-start mb-4">
-                        <div class="flex items-center gap-2">
-                            <button type="button" onclick="toggleSchoolSelection('${c.id}', event)" class="w-5 h-5 rounded-md border ${selectedSchoolsForDelete.has(c.id) ? 'bg-rose-500 border-rose-500 text-white' : 'bg-white border-[#E0E5F2] text-transparent'} flex items-center justify-center">
-                                <i data-lucide="check" class="w-3 h-3"></i>
-                            </button>
-                        <div class="w-10 h-10 bg-indigo-50 rounded-xl flex items-center justify-center group-hover:bg-indigo-100 transition-colors">
-                            <i data-lucide="school" class="text-indigo-600 w-5 h-5"></i>
-                            </div>
-                        </div>
-                        <span class="text-[9px] font-black bg-indigo-50 text-indigo-600 px-2 py-1 rounded uppercase tracking-widest">${c.barrio || c.zone || 'SIN BARRIO'}</span>
-                    </div>
-                    <h4 class="font-bold text-[#1B2559] text-sm line-clamp-2 min-h-[40px]">${c.name}</h4>
-                    <p class="text-[11px] text-[#A3AED0] mt-2 truncate"><i data-lucide="map-pin" class="w-3 h-3 inline mr-1"></i>${c.address || 'Sin Dirección'}</p>
-                    ${(() => {
-                        const e = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-                        let html = '';
-                        if (c.tipo) html += `<div class="mt-2"><span class="text-[9px] font-black bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded uppercase tracking-wide">${e(c.tipo)}</span></div>`;
-                        const geo = [c.localidad, c.partido].filter(Boolean).map(e).join(' · ');
-                        if (geo) html += `<p class="text-[10px] text-[#A3AED0] mt-1"><i data-lucide="map" class="w-3 h-3 inline mr-1"></i>${geo}</p>`;
-                        return html;
-                    })()}
-                    ${(() => {
-                        const e = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-                        const bus = parseSchoolBUs(c);
-                        if (!bus.length) return '';
-                        return `<div class="mt-2 flex flex-wrap gap-1">` + bus.map(b =>
-                            `<span class="text-[9px] font-black bg-emerald-50 text-emerald-700 px-2 py-0.5 rounded uppercase tracking-wide">${e(b.unidad)}${b.reparto != null && String(b.reparto).trim() ? '·R' + e(b.reparto) : ''}</span>`
-                        ).join('') + `</div>`;
-                    })()}
+        /** Los clientes se ven como filas editables: una columna por dato.
+         *  Antes eran tarjetas y para cambiar una direccion habia que abrir el
+         *  modal de cada una. Menu, cupos y unidades siguen en la ficha completa,
+         *  porque son varios campos anidados. */
+        const SCHOOL_TIPOS = ['Proveedor', 'Escuela', 'Institución Pública', 'Comunitario', 'Comedor', 'Institución Religiosa', 'Club', 'CDI', 'UDI', 'Depósito'];
 
-                    <div class="mt-6 pt-4 border-t border-[#F4F7FE] flex justify-between items-center text-[11px]">
-                         <div class="flex flex-col">
-                            <span class="text-[#A3AED0] font-bold uppercase text-[9px]">Ventana</span>
-                            <span class="text-indigo-600 font-black">${c.timeWindowStart} - ${c.timeWindowEnd}</span>
-                         </div>
-                         <div class="flex flex-col text-right">
-                            <span class="text-[#A3AED0] font-bold uppercase text-[9px]">Servicio</span>
-                            <span class="text-[#2B3674] font-black">${c.serviceTime} min</span>
-                         </div>
-                    </div>
-                    ${c.requiresProofPhoto ? `<div class="mt-2 flex items-center gap-1 text-[10px] font-bold text-rose-500"><i data-lucide="camera" class="w-3 h-3"></i> Foto obligatoria</div>` : ''}
-                </div>
-            `).join('');
+        function renderSchools(schools) {
+            const tbody = document.getElementById('schools-tbody');
+            if (!tbody) return;
+            const e = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            const celda = (id, campo, valor, tipo, extra = '') =>
+                `<td class="px-2 py-2 cursor-text hover:bg-indigo-50/60 ${extra}"
+                     onclick="editSchoolCell(this, '${id}', '${campo}', '${tipo}')"
+                     title="Tocá para editar">${valor !== '' && valor != null ? e(valor) : '<span class="text-[#C7CEE0]">—</span>'}</td>`;
+
+            tbody.innerHTML = schools.map(c => {
+                const bus = parseSchoolBUs(c);
+                const busHtml = bus.length
+                    ? bus.map(b => `<span class="inline-block text-[9px] font-black bg-emerald-50 text-emerald-700 px-1.5 py-0.5 rounded uppercase mr-1">${e(b.unidad)}${b.reparto != null && String(b.reparto).trim() ? '·R' + e(b.reparto) : ''}</span>`).join('')
+                    : '<span class="text-[#C7CEE0]">—</span>';
+                const ubicado = c.latitude != null && c.longitude != null;
+                return `
+                <tr class="hover:bg-[#F8FAFF] ${selectedSchoolsForDelete.has(c.id) ? 'bg-rose-50/60' : ''}" data-school-row="${c.id}">
+                    <td class="px-2 py-2">
+                        <button type="button" onclick="toggleSchoolSelection('${c.id}', event)"
+                            class="w-4 h-4 rounded border ${selectedSchoolsForDelete.has(c.id) ? 'bg-rose-500 border-rose-500 text-white' : 'bg-white border-[#E0E5F2] text-transparent'} flex items-center justify-center text-[9px] font-black"
+                            title="Seleccionar para eliminar">✓</button>
+                    </td>
+                    ${celda(c.id, 'name', c.name, 'text', 'font-bold text-[#1B2559]')}
+                    ${celda(c.id, 'address', c.address, 'text', 'text-[#2B3674]')}
+                    ${celda(c.id, 'localidad', c.localidad, 'text', 'text-[#2B3674]')}
+                    ${celda(c.id, 'partido', c.partido, 'text', 'text-[#2B3674]')}
+                    ${celda(c.id, 'barrio', c.barrio, 'text', 'text-[#2B3674]')}
+                    ${celda(c.id, 'zone', c.zone, 'text', 'text-[#2B3674]')}
+                    ${celda(c.id, 'tipo', c.tipo, 'select', 'text-[#2B3674]')}
+                    <td class="px-2 py-2 cursor-pointer hover:bg-indigo-50/60" onclick="openSchoolModal('${c.id}')" title="Las unidades de negocio se editan en la ficha">${busHtml}</td>
+                    <td class="px-2 py-2 text-center text-[#2B3674]">
+                        <span class="cursor-text hover:bg-indigo-50/60 px-1 rounded" onclick="editSchoolCell(this, '${c.id}', 'timeWindowStart', 'time')">${e(c.timeWindowStart || '--')}</span>
+                        <span class="text-[#C7CEE0]">/</span>
+                        <span class="cursor-text hover:bg-indigo-50/60 px-1 rounded" onclick="editSchoolCell(this, '${c.id}', 'timeWindowEnd', 'time')">${e(c.timeWindowEnd || '--')}</span>
+                    </td>
+                    ${celda(c.id, 'serviceTime', c.serviceTime, 'number', 'text-center text-[#2B3674]')}
+                    <td class="px-2 py-2 text-center">
+                        ${ubicado
+                            ? `<a href="https://www.google.com/maps?q=${c.latitude},${c.longitude}" target="_blank" onclick="event.stopPropagation()" class="text-emerald-600 font-black" title="${e(c.latitude)}, ${e(c.longitude)} — ver en el mapa">📍 Sí</a>`
+                            : '<span class="text-amber-600 font-black" title="Sin coordenadas: la app abre el navegador con la dirección escrita">Sin ubicar</span>'}
+                    </td>
+                    <td class="px-2 py-2 text-center">
+                        <input type="checkbox" ${c.requiresProofPhoto ? 'checked' : ''}
+                            onchange="toggleSchoolProof('${c.id}', this)"
+                            class="w-4 h-4 accent-rose-500" title="Foto de entrega obligatoria">
+                    </td>
+                    <td class="px-2 py-2 text-center">
+                        <button type="button" onclick="openSchoolModal('${c.id}')" class="text-[10px] font-black text-indigo-600 hover:underline">Ficha</button>
+                    </td>
+                </tr>`;
+            }).join('') || '<tr><td colspan="14" class="px-4 py-6 text-center text-[#A3AED0] italic">No hay clientes para mostrar con estos filtros.</td></tr>';
             updateSelectedSchoolsDeleteButton();
-            lucide.createIcons();
+        }
+
+        /** Convierte una celda en input (o select) y guarda al salir o con Enter. */
+        function editSchoolCell(td, id, campo, tipo) {
+            if (!td || td.querySelector('input, select')) return;
+            const cliente = (allSchools || []).find(x => x.id === id);
+            if (!cliente) return;
+            const original = td.innerHTML;
+            const valor = cliente[campo] == null ? '' : String(cliente[campo]);
+            const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+            const clase = 'w-full min-w-[80px] bg-white border border-indigo-400 rounded px-1.5 py-1 text-[11px] font-bold text-[#1B2559] outline-none';
+            if (tipo === 'select') {
+                td.innerHTML = `<select class="${clase}">`
+                    + `<option value="">— Sin tipo —</option>`
+                    + SCHOOL_TIPOS.map(t => `<option value="${t}" ${t === valor ? 'selected' : ''}>${t}</option>`).join('')
+                    + `</select>`;
+            } else {
+                const tipoInput = tipo === 'number' ? 'number' : tipo === 'time' ? 'time' : 'text';
+                td.innerHTML = `<input type="${tipoInput}" value="${esc(valor)}" class="${clase}" ${tipo === 'number' ? 'min="1"' : ''}>`;
+            }
+            const input = td.querySelector('input, select');
+            input.focus();
+            if (input.select) { try { input.select(); } catch (_) {} }
+
+            let cerrado = false;
+            const cancelar = () => { if (!cerrado) { cerrado = true; td.innerHTML = original; } };
+            const guardar = async () => {
+                if (cerrado) return;
+                cerrado = true;
+                const nuevo = String(input.value ?? '').trim();
+                if (nuevo === String(valor ?? '').trim()) { td.innerHTML = original; return; }
+                if (campo === 'name' && !nuevo) {
+                    addNotification('warning', 'Clientes', 'El nombre no puede quedar vacío.');
+                    td.innerHTML = original;
+                    return;
+                }
+                td.innerHTML = '<span class="text-[9px] text-[#A3AED0]">guardando…</span>';
+                try {
+                    const res = await fetch(`${API_URL}/clients/${id}`, {
+                        method: 'PATCH',
+                        headers: getActorHeaders(),
+                        body: JSON.stringify({ [campo]: nuevo === '' ? null : nuevo })
+                    });
+                    const data = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(data.error || 'Error del servidor');
+                    // Guardamos el valor que devolvio el server: es el que quedo en la base
+                    cliente[campo] = data[campo] !== undefined ? data[campo] : (nuevo === '' ? null : nuevo);
+                    filterSchools();
+                    addNotification('success', 'Cliente actualizado', `${cliente.name}: ${campo} guardado.`);
+                } catch (err) {
+                    td.innerHTML = original;
+                    addNotification('error', 'No se pudo guardar', err.message || String(err));
+                }
+            };
+            input.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter') { ev.preventDefault(); void guardar(); }
+                else if (ev.key === 'Escape') { ev.preventDefault(); cancelar(); }
+            });
+            input.addEventListener('blur', () => { void guardar(); });
+            if (tipo === 'select') input.addEventListener('change', () => { void guardar(); });
+        }
+
+        /** Marca o desmarca la foto obligatoria desde la misma fila. */
+        async function toggleSchoolProof(id, chk) {
+            const cliente = (allSchools || []).find(x => x.id === id);
+            const valor = !!chk.checked;
+            try {
+                const res = await fetch(`${API_URL}/clients/${id}/requires-proof`, {
+                    method: 'PATCH',
+                    headers: getActorHeaders(),
+                    body: JSON.stringify({ requiresProofPhoto: valor })
+                });
+                if (!res.ok) throw new Error('Error del servidor');
+                if (cliente) cliente.requiresProofPhoto = valor;
+            } catch (err) {
+                chk.checked = !valor;
+                addNotification('error', 'No se pudo guardar', 'La foto obligatoria quedó como estaba.');
+            }
         }
 
         function toggleSchoolSelection(id, evt) {
@@ -11833,7 +11945,6 @@
             if (countLabel) countLabel.innerText = filtered.length === allSchools.length ? 'Clientes' : 'en vista';
 
             renderSchools(filtered);
-            lucide.createIcons();
         }
 
         async function loadCostHistory() {
