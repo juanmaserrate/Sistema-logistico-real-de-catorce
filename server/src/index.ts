@@ -4439,6 +4439,40 @@ app.post('/api/admin/split-template-client', async (req: any, res: any) => {
     }
 });
 
+/** Limpia fichas de establecimientos duplicadas. Si no las usa ninguna parada
+ *  ni ruta predefinida, las borra; si quedaron en viajes viejos, las renombra a
+ *  "NO USAR - ..." para que nadie las elija por error.
+ *  POST /api/admin/cleanup-clients { key, ids: [...], dryRun? } */
+app.post('/api/admin/cleanup-clients', async (req: any, res: any) => {
+    const { key, ids, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Falta ids' });
+    try {
+        const resultado: any[] = [];
+        const plantillas = await (prisma as any).routeStopTemplate.findMany({ select: { name: true } });
+        for (const rawId of ids as string[]) {
+            const c = await prisma.client.findUnique({ where: { id: String(rawId) } });
+            if (!c) { resultado.push({ id: rawId, estado: 'no existe' }); continue; }
+            const usos = await prisma.stop.count({ where: { clientId: c.id } });
+            const enPlantilla = plantillas.some((t: any) => normClientNameForMatch(t.name) === normClientNameForMatch(c.name));
+            if (enPlantilla) { resultado.push({ id: c.id, name: c.name, estado: 'NO se toca: la usa una ruta predefinida' }); continue; }
+            if (dryRun) { resultado.push({ id: c.id, name: c.name, paradas: usos, accion: usos ? 'renombrar' : 'borrar' }); continue; }
+            if (usos === 0) {
+                await prisma.client.delete({ where: { id: c.id } });
+                resultado.push({ id: c.id, name: c.name, estado: 'borrada' });
+            } else {
+                const nuevoNombre = c.name.startsWith('NO USAR') ? c.name : `NO USAR - ${c.name}`;
+                await prisma.client.update({ where: { id: c.id }, data: { name: nuevoNombre } });
+                resultado.push({ id: c.id, name: nuevoNombre, paradas: usos, estado: 'renombrada (la usan viajes viejos)' });
+            }
+        }
+        res.json({ dryRun: !!dryRun, resultado });
+    } catch (e: any) {
+        console.error('cleanup-clients:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
