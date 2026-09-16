@@ -463,8 +463,18 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         reconnectionDelayMax: 30000,
       });
       socketRef.current = socket;
+      let yaConectoAntes = false;
       socket.on('connect', () => {
         socket.emit('join:driver', session.id);
+        // Al RECONECTAR (volvio la señal) se pide la ruta de nuevo: si el operador
+        // agrego o reordeno paradas mientras el celular estaba sin señal, ese
+        // aviso se perdio y el chofer no veia las paradas nuevas.
+        // Solo LEE la ruta: no inicia, no cierra ni modifica el viaje. Las marcas
+        // hechas sin señal que todavia no subieron se siguen viendo (se aplican
+        // encima de la lista) y la ruta nueva queda guardada en el celular, asi
+        // que despues se puede seguir trabajando sin señal.
+        if (yaConectoAntes) loadRoutes({ silent: true });
+        yaConectoAntes = true;
       });
       socket.on('route:updated', () => {
         loadRoutes({ silent: true });
