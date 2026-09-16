@@ -4263,7 +4263,6 @@ app.post('/api/admin/create-trip-from-template', async (req: any, res: any) => {
         // El dia del viaje se guarda al mediodia de Buenos Aires, igual que la web
         const trip = await prisma.trip.create({
             data: {
-                tenantId,
                 date: new Date(`${ymd}T15:00:00.000Z`),
                 driver: chofer.fullName || chofer.username,
                 assignedMobileUser: chofer.username,
