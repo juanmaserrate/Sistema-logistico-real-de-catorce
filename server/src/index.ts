@@ -5741,22 +5741,23 @@ app.post('/api/v1/costs/params', async (req: any, res: any) => {
 
 app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
     try {
-        const { month, year: yearArg, costsParams, salariesData } = req.body || {};
+        const { month, year: yearArg, costsParams, salariesData, dryRun } = req.body || {};
         if (!month || !costsParams) return res.status(400).json({ error: 'Faltan month o costsParams' });
 
         const monthNum = MONTH_TO_NUM[month.toLowerCase()];
         if (monthNum === undefined) return res.status(400).json({ error: 'Mes inválido' });
 
-        // 1. Guardar parámetros en settings
-        const existingSetting = await prisma.appSettings.findUnique({ where: { key: 'costs_data' } });
+        // 1. Guardar parámetros en settings (en simulacion no se guarda nada)
+        if (dryRun) { /* no persistimos parametros */ }
+        const existingSetting = dryRun ? null : await prisma.appSettings.findUnique({ where: { key: 'costs_data' } });
         let allCosts: Record<string, any> = {};
         if (existingSetting) { try { allCosts = JSON.parse(existingSetting.value); } catch {} }
-        allCosts[month] = {
+        if (!dryRun) allCosts[month] = {
             ...costsParams,
             savedAt: new Date().toISOString(),
             savedBy: String(req.headers['x-actor-name'] || '').trim().slice(0, 80) || null,
         };
-        await prisma.appSettings.upsert({
+        if (!dryRun) await prisma.appSettings.upsert({
             where: { key: 'costs_data' },
             update: { value: JSON.stringify(allCosts) },
             create: { key: 'costs_data', value: JSON.stringify(allCosts) }
@@ -5898,13 +5899,17 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
             });
 
             const value = Math.round(tripCost);
+            if (dryRun) {
+                updates.push({ id: t.id, value, durHrs: Math.round(durHrs * 100) / 100, auxiliares: auxList, valorActual: Number(t.value) || 0 });
+                continue;
+            }
             // Bug fix: trip.value es columna Decimal — antes se guardaba como String("123")
             // creando tipos inconsistentes con otros endpoints que insertan number directamente.
             await prisma.trip.update({ where: { id: t.id }, data: { value } });
             updates.push({ id: t.id, value, durHrs: Math.round(durHrs * 100) / 100 });
         }
 
-        res.json({ updated: updates.length, trips: updates, vehicleHourlyRate: Math.round(vehicleHourlyRate), auxTotalHours });
+        res.json({ dryRun: !!dryRun, updated: dryRun ? 0 : updates.length, simulados: dryRun ? updates.length : 0, trips: updates.slice(0, 300), vehicleHourlyRate: Math.round(vehicleHourlyRate), auxTotalHours });
     } catch (e: any) {
         console.error('[calculate-month]', e);
         res.status(500).json({ error: e?.message || 'Error calculando costos' });
