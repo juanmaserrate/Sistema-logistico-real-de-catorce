@@ -4802,6 +4802,69 @@ app.get('/api/admin/trip-people', async (req: any, res: any) => {
     }
 });
 
+/** Sueldos cargados, para auditar antes de tocar nada.
+ *  GET /api/admin/salaries-dump?key=...&month=septiembre */
+app.get('/api/admin/salaries-dump', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const month = String(req.query.month || '').trim().toLowerCase();
+        const rows = await prisma.employeeSalary.findMany({
+            where: month ? { month } : undefined,
+            orderBy: [{ month: 'asc' }, { lastName: 'asc' }]
+        });
+        const porMes: Record<string, number> = {};
+        for (const r of rows) porMes[r.month] = (porMes[r.month] || 0) + 1;
+        res.json({ total: rows.length, porMes, empleados: rows });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Carga sueldos de un mes en lote (crea o actualiza por mes + apellido).
+ *  POST /api/admin/salaries-bulk { key, month, dryRun?, rows: [{ Apellido, Nombre, 'Tipo Puesto', Bruto, Jornal }] } */
+app.post('/api/admin/salaries-bulk', async (req: any, res: any) => {
+    const { key, month, rows, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const mes = String(month || '').trim().toLowerCase();
+    if (!mes) return res.status(400).json({ error: 'Falta month (ej. septiembre)' });
+    if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ error: 'Falta rows' });
+    try {
+        const num = (v: any) => {
+            if (v === null || v === undefined || v === '') return null;
+            const n = parseFloat(String(v).replace(/[^\d.-]/g, ''));
+            return Number.isFinite(n) ? n : null;
+        };
+        const creados: any[] = [], actualizados: any[] = [], errores: any[] = [];
+        for (const r of rows as any[]) {
+            const lastName = String(r.Apellido || '').trim().toUpperCase();
+            if (!lastName) { errores.push({ fila: r, error: 'sin apellido' }); continue; }
+            const datos = {
+                firstName: String(r.Nombre || '').trim() || null,
+                role: String(r['Tipo Puesto'] || r.role || '').trim() || null,
+                grossSalary: num(r.Bruto),
+                dailyWage: num(r.Jornal),
+                seniority: null as any,
+                baseScale: null as any,
+            };
+            const existe = await prisma.employeeSalary.findUnique({ where: { month_lastName: { month: mes, lastName } } });
+            if (dryRun) {
+                (existe ? actualizados : creados).push({ lastName, ...datos, brutoAnterior: existe?.grossSalary ?? null });
+                continue;
+            }
+            const guardado = await prisma.employeeSalary.upsert({
+                where: { month_lastName: { month: mes, lastName } },
+                update: { firstName: datos.firstName, role: datos.role, grossSalary: datos.grossSalary, dailyWage: datos.dailyWage },
+                create: { month: mes, lastName, firstName: datos.firstName, role: datos.role, grossSalary: datos.grossSalary, dailyWage: datos.dailyWage }
+            });
+            (existe ? actualizados : creados).push({ lastName, bruto: guardado.grossSalary, jornal: guardado.dailyWage, brutoAnterior: existe?.grossSalary ?? null });
+        }
+        res.json({ dryRun: !!dryRun, mes, creados: creados.length, actualizados: actualizados.length, errores, detalleCreados: creados, detalleActualizados: actualizados });
+    } catch (e: any) {
+        console.error('salaries-bulk:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
