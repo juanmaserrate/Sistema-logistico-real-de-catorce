@@ -14124,7 +14124,19 @@
         }
 
         async function deleteSingleTrip(id) {
-            if (!confirm(`¿Eliminar el viaje #${id}? Esta acción no se puede deshacer.`)) return;
+            // Un viaje en curso esta en el telefono del chofer: borrarlo se lo saca de la app.
+            // Para sacar UNA parada se edita el viaje (✕ en la parada), no se borra el viaje.
+            const t = (typeof getWeeklyTripById === 'function') ? getWeeklyTripById(id) : null;
+            const enCurso = !!(t && (t.routeActualStart || String(t.status || '').toUpperCase() === 'OUT_OF_PLANT') && !t.routeActualEnd);
+            const aviso = enCurso
+                ? `El viaje #${id} está EN CURSO en el teléfono del chofer.
+
+Si lo eliminás, desaparece completo de la app y se pierde lo que marcó.
+Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la ✕ de esa parada.
+
+¿Eliminar el viaje completo igual?`
+                : `¿Eliminar el viaje #${id}? Esta acción no se puede deshacer.`;
+            if (!confirm(aviso)) return;
             try {
                 const res = await fetch(`${API_URL}/trips/${id}`, { method: 'DELETE', headers: getActorHeaders() });
                 if (!res.ok) throw new Error('Error al eliminar');
