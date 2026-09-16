@@ -4217,6 +4217,93 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
     }
 });
 
+/** Crea un viaje con las paradas de una ruta predefinida (R1, R7, ...) y se lo
+ *  asigna a un usuario de la app. Es el mismo alta que hace el operador en la
+ *  web, pero sin pasar por el navegador.
+ *  POST /api/admin/create-trip-from-template
+ *  { key, reparto, mobileUser, date?: 'YYYY-MM-DD', vehicleType?, zone?, contractType?, dryRun? } */
+app.post('/api/admin/create-trip-from-template', async (req: any, res: any) => {
+    const { key, reparto, mobileUser, date, vehicleType, zone, contractType, businessUnit, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const nombre = String(reparto || '').trim();
+        const usuarioApp = String(mobileUser || '').trim();
+        if (!nombre || !usuarioApp) return res.status(400).json({ error: 'Faltan reparto y mobileUser' });
+        const ymd = /^\d{4}-\d{2}-\d{2}$/.test(String(date || '')) ? String(date) : buenosAiresYmd();
+        const tenantId = 'default-tenant';
+
+        const chofer = await findDriverUser(usuarioApp);
+        if (!chofer) return res.status(404).json({ error: `No existe el usuario de app "${usuarioApp}"` });
+
+        // Paradas de la plantilla, resueltas contra los clientes reales
+        const plantillas = await (prisma as any).routeTemplate.findMany({ select: { id: true, name: true } });
+        const hit = plantillas.find((t: any) => String(t.name).trim().toUpperCase() === nombre.toUpperCase());
+        if (!hit) return res.status(404).json({ error: `No hay ruta predefinida "${nombre}"` });
+        const template = await (prisma as any).routeTemplate.findUnique({
+            where: { id: hit.id }, include: { stops: { orderBy: { sequence: 'asc' } } }
+        });
+        const clients = await prisma.client.findMany({ select: { id: true, name: true } });
+        const byNorm = new Map<string, any>();
+        for (const c of clients) {
+            const n = normClientNameForMatch(c.name);
+            if (n && !byNorm.has(n)) byNorm.set(n, c);
+        }
+        const clientIds: string[] = [];
+        const paradas: any[] = [];
+        const sinCliente: string[] = [];
+        for (const st of template.stops as any[]) {
+            const c = byNorm.get(normClientNameForMatch(st.name));
+            if (c) { clientIds.push(c.id); paradas.push({ clientId: c.id, name: c.name }); }
+            else sinCliente.push(st.name);
+        }
+        if (!clientIds.length) return res.status(400).json({ error: 'La plantilla no tiene paradas que coincidan con clientes cargados' });
+
+        if (dryRun) return res.json({ dryRun: true, reparto: template.name, fecha: ymd, chofer: chofer.username, paradas, sinCliente });
+
+        // El dia del viaje se guarda al mediodia de Buenos Aires, igual que la web
+        const trip = await prisma.trip.create({
+            data: {
+                tenantId,
+                date: new Date(`${ymd}T15:00:00.000Z`),
+                driver: chofer.fullName || chofer.username,
+                assignedMobileUser: chofer.username,
+                reparto: template.name,
+                tripType: template.name,
+                vehicleType: vehicleType ? String(vehicleType) : null,
+                zone: zone ? String(zone) : null,
+                businessUnit: businessUnit ? String(businessUnit) : null,
+                contractType: contractType ? String(contractType) : 'Propio',
+                status: 'PENDING',
+                priority: '1'
+            } as any
+        });
+
+        const route = await prisma.route.create({
+            data: { tenantId, date: new Date(`${ymd}T15:00:00.000Z`), driverId: chofer.id, status: 'PLANNED', tripId: trip.id }
+        });
+
+        // Vuelta al deposito como ultima parada: sin ella el viaje no cierra solo
+        const base = await ensureBaseClient(tenantId);
+        if (base && clientIds[clientIds.length - 1] !== base.id) clientIds.push(base.id);
+        await prisma.$transaction(clientIds.map((clientId, idx) => prisma.stop.create({
+            data: {
+                routeId: route.id, clientId, sequence: idx + 1, status: 'PENDING',
+                isReturnToBase: !!base && clientId === base.id && idx === clientIds.length - 1
+            }
+        })));
+
+        io.emit('trip:created', { trip });
+        notifyDriver(chofer.username, 'Nuevo viaje asignado', `Tenés un viaje asignado para ${ymd}`, { tripId: trip.id });
+        res.json({
+            ok: true, tripId: trip.id, routeId: route.id, fecha: ymd, reparto: template.name,
+            chofer: chofer.username, paradas: clientIds.length, sinCliente
+        });
+    } catch (e: any) {
+        console.error('create-trip-from-template:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
