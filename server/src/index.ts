@@ -4881,6 +4881,44 @@ app.post('/api/admin/salaries-bulk', async (req: any, res: any) => {
     }
 });
 
+/** Alta de varios establecimientos juntos. Si ya existe uno con el mismo
+ *  nombre, no lo duplica: lo devuelve como "existente".
+ *  POST /api/admin/clients-bulk-create { key, dryRun?, clients: [{ name, address, localidad, partido, tipo, contactName, contactStaff, contactPhone }] } */
+app.post('/api/admin/clients-bulk-create', async (req: any, res: any) => {
+    const { key, clients, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!Array.isArray(clients) || !clients.length) return res.status(400).json({ error: 'Falta clients' });
+    try {
+        const todos = await prisma.client.findMany({ select: { id: true, name: true } });
+        const creados: any[] = [], existentes: any[] = [];
+        for (const c of clients as any[]) {
+            const name = String(c.name || '').trim();
+            if (!name) continue;
+            const ya = todos.find((x) => normClientNameForMatch(x.name) === normClientNameForMatch(name));
+            if (ya) { existentes.push(ya); continue; }
+            const data: any = {
+                tenantId: 'default-tenant',
+                name,
+                address: textoContacto(c.address, 250),
+                localidad: textoContacto(c.localidad, 120),
+                partido: textoContacto(c.partido, 120),
+                tipo: textoContacto(c.tipo, 60),
+                contactName: textoContacto(c.contactName, 120),
+                contactStaff: textoContacto(c.contactStaff, 120),
+                contactPhone: textoContacto(c.contactPhone, 40),
+            };
+            if (dryRun) { creados.push(data); continue; }
+            const nuevo = await prisma.client.create({ data });
+            todos.push({ id: nuevo.id, name: nuevo.name });
+            creados.push({ id: nuevo.id, name: nuevo.name, address: nuevo.address });
+        }
+        res.json({ dryRun: !!dryRun, creados, existentes });
+    } catch (e: any) {
+        console.error('clients-bulk-create:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
