@@ -4474,10 +4474,46 @@ app.post('/api/admin/cleanup-clients', async (req: any, res: any) => {
 });
 
 /** Ubica en el mapa a los establecimientos que no tienen coordenadas, usando
- *  Mapbox y la direccion cargada. Solo acepta resultados dentro del AMBA y con
- *  confianza suficiente: una direccion mal ubicada manda al chofer al lugar
- *  equivocado, asi que ante la duda queda sin coordenadas.
+ *  Mapbox y la direccion cargada. Es exigente a proposito: si no puede ubicar
+ *  la altura exacta en el municipio que corresponde, la deja sin coordenadas.
+ *  Una direccion mal ubicada manda al chofer al lugar equivocado.
  *  POST /api/admin/geocode-clients { key, dryRun?, limit?, ids? } */
+
+/** Municipio segun como termina la direccion o la localidad cargada.
+ *  Las direcciones de Lanus vienen con un codigo de zona al final (", 4", ", 17"). */
+const LOCALIDAD_A_PARTIDO: Array<[RegExp, string]> = [
+    [/\b(LANUS|MONTE CHINGOLO|REMEDIOS DE ESCALADA|VALENTIN ALSINA|GERLI|VILLA CARAZA|VILLA DIAMANTE)\b/, 'Lanús'],
+    [/\b(LOMAS DE ZAMORA|BANFIELD|TEMPERLEY|TURDERA|LLAVALLOL|PARQUE BARON|VILLA FIORITO|INGENIERO BUDGE)\b/, 'Lomas de Zamora'],
+    [/\b(ALMIRANTE BROWN|BURZACO|ADROGUE|CLAYPOLE|LONGCHAMPS|RAFAEL CALZADA|GLEW|MINISTRO RIVADAVIA|SAN JOSE|MALVINAS ARGENTINAS|DON ORIONE|SAN FRANCISCO DE ASIS)\b/, 'Almirante Brown'],
+    [/\b(QUILMES|BERNAL|EZPELETA|SOLANO|SAN FRANCISCO SOLANO|LA RIBERA|VILLA LUJAN)\b/, 'Quilmes'],
+    [/\b(ESTEBAN ECHEVERRIA|MONTE GRANDE|LUIS GUILLON|9 DE ABRIL|EL JAGUEL)\b/, 'Esteban Echeverría'],
+];
+
+function normaliza(t: string): string {
+    return String(t || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase();
+}
+
+/** Parte la direccion cargada en calle+altura y municipio. */
+function partirDireccion(address: string, localidad?: string | null, partido?: string | null) {
+    let d = String(address || '')
+        .replace(/\s*[·|]\s*Maps:.*$/i, '')
+        .replace(/\([^)]*\)/g, ' ')
+        .trim();
+    const contexto = normaliza([d, localidad, partido].filter(Boolean).join(' '));
+    let muni: string | null = partido || null;
+    for (const [re, nombre] of LOCALIDAD_A_PARTIDO) {
+        if (re.test(contexto)) { muni = nombre; break; }
+    }
+    // El codigo de zona de Lanus (", 17") no es una localidad: se saca de la busqueda
+    d = d.replace(/,\s*\d{1,2}\s*$/, '');
+    // Corta las referencias entre calles: Mapbox no las entiende y baja la precision
+    d = d.split(/\s+(?:E\/|e\/|entre\s)/)[0];
+    d = d.replace(/,\s*[^,]*$/, (m) => (/\d/.test(m) ? m : ''));
+    d = d.replace(/\s{2,}/g, ' ').replace(/[,\s]+$/, '').trim();
+    const tieneAltura = /\d{2,5}\s*$/.test(d);
+    return { calle: d, muni, tieneAltura };
+}
+
 app.post('/api/admin/geocode-clients', async (req: any, res: any) => {
     const { key, dryRun, limit, ids } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
@@ -4499,43 +4535,47 @@ app.post('/api/admin/geocode-clients', async (req: any, res: any) => {
             take: Math.min(Number(limit) || 250, 500)
         });
 
-        // Caja del AMBA sur (Lanus, Lomas, Alte. Brown, Quilmes y alrededores)
-        const BBOX = { minLon: -58.75, maxLon: -58.10, minLat: -35.05, maxLat: -34.55 };
-        const ubicados: any[] = [], dudosos: any[] = [];
+        const ubicados: any[] = [], sinUbicar: any[] = [];
         for (const c of clients) {
-            const partes = [String(c.address).replace(/\s*·\s*Maps:.*$/i, '').trim()];
-            if (c.localidad) partes.push(String(c.localidad));
-            if (c.partido) partes.push(String(c.partido));
-            partes.push('Buenos Aires', 'Argentina');
-            const q = partes.join(', ');
-            if (dryRun) { ubicados.push({ id: c.id, name: c.name, consulta: q }); continue; }
+            const { calle, muni, tieneAltura } = partirDireccion(c.address || '', c.localidad, c.partido);
+            if (!calle || !tieneAltura) {
+                sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: 'sin altura (esquina o manzana)' });
+                continue;
+            }
+            if (dryRun) { ubicados.push({ id: c.id, name: c.name, busca: calle, muni }); continue; }
             try {
                 const url = 'https://api.mapbox.com/search/geocode/v6/forward'
-                    + `?q=${encodeURIComponent(q)}&country=ar&limit=1&language=es`
-                    + '&proximity=-58.40,-34.80'
+                    + `?address_line1=${encodeURIComponent(calle)}`
+                    + (muni ? `&place=${encodeURIComponent(muni)}` : '')
+                    + '&region=Buenos%20Aires&country=ar&limit=1&language=es'
+                    + '&types=address&proximity=-58.40,-34.78'
                     + `&access_token=${encodeURIComponent(token)}`;
                 const r = await fetchWithTimeout(url, {}, 8000);
                 const j: any = await r.json().catch(() => ({}));
                 const f = j?.features?.[0];
                 const lon = f?.properties?.coordinates?.longitude ?? f?.geometry?.coordinates?.[0];
                 const lat = f?.properties?.coordinates?.latitude ?? f?.geometry?.coordinates?.[1];
-                const conf = String(f?.properties?.match_code?.confidence || '').toLowerCase();
-                const tipo = String(f?.properties?.feature_type || '');
-                const dentro = lon != null && lat != null
-                    && lon >= BBOX.minLon && lon <= BBOX.maxLon && lat >= BBOX.minLat && lat <= BBOX.maxLat;
-                // Una localidad entera (place/locality) no sirve: cae en el centro del barrio.
-                const util = dentro && conf !== 'low' && ['address', 'street', 'block', 'neighborhood'].includes(tipo);
-                if (!util) {
-                    dudosos.push({ id: c.id, name: c.name, direccion: c.address, motivo: !dentro ? 'cae fuera del AMBA' : `poco preciso (${tipo || 'sin tipo'}/${conf || 'sin confianza'})` });
+                const mc = f?.properties?.match_code || {};
+                const ctx = f?.properties?.context || {};
+                const muniDevuelto = ctx?.place?.name || ctx?.locality?.name || '';
+                const okMuni = !muni || normaliza(muniDevuelto).includes(normaliza(muni).split(' ')[0]);
+                // exact/high = calle y altura encontradas; number 'inferred' = altura estimada
+                const okAltura = mc?.address_number === 'matched' || mc?.address_number === 'inferred';
+                const okConf = ['exact', 'high'].includes(String(mc?.confidence || '').toLowerCase());
+                if (!f || lat == null || !okMuni || !okAltura || !okConf) {
+                    sinUbicar.push({
+                        id: c.id, name: c.name, direccion: c.address,
+                        motivo: !f ? 'Mapbox no la encontro' : !okMuni ? `cayo en ${muniDevuelto || 'otro lado'}` : `poco preciso (${mc?.confidence || '?'}/${mc?.address_number || '?'})`
+                    });
                     continue;
                 }
                 await prisma.client.update({ where: { id: c.id }, data: { latitude: lat, longitude: lon } });
-                ubicados.push({ id: c.id, name: c.name, direccion: c.address, lat, lon, tipo, conf });
+                ubicados.push({ id: c.id, name: c.name, direccion: c.address, lat, lon, muni: muniDevuelto, conf: mc?.confidence });
             } catch (e: any) {
-                dudosos.push({ id: c.id, name: c.name, direccion: c.address, motivo: e?.message || 'error de red' });
+                sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: e?.message || 'error de red' });
             }
         }
-        res.json({ dryRun: !!dryRun, revisados: clients.length, ubicados: ubicados.length, dudosos: dudosos.length, detalleUbicados: ubicados.slice(0, 200), detalleDudosos: dudosos });
+        res.json({ dryRun: !!dryRun, revisados: clients.length, ubicados: ubicados.length, sinUbicar: sinUbicar.length, detalleUbicados: ubicados.slice(0, 250), detalleSinUbicar: sinUbicar.slice(0, 250) });
     } catch (e: any) {
         console.error('geocode-clients:', e);
         res.status(500).json({ error: e?.message || 'Error' });
