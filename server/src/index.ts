@@ -4919,6 +4919,33 @@ app.post('/api/admin/clients-bulk-create', async (req: any, res: any) => {
     }
 });
 
+/** Agrega (o actualiza) una unidad de negocio + reparto en varios clientes.
+ *  No borra las otras unidades que ya tenga cada uno.
+ *  POST /api/admin/clients-set-bu { key, ids: [...], unidad, reparto, dryRun? } */
+app.post('/api/admin/clients-set-bu', async (req: any, res: any) => {
+    const { key, ids, unidad, reparto, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const u = String(unidad || '').trim();
+    const r = String(reparto ?? '').trim();
+    if (!u || !Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Faltan ids o unidad' });
+    try {
+        const clientes = await prisma.client.findMany({ where: { id: { in: ids.map(String) } }, select: { id: true, name: true, businessUnits: true } });
+        const hechos: any[] = [];
+        for (const c of clientes) {
+            let lista: any[] = [];
+            try { const p = c.businessUnits ? JSON.parse(c.businessUnits) : []; if (Array.isArray(p)) lista = p; } catch {}
+            const idx = lista.findIndex((b) => normClientNameForMatch(b?.unidad) === normClientNameForMatch(u));
+            if (idx >= 0) lista[idx] = { ...lista[idx], unidad: u, reparto: r };
+            else lista.push({ unidad: u, reparto: r });
+            if (!dryRun) await prisma.client.update({ where: { id: c.id }, data: { businessUnits: JSON.stringify(lista) } });
+            hechos.push({ id: c.id, name: c.name, businessUnits: lista });
+        }
+        res.json({ dryRun: !!dryRun, actualizados: hechos.length, hechos });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
