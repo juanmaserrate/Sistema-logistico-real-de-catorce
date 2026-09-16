@@ -4368,6 +4368,77 @@ app.post('/api/admin/update-client-addresses', async (req: any, res: any) => {
     }
 });
 
+/** Separa establecimientos homonimos que compartian una sola ficha (la misma
+ *  escuela numerada existe en dos municipios). Crea la ficha nueva y la deja
+ *  apuntada en la ruta predefinida que corresponde, sin tocar el orden.
+ *  POST /api/admin/split-template-client
+ *  { key, dryRun?, repoint?, items: [{ templateName, oldStopName, newClientName, address, partido?, localidad? }] } */
+app.post('/api/admin/split-template-client', async (req: any, res: any) => {
+    const { key, items, dryRun, repoint } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Falta items' });
+    try {
+        const tenantId = 'default-tenant';
+        const { start: hoyStart } = utcDayRange(buenosAiresYmd());
+        const hechos: any[] = [], problemas: any[] = [];
+        for (const it of items as any[]) {
+            const tplName = String(it.templateName || '').trim();
+            const oldName = String(it.oldStopName || '').trim();
+            const newName = String(it.newClientName || '').trim();
+            const address = String(it.address || '').trim();
+            if (!tplName || !oldName || !newName || !address) { problemas.push({ it, error: 'faltan datos' }); continue; }
+
+            const tpls = await (prisma as any).routeTemplate.findMany({ select: { id: true, name: true } });
+            const tpl = tpls.find((t: any) => normClientNameForMatch(t.name) === normClientNameForMatch(tplName));
+            if (!tpl) { problemas.push({ templateName: tplName, error: 'no existe la ruta predefinida' }); continue; }
+            const stops = await (prisma as any).routeStopTemplate.findMany({ where: { routeTemplateId: tpl.id } });
+            const stop = stops.find((s: any) => normClientNameForMatch(s.name) === normClientNameForMatch(oldName));
+            if (!stop) { problemas.push({ templateName: tplName, oldStopName: oldName, error: 'la parada no esta en esa ruta' }); continue; }
+
+            const viejo = await prisma.client.findFirst({ where: { name: { equals: oldName, mode: 'insensitive' } } });
+            let nuevo = await prisma.client.findFirst({ where: { name: { equals: newName, mode: 'insensitive' } } });
+
+            // Rutas futuras que todavia apuntan a la ficha compartida
+            const futuras = viejo ? await prisma.stop.findMany({
+                where: {
+                    clientId: viejo.id, status: 'PENDING',
+                    route: { date: { gte: hoyStart }, actualStartTime: null, trip: { reparto: { equals: tpl.name, mode: 'insensitive' } } }
+                },
+                select: { id: true }
+            }) : [];
+
+            if (dryRun) {
+                hechos.push({ template: tpl.name, parada: stop.name, fichaNueva: newName, yaExistia: !!nuevo, direccion: address, paradasFuturas: futuras.length });
+                continue;
+            }
+            if (!nuevo) {
+                nuevo = await prisma.client.create({
+                    data: {
+                        tenantId, name: newName, address,
+                        partido: it.partido ? String(it.partido) : null,
+                        localidad: it.localidad ? String(it.localidad) : null,
+                        serviceTime: viejo?.serviceTime ?? 15,
+                        tipo: viejo?.tipo ?? null
+                    } as any
+                });
+            } else if ((nuevo.address || '').trim() !== address) {
+                nuevo = await prisma.client.update({ where: { id: nuevo.id }, data: { address } });
+            }
+            await (prisma as any).routeStopTemplate.update({ where: { id: stop.id }, data: { name: newName } });
+            let repuntadas = 0;
+            if (repoint && futuras.length) {
+                const r = await prisma.stop.updateMany({ where: { id: { in: futuras.map((f) => f.id) } }, data: { clientId: nuevo.id } });
+                repuntadas = r.count;
+            }
+            hechos.push({ template: tpl.name, paradaAntes: oldName, paradaAhora: newName, clientId: nuevo.id, direccion: address, paradasFuturasRepuntadas: repuntadas });
+        }
+        res.json({ dryRun: !!dryRun, hechos, problemas });
+    } catch (e: any) {
+        console.error('split-template-client:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
