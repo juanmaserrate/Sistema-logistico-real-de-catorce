@@ -883,6 +883,9 @@ app.post('/api/v1/clients', async (req, res) => {
             tipo: raw.tipo != null && String(raw.tipo).trim() ? String(raw.tipo).trim() : null,
             localidad: raw.localidad != null && String(raw.localidad).trim() ? String(raw.localidad).trim() : null,
             partido: raw.partido != null && String(raw.partido).trim() ? String(raw.partido).trim() : null,
+            contactName: textoContacto(raw.contactName, 120),
+            contactStaff: textoContacto(raw.contactStaff, 120),
+            contactPhone: textoContacto(raw.contactPhone, 40),
         };
         if (lat != null && lng != null && !data.address) {
             const address = await reverseGeocode(lat, lng);
@@ -944,6 +947,9 @@ app.patch('/api/v1/clients/:id', async (req, res) => {
         if (raw.tipo !== undefined) data.tipo = raw.tipo != null && String(raw.tipo).trim() ? String(raw.tipo).trim() : null;
         if (raw.localidad !== undefined) data.localidad = raw.localidad != null && String(raw.localidad).trim() ? String(raw.localidad).trim() : null;
         if (raw.partido !== undefined) data.partido = raw.partido != null && String(raw.partido).trim() ? String(raw.partido).trim() : null;
+        if (raw.contactName !== undefined) data.contactName = textoContacto(raw.contactName, 120);
+        if (raw.contactStaff !== undefined) data.contactStaff = textoContacto(raw.contactStaff, 120);
+        if (raw.contactPhone !== undefined) data.contactPhone = textoContacto(raw.contactPhone, 40);
         if (raw.latitude !== undefined) {
             const s = raw.latitude !== null && raw.latitude !== '' ? String(raw.latitude).trim().replace(',', '.') : '';
             const n = s === '' ? NaN : Number(s);
@@ -987,6 +993,9 @@ app.patch('/api/v1/clients/:id', async (req, res) => {
                 tipo:            'DATOS',
                 localidad:       'DATOS',
                 partido:         'DATOS',
+                contactName:     'DATOS',
+                contactStaff:    'DATOS',
+                contactPhone:    'DATOS',
             };
             for (const [f, category] of Object.entries(fieldCategories)) {
                 if (data[f] !== undefined && String((prevClient as any)[f] ?? '') !== String((updatedClient as any)[f] ?? '')) {
@@ -1029,6 +1038,13 @@ async function backfillAddressesFromCoords(): Promise<void> {
     } catch (e) {
         console.error('Backfill addresses from coords:', e);
     }
+}
+
+/** Texto de contacto: recortado, vacio = null. */
+function textoContacto(v: any, max: number): string | null {
+    if (v === undefined || v === null) return null;
+    const t = String(v).trim().slice(0, max);
+    return t || null;
 }
 
 app.get('/api/v1/clients', async (req, res) => {

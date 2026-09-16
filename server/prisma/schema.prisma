@@ -100,6 +100,12 @@ model Client {
   localidad         String?
   /// Partido al que pertenece (ej: "Almirante Brown", "Quilmes")
   partido           String?
+  /// Contacto en el establecimiento: nombre de la persona
+  contactName       String?
+  /// Personal del contacto: quien es en el establecimiento (directora, portero, cocinera...)
+  contactStaff      String?
+  /// Telefono del contacto
+  contactPhone      String?
   tenant                   Tenant  @relation(fields: [tenantId], references: [id])
   stops                    Stop[]
   establishmentMappings    EstablishmentMapping[]
