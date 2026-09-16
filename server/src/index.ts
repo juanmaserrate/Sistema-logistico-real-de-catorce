@@ -4692,6 +4692,74 @@ app.post('/api/admin/geocode-corners', async (req: any, res: any) => {
     }
 });
 
+/** Segunda pasada para los que Mapbox no conoce (barrios y calles nuevas):
+ *  busca la direccion en OpenStreetMap (Nominatim) y verifica que la calle que
+ *  devuelve sea la pedida. POST /api/admin/geocode-osm { key, dryRun?, limit?, ids? } */
+const GEO_VIEWBOX: Record<string, string> = {
+    // formato de Nominatim: oeste,norte,este,sur
+    'Lanús': '-58.43,-34.66,-58.34,-34.75',
+    'Lomas de Zamora': '-58.52,-34.70,-58.34,-34.85',
+    'Almirante Brown': '-58.48,-34.75,-58.27,-34.95',
+    'Quilmes': '-58.33,-34.66,-58.19,-34.83',
+};
+const GEO_VIEWBOX_AMBA = '-58.60,-34.62,-58.15,-35.00';
+
+app.post('/api/admin/geocode-osm', async (req: any, res: any) => {
+    const { key, dryRun, limit, ids } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const clients = await prisma.client.findMany({
+            where: {
+                ...(Array.isArray(ids) && ids.length ? { id: { in: ids.map(String) } } : {}),
+                address: { not: null },
+                OR: [{ latitude: null }, { longitude: null }]
+            },
+            select: { id: true, name: true, address: true, localidad: true, partido: true },
+            orderBy: { name: 'asc' },
+            take: Math.min(Number(limit) || 30, 60)
+        });
+
+        const ubicados: any[] = [], sinUbicar: any[] = [];
+        for (const c of clients) {
+            const { calle, loc, muni, tieneAltura } = geoPartirDireccion(c.address || '', c.localidad, c.partido);
+            if (!calle || calle.length < 4) { sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: 'no se entiende la direccion' }); continue; }
+            const localidadTexto = loc ? loc.charAt(0) + loc.slice(1).toLowerCase() : null;
+            const q = [calle, localidadTexto, muni, 'Buenos Aires'].filter(Boolean).join(', ');
+            const viewbox = (muni && GEO_VIEWBOX[muni]) || GEO_VIEWBOX_AMBA;
+            if (dryRun) { ubicados.push({ id: c.id, name: c.name, direccion: c.address, busca: q, tieneAltura }); continue; }
+            try {
+                const url = 'https://nominatim.openstreetmap.org/search'
+                    + `?q=${encodeURIComponent(q)}&format=jsonv2&limit=1&countrycodes=ar&addressdetails=1&bounded=1&viewbox=${encodeURIComponent(viewbox)}`;
+                const r = await fetchWithTimeout(url, { headers: { 'User-Agent': 'R14-logistica/1.0 (sistema de reparto escolar)' } }, 30000);
+                const j: any = await r.json().catch(() => []);
+                const hit = Array.isArray(j) ? j[0] : null;
+                if (!hit?.lat) { sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: 'OpenStreetMap no la encontro' }); continue; }
+                const road = hit?.address?.road || hit?.address?.pedestrian || hit?.address?.footway || '';
+                const pedidos = geoTokens(calle.replace(/\s*\d{1,5}\s*$/, ''));
+                const dados = geoTokens(road);
+                const comunes = [...pedidos].filter((t) => dados.has(t)).length;
+                const coincide = pedidos.size > 0 && dados.size > 0
+                    && (comunes === pedidos.size || comunes === dados.size || comunes / pedidos.size >= 0.6);
+                if (!coincide) {
+                    sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: `devolvio otra calle (${road || hit.display_name?.slice(0, 40) || 'sin calle'})` });
+                    continue;
+                }
+                const lat = Number(hit.lat), lon = Number(hit.lon);
+                await prisma.client.update({ where: { id: c.id }, data: { latitude: lat, longitude: lon } });
+                ubicados.push({ id: c.id, name: c.name, direccion: c.address, calleDevuelta: road, lat, lon });
+            } catch (e: any) {
+                sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: e?.message || 'error de red' });
+            }
+            // Nominatim es gratis: una consulta por segundo
+            await new Promise((r) => setTimeout(r, 1300));
+        }
+        res.json({ dryRun: !!dryRun, revisados: clients.length, ubicados: ubicados.length, sinUbicar: sinUbicar.length, detalleUbicados: ubicados.slice(0, 100), detalleSinUbicar: sinUbicar.slice(0, 100) });
+    } catch (e: any) {
+        console.error('geocode-osm:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
