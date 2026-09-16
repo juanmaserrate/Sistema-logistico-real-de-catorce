@@ -4635,11 +4635,13 @@ function geoCallesDeEsquina(address: string): [string, string] | null {
     return [a, b];
 }
 
-/** La palabra mas distintiva de la calle, para buscar en OpenStreetMap. */
+/** La palabra mas distintiva de la calle (suele ser la ultima: el apellido),
+ *  convertida en un patron que ignora acentos — OpenStreetMap los escribe. */
 function geoPalabraClave(calle: string): string {
-    const t = [...geoTokens(calle)];
-    if (!t.length) return geoNorm(calle).replace(/[^A-Z0-9 ]/g, '').trim();
-    return t.sort((x, y) => y.length - x.length)[0];
+    const tokens = geoNorm(calle).split(/[^A-Z0-9]+/).filter((t) => t.length > 2 && !GEO_GENERICAS.has(t));
+    const elegida = tokens.length ? tokens[tokens.length - 1] : geoNorm(calle).replace(/[^A-Z0-9]/g, '');
+    const acentos: Record<string, string> = { A: '[aáAÁ]', E: '[eéEÉ]', I: '[iíIÍ]', O: '[oóOÓ]', U: '[uúüUÚÜ]', N: '[nñNÑ]', C: '[cçCÇ]' };
+    return elegida.split('').map((ch) => acentos[ch] || ch).join('');
 }
 
 app.post('/api/admin/geocode-corners', async (req: any, res: any) => {
