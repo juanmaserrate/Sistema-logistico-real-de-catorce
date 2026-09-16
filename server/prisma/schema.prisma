@@ -164,6 +164,9 @@ model Stop {
   cratesDelivered Int?
   /// Cajones que el chofer RECUPERÓ (vacíos) en esta parada (null = no lo cargó)
   cratesRecovered Int?
+  /// Última vez que se tocaron los cajones. Sirve para detectar el retiro tardío:
+  /// el chofer vuelve más tarde a buscar los cajones, con la entrega ya cerrada.
+  cratesUpdatedAt DateTime?
   client          Client    @relation(fields: [clientId], references: [id])
   route           Route     @relation(fields: [routeId], references: [id])
 

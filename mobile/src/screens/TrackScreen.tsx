@@ -40,6 +40,7 @@ import {
   pingServer,
 } from '../api';
 import StopDeliveryModal from '../components/StopDeliveryModal';
+import CratesModal from '../components/CratesModal';
 import IncidentModal from '../components/IncidentModal';
 import ReorderModal from '../components/ReorderModal';
 import {
@@ -97,6 +98,8 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   const [tracking, setTracking] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [deliveryModalStop, setDeliveryModalStop] = useState<Stop | null>(null);
+  // Cajones de una parada ya cerrada (el chofer vuelve mas tarde a buscarlos)
+  const [cratesModalStop, setCratesModalStop] = useState<Stop | null>(null);
   // Estado de la señal: 'ok' verde, 'queued' amarillo (hay cola pendiente), 'error' rojo.
   const [signalState, setSignalState] = useState<'ok' | 'queued' | 'error'>('ok');
   const [pendingLoc, setPendingLoc] = useState(0);
@@ -918,7 +921,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
               {selConcluded ? (
                 <View style={styles.concludedBanner}>
                   <Text style={styles.concludedBannerTxt}>
-                    ✓ Viaje concluido — solo consulta. Tus entregas del día quedan a la vista hasta mañana.
+                    ✓ Viaje concluido — solo consulta. Tus entregas del día quedan a la vista hasta mañana. Si volvés a buscar cajones, cargalos con el botón 📦 de esa parada.
                   </Text>
                 </View>
               ) : null}
@@ -1056,6 +1059,14 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                         ) : null}
                       </View>
                     ) : null}
+                    {(isDone || isFailed) && !isBase ? (
+                      <Pressable style={styles.tlBtnCrates} onPress={() => setCratesModalStop(st)}>
+                        <Text style={styles.tlBtnCratesTxt}>
+                          📦 {(st.cratesDelivered != null || st.cratesRecovered != null) ? 'Corregir cajones' : 'Cargar cajones'}
+                        </Text>
+                        <Text style={styles.tlBtnCratesSub}>Podés cargarlos aunque el viaje ya esté cerrado</Text>
+                      </Pressable>
+                    ) : null}
                     {isBase && !isDone && !isFailed ? (
                       <Text style={styles.tlBaseHint}>
                         Última parada. Al marcarla se cierra el viaje con esta hora.
@@ -1165,6 +1176,22 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
               loadRoutes({ silent: true }).catch(() => {});
             }
           })();
+        }}
+      />
+
+      <CratesModal
+        visible={cratesModalStop != null}
+        stop={cratesModalStop}
+        onClose={() => setCratesModalStop(null)}
+        onSaved={(stopId, d, r) => {
+          // Actualizacion inmediata en pantalla; el refresh del server confirma.
+          if (selId != null) {
+            setRoutes((prev) => prev.map((rt) => rt.id !== selId ? rt : {
+              ...rt,
+              stops: rt.stops.map((s) => s.id === stopId ? { ...s, cratesDelivered: d, cratesRecovered: r } : s),
+            }));
+          }
+          loadRoutes({ silent: true }).catch(() => {});
         }}
       />
 
@@ -1367,6 +1394,9 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   tlBtnOutTxt: { color: colors.textInverse, fontWeight: font.black, fontSize: font.md },
+  tlBtnCrates: { marginTop: 10, borderRadius: 14, borderWidth: 1.5, borderColor: '#451ebb', paddingVertical: 10, paddingHorizontal: 12, alignItems: 'center' },
+  tlBtnCratesTxt: { fontSize: 14, fontWeight: '900', color: '#451ebb' },
+  tlBtnCratesSub: { fontSize: 11, color: '#74777b', marginTop: 2, textAlign: 'center' },
   tlBtnOutSub: { color: 'rgba(255,255,255,0.8)', fontSize: 9, marginTop: 3, textAlign: 'center' },
   /* Parada pospuesta ("vuelvo más tarde") */
   tlBadgeRetry: { backgroundColor: colors.warningBg },

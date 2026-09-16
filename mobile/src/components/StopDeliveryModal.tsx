@@ -58,7 +58,7 @@ const RETRY_REASONS = [
  *  - Para más de 10, aparece − / + y el número se puede escribir. */
 const CRATE_QUICK = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
 
-function CratePicker({ label, value, onChange }: {
+export function CratePicker({ label, value, onChange }: {
   label: string;
   value: number | null;
   onChange: (n: number | null) => void;

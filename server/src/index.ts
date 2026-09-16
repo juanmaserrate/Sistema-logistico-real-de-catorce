@@ -4149,7 +4149,8 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
                 OR: [{ cratesDelivered: { not: null } }, { cratesRecovered: { not: null } }]
             },
             select: {
-                cratesDelivered: true, cratesRecovered: true, actualArrival: true, actualDeparture: true,
+                cratesDelivered: true, cratesRecovered: true, cratesUpdatedAt: true,
+                actualArrival: true, actualDeparture: true,
                 client: { select: { id: true, name: true, address: true } },
                 route: {
                     select: {
@@ -4163,7 +4164,14 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
 
         const porReparto = new Map<string, any>();
         const porEstab = new Map<string, any>();
-        const tot = { dejados: 0, recuperados: 0, paradas: 0 };
+        const tot = { dejados: 0, recuperados: 0, paradas: 0, tardias: 0 };
+        // "Tardía": los cajones se cargaron mas de 5 min despues de cerrar la entrega
+        // (el chofer volvio mas tarde a buscarlos). No es un error, se marca aparte.
+        const esTardia = (s: any) => {
+            const cargado = s.cratesUpdatedAt ? new Date(s.cratesUpdatedAt).getTime() : null;
+            const cierre = s.actualDeparture ? new Date(s.actualDeparture).getTime() : null;
+            return !!(cargado && cierre && cargado - cierre > 5 * 60 * 1000);
+        };
 
         for (const s of stops as any[]) {
             const reparto = String(s.route?.trip?.reparto || s.route?.driver?.fullName || 'SIN REPARTO').trim();
@@ -4171,19 +4179,23 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
             const usuario = s.route?.driver?.fullName || s.route?.driver?.username || '-';
             const d = s.cratesDelivered || 0, r = s.cratesRecovered || 0;
             const fecha = s.actualDeparture || s.actualArrival || s.route?.date;
+            const tardia = esTardia(s);
             tot.dejados += d; tot.recuperados += r; tot.paradas++;
+            if (tardia) tot.tardias++;
 
             const kr = reparto.toUpperCase();
-            const rep = porReparto.get(kr) || { reparto, usuarios: new Set<string>(), dejados: 0, recuperados: 0, paradas: 0 };
+            const rep = porReparto.get(kr) || { reparto, usuarios: new Set<string>(), dejados: 0, recuperados: 0, paradas: 0, tardias: 0 };
             rep.usuarios.add(usuario); rep.dejados += d; rep.recuperados += r; rep.paradas++;
+            if (tardia) rep.tardias++;
             porReparto.set(kr, rep);
 
             const ke = s.client?.id || 'sin-cliente';
             const est = porEstab.get(ke) || {
                 clientId: s.client?.id || null, establecimiento: s.client?.name || '-', direccion: s.client?.address || null,
-                repartos: new Set<string>(), dejados: 0, recuperados: 0, visitas: 0, ultimaVisita: null as any
+                repartos: new Set<string>(), dejados: 0, recuperados: 0, visitas: 0, ultimaVisita: null as any, tardias: 0
             };
             est.repartos.add(reparto); est.dejados += d; est.recuperados += r; est.visitas++;
+            if (tardia) est.tardias++;
             if (fecha && (!est.ultimaVisita || new Date(fecha) > new Date(est.ultimaVisita))) est.ultimaVisita = new Date(fecha).toISOString();
             porEstab.set(ke, est);
         }
@@ -4202,6 +4214,37 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
     } catch (e: any) {
         console.error('GET /crates/summary:', e);
         res.status(500).json({ error: e?.message || 'Error calculando cajones' });
+    }
+});
+
+/** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
+ *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
+ *  POST /api/admin/reset-crates { key, dryRun? } */
+app.post('/api/admin/reset-crates', async (req: any, res: any) => {
+    const { key, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const stops = await prisma.stop.findMany({
+            where: { OR: [{ cratesDelivered: { not: null } }, { cratesRecovered: { not: null } }] },
+            select: { id: true, cratesDelivered: true, cratesRecovered: true, route: { select: { date: true, trip: { select: { reparto: true } } } } }
+        });
+        const dejados = stops.reduce((a, s) => a + (s.cratesDelivered || 0), 0);
+        const recuperados = stops.reduce((a, s) => a + (s.cratesRecovered || 0), 0);
+        const resumen = { paradas: stops.length, dejados, recuperados };
+        if (dryRun || !stops.length) return res.json({ dryRun: !!dryRun, ...resumen, detalle: stops.slice(0, 50) });
+
+        const backupKey = `crates_backup_${new Date().toISOString().replace(/[:.]/g, '-')}`;
+        await prisma.appSettings.create({
+            data: { key: backupKey, value: JSON.stringify(stops.map(s => ({ id: s.id, d: s.cratesDelivered, r: s.cratesRecovered }))) }
+        });
+        const upd = await prisma.stop.updateMany({
+            where: { id: { in: stops.map(s => s.id) } },
+            data: { cratesDelivered: null, cratesRecovered: null }
+        });
+        res.json({ dryRun: false, ...resumen, borradas: upd.count, backupKey });
+    } catch (e: any) {
+        console.error('reset-crates:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
     }
 });
 
@@ -4282,6 +4325,16 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
             }
             data[campo] = n;
         }
+        // Retiro tardío: el chofer vuelve más tarde a buscar los cajones, con la
+        // entrega (y a veces el viaje entero) ya cerrada. Guardamos cuándo se cargó.
+        if (data.cratesDelivered !== undefined || data.cratesRecovered !== undefined) {
+            data.cratesUpdatedAt = new Date();
+        }
+        // Si el mensaje trae SOLO cajones, no toca estado ni horarios: no hay que
+        // reintentar el cierre del viaje ni la auto-finalización.
+        const soloCajones = Object.keys(data).every(
+            (k) => k === 'cratesDelivered' || k === 'cratesRecovered' || k === 'cratesUpdatedAt'
+        ) && (data.cratesDelivered !== undefined || data.cratesRecovered !== undefined);
         // Snapshot previo SOLO si el cambio viene del operador desde la web
         // (la app del chofer no manda X-Actor-Name). Sin este filtro, cada marca
         // de cada chofer llenaria la auditoria de ruido y taparia lo que importa:
@@ -4336,7 +4389,7 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
     // decide: cierra solo si no queda ninguna sin resolver, y siempre con la hora
     // de la vuelta al deposito.
     try {
-        if (stop.route?.id) await tryCloseRouteIfComplete(stop.route.id);
+        if (stop.route?.id && !soloCajones) await tryCloseRouteIfComplete(stop.route.id);
     } catch (e: any) {
         // Nunca romper la marca del chofer por un fallo al cerrar el viaje:
         // la parada ya quedo guardada, el operador puede cerrar a mano.
@@ -4355,7 +4408,7 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
     // el operador lo cierra desde la web. Asi no hay sorpresas.
     //
     // Para reactivar el auto-finish, controlar via env var AUTO_FINISH_ROUTE_ON_LAST_STOP.
-    if (process.env.AUTO_FINISH_ROUTE_ON_LAST_STOP === 'true') {
+    if (process.env.AUTO_FINISH_ROUTE_ON_LAST_STOP === 'true' && !soloCajones) {
         try {
             const newStatus = String(stop.status || '').toUpperCase();
             const isFinalState = newStatus === 'COMPLETED' || newStatus === 'UNDELIVERABLE';
@@ -5187,7 +5240,10 @@ app.get('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
                 reasonCode: s.reasonCode ?? null,
                 proofPhotoUrl: s.proofPhotoUrl ?? null,
                 deliveryWithoutIssues: s.deliveryWithoutIssues ?? null,
-                signatureUrl: s.signatureUrl ?? null
+                signatureUrl: s.signatureUrl ?? null,
+                cratesDelivered: s.cratesDelivered ?? null,
+                cratesRecovered: s.cratesRecovered ?? null,
+                cratesUpdatedAt: (s as any).cratesUpdatedAt?.toISOString() ?? null
             }))
         });
     } catch (e: any) {
