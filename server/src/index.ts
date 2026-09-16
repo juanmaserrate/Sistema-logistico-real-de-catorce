@@ -4766,6 +4766,42 @@ app.post('/api/admin/geocode-osm', async (req: any, res: any) => {
     }
 });
 
+/** Nombres de choferes y auxiliares tal cual figuran cargados en los viajes de
+ *  un mes. Sirve para cargar los sueldos con el mismo nombre y que el motor de
+ *  costos los encuentre. GET /api/admin/trip-people?key=...&month=9&year=2026 */
+app.get('/api/admin/trip-people', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const year = Number(req.query.year) || new Date().getFullYear();
+        const mes = Number(req.query.month) || (new Date().getMonth() + 1);
+        const desde = new Date(year, mes - 1, 1);
+        const hasta = new Date(year, mes, 0, 23, 59, 59);
+        const trips = await prisma.trip.findMany({
+            where: { date: { gte: desde, lte: hasta } },
+            select: { id: true, contractType: true, driver: true, auxiliar: true, auxiliar2: true, auxiliar3: true, assignedMobileUser: true, reparto: true }
+        });
+        const contar = (lista: (string | null)[]) => {
+            const m = new Map<string, number>();
+            for (const raw of lista) {
+                for (const n of String(raw || '').split(',').map((x) => x.trim())) {
+                    if (!n || ['--', 'N/A', 'SIN AUXILIAR'].includes(n.toUpperCase())) continue;
+                    m.set(n, (m.get(n) || 0) + 1);
+                }
+            }
+            return [...m.entries()].sort((a, b) => b[1] - a[1]).map(([nombre, viajes]) => ({ nombre, viajes }));
+        };
+        const propios = trips.filter((t) => String(t.contractType || '').toLowerCase() === 'propio');
+        res.json({
+            mes, year, viajes: trips.length, viajesPropios: propios.length,
+            choferes: contar(trips.map((t) => t.driver)),
+            auxiliares: contar(trips.flatMap((t) => [t.auxiliar, t.auxiliar2, t.auxiliar3])),
+            auxiliaresEnPropios: contar(propios.flatMap((t) => [t.auxiliar, t.auxiliar2, t.auxiliar3]))
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
