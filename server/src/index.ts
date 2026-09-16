@@ -4473,6 +4473,75 @@ app.post('/api/admin/cleanup-clients', async (req: any, res: any) => {
     }
 });
 
+/** Ubica en el mapa a los establecimientos que no tienen coordenadas, usando
+ *  Mapbox y la direccion cargada. Solo acepta resultados dentro del AMBA y con
+ *  confianza suficiente: una direccion mal ubicada manda al chofer al lugar
+ *  equivocado, asi que ante la duda queda sin coordenadas.
+ *  POST /api/admin/geocode-clients { key, dryRun?, limit?, ids? } */
+app.post('/api/admin/geocode-clients', async (req: any, res: any) => {
+    const { key, dryRun, limit, ids } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const setting = await prisma.appSettings.findUnique({ where: { key: 'mapbox_access_token_public' } });
+        let token = '';
+        try { const p = setting?.value ? JSON.parse(setting.value) : ''; if (typeof p === 'string') token = p.trim(); } catch {}
+        if (!token) token = String(process.env.MAPBOX_ACCESS_TOKEN || process.env.MAPBOX_TOKEN || '').trim();
+        if (!token) return res.status(400).json({ error: 'No hay token de Mapbox configurado' });
+
+        const clients = await prisma.client.findMany({
+            where: {
+                ...(Array.isArray(ids) && ids.length ? { id: { in: ids.map(String) } } : {}),
+                address: { not: null },
+                OR: [{ latitude: null }, { longitude: null }]
+            },
+            select: { id: true, name: true, address: true, localidad: true, partido: true },
+            orderBy: { name: 'asc' },
+            take: Math.min(Number(limit) || 250, 500)
+        });
+
+        // Caja del AMBA sur (Lanus, Lomas, Alte. Brown, Quilmes y alrededores)
+        const BBOX = { minLon: -58.75, maxLon: -58.10, minLat: -35.05, maxLat: -34.55 };
+        const ubicados: any[] = [], dudosos: any[] = [];
+        for (const c of clients) {
+            const partes = [String(c.address).replace(/\s*·\s*Maps:.*$/i, '').trim()];
+            if (c.localidad) partes.push(String(c.localidad));
+            if (c.partido) partes.push(String(c.partido));
+            partes.push('Buenos Aires', 'Argentina');
+            const q = partes.join(', ');
+            if (dryRun) { ubicados.push({ id: c.id, name: c.name, consulta: q }); continue; }
+            try {
+                const url = 'https://api.mapbox.com/search/geocode/v6/forward'
+                    + `?q=${encodeURIComponent(q)}&country=ar&limit=1&language=es`
+                    + '&proximity=-58.40,-34.80'
+                    + `&access_token=${encodeURIComponent(token)}`;
+                const r = await fetchWithTimeout(url, {}, 8000);
+                const j: any = await r.json().catch(() => ({}));
+                const f = j?.features?.[0];
+                const lon = f?.properties?.coordinates?.longitude ?? f?.geometry?.coordinates?.[0];
+                const lat = f?.properties?.coordinates?.latitude ?? f?.geometry?.coordinates?.[1];
+                const conf = String(f?.properties?.match_code?.confidence || '').toLowerCase();
+                const tipo = String(f?.properties?.feature_type || '');
+                const dentro = lon != null && lat != null
+                    && lon >= BBOX.minLon && lon <= BBOX.maxLon && lat >= BBOX.minLat && lat <= BBOX.maxLat;
+                // Una localidad entera (place/locality) no sirve: cae en el centro del barrio.
+                const util = dentro && conf !== 'low' && ['address', 'street', 'block', 'neighborhood'].includes(tipo);
+                if (!util) {
+                    dudosos.push({ id: c.id, name: c.name, direccion: c.address, motivo: !dentro ? 'cae fuera del AMBA' : `poco preciso (${tipo || 'sin tipo'}/${conf || 'sin confianza'})` });
+                    continue;
+                }
+                await prisma.client.update({ where: { id: c.id }, data: { latitude: lat, longitude: lon } });
+                ubicados.push({ id: c.id, name: c.name, direccion: c.address, lat, lon, tipo, conf });
+            } catch (e: any) {
+                dudosos.push({ id: c.id, name: c.name, direccion: c.address, motivo: e?.message || 'error de red' });
+            }
+        }
+        res.json({ dryRun: !!dryRun, revisados: clients.length, ubicados: ubicados.length, dudosos: dudosos.length, detalleUbicados: ubicados.slice(0, 200), detalleDudosos: dudosos });
+    } catch (e: any) {
+        console.error('geocode-clients:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
