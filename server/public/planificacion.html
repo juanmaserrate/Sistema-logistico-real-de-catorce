@@ -12393,6 +12393,63 @@
             return isFirstTurn(t);
         }
 
+        /** Nombres de auxiliares cargados en el viaje, sin repetidos ni "SIN AUXILIAR". */
+        function auxiliaresDelViaje(t) {
+            return [...new Set([t.auxiliar, t.auxiliar2, t.auxiliar3, t.assistant, t.assistant2, t.assistant3]
+                .filter(Boolean)
+                .flatMap(a => a.toString().split(',').map(n => n.trim())))]
+                .filter(n => n && n !== '--' && n !== 'N/A' && n.toUpperCase() !== 'SIN AUXILIAR');
+        }
+
+        function getSalaryJornal(name, monthKey) {
+            const e = findSalariedEmployee(name, monthKey);
+            return e ? Number(e.Jornal || 0) : 0;
+        }
+
+        // Horas que hizo cada auxiliar en el mes. Cache que se rearma si cambian los viajes.
+        let _auxHorasCache = { len: -1, mapa: new Map() };
+        function horasDelAuxEnElMes(name, monthKey) {
+            const len = (planningData || []).length;
+            if (_auxHorasCache.len !== len) _auxHorasCache = { len, mapa: new Map() };
+            const clave = `${monthKey}|${String(name).toLowerCase()}`;
+            if (_auxHorasCache.mapa.has(clave)) return _auxHorasCache.mapa.get(clave);
+            const objetivo = String(name).toLowerCase();
+            const db = getCostsDatabase()[monthKey];
+            const fb = parseFloat(db?.fallback_hours) > 0 ? parseFloat(db.fallback_hours) : 8;
+            let horas = 0;
+            for (const x of (planningData || [])) {
+                if (!tripIsPropioForCost(x)) continue;
+                if (getMonthKeyFromDate(x.date) !== monthKey) continue;
+                if (!auxiliaresDelViaje(x).some(n => n.toLowerCase() === objetivo)) continue;
+                horas += getTripDurationHours(x, fb);
+            }
+            _auxHorasCache.mapa.set(clave, horas);
+            return horas;
+        }
+
+        // Primer viaje del dia de cada auxiliar: ahi se le carga el jornal, una sola vez.
+        let _auxPrimerViajeCache = { len: -1, mapa: new Map() };
+        function esPrimerViajeDelDiaDelAux(t, name) {
+            const len = (planningData || []).length;
+            if (_auxPrimerViajeCache.len !== len) {
+                const mapa = new Map();
+                const orden = [...(planningData || [])].sort((a, b) => {
+                    const ha = String(a.exitTime || a.departureTime || a.date || '');
+                    const hb = String(b.exitTime || b.departureTime || b.date || '');
+                    return ha.localeCompare(hb) || (a.id - b.id);
+                });
+                for (const x of orden) {
+                    const dia = getTripLocalDateKey(x);
+                    for (const n of auxiliaresDelViaje(x)) {
+                        const k = `${n.toLowerCase()}|${dia}`;
+                        if (!mapa.has(k)) mapa.set(k, x.id);
+                    }
+                }
+                _auxPrimerViajeCache = { len, mapa };
+            }
+            return _auxPrimerViajeCache.mapa.get(`${String(name).toLowerCase()}|${getTripLocalDateKey(t)}`) === t.id;
+        }
+
         function getTripCalculatedCost(t) {
             if (!t) return 0;
             
@@ -12422,20 +12479,22 @@
             const durationHrs = getTripDurationHours(t, fbHours);
             let tripTotal = durationHrs * vehicleHourlyRate;
             
-            const isFirst = isPrimeraVueltaParaCosto(t);
-            const assistants = [...new Set([t.auxiliar, t.auxiliar2, t.auxiliar3, t.assistant, t.assistant2, t.assistant3]
-                .filter(Boolean)
-                .flatMap(a => a.toString().split(',').map(n => n.trim())))]
-                .filter(n => n && n !== '--' && n !== 'N/A' && n !== 'SIN AUXILIAR');
-                
+            const assistants = auxiliaresDelViaje(t);
+
             assistants.forEach(name => {
                 const bruto = getSalaryBruto(name, monthKey);
-                const isJornal = isEmployeeJornal(name, monthKey);
-                if (isFirst || !isJornal) {
-                    tripTotal += (bruto / horasReales) * durationHrs;
+                const jornal = getSalaryJornal(name, monthKey);
+                if (!bruto && !jornal) return;
+                if (jornal > 0) {
+                    // Por jornal: cobra el DIA. Se carga una sola vez, en su primer viaje del dia.
+                    if (esPrimerViajeDelDiaDelAux(t, name)) tripTotal += jornal;
+                } else {
+                    // Mensualizado: el sueldo se reparte entre las horas que hizo ese mes
+                    const hrsAux = horasDelAuxEnElMes(name, monthKey) || durationHrs || 1;
+                    tripTotal += (bruto / hrsAux) * durationHrs;
                 }
             });
-            
+
             return Math.round(tripTotal);
         }
 

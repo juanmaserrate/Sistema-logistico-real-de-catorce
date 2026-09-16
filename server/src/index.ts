@@ -5603,6 +5603,15 @@ const MONTH_TO_NUM: Record<string, number> = {
     julio:6, agosto:7, septiembre:8, octubre:9, noviembre:10, diciembre:11
 };
 
+/** Palabras del nombre de una persona, sin acentos ni signos, para cruzar
+ *  "DENIS RODRIGUEZ" con "RODRIGUEZ DENIS". */
+function normPersonaCosto(nombre: string): string[] {
+    return String(nombre ?? '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().replace(/[^a-z0-9 ]/g, ' ')
+        .split(/\s+/).filter((w) => w.length > 1);
+}
+
 function parseTripDurationHrs(t: any, fallbackHours = 8): number {
     if (t.routeActualStart && t.routeActualEnd) {
         const diff = (new Date(t.routeActualEnd).getTime() - new Date(t.routeActualStart).getTime()) / 3600000;
@@ -5787,14 +5796,30 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
 
         if (trips.length === 0) return res.json({ updated: 0, trips: [], message: 'No hay viajes propios en ese mes' });
 
-        // 4. Construir mapa auxiliar → bruto desde salariesData
-        const salariesMap: Record<string, number> = {};
-        if (Array.isArray(salariesData)) {
-            salariesData.forEach((e: any) => {
-                const name = `${e.Apellido || ''} ${e.Nombre || ''}`.trim().toLowerCase();
-                if (name) salariesMap[name] = Number(e.Bruto || 0);
-            });
+        // 4. Sueldos del mes. Se leen de la base; si el mes no tiene nada cargado,
+        // se usa lo que mande el navegador (compatibilidad con la pantalla vieja).
+        // BUG (16-sep): el cruce era por texto exacto "APELLIDO NOMBRE", pero en los
+        // viajes el auxiliar figura como "NOMBRE APELLIDO". No coincidia NUNCA y el
+        // costo del auxiliar se guardaba en CERO, aunque en pantalla se viera bien.
+        const sueldosDb = await prisma.employeeSalary.findMany({ where: { month: String(month).toLowerCase() } });
+        type SueldoCosto = { palabras: string[]; bruto: number; jornal: number };
+        const sueldos: SueldoCosto[] = [];
+        const agregarSueldo = (apellido: any, nombre: any, bruto: any, jornal: any) => {
+            const palabras = normPersonaCosto(`${apellido || ''} ${nombre || ''}`);
+            if (palabras.length) sueldos.push({ palabras, bruto: Number(bruto) || 0, jornal: Number(jornal) || 0 });
+        };
+        if (sueldosDb.length) {
+            for (const e of sueldosDb) agregarSueldo(e.lastName, e.firstName, e.grossSalary, e.dailyWage);
+        } else if (Array.isArray(salariesData)) {
+            for (const e of salariesData as any[]) agregarSueldo(e.Apellido, e.Nombre, e.Bruto, e.Jornal);
         }
+        /** Busca el sueldo comparando palabra por palabra, sin importar el orden:
+         *  "DENIS RODRIGUEZ" (viaje) encuentra a "RODRIGUEZ DENIS" (sueldos). */
+        const buscarSueldo = (nombre: string): SueldoCosto | null => {
+            const buscadas = normPersonaCosto(nombre);
+            if (!buscadas.length) return null;
+            return sueldos.find((e) => buscadas.every((b) => e.palabras.some((p) => p.includes(b) || b.includes(p)))) || null;
+        };
 
         // 5. Para cada auxiliar único en todos los viajes del mes, sumar horas totales
         // Bug fix: antes se leian t.assistant / t.assistant2 / t.assistant3 que NO existen
@@ -5821,6 +5846,28 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
             }, 0);
         });
 
+        // Auxiliar por jornal: cobra el DIA, no el viaje. Se le carga el jornal una
+        // sola vez por dia, en su primer viaje; las vueltas siguientes no suman.
+        const primerViajeDelDia: Record<string, number> = {};
+        const ordenados = [...trips].sort((a: any, b: any) => {
+            const ha = String(a.exitTime || a.departureTime || a.date || '');
+            const hb = String(b.exitTime || b.departureTime || b.date || '');
+            return ha.localeCompare(hb) || a.id - b.id;
+        });
+        for (const t of ordenados as any[]) {
+            const dia = new Date(t.date).toISOString().slice(0, 10);
+            const auxList = [...new Set(
+                [t.auxiliar, t.auxiliar2, t.auxiliar3]
+                    .filter(Boolean)
+                    .flatMap((a: string) => a.toString().split(',').map((n: string) => n.trim()))
+                    .filter((n: string) => n && !['--', 'N/A', 'SIN AUXILIAR'].includes(n.toUpperCase()))
+            )];
+            for (const name of auxList) {
+                const clave = `${name.toLowerCase()}|${dia}`;
+                if (primerViajeDelDia[clave] === undefined) primerViajeDelDia[clave] = t.id;
+            }
+        }
+
         // 6. Calcular y guardar costo de cada viaje
         const updates: any[] = [];
         for (const t of trips as any[]) {
@@ -5836,10 +5883,18 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
                     .filter((n: string) => n && n !== '--' && n !== 'N/A' && n !== 'SIN AUXILIAR')
             )];
 
+            const dia = new Date(t.date).toISOString().slice(0, 10);
             auxList.forEach((name: string) => {
-                const bruto = salariesMap[name.toLowerCase()] || 0;
-                const totalHrsAux = auxTotalHours[name] || 1;
-                tripCost += (bruto / totalHrsAux) * durHrs;
+                const sueldo = buscarSueldo(name);
+                if (!sueldo || (!sueldo.bruto && !sueldo.jornal)) return;
+                if (sueldo.jornal > 0) {
+                    // Por jornal: el dia se cobra una sola vez (primer viaje del dia)
+                    if (primerViajeDelDia[`${name.toLowerCase()}|${dia}`] === t.id) tripCost += sueldo.jornal;
+                } else {
+                    // Mensualizado: el sueldo se reparte entre las horas que hizo ese mes
+                    const totalHrsAux = auxTotalHours[name] || durHrs || 1;
+                    tripCost += (sueldo.bruto / totalHrsAux) * durHrs;
+                }
             });
 
             const value = Math.round(tripCost);
