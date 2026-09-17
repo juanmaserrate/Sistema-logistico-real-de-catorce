@@ -14018,7 +14018,7 @@
   @page { size: A4 portrait; margin: 9mm; }
   * { box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; color: #111; margin: 0; font-size: 11px; }
-  .hdr { page-break-after: always; }
+  .hdr { page-break-after: always; display: flex; flex-direction: column; min-height: 268mm; }
   .hdr:last-child { page-break-after: auto; }
   .hdr-top { display: flex; align-items: center; gap: 12px; border-bottom: 3px solid #1B2559; padding-bottom: 6px; margin-bottom: 8px; }
   .hdr-top img { height: 54px; width: auto; object-fit: contain; }
@@ -14047,10 +14047,12 @@
   .sec-title { background: #1B2559; color: #fff; font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; padding: 3px 6px; margin: 8px 0 0; border-radius: 4px 4px 0 0; }
   .obs { border: 1px solid #999; border-top: none; min-height: 46px; padding: 4px; }
   .env th { background: #2B3674; }
-  .env td { height: 22px; text-align: center; }
+  .env td { height: 30px; text-align: center; }
   .env .sec { background: #F4F7FE; font-weight: bold; text-align: left; }
-  .firmas { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 18px; }
-  .firmas .f { border-top: 1px solid #111; padding-top: 3px; font-size: 9px; text-transform: uppercase; color: #555; text-align: center; font-weight: bold; }
+  /* Firmas al pie de la hoja: margin-top auto las empuja abajo, y el padding
+     garantiza lugar para firmar aunque la hoja venga llena de paradas. */
+  .firmas { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: auto; padding-top: 22mm; }
+  .firmas .f { border-top: 1px solid #111; padding-top: 4px; font-size: 10px; text-transform: uppercase; color: #555; text-align: center; font-weight: bold; }
 </style></head><body>${body}</body></html>`;
         }
 
