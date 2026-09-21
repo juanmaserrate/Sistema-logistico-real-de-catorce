@@ -1040,6 +1040,23 @@ async function backfillAddressesFromCoords(): Promise<void> {
     }
 }
 
+/** Si la vuelta al deposito quedo "En la parada" (ARRIVED) al cerrar el viaje,
+ *  la marca como terminada con la hora de cierre. No toca paradas de escuelas. */
+async function cerrarParadaDepositoEnLlegada(routeId: number, cierre: Date) {
+    try {
+        const base = await prisma.stop.findFirst({
+            where: { routeId, isReturnToBase: true, status: 'ARRIVED' }
+        });
+        if (!base) return;
+        await prisma.stop.update({
+            where: { id: base.id },
+            data: { status: 'COMPLETED', actualDeparture: base.actualDeparture || cierre }
+        });
+    } catch (e: any) {
+        console.warn('[deposito] no se pudo cerrar la parada de deposito:', e?.message || e);
+    }
+}
+
 /** Texto de contacto: recortado, vacio = null. */
 function textoContacto(v: any, max: number): string | null {
     if (v === undefined || v === null) return null;
@@ -5009,6 +5026,31 @@ app.post('/api/admin/fix-trip-assignment', async (req: any, res: any) => {
     }
 });
 
+/** Viajes cerrados con la vuelta al deposito todavia "En la parada": la cierra
+ *  con la hora de fin del viaje. POST /api/admin/fix-open-base-stops { key, dryRun?, days? } */
+app.post('/api/admin/fix-open-base-stops', async (req: any, res: any) => {
+    const { key, dryRun, days } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const desde = new Date(Date.now() - Math.min(Number(days) || 30, 120) * 86400000);
+        const paradas = await prisma.stop.findMany({
+            where: { isReturnToBase: true, status: 'ARRIVED', route: { actualEndTime: { not: null }, date: { gte: desde } } },
+            select: { id: true, actualArrival: true, actualDeparture: true, route: { select: { id: true, tripId: true, actualEndTime: true, trip: { select: { reparto: true } } } } }
+        });
+        if (!dryRun) {
+            for (const p of paradas) {
+                await prisma.stop.update({
+                    where: { id: p.id },
+                    data: { status: 'COMPLETED', actualDeparture: p.actualDeparture || p.route.actualEndTime }
+                });
+            }
+        }
+        res.json({ dryRun: !!dryRun, cantidad: paradas.length, viajes: paradas.map((p) => ({ tripId: p.route.tripId, reparto: p.route.trip?.reparto, llegada: p.actualArrival, cierre: p.route.actualEndTime })) });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
@@ -6448,6 +6490,9 @@ app.patch('/api/v1/trips/:tripId/recorrido-operador', async (req, res) => {
             where: { id: tripId },
             data: { status: 'COMPLETED', completedAt: now }
         });
+        // El chofer marco la llegada al deposito y el operador cerro el viaje antes
+        // de que tocara "Finalizar": la parada quedaba "En la parada" para siempre.
+        await cerrarParadaDepositoEnLlegada(route.id, now);
         io.emit('route:updated', { routeId: route.id, tripId, type: 'operator_finished' });
         io.emit('trip:updated', { tripId });
         return res.json({ route: updated });

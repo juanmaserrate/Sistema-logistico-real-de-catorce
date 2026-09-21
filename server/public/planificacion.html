@@ -12683,6 +12683,8 @@
         // Si es true → el chevron pasa a MODO LECTURA. El operador no puede
         // borrar/agregar/reordenar paradas porque rompería el progreso del chofer.
         const weeklyTripIsStarted = {};
+        // Viaje ya cerrado (tiene hora de fin): el panel no debe decir "en curso"
+        const weeklyTripIsFinished = {};
         const weeklyTripStopsMeta = {};  // tripId → { status, actualArrival, actualDeparture, proofPhotoUrl, ... }
 
         async function loadWeeklyTripStopsBuffer(tripId) {
@@ -12710,6 +12712,10 @@
                     anyStopWithProgress ||
                     tripFromData?.routeActualStart ||
                     (tripFromData?.status && !['PENDING','PLANNED','CANCELLED','CANCELADO'].includes(String(tripFromData.status).toUpperCase()))
+                );
+                weeklyTripIsFinished[tripId] = !!(
+                    data?.actualEndTime ||
+                    ['COMPLETED', 'RETURNED'].includes(String(tripFromData?.status || '').toUpperCase())
                 );
                 // Guardar meta por stop para mostrar status en read-only
                 weeklyTripStopsMeta[tripId] = {};
@@ -13045,7 +13051,15 @@
                     } catch (_) { return '—'; }
                 };
 
-                wrap.innerHTML = `
+                const finalizado = !!weeklyTripIsFinished[tripId];
+                wrap.innerHTML = finalizado ? `
+                    <div class="flex flex-wrap items-center gap-2 mb-3 p-2 rounded-xl bg-emerald-50 border border-emerald-200">
+                        <i data-lucide="check-circle" class="w-4 h-4 text-emerald-700"></i>
+                        <span class="text-[10px] font-black uppercase tracking-wider text-emerald-800">
+                            Viaje finalizado · solo lectura
+                        </span>
+                        <span class="text-[10px] text-emerald-700">${rows.length} paradas</span>
+                    </div>` : `
                     <div class="flex flex-wrap items-center gap-2 mb-3 p-2 rounded-xl bg-amber-50 border border-amber-200">
                         <i data-lucide="lock" class="w-4 h-4 text-amber-700"></i>
                         <span class="text-[10px] font-black uppercase tracking-wider text-amber-800">
@@ -13059,7 +13073,8 @@
                 // Async: completar el indicador de senial del telefono del chofer.
                 // Verde = reportando; ambar = sin senial hace rato (puede tener
                 // paradas marcadas sin sincronizar en el telefono).
-                getDriverLastSignalMinutes(tripId).then((sig) => {
+                // Un viaje finalizado no necesita el aviso: ya no se espera nada del telefono.
+                if (!finalizado) getDriverLastSignalMinutes(tripId).then((sig) => {
                     const el = document.getElementById(`weekly-signal-${tripId}`);
                     if (!el || !sig.ok) return;
                     if (sig.minutes == null) {
@@ -19326,14 +19341,14 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
          *  incluye lastLocation por viaje). */
         async function getDriverLastSignalMinutes(tripId) {
             try {
-                const res = await fetch(`${API_URL}/control/active-routes`, { headers: getActorHeaders() });
+                const t = getWeeklyTripById(tripId);
+                const ymd = t?.date ? new Date(t.date).toISOString().slice(0, 10) : '';
+                const res = await fetch(`${API_URL}/control/driver-status${ymd ? '?date=' + ymd : ''}`, { headers: getActorHeaders() });
                 if (!res.ok) return { minutes: null, ok: false };
                 const data = await res.json();
-                const items = Array.isArray(data) ? data : (data.items || []);
-                const it = items.find(x => String(x.tripId) === String(tripId));
-                if (!it || !it.lastLocation?.timestamp) return { minutes: null, ok: true };
-                const mins = Math.round((Date.now() - new Date(it.lastLocation.timestamp).getTime()) / 60000);
-                return { minutes: mins, ok: true };
+                const it = (data.drivers || []).find(x => String(x.tripId) === String(tripId));
+                if (!it || !it.lastPingAt) return { minutes: null, ok: true };
+                return { minutes: Math.max(0, Math.round((Date.now() - new Date(it.lastPingAt).getTime()) / 60000)), ok: true };
             } catch (_) {
                 return { minutes: null, ok: false };
             }
