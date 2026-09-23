@@ -1,0 +1,61 @@
+﻿★ eas-cli@18.8.1 is now available.
+To upgrade, run:
+npm install -g eas-cli
+Proceeding with outdated version.
+
+(node:43184) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+- Fetching the build…
+√ Found a matching build for the project @juanmaserrate1/r14-seguimiento
+{
+  "id": "c593f993-c2f7-4cfa-bf69-769ea3b04b1a",
+  "status": "FINISHED",
+  "platform": "ANDROID",
+  "artifacts": {
+    "buildUrl": "https://expo.dev/artifacts/eas/qp585TE8aRw6LqipxYtNWf.apk",
+    "applicationArchiveUrl": "https://expo.dev/artifacts/eas/qp585TE8aRw6LqipxYtNWf.apk"
+  },
+  "fingerprint": {
+    "id": "019d894c-395f-70f4-8b1b-da4d8c93f206",
+    "hash": "c99a4cfd118c0fc70c1e12a9809d757afd70ea71"
+  },
+  "initiatingActor": {
+    "id": "5b047874-167e-464e-ae79-a538f128e1f5",
+    "displayName": "juanmaserrate1"
+  },
+  "logFiles": [
+    "https://job-logs.eascdn.net/production/c593f993-c2f7-4cfa-bf69-769ea3b04b1a/1776999884223-aa51fc4a-5a0c-4b37-9d13-93cb094213e9.txt?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=www-production%40exponentjs.iam.gserviceaccount.com%2F20260424%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20260424T030838Z&X-Goog-Expires=900&X-Goog-SignedHeaders=host&X-Goog-Signature=3e2e435ba03855c316f78789fa33aaa6219905f3dc2d1b8fc3cfe032f5d0dd8258f250bac4a5e72a0b8f64f1d1516dc3bb0cadcc1f58d59d337faee255f01ae35d03409e3d182e5c9a9cecb7971f8c81482bac715221495d2f3cca2f80d0ab415ec0bf6473246741629693d16d34d4e57e233e93b16b79c62489953779f5081c3beb97b15224ebe5f74fc75fe97e1026752df0cd6bf915cbf102a090f3b19307ae77a9e3688356e83d211f41f490ff676128b5e1b8bc0bc216bd26cb0bf865e3e5d5b3cd91fdfb2e942d8375182562343050671d4c71035b1419a8731e6e1861254815dcac636d27f983423bcf691fbf9edc93ea7ec967662f3abcd81a721929",
+    "https://job-logs.eascdn.net/production/c593f993-c2f7-4cfa-bf69-769ea3b04b1a/1776999886111-594dd346-19df-4f21-8d72-59cbef300b0f.txt?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=www-production%40exponentjs.iam.gserviceaccount.com%2F20260424%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20260424T030838Z&X-Goog-Expires=900&X-Goog-SignedHeaders=host&X-Goog-Signature=0340578e7377b021a07bf9b2843bf1ed18235c967a524951b278b10c463036a89c63e056bcba463226433e6266201822db8772080080e049621092b2c6543a946da2956f9ebed971ca525cc4a1dd3b5a8f1a206aeddbffcf7a49fbaa2b4c3056428fe4fe47f45c46a1d9c88f43f010cf23cc4e48c22c74b319f91e697e721d1459b297a48191c4121be46080a255bb151c21186002075bc04486280ddcf51a4e244a07bbfa5209164489e05b5d8077a7ac9faad6682a49b041386bd861fd243a73472d86ffb12ef973a537b523d9af5d664bcb20a1c0be57ca843f3bb0ae8d0b823657823485202413305c33f8227d1682b3c885dae4162844c8f3a8867e50c3",
+    "https://job-logs.eascdn.net/production/c593f993-c2f7-4cfa-bf69-769ea3b04b1a/1776999886313-cca84d06-750b-4088-993e-2c88015ccc66.txt?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=www-production%40exponentjs.iam.gserviceaccount.com%2F20260424%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20260424T030838Z&X-Goog-Expires=900&X-Goog-SignedHeaders=host&X-Goog-Signature=6f24b539b5bfc2245c7c24e2a12a79da7ccae4c100b735e844a9cec16208c60e12cfd54565972c45bdfe991752b15565f0ff031ed3128ffcc93291d31f3320042e5916ad81dafced3c897ace5f943df35e6230d07da7fe4b3ed65612866bf5d208d4f0324fd9ef1910a4def1c4b54f7bac21f628fd0b37d3feee13ad508291a071b5fde193e2f18309dbab81a24cc4518e7f6c2b9ef3d1c31dc307e90759fd5b793e00f434a2c385043040b953c58ce38fb1e71a99ff34461da06be196dc0665fe5a763017faf123e33aa0536b40310871c31ba7672d85b19d28474175bf74f41f391adbef99cacbf653654265c4b15a45523c97efa4d22dfed11a47eec0e36e",
+    "https://job-logs.eascdn.net/production/c593f993-c2f7-4cfa-bf69-769ea3b04b1a/1776999886489-2c662970-fac4-4706-81f6-44897045ffce.txt?X-Goog-Algorithm=GOOG4-RSA-SHA256&X-Goog-Credential=www-production%40exponentjs.iam.gserviceaccount.com%2F20260424%2Fauto%2Fstorage%2Fgoog4_request&X-Goog-Date=20260424T030838Z&X-Goog-Expires=900&X-Goog-SignedHeaders=host&X-Goog-Signature=b366b5e86c6277c7cae231eb90521aa7d5e02940e67118457f6224b3023ac1bdbf5423e363970c1c798c295d3a97b279749b097cf74e945095cc2bc3e068588445647084d1b854e9fc6f26b1b8a955cdb34dbf8ee63b4643a55238a29d0fd344c4a3584109e71fcd6dd5189f80f80acaa33f01b2786d47c37cae311a9b5641e1e1c25a853d28b55aa97529982d8fa864242abc88ce0a0266814c1409e9115fdd64505ae4ca307329972f29467f8c91850dd9ff3123c764a4eeb1c4241e3d19591370297d29efe4b58ba7bdb4e769839036705d23875c01538ef567b0c4a38d85cb73c4d9261adceda28baffeddcfa98457e7f42d9de77651f7bdacf8ba323243"
+  ],
+  "project": {
+    "id": "383c6e56-502c-42f8-a683-067c79908cec",
+    "name": "r14-seguimiento",
+    "slug": "r14-seguimiento",
+    "ownerAccount": {
+      "id": "326fa3e7-3ee3-46df-902c-b9e8e9bc361d",
+      "name": "juanmaserrate1"
+    }
+  },
+  "channel": "preview",
+  "distribution": "INTERNAL",
+  "buildProfile": "preview",
+  "sdkVersion": "54.0.0",
+  "appVersion": "1.0.0",
+  "appBuildVersion": "1",
+  "runtimeVersion": "1.0.0",
+  "gitCommitHash": "9489bf4c18f826c94cf57e478b418356c151a453",
+  "gitCommitMessage": "feat: nuevo logo R14 - blanco sobre transparente para headers oscuros\n\nDisenado con 'R14' grande en sans-serif semibold, dos puntos decorativos\nflanqueando (izquierdo antes de R, derecho despues de 4) y 'Real de Catorce'\ndebajo en peso regular. Para usar sobre fondo negro (headers de PDFs).\n\nCo-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>",
+  "priority": "NORMAL",
+  "createdAt": "2026-04-24T03:04:43.946Z",
+  "updatedAt": "2026-04-24T03:16:22.219Z",
+  "completedAt": "2026-04-24T03:16:14.749Z",
+  "expirationDate": "2026-05-08T03:04:44.019Z",
+  "isForIosSimulator": false,
+  "metrics": {
+    "buildWaitTime": 179,
+    "buildQueueTime": 41779,
+    "buildDuration": 648529
+  }
+}

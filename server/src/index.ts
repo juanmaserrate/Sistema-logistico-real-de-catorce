@@ -1362,6 +1362,9 @@ async function viajesSinCerrarHoy() {
         const senal = r.driverId ? ultimaSenal[r.driverId] : null;
         return {
             tripId: r.trip?.id ?? null,
+            // Fecha de la ruta: siempre tiene que ser la del dia. Si apareciera
+            // otra, es que la ruta quedo cargada con fecha equivocada.
+            fecha: r.date ? new Date(r.date).toISOString().slice(0, 10) : null,
             reparto: r.trip?.reparto || r.driver?.username || '—',
             chofer: r.trip?.driver || r.driver?.fullName || r.driver?.username || '—',
             usuarioApp: r.driver?.username || '—',

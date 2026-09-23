@@ -1,0 +1,32 @@
+﻿On branch main
+Your branch is up to date with 'origin/main'.
+
+Changes not staged for commit:
+  (use "git add <file>..." to update what will be committed)
+  (use "git restore <file>..." to discard changes in working directory)
+	modified:   mobile/src/api.ts
+	modified:   mobile/src/components/StopDeliveryModal.tsx
+	modified:   mobile/src/screens/TrackScreen.tsx
+	modified:   mobile/src/types.ts
+	modified:   server/prisma/schema.prisma
+	modified:   server/public/planificacion.html
+	modified:   server/src/index.ts
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+	git_state.log
+	mobile/eas_build_kickoff.log
+	mobile/eas_build_view.json
+	mobile/eas_whoami.log
+	mobile/mobile_tsc.log
+
+no changes added to commit (use "git add" and/or "git commit -a")
+---REMOTE--- 
+origin	https://github.com/juanmaserrate/Sistema-logistico-real-de-catorce.git (fetch)
+origin	https://github.com/juanmaserrate/Sistema-logistico-real-de-catorce.git (push)
+---LASTCOMMITS--- 
+9489bf4 feat: nuevo logo R14 - blanco sobre transparente para headers oscuros
+0bb2f9f feat(presupuestar): logo R14 sobre fondo negro en ambos PDFs
+0a54800 fix(presupuestar): auto-cargar Google Maps al abrir el modulo
+f4bdf85 fix(presupuestar): priorizar Provincia de Buenos Aires (excluir CABA por defecto)
+1b969b8 fix(presupuestar): fallback a Geocoder cuando Places Autocomplete no devuelve resultados

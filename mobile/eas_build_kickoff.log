@@ -1,0 +1,28 @@
+﻿★ eas-cli@18.8.1 is now available.
+To upgrade, run:
+npm install -g eas-cli
+Proceeding with outdated version.
+
+(node:16692) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Resolved "preview" environment for the build. Learn more: https://docs.expo.dev/eas/environment-variables/#setting-the-environment-for-your-builds
+Environment variables with visibility "Plain text" and "Sensitive" loaded from the "preview" environment on EAS: GOOGLE_MAPS_ANDROID_KEY.
+Environment variables loaded from the "preview" build profile "env" configuration: EXPO_PUBLIC_API_URL, GOOGLE_MAPS_ANDROID_KEY, GOOGLE_MAPS_IOS_KEY.
+The following environment variables are defined in both the "preview" build profile "env" configuration and the "preview" environment on EAS: GOOGLE_MAPS_ANDROID_KEY. The values from the build profile configuration will be used.
+
+
+
+√ Using remote Android credentials (Expo server)
+√ Using Keystore from configuration: Build Credentials -NYHmchcXb (default)
+
+Compressing project files and uploading to EAS Build. Learn more: https://expo.fyi/eas-build-archive
+- Compressing project files
+- Uploading to EAS Build (0 / 2.1 MB)
+√ Uploaded to EAS 1s
+- Computing project fingerprint
+⌛️ Computing the project fingerprint is taking longer than expected...
+⏩ To skip this step, set the environment variable: EAS_SKIP_AUTO_FINGERPRINT=1
+√ Computed project fingerprint
+
+See logs: https://expo.dev/accounts/juanmaserrate1/projects/r14-seguimiento/builds/c593f993-c2f7-4cfa-bf69-769ea3b04b1a
+
