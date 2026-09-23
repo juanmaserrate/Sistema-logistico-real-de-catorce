@@ -1313,6 +1313,14 @@ function horaBuenosAires(): { hh: number; mm: number } {
     return { hh, mm };
 }
 
+/** "hace 25 min", "hace 3 h", "hace 9 dias" — mas claro que 12959 minutos. */
+function haceCuanto(minutos: number | null): string {
+    if (minutos == null) return 'sin señal';
+    if (minutos < 90) return `hace ${minutos} min`;
+    if (minutos < 48 * 60) return `hace ${Math.round(minutos / 60)} h`;
+    return `hace ${Math.round(minutos / 1440)} días`;
+}
+
 function hhmmBA(fecha: Date | null | undefined): string {
     if (!fecha) return '—';
     try {
@@ -1362,6 +1370,7 @@ async function viajesSinCerrarHoy() {
             faltan: r.stops.length - hechas,
             ultimaSenal: senal ? hhmmBA(senal) : null,
             minutosSinSenal: senal ? Math.round((Date.now() - new Date(senal).getTime()) / 60000) : null,
+            senalTexto: senal ? haceCuanto(Math.round((Date.now() - new Date(senal).getTime()) / 60000)) : 'nunca reportó',
             estado: r.actualStartTime ? 'En curso' : 'No arrancó',
         };
     });
@@ -1378,7 +1387,7 @@ function htmlViajesSinCerrar(filas: any[], ymd: string): string {
             ${celda(f.estado, f.estado === 'No arrancó' ? 'color:#b45309;font-weight:bold' : '')}
             ${celda(f.arranco)}
             ${celda(f.paradas)}
-            ${celda(f.ultimaSenal ? (sinSenal ? `${f.ultimaSenal} (hace ${f.minutosSinSenal} min)` : f.ultimaSenal) : 'sin señal', sinSenal || !f.ultimaSenal ? 'color:#b91c1c;font-weight:bold' : '')}
+            ${celda(f.ultimaSenal ? (sinSenal ? `${f.ultimaSenal} · ${f.senalTexto}` : f.ultimaSenal) : 'nunca reportó', sinSenal || !f.ultimaSenal ? 'color:#b91c1c;font-weight:bold' : '')}
         </tr>`;
     }).join('');
     return `<table style="border-collapse:collapse;width:100%">
