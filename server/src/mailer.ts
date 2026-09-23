@@ -25,10 +25,12 @@ export function faltanVariablesMail(): string[] {
 /** Token de aplicación contra Entra ID. Se cachea hasta 5 min antes de vencer. */
 async function obtenerToken(): Promise<string> {
     if (_token && Date.now() < _token.vence) return _token.token;
-    const tenant = String(process.env.MS_TENANT_ID);
+    // Un espacio o salto de linea pegado al secreto rompe la autenticacion
+    // sin decir por que: se limpian los tres valores antes de usarlos.
+    const tenant = String(process.env.MS_TENANT_ID).trim();
     const body = new URLSearchParams({
-        client_id: String(process.env.MS_CLIENT_ID),
-        client_secret: String(process.env.MS_CLIENT_SECRET),
+        client_id: String(process.env.MS_CLIENT_ID).trim(),
+        client_secret: String(process.env.MS_CLIENT_SECRET).trim(),
         scope: 'https://graph.microsoft.com/.default',
         grant_type: 'client_credentials',
     });
@@ -45,7 +47,7 @@ async function obtenerToken(): Promise<string> {
     return _token.token;
 }
 
-export type ResultadoMail = { ok: boolean; error?: string; destinatarios?: string[] };
+export type ResultadoMail = { ok: boolean; error?: string; codigo?: string; detalle?: any; destinatarios?: string[] };
 
 /** Envía un mail HTML. `to` vacío = los de MAIL_TO. */
 export async function enviarMail(asunto: string, html: string, to?: string[] | string): Promise<ResultadoMail> {
@@ -61,7 +63,7 @@ export async function enviarMail(asunto: string, html: string, to?: string[] | s
 
     try {
         const token = await obtenerToken();
-        const from = String(process.env.MAIL_FROM);
+        const from = String(process.env.MAIL_FROM).trim();
         const res = await fetch(`https://graph.microsoft.com/v1.0/users/${encodeURIComponent(from)}/sendMail`, {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
@@ -82,8 +84,14 @@ export async function enviarMail(asunto: string, html: string, to?: string[] | s
         }
         const data: any = await res.json().catch(() => ({}));
         const detalle = data?.error?.message || `HTTP ${res.status}`;
-        console.error(`[mail] falló el envío: ${detalle}`);
-        return { ok: false, error: detalle, destinatarios: lista };
+        console.error(`[mail] falló el envío (${res.status} ${data?.error?.code || ''}): ${detalle}`);
+        return {
+            ok: false,
+            error: detalle,
+            codigo: data?.error?.code || String(res.status),
+            detalle: { status: res.status, innerError: data?.error?.innerError || null, from },
+            destinatarios: lista,
+        };
     } catch (e: any) {
         console.error('[mail] error:', e?.message || e);
         return { ok: false, error: e?.message || String(e) };
