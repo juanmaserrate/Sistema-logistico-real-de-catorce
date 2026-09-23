@@ -5051,6 +5051,52 @@ app.post('/api/admin/fix-open-base-stops', async (req: any, res: any) => {
     }
 });
 
+/** Cambia la unidad de negocio de los viajes de un mes (ej. DMC -> SAE).
+ *  Deja afuera los viajes de HOY, que pueden estar en la calle.
+ *  POST /api/admin/trips-set-bu { key, desde: 'DMC', hacia: 'SAE', month, year, incluirHoy?, dryRun? } */
+app.post('/api/admin/trips-set-bu', async (req: any, res: any) => {
+    const { key, desde, hacia, month, year, incluirHoy, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const origen = String(desde || '').trim();
+    const destino = String(hacia || '').trim();
+    if (!origen || !destino) return res.status(400).json({ error: 'Faltan desde y hacia' });
+    try {
+        const hoyYmd = buenosAiresYmd();
+        const [anioHoy, mesHoy] = hoyYmd.split('-').map(Number);
+        const anio = Number(year) || anioHoy;
+        const mes = Number(month) || mesHoy;          // 1..12
+        const { start } = utcDayRange(`${anio}-${String(mes).padStart(2, '0')}-01`);
+        const finMes = new Date(anio, mes, 0).getDate();
+        const { end } = utcDayRange(`${anio}-${String(mes).padStart(2, '0')}-${finMes}`);
+        const { start: hoyStart, end: hoyEnd } = utcDayRange(hoyYmd);
+
+        const trips = await prisma.trip.findMany({
+            where: {
+                date: { gte: start, lte: end },
+                businessUnit: { equals: origen, mode: 'insensitive' },
+                ...(incluirHoy ? {} : { NOT: { date: { gte: hoyStart, lte: hoyEnd } } })
+            },
+            select: { id: true, date: true, reparto: true, driver: true, businessUnit: true, status: true }
+        });
+        const deHoy = await prisma.trip.count({
+            where: { date: { gte: hoyStart, lte: hoyEnd }, businessUnit: { equals: origen, mode: 'insensitive' } }
+        });
+        if (!dryRun && trips.length) {
+            await prisma.trip.updateMany({ where: { id: { in: trips.map((t) => t.id) } }, data: { businessUnit: destino } });
+            for (const t of trips) io.emit('trip:updated', { trip: { id: t.id } });
+            await logAction(req, 'UPDATE', 'trip', 0, `${origen} -> ${destino}`, { businessUnit: origen, viajes: trips.length }, { businessUnit: destino, viajes: trips.map((t) => t.id) });
+        }
+        res.json({
+            dryRun: !!dryRun, desde: origen, hacia: destino, mes, anio,
+            cambiados: trips.length, sinTocarDeHoy: incluirHoy ? 0 : deHoy,
+            viajes: trips.map((t) => ({ id: t.id, fecha: new Date(t.date).toISOString().slice(0, 10), reparto: t.reparto, chofer: t.driver, estado: t.status }))
+        });
+    } catch (e: any) {
+        console.error('trips-set-bu:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
