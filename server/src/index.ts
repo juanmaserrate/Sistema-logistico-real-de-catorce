@@ -1,6 +1,6 @@
 
 import express from 'express';
-import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail } from './mailer';
+import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail } from './mailer';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
@@ -5278,6 +5278,11 @@ app.get('/api/admin/mail-estado', async (req: any, res: any) => {
         hora: cfg.hora,
         activo: cfg.activo,
     });
+});
+
+app.get('/api/admin/mail-diagnostico', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    res.json(await diagnosticoMail());
 });
 
 app.post('/api/admin/mail-test', async (req: any, res: any) => {

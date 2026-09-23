@@ -98,6 +98,30 @@ export async function enviarMail(asunto: string, html: string, to?: string[] | s
     }
 }
 
+/** Diagnostico: que permisos trae el token que devuelve Microsoft.
+ *  No expone el secreto: solo lee los datos publicos del token. */
+export async function diagnosticoMail(): Promise<any> {
+    if (!mailConfigurado()) return { ok: false, faltan: faltanVariablesMail() };
+    try {
+        const token = await obtenerToken();
+        const partes = token.split('.');
+        const payload = JSON.parse(Buffer.from(partes[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+        const roles: string[] = payload.roles || [];
+        return {
+            ok: true,
+            tokenObtenido: true,
+            permisosEnElToken: roles,
+            tieneMailSend: roles.includes('Mail.Send'),
+            aplicacion: payload.appid || payload.azp || null,
+            inquilino: payload.tid || null,
+            vence: payload.exp ? new Date(payload.exp * 1000).toISOString() : null,
+            casillaQueEnvia: String(process.env.MAIL_FROM || '').trim(),
+        };
+    } catch (e: any) {
+        return { ok: false, error: e?.message || String(e) };
+    }
+}
+
 /** Plantilla simple con el estilo del sistema, para que todos los avisos se vean igual. */
 export function plantillaMail(titulo: string, intro: string, cuerpoHtml: string, pie?: string): string {
     return `<div style="font-family:Arial,Helvetica,sans-serif;color:#111;max-width:720px">
