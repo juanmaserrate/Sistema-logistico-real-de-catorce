@@ -1,5 +1,6 @@
 
 import express from 'express';
+import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail } from './mailer';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
@@ -1275,6 +1276,163 @@ app.delete('/api/v1/maintenance/:id', async (req, res) => {
         res.status(500).json({ error: "Failed to delete maintenance record" });
     }
 });
+
+// --- AVISOS POR MAIL ─────────────────────────────────────────────────────
+// Config guardada en AppSettings (key 'mail_avisos'):
+//   { to: ['x@y'], hora: '15:00', activo: true }
+// La hora es de Buenos Aires. Los destinatarios pueden venir tambien de MAIL_TO.
+type ConfigAvisos = { to: string[]; hora: string; activo: boolean };
+
+async function leerConfigAvisos(): Promise<ConfigAvisos> {
+    const base: ConfigAvisos = {
+        to: String(process.env.MAIL_TO || '').split(',').map((x) => x.trim()).filter(Boolean),
+        hora: '15:00',
+        activo: true,
+    };
+    try {
+        const row = await prisma.appSettings.findUnique({ where: { key: 'mail_avisos' } });
+        if (!row) return base;
+        const v = JSON.parse(row.value) || {};
+        return {
+            to: Array.isArray(v.to) && v.to.length ? v.to.map((x: any) => String(x).trim()).filter(Boolean) : base.to,
+            hora: /^\d{1,2}:\d{2}$/.test(String(v.hora || '')) ? String(v.hora) : base.hora,
+            activo: v.activo === undefined ? true : !!v.activo,
+        };
+    } catch {
+        return base;
+    }
+}
+
+/** Hora y minuto actuales en Buenos Aires. */
+function horaBuenosAires(): { hh: number; mm: number } {
+    const f = new Intl.DateTimeFormat('es-AR', {
+        timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false
+    }).formatToParts(new Date());
+    const hh = Number(f.find((p) => p.type === 'hour')?.value || 0);
+    const mm = Number(f.find((p) => p.type === 'minute')?.value || 0);
+    return { hh, mm };
+}
+
+function hhmmBA(fecha: Date | null | undefined): string {
+    if (!fecha) return '—';
+    try {
+        return new Date(fecha).toLocaleTimeString('es-AR', {
+            timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false
+        });
+    } catch { return '—'; }
+}
+
+/** Viajes de HOY que todavia no se cerraron (sin hora de fin). */
+async function viajesSinCerrarHoy() {
+    const ymd = buenosAiresYmd();
+    const { start, end } = utcDayRange(ymd);
+    const rutas = await prisma.route.findMany({
+        where: { date: { gte: start, lte: end }, actualEndTime: null, driverId: { not: null } },
+        include: {
+            driver: { select: { id: true, username: true, fullName: true } },
+            trip: { select: { id: true, reparto: true, driver: true, status: true, businessUnit: true } },
+            stops: { select: { status: true, isReturnToBase: true } },
+        },
+        orderBy: { id: 'asc' },
+    });
+    const abiertos = rutas.filter((r) => !['COMPLETED', 'RETURNED', 'CANCELLED'].includes(String(r.trip?.status || '').toUpperCase()));
+    // Ultima señal de cada telefono, para avisar si ademas esta sin reportar
+    const ids = [...new Set(abiertos.map((r) => r.driverId).filter(Boolean))] as string[];
+    const ultimaSenal: Record<string, Date> = {};
+    if (ids.length) {
+        try {
+            const filas = await prisma.$queryRaw<any[]>`
+                SELECT DISTINCT ON ("driverId") "driverId", timestamp
+                FROM "DeviceLocation"
+                WHERE "driverId" = ANY(${ids}::text[])
+                ORDER BY "driverId", timestamp DESC`;
+            for (const f of filas) ultimaSenal[f.driverId] = f.timestamp;
+        } catch { /* sin señal es un dato opcional */ }
+    }
+    return abiertos.map((r) => {
+        const hechas = r.stops.filter((s) => ['COMPLETED', 'UNDELIVERABLE'].includes(String(s.status).toUpperCase())).length;
+        const senal = r.driverId ? ultimaSenal[r.driverId] : null;
+        return {
+            tripId: r.trip?.id ?? null,
+            reparto: r.trip?.reparto || r.driver?.username || '—',
+            chofer: r.trip?.driver || r.driver?.fullName || r.driver?.username || '—',
+            usuarioApp: r.driver?.username || '—',
+            arranco: r.actualStartTime ? hhmmBA(r.actualStartTime) : null,
+            paradas: `${hechas}/${r.stops.length}`,
+            faltan: r.stops.length - hechas,
+            ultimaSenal: senal ? hhmmBA(senal) : null,
+            minutosSinSenal: senal ? Math.round((Date.now() - new Date(senal).getTime()) / 60000) : null,
+            estado: r.actualStartTime ? 'En curso' : 'No arrancó',
+        };
+    });
+}
+
+function htmlViajesSinCerrar(filas: any[], ymd: string): string {
+    const fechaLinda = ymd.split('-').reverse().join('/');
+    const celda = (v: any, extra = '') => `<td style="border:1px solid #d9dfec;padding:6px 8px;font-size:13px;${extra}">${v ?? '—'}</td>`;
+    const cuerpo = filas.map((f) => {
+        const sinSenal = f.minutosSinSenal != null && f.minutosSinSenal > 45;
+        return `<tr>
+            ${celda(`<b>${f.reparto}</b>`)}
+            ${celda(f.chofer)}
+            ${celda(f.estado, f.estado === 'No arrancó' ? 'color:#b45309;font-weight:bold' : '')}
+            ${celda(f.arranco)}
+            ${celda(f.paradas)}
+            ${celda(f.ultimaSenal ? (sinSenal ? `${f.ultimaSenal} (hace ${f.minutosSinSenal} min)` : f.ultimaSenal) : 'sin señal', sinSenal || !f.ultimaSenal ? 'color:#b91c1c;font-weight:bold' : '')}
+        </tr>`;
+    }).join('');
+    return `<table style="border-collapse:collapse;width:100%">
+        <thead><tr style="background:#141F46;color:#fff">
+            ${['Reparto', 'Chofer', 'Estado', 'Salió', 'Paradas', 'Última señal'].map((h) => `<th style="border:1px solid #d9dfec;padding:6px 8px;font-size:12px;text-align:left">${h}</th>`).join('')}
+        </tr></thead>
+        <tbody>${cuerpo}</tbody>
+    </table>
+    <p style="margin:14px 0 0;font-size:12px;color:#555">Viajes del ${fechaLinda} que a esta hora siguen abiertos en el sistema. Revisalos en Logística Semanal: si el reparto ya volvió, cerralos con «Finalizar».</p>`;
+}
+
+/** Arma y (si corresponde) manda el aviso de viajes sin cerrar. */
+async function avisarViajesSinCerrar(opciones?: { enviar?: boolean; to?: string[] }) {
+    const ymd = buenosAiresYmd();
+    const filas = await viajesSinCerrarHoy();
+    const cfg = await leerConfigAvisos();
+    const destinos = opciones?.to?.length ? opciones.to : cfg.to;
+    const asunto = `R14 · ${filas.length} viaje${filas.length === 1 ? '' : 's'} sin cerrar — ${ymd.split('-').reverse().join('/')}`;
+    const html = plantillaMail(
+        'Viajes sin cerrar',
+        filas.length
+            ? `Al cierre del control de las ${cfg.hora}, <b>${filas.length}</b> viaje${filas.length === 1 ? '' : 's'} del día siguen abiertos.`
+            : 'Todos los viajes del día están cerrados.',
+        filas.length ? htmlViajesSinCerrar(filas, ymd) : '<p style="font-size:14px">No hay nada pendiente.</p>'
+    );
+    if (!opciones?.enviar || !filas.length) return { enviado: false, cantidad: filas.length, filas, asunto, destinos };
+    const r = await enviarMail(asunto, html, destinos);
+    return { enviado: r.ok, error: r.error, cantidad: filas.length, filas, asunto, destinos: r.destinatarios || destinos };
+}
+
+// Revisión cada 5 minutos: a partir de la hora configurada manda UNA vez por día.
+// La marca del último envío se guarda en la base, así un reinicio no lo repite.
+setInterval(async () => {
+    try {
+        const cfg = await leerConfigAvisos();
+        if (!cfg.activo || !mailConfigurado()) return;
+        const [hh, mm] = cfg.hora.split(':').map(Number);
+        const ahora = horaBuenosAires();
+        if (ahora.hh * 60 + ahora.mm < hh * 60 + mm) return;
+        const ymd = buenosAiresYmd();
+        const marca = await prisma.appSettings.findUnique({ where: { key: 'mail_aviso_sin_cerrar_ultimo' } });
+        if (marca && JSON.parse(marca.value) === ymd) return;
+        const r = await avisarViajesSinCerrar({ enviar: true });
+        // Se marca el día aunque no haya nada que avisar: el control ya se hizo
+        await prisma.appSettings.upsert({
+            where: { key: 'mail_aviso_sin_cerrar_ultimo' },
+            update: { value: JSON.stringify(ymd) },
+            create: { key: 'mail_aviso_sin_cerrar_ultimo', value: JSON.stringify(ymd) },
+        });
+        if (r.cantidad) console.log(`[mail] aviso de viajes sin cerrar: ${r.cantidad} (enviado: ${r.enviado})`);
+    } catch (e: any) {
+        console.warn('[mail] revisión de viajes sin cerrar:', e?.message || e);
+    }
+}, 5 * 60 * 1000);
 
 // --- SETTINGS API ---
 app.get('/api/v1/settings/:key', async (req, res) => {
@@ -5093,6 +5251,66 @@ app.post('/api/admin/trips-set-bu', async (req: any, res: any) => {
         });
     } catch (e: any) {
         console.error('trips-set-bu:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Estado de la configuracion de mails y prueba de envio.
+ *  GET  /api/admin/mail-estado?key=...
+ *  POST /api/admin/mail-test { key, to? } */
+app.get('/api/admin/mail-estado', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const cfg = await leerConfigAvisos();
+    res.json({
+        configurado: mailConfigurado(),
+        faltan: faltanVariablesMail(),
+        casillaQueEnvia: process.env.MAIL_FROM || null,
+        destinatarios: cfg.to,
+        hora: cfg.hora,
+        activo: cfg.activo,
+    });
+});
+
+app.post('/api/admin/mail-test', async (req: any, res: any) => {
+    const { key, to } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const html = plantillaMail('Prueba de envío', 'Si estás leyendo esto, el sistema ya puede mandar avisos por mail.', '<p style="font-size:14px">No hay que hacer nada con este mensaje.</p>');
+    const r = await enviarMail('R14 · Prueba de envío', html, to);
+    res.status(r.ok ? 200 : 400).json(r);
+});
+
+/** Destinatarios y hora del aviso diario.
+ *  POST /api/admin/mail-config { key, to: ['a@b'], hora: '15:00', activo: true } */
+app.post('/api/admin/mail-config', async (req: any, res: any) => {
+    const { key, to, hora, activo } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const actual = await leerConfigAvisos();
+        const nueva = {
+            to: Array.isArray(to) ? to.map((x: any) => String(x).trim()).filter(Boolean) : actual.to,
+            hora: /^\d{1,2}:\d{2}$/.test(String(hora || '')) ? String(hora) : actual.hora,
+            activo: activo === undefined ? actual.activo : !!activo,
+        };
+        await prisma.appSettings.upsert({
+            where: { key: 'mail_avisos' },
+            update: { value: JSON.stringify(nueva) },
+            create: { key: 'mail_avisos', value: JSON.stringify(nueva) },
+        });
+        res.json({ ok: true, ...nueva });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Viajes de hoy sin cerrar. Con enviar=true manda el mail en el momento.
+ *  POST /api/admin/viajes-sin-cerrar { key, enviar?, to? } */
+app.post('/api/admin/viajes-sin-cerrar', async (req: any, res: any) => {
+    const { key, enviar, to } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const r = await avisarViajesSinCerrar({ enviar: !!enviar, to });
+        res.json(r);
+    } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error' });
     }
 });
