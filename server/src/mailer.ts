@@ -71,7 +71,9 @@ export async function enviarMail(asunto: string, html: string, to?: string[] | s
                     body: { contentType: 'HTML', content: html },
                     toRecipients: lista.map((address) => ({ emailAddress: { address } })),
                 },
-                saveToSentItems: true,
+                // Por pedido del administrador: no se guarda copia en Elementos
+                // enviados de la casilla (MAIL_SAVE_SENT=true lo vuelve a activar).
+                saveToSentItems: String(process.env.MAIL_SAVE_SENT || '').toLowerCase() === 'true',
             }),
         });
         if (res.status === 202 || res.ok) {
