@@ -14,6 +14,12 @@
 type TokenCache = { token: string; vence: number };
 let _token: TokenCache | null = null;
 
+/** Tira el token guardado. Se usa cuando el administrador cambia permisos:
+ *  si no, el sistema sigue con el token viejo hasta una hora. */
+export function limpiarTokenMail(): void {
+    _token = null;
+}
+
 export function mailConfigurado(): boolean {
     return !!(process.env.MS_TENANT_ID && process.env.MS_CLIENT_ID && process.env.MS_CLIENT_SECRET && process.env.MAIL_FROM);
 }

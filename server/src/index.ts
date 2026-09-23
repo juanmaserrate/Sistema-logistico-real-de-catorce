@@ -1,6 +1,6 @@
 
 import express from 'express';
-import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail } from './mailer';
+import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail, limpiarTokenMail } from './mailer';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
@@ -5282,12 +5282,14 @@ app.get('/api/admin/mail-estado', async (req: any, res: any) => {
 
 app.get('/api/admin/mail-diagnostico', async (req: any, res: any) => {
     if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (String(req.query.fresh || '') === '1') limpiarTokenMail();
     res.json(await diagnosticoMail());
 });
 
 app.post('/api/admin/mail-test', async (req: any, res: any) => {
-    const { key, to } = req.body || {};
+    const { key, to, fresh } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (fresh) limpiarTokenMail();
     const html = plantillaMail('Prueba de envío', 'Si estás leyendo esto, el sistema ya puede mandar avisos por mail.', '<p style="font-size:14px">No hay que hacer nada con este mensaje.</p>');
     const r = await enviarMail('R14 · Prueba de envío', html, to);
     res.status(r.ok ? 200 : 400).json(r);
