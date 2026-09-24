@@ -1,6 +1,8 @@
 
 import express from 'express';
 import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail, limpiarTokenMail } from './mailer';
+import { armarReporte } from './reporteTorre';
+import { subirArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnosticoSharepoint, limpiarTokenSharepoint } from './sharepoint';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
@@ -1454,6 +1456,106 @@ setInterval(async () => {
         console.warn('[mail] revisión de viajes sin cerrar:', e?.message || e);
     }
 }, 5 * 60 * 1000);
+
+// ── Reporte para la Torre de Control ──────────────────────────────────────────
+// La Torre lee planillas de SharePoint. El TMS le deja cinco, una vez por
+// semana, y se desentiende: no hay nadie de afuera pidiendole datos al TMS.
+
+/** Arma el reporte y, si se pide, lo sube. POST /api/admin/reporte-torre
+ *  { key, subir?, anio? } */
+app.post('/api/admin/reporte-torre', async (req: any, res: any) => {
+    const { key, subir, anio } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const t0 = Date.now();
+        const archivos = await armarReporte(prisma, anio ? Number(anio) : undefined);
+        const resumen = archivos.map((a) => ({ archivo: a.nombre, filas: a.filas.length, kb: Math.round(a.buffer.length / 1024) }));
+        if (!subir) {
+            return res.json({ subido: false, segundos: Math.round((Date.now() - t0) / 100) / 10, archivos: resumen });
+        }
+        const subidas = [];
+        for (const a of archivos) subidas.push(await subirArchivo(a.nombre, a.buffer));
+        res.json({
+            subido: true,
+            segundos: Math.round((Date.now() - t0) / 100) / 10,
+            archivos: resumen,
+            resultado: subidas,
+            todoOk: subidas.every((x) => x.ok)
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Bajar uno de los archivos para mirarlo antes de que exista SharePoint.
+ *  GET /api/admin/reporte-torre/descargar?key=...&archivo=viajes */
+app.get('/api/admin/reporte-torre/descargar', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const cual = String(req.query.archivo || 'viajes').toLowerCase();
+        const archivos = await armarReporte(prisma, req.query.anio ? Number(req.query.anio) : undefined);
+        const a = archivos.find((x) => x.nombre.toLowerCase().includes(cual));
+        if (!a) return res.status(404).json({ error: 'No existe ese archivo', hay: archivos.map((x) => x.nombre) });
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${a.nombre}"`);
+        res.send(a.buffer);
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Estado de la conexion con SharePoint. GET /api/admin/sharepoint-estado?key=... */
+app.get('/api/admin/sharepoint-estado', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (req.query.fresh === '1') limpiarTokenSharepoint();
+    res.json({
+        configurado: sharepointConfigurado(),
+        faltan: faltanVariablesSharepoint(),
+        carpeta: process.env.SP_CARPETA || 'Operaciones/LOGISTICA/TMS',
+        diagnostico: await diagnosticoSharepoint()
+    });
+});
+
+/** Dia de la semana en Buenos Aires: 0 domingo ... 6 sabado. */
+function diaSemanaBA(): number {
+    const d = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Argentina/Buenos_Aires', weekday: 'short' })
+        .format(new Date());
+    return ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].indexOf(d);
+}
+
+// Los sabados a las 03:00 se sube el reporte. Se elige el sabado porque no hay
+// repartos: una consulta pesada no le hace cola a nadie. Revisa cada 30 min y
+// manda UNA vez; la marca queda en la base, asi un reinicio no lo repite.
+setInterval(async () => {
+    try {
+        if (diaSemanaBA() !== 6) return;
+        if (!sharepointConfigurado()) return;
+        const { hh } = horaBuenosAires();
+        if (hh < 3) return;
+        const ymd = buenosAiresYmd();
+        const marca = await prisma.appSettings.findUnique({ where: { key: 'reporte_torre_ultimo' } });
+        if (marca && JSON.parse(marca.value) === ymd) return;
+        const archivos = await armarReporte(prisma);
+        const resultados = [];
+        for (const a of archivos) resultados.push(await subirArchivo(a.nombre, a.buffer));
+        const ok = resultados.filter((r) => r.ok).length;
+        await prisma.appSettings.upsert({
+            where: { key: 'reporte_torre_ultimo' },
+            update: { value: JSON.stringify(ymd) },
+            create: { key: 'reporte_torre_ultimo', value: JSON.stringify(ymd) }
+        });
+        console.log(`[torre] reporte del ${ymd}: ${ok}/${archivos.length} archivos subidos`);
+        if (ok < archivos.length && mailConfigurado()) {
+            const fallas = resultados.filter((r) => !r.ok).map((r) => `<li>${r.nombre}: ${r.error}</li>`).join('');
+            await enviarMail(
+                'R14 · No se pudo subir el reporte de la Torre',
+                plantillaMail('Reporte de la Torre', 'Algunos archivos no llegaron a SharePoint.', `<ul>${fallas}</ul>`)
+            );
+        }
+    } catch (e: any) {
+        console.warn('[torre] reporte semanal:', e?.message || e);
+    }
+}, 30 * 60 * 1000);
 
 // --- SETTINGS API ---
 app.get('/api/v1/settings/:key', async (req, res) => {

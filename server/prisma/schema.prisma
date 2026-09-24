@@ -24,8 +24,8 @@ model User {
   password     String
   fullName     String
   role         String     @default("DRIVER")
-  payType      String?    // "FIJO" | "JORNAL" para CHOFER/AUXILIAR (impacta costo logistico)
-  pushToken    String?    // Token Expo para notificaciones push
+  payType      String? // "FIJO" | "JORNAL" para CHOFER/AUXILIAR (impacta costo logistico)
+  pushToken    String? // Token Expo para notificaciones push
   /// Si tiene un proveedor asignado, sus viajes se consideran Tercerizados.
   /// Si es null, sus viajes son Propios.
   providerId   String?
@@ -55,176 +55,182 @@ model Provider {
 }
 
 model Vehicle {
-  id             String  @id @default(uuid())
-  tenantId       String
-  plate          String  @unique
-  model          String?
-  capacityWeight Float?
-  capacityVolume Float?
-  isRefrigerated Boolean @default(false)
-  status         String  @default("ACTIVE")
-  contractType   String?
-  driverName     String?
-  fuelType       String?
-  insurance      String?
-  usefulLife     String?
-  vehicleType    String?
-  currentKm      Float?  // Kilometraje actual (actualizado por chofer al iniciar recorrido)
-  routes         Route[]
-  tenant         Tenant  @relation(fields: [tenantId], references: [id])
+  id                 String    @id @default(uuid())
+  tenantId           String
+  plate              String    @unique
+  model              String?
+  capacityWeight     Float?
+  capacityVolume     Float?
+  isRefrigerated     Boolean   @default(false)
+  status             String    @default("ACTIVE")
+  contractType       String?
+  driverName         String?
+  fuelType           String?
+  insurance          String?
+  usefulLife         String?
+  vehicleType        String?
+  currentKm          Float? // Kilometraje actual (actualizado por chofer al iniciar recorrido)
+  /// Vencimientos de los papeles. Se cargan a mano una vez y despues el sistema
+  /// avisa solo cuando se acerca la fecha.
+  vtvExpiry          DateTime?
+  insuranceExpiry    DateTime?
+  senasaExpiry       DateTime?
+  bromatologiaExpiry DateTime?
+  routes             Route[]
+  tenant             Tenant    @relation(fields: [tenantId], references: [id])
 }
 
 model Client {
-  id                String  @id @default(uuid())
-  tenantId          String
-  name              String
-  address           String?
-  latitude          Float?
-  longitude         Float?
-  timeWindowStart   String?
-  timeWindowEnd     String?
-  serviceTime       Int     @default(15)
-  zone              String?
-  priority          Int     @default(0)
-  barrio            String?
-  requiresProofPhoto Boolean @default(false) // Si es true, la app móvil exige foto al entregar
+  id                    String                 @id @default(uuid())
+  tenantId              String
+  name                  String
+  address               String?
+  latitude              Float?
+  longitude             Float?
+  timeWindowStart       String?
+  timeWindowEnd         String?
+  serviceTime           Int                    @default(15)
+  zone                  String?
+  priority              Int                    @default(0)
+  barrio                String?
+  requiresProofPhoto    Boolean                @default(false) // Si es true, la app móvil exige foto al entregar
   /// Menú asignado al establecimiento (ej: "General", "Patológico Celíaco", etc.)
-  menu              String?
+  menu                  String?
   /// Cupos por tipo (JSON): { dmcGeneral, comedorGeneral, viandasGeneral, listoConsumoGeneral, dmcCeliaco, dmcDiabetico, dmcIntLactosa, dmcBajoSodio, dmcAlergiaMani, comedorCeliaco, comedorDiabetico, comedorIntLactosa, comedorBajoSodio, comedorAlergiaMani }
-  cupos             String?
+  cupos                 String?
   /// Unidades de negocio del cliente con su reparto (JSON array): [{ "unidad": "SAE", "reparto": "5" }, { "unidad": "Patios", "reparto": "14" }]
-  businessUnits     String?
+  businessUnits         String?
   /// Tipo de establecimiento: Proveedor | Escuela | Institución Pública | Comunitario | Comedor | Institución Religiosa | Club
-  tipo              String?
+  tipo                  String?
   /// Localidad (ej: "Don Orione", "Bernal")
-  localidad         String?
+  localidad             String?
   /// Partido al que pertenece (ej: "Almirante Brown", "Quilmes")
-  partido           String?
+  partido               String?
   /// Contacto en el establecimiento: nombre de la persona
-  contactName       String?
+  contactName           String?
   /// Personal del contacto: quien es en el establecimiento (directora, portero, cocinera...)
-  contactStaff      String?
+  contactStaff          String?
   /// Telefono del contacto
-  contactPhone      String?
-  tenant                   Tenant  @relation(fields: [tenantId], references: [id])
-  stops                    Stop[]
-  establishmentMappings    EstablishmentMapping[]
+  contactPhone          String?
+  tenant                Tenant                 @relation(fields: [tenantId], references: [id])
+  stops                 Stop[]
+  establishmentMappings EstablishmentMapping[]
 }
 
 model Route {
-  id                 Int       @id @default(autoincrement())
-  tenantId           String
-  date               DateTime
-  status             String    @default("PLANNED")
-  vehicleId          String?
-  driverId           String?
-  tripId             Int?      @unique
-  totalKm            Float?
-  estimatedTime      Int?
-  actualStartTime    DateTime?
-  actualEndTime      DateTime?
+  id                Int       @id @default(autoincrement())
+  tenantId          String
+  date              DateTime
+  status            String    @default("PLANNED")
+  vehicleId         String?
+  driverId          String?
+  tripId            Int?      @unique
+  totalKm           Float?
+  estimatedTime     Int?
+  actualStartTime   DateTime?
+  actualEndTime     DateTime?
   /// Justificación del chofer al reordenar paradas
-  reorderReason      String?
+  reorderReason     String?
   /// Fecha/hora en que el chofer reordenó las paradas
-  reorderedAt        DateTime?
+  reorderedAt       DateTime?
   /// Nombre del chofer que reordenó (snapshot)
-  reorderedByDriver  String?
-  createdAt          DateTime  @default(now())
-  updatedAt          DateTime  @updatedAt
-  driver             User?     @relation("DriverRoutes", fields: [driverId], references: [id])
-  vehicle            Vehicle?  @relation(fields: [vehicleId], references: [id])
-  tenant             Tenant    @relation(fields: [tenantId], references: [id])
-  trip               Trip?     @relation(fields: [tripId], references: [id])
-  stops              Stop[]
+  reorderedByDriver String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  driver            User?     @relation("DriverRoutes", fields: [driverId], references: [id])
+  vehicle           Vehicle?  @relation(fields: [vehicleId], references: [id])
+  tenant            Tenant    @relation(fields: [tenantId], references: [id])
+  trip              Trip?     @relation(fields: [tripId], references: [id])
+  stops             Stop[]
 
   @@index([date])
   @@index([status])
 }
 
 model Stop {
-  id              Int       @id @default(autoincrement())
-  routeId         Int
-  clientId        String
-  sequence        Int
+  id                    Int       @id @default(autoincrement())
+  routeId               Int
+  clientId              String
+  sequence              Int
   /// Secuencia original asignada por el planificador (antes de reordenamiento del chofer)
-  plannedSequence Int?
-  plannedEta      DateTime?
-  actualArrival   DateTime?
-  actualDeparture DateTime?
-  status          String    @default("PENDING")
-  reasonCode      String?
-  observations    String?
-  proofPhotoUrl   String?
+  plannedSequence       Int?
+  plannedEta            DateTime?
+  actualArrival         DateTime?
+  actualDeparture       DateTime?
+  status                String    @default("PENDING")
+  reasonCode            String?
+  observations          String?
+  proofPhotoUrl         String?
   /// true = chofer marcó «entrega sin problemas»; null = no indicado
   deliveryWithoutIssues Boolean?
-  signatureUrl    String?
+  signatureUrl          String?
   /// true = parada de retorno al depósito (Real de Catorce). Al marcarla como
   /// finalizada, el viaje se cierra automáticamente con ESA hora.
-  isReturnToBase  Boolean   @default(false)
+  isReturnToBase        Boolean   @default(false)
   /// Veces que el chofer pasó y no pudo entregar, eligiendo volver más tarde.
   /// status='RETRY' = pospuesta, sigue pendiente y bloquea el cierre del viaje.
-  retryCount      Int       @default(0)
+  retryCount            Int       @default(0)
   /// Bitácora de los intentos fallidos: [{at, reason, note}] en JSON.
-  retryLog        Json?
+  retryLog              Json?
   /// Cajones que el chofer DEJÓ en el establecimiento en esta parada (null = no lo cargó)
-  cratesDelivered Int?
+  cratesDelivered       Int?
   /// Cajones que el chofer RECUPERÓ (vacíos) en esta parada (null = no lo cargó)
-  cratesRecovered Int?
+  cratesRecovered       Int?
   /// Última vez que se tocaron los cajones. Sirve para detectar el retiro tardío:
   /// el chofer vuelve más tarde a buscar los cajones, con la entrega ya cerrada.
-  cratesUpdatedAt DateTime?
-  client          Client    @relation(fields: [clientId], references: [id])
-  route           Route     @relation(fields: [routeId], references: [id])
+  cratesUpdatedAt       DateTime?
+  client                Client    @relation(fields: [clientId], references: [id])
+  route                 Route     @relation(fields: [routeId], references: [id])
 
   @@index([status])
 }
 
 model Trip {
-  id               Int            @id @default(autoincrement())
-  date             DateTime
-  priority         String?
-  zone             String?
-  vehicle          String?
-  driver           String?
-  provider         String?
-  auxiliar         String?
-  auxiliar2        String?
-  auxiliar3        String?
-  businessUnit     String?
-  distributionType String?
-  contractType     String?
-  vehicleType      String?
-  tripType         String?
-  entryTime        String?
-  exitTime         DateTime?
-  returnTime       DateTime?
-  value            Decimal?       @default(0)
-  paymentStatus    String?
-  paymentDate      DateTime?
-  observations     String?
-  notes            String?
-  status           String         @default("PENDING") // PENDING, OUT_OF_PLANT, RETURNED, COMPLETED
-  startedAt        DateTime?
-  completedAt      DateTime?
-  driverComments   String?
-  proofPhotoUrl    String?
-  createdAt        DateTime       @default(now())
-  updatedAt        DateTime       @updatedAt
-  arrivalTime      String?
-  departureTime    String?
-  isRefrigerated   Boolean?
-  kmArrival        String?
-  kmDeparture      String?
-  reason           String?
-  temperature      String?
-  reparto          String?
+  id                 Int            @id @default(autoincrement())
+  date               DateTime
+  priority           String?
+  zone               String?
+  vehicle            String?
+  driver             String?
+  provider           String?
+  auxiliar           String?
+  auxiliar2          String?
+  auxiliar3          String?
+  businessUnit       String?
+  distributionType   String?
+  contractType       String?
+  vehicleType        String?
+  tripType           String?
+  entryTime          String?
+  exitTime           DateTime?
+  returnTime         DateTime?
+  value              Decimal?       @default(0)
+  paymentStatus      String?
+  paymentDate        DateTime?
+  observations       String?
+  notes              String?
+  status             String         @default("PENDING") // PENDING, OUT_OF_PLANT, RETURNED, COMPLETED
+  startedAt          DateTime?
+  completedAt        DateTime?
+  driverComments     String?
+  proofPhotoUrl      String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+  arrivalTime        String?
+  departureTime      String?
+  isRefrigerated     Boolean?
+  kmArrival          String?
+  kmDeparture        String?
+  reason             String?
+  temperature        String?
+  reparto            String?
   assignedMobileUser String?
-  locality         String?
+  locality           String?
   /// 1 = primera vuelta del día (costo auxiliar jornal completo); 2 o 3 = siguientes (misma regla de costo). null = calcular por hora/patente (legacy).
-  vuelta           Int?
-  stops            TripStop[]
-  locations        TripLocation[]
-  linkedRoute      Route?
+  vuelta             Int?
+  stops              TripStop[]
+  locations          TripLocation[]
+  linkedRoute        Route?
 
   @@index([date])
   @@index([driver])
@@ -241,11 +247,11 @@ model TripStop {
   actualDeparture DateTime?
   status          String    @default("PENDING") // PENDING, ARRIVED, COMPLETED, FAILED
   observations    String?
-  failedReason    String?   // Checkbox/Text for why it failed
-  latitude        Float?    
+  failedReason    String? // Checkbox/Text for why it failed
+  latitude        Float?
   longitude       Float?
 
-  trip            Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
   @@index([tripId])
 }
@@ -257,11 +263,10 @@ model TripLocation {
   longitude Float
   timestamp DateTime @default(now())
 
-  trip      Trip     @relation(fields: [tripId], references: [id], onDelete: Cascade)
+  trip Trip @relation(fields: [tripId], references: [id], onDelete: Cascade)
 
   @@index([tripId])
 }
-
 
 model RouteTemplate {
   id        String              @id @default(uuid())
@@ -298,64 +303,64 @@ model EmployeeSalary {
 }
 
 model MaintenanceRecord {
-  id          String   @id @default(uuid())
-  plate       String
-  category    String?
-  month       String?
-  date        String?
-  mileage     Float?
-  workshop    String?
-  workDone    String?
-  cost        Float?
-  notes       String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  plate     String
+  category  String?
+  month     String?
+  date      String?
+  mileage   Float?
+  workshop  String?
+  workDone  String?
+  cost      Float?
+  notes     String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 }
 
 model AppSettings {
-  id          String   @id @default(uuid())
-  key         String   @unique
-  value       String
-  updatedAt   DateTime @updatedAt
+  id        String   @id @default(uuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
 }
 
 model Alert {
-  id          String   @id @default(uuid())
-  tenantId    String?  @default("default-tenant")
-  type        String   // 'info', 'warning', 'critical', 'success'
-  title       String
-  text        String
-  timeLabel   String?  // 'Ahora', '2 horas', etc.
-  createdAt   DateTime @default(now())
+  id        String   @id @default(uuid())
+  tenantId  String?  @default("default-tenant")
+  type      String // 'info', 'warning', 'critical', 'success'
+  title     String
+  text      String
+  timeLabel String? // 'Ahora', '2 horas', etc.
+  createdAt DateTime @default(now())
 
   @@index([createdAt])
 }
 
 // Repartos (desde Excel): nombre del reparto + establecimientos
 model Reparto {
-  id        String   @id @default(uuid())
-  name      String   // nombre del reparto (col 1 Excel)
-  tenantId  String   @default("default-tenant")
-  createdAt DateTime @default(now())
+  id        String                 @id @default(uuid())
+  name      String // nombre del reparto (col 1 Excel)
+  tenantId  String                 @default("default-tenant")
+  createdAt DateTime               @default(now())
   stops     RepartoEstablishment[]
 }
 
 model RepartoEstablishment {
-  id         Int     @id @default(autoincrement())
-  repartoId  String
-  excelName  String  // nombre en el Excel (col 2)
-  sequence   Int     @default(0)
-  reparto    Reparto @relation(fields: [repartoId], references: [id], onDelete: Cascade)
+  id        Int     @id @default(autoincrement())
+  repartoId String
+  excelName String // nombre en el Excel (col 2)
+  sequence  Int     @default(0)
+  reparto   Reparto @relation(fields: [repartoId], references: [id], onDelete: Cascade)
 
   @@index([repartoId])
 }
 
 // Mapeo: nombre del Excel -> cliente del sistema (para los que no coinciden exactamente)
 model EstablishmentMapping {
-  id        String   @id @default(uuid())
-  excelName String   @unique // nombre tal como viene en el Excel
+  id        String @id @default(uuid())
+  excelName String @unique // nombre tal como viene en el Excel
   clientId  String
-  client    Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  client    Client @relation(fields: [clientId], references: [id], onDelete: Cascade)
 
   @@index([clientId])
 }
@@ -365,10 +370,10 @@ model Incident {
   id          String    @id @default(uuid())
   driverId    String
   tripId      Int?
-  type        String    // MECANICO | TRANSITO | ESCUELA | OTRO
+  type        String // MECANICO | TRANSITO | ESCUELA | OTRO
   description String
   photoUrl    String?
-  status      String    @default("OPEN")  // OPEN | CLOSED
+  status      String    @default("OPEN") // OPEN | CLOSED
   resolution  String?
   createdAt   DateTime  @default(now())
   closedAt    DateTime?
@@ -382,14 +387,14 @@ model Incident {
 // Registro de auditoría: quién hizo qué y cuándo
 model AuditLog {
   id         String   @id @default(uuid())
-  userId     String?  // null si fue acción de sistema
-  userName   String?  // nombre visible del usuario
-  action     String   // CREATE | UPDATE | DELETE
-  entity     String   // trip | route | vehicle | user | client | route-template | maintenance
-  entityId   String?  // id del registro afectado
-  entityName String?  // nombre legible (ej. "GARCIA" para un viaje)
-  before     String?  // JSON del estado anterior (para UPDATE/DELETE)
-  after      String?  // JSON del estado nuevo (para CREATE/UPDATE)
+  userId     String? // null si fue acción de sistema
+  userName   String? // nombre visible del usuario
+  action     String // CREATE | UPDATE | DELETE
+  entity     String // trip | route | vehicle | user | client | route-template | maintenance
+  entityId   String? // id del registro afectado
+  entityName String? // nombre legible (ej. "GARCIA" para un viaje)
+  before     String? // JSON del estado anterior (para UPDATE/DELETE)
+  after      String? // JSON del estado nuevo (para CREATE/UPDATE)
   ip         String?
   createdAt  DateTime @default(now())
 
@@ -400,22 +405,22 @@ model AuditLog {
 
 // Rastreo satelital: ubicaciones enviadas por la app móvil de choferes
 model DeviceLocation {
-  id               String   @id @default(uuid())
-  deviceId         String   // identificador estable del dispositivo
-  deviceLabel      String?  // nombre visible (ej. chofer)
-  driverId         String?  // User.id del chofer (cuando la app lo envía)
-  routeId          Int?     // Route.id del recorrido activo
-  latitude         Float
-  longitude        Float
-  accuracy         Float? // precisión GPS (m)
-  speed            Float? // m/s si el cliente lo envía
-  heading          Float? // grados
-  offRouteMeters   Float? // distancia mínima a la polilínea planificada (m), si aplica
-  capturedAt       DateTime? // timestamp real del GPS en el dispositivo (enviado por la app)
-  timestamp        DateTime @default(now())
-  createdAt        DateTime @default(now())
+  id             String    @id @default(uuid())
+  deviceId       String // identificador estable del dispositivo
+  deviceLabel    String? // nombre visible (ej. chofer)
+  driverId       String? // User.id del chofer (cuando la app lo envía)
+  routeId        Int? // Route.id del recorrido activo
+  latitude       Float
+  longitude      Float
+  accuracy       Float? // precisión GPS (m)
+  speed          Float? // m/s si el cliente lo envía
+  heading        Float? // grados
+  offRouteMeters Float? // distancia mínima a la polilínea planificada (m), si aplica
+  capturedAt     DateTime? // timestamp real del GPS en el dispositivo (enviado por la app)
+  timestamp      DateTime  @default(now())
+  createdAt      DateTime  @default(now())
   /// false = recorrido finalizado o viaje borrado; se conserva para historial pero no aparece en el mapa en vivo
-  isActive         Boolean  @default(true)
+  isActive       Boolean   @default(true)
 
   @@index([deviceId])
   @@index([timestamp])
@@ -427,17 +432,17 @@ model DeviceLocation {
 // Historial de cambios visibles para el negocio (menú, cupos, datos de establecimiento)
 // Más legible y filtrable que AuditLog (que es técnico). Se muestra en la solapa "Historial".
 model Historial {
-  id           String   @id @default(uuid())
-  clientId     String?  // Client.id afectado (si aplica)
-  clientName   String?  // nombre del establecimiento al momento del cambio
-  category     String   // MENU | CUPOS | DATOS
-  field        String   // ej: "menu", "cupos_general", "cupos_celiaco", "address", "name"
-  oldValue     String?  // valor anterior (como string)
-  newValue     String?  // valor nuevo (como string)
-  userId       String?  // usuario que hizo el cambio
-  userName     String?  // nombre visible del usuario
-  note         String?  // observación opcional
-  createdAt    DateTime @default(now())
+  id         String   @id @default(uuid())
+  clientId   String? // Client.id afectado (si aplica)
+  clientName String? // nombre del establecimiento al momento del cambio
+  category   String // MENU | CUPOS | DATOS
+  field      String // ej: "menu", "cupos_general", "cupos_celiaco", "address", "name"
+  oldValue   String? // valor anterior (como string)
+  newValue   String? // valor nuevo (como string)
+  userId     String? // usuario que hizo el cambio
+  userName   String? // nombre visible del usuario
+  note       String? // observación opcional
+  createdAt  DateTime @default(now())
 
   @@index([clientId])
   @@index([category])
