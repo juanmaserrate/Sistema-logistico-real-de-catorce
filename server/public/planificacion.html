@@ -14044,6 +14044,9 @@
   .km { border: 1.5px solid #1B2559; border-radius: 6px; padding: 4px 8px; font-size: 9px; text-align: center; min-width: 120px; }
   .km b { display: block; font-size: 9px; color: #1B2559; }
   .km .ln { border-bottom: 1px solid #999; height: 16px; margin-top: 2px; }
+  .viaje-n { border: 1.5px solid #1B2559; border-radius: 4px; padding: 3px 8px; text-align: center; min-width: 74px; }
+  .viaje-n b { font-size: 8px; color: #1B2559; text-transform: uppercase; letter-spacing: .5px; display: block; }
+  .viaje-n .nro { font-size: 20px; font-weight: bold; color: #1B2559; line-height: 1.1; }
   .info { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; margin-bottom: 8px; }
   .info .cell { border: 1px solid #ccc; border-radius: 4px; padding: 3px 6px; min-height: 30px; }
   .info .cell .k { font-size: 8px; color: #888; text-transform: uppercase; font-weight: bold; letter-spacing: .5px; }
@@ -14108,8 +14111,9 @@
                     ${logo ? `<img src="${logo}" alt="Real de Catorce" style="height:56px;width:auto;object-fit:contain;-webkit-print-color-adjust:exact;print-color-adjust:exact;">` : ''}
                     <div class="hdr-title">
                         <h1>HOJA DE RUTA</h1>
-                        <div class="sub">Reparto ${esc(reparto)} · ${esc(fecha)}</div>
+                        <div class="sub">Viaje N° ${esc(trip.id)} · Reparto ${esc(reparto)} · ${esc(fecha)}</div>
                     </div>
+                    <div class="viaje-n"><b>VIAJE N°</b><div class="nro">${esc(trip.id)}</div></div>
                     <div class="km"><b>KM SALIDA DEL DEPÓSITO</b><div class="ln"></div></div>
                     <div class="km"><b>KM LLEGADA AL DEPÓSITO</b><div class="ln"></div></div>
                 </div>
@@ -19772,10 +19776,17 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const uniqueVehicles = [...new Set(planningData.map(t => t.vehicleType).filter(Boolean))].sort();
             if (uniqueVehicles.length === 0) uniqueVehicles.push('VANS', 'MINIBUS', 'DUCATO', 'UTILITARIO');
 
-            const driverPlaceholder = uniqueDrivers.length === 0
-                ? '<option value="">⚠ No hay choferes cargados — creá uno en el catálogo CHOFERES</option>'
-                : '<option value="">Seleccionar Chofer</option>';
-            document.getElementById('new-trip-driver').innerHTML = driverPlaceholder + uniqueDrivers.map(d => `<option value="${d}">${d}</option>`).join('');
+            // El campo de chofer es escribible: las opciones van en un datalist,
+            // asi el operador puede tipear un nombre que todavia no existe.
+            _choferesConocidos = uniqueDrivers.map(d => String(d).trim().toUpperCase()).filter(Boolean);
+            const dlChofer = document.getElementById('new-trip-driver-list');
+            if (dlChofer) dlChofer.innerHTML = uniqueDrivers.map(d => `<option value="${escapeHtml(d)}"></option>`).join('');
+            const inpChofer = document.getElementById('new-trip-driver');
+            if (inpChofer) {
+                inpChofer.placeholder = uniqueDrivers.length === 0
+                    ? '⚠ No hay choferes cargados — escribí uno y guardalo'
+                    : 'Escribí o elegí un chofer…';
+            }
 
             const auxOptions = '<option value="">Sin Auxiliar</option>' + uniqueAux.map(a => `<option value="${a}">${a}</option>`).join('');
             document.getElementById('new-trip-aux1').innerHTML = auxOptions;
@@ -19850,7 +19861,43 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (tempInpNew) { tempInpNew.value = ''; tempInpNew.disabled = true; }
             const vueltaSel = document.getElementById('new-trip-vuelta');
             if (vueltaSel) vueltaSel.value = '1';
+            const modoSel = document.getElementById('new-trip-modo');
+            if (modoSel) modoSel.value = 'APP';
+            onNewTripModoChange();
+            refrescarAvisoChoferNuevo('');
             resetTripDeliveryPanelForNewTrip();
+        }
+
+        /** ¿El viaje que se está editando es manual? */
+        function esViajeManual() {
+            return (document.getElementById('new-trip-modo')?.value || 'APP') === 'MANUAL';
+        }
+
+        /**
+         * Viaje manual: no va a ningún celular, así que el Usuario App se apaga.
+         * Los tiempos se cargan a mano en Hora Salida y Hora Llegada; no hay
+         * marca parada por parada.
+         */
+        function onNewTripModoChange() {
+            const manual = esViajeManual();
+            const userSel = document.getElementById('new-trip-mobile-user');
+            const userHint = document.getElementById('new-trip-mobile-user-hint');
+            const modoHint = document.getElementById('new-trip-modo-hint');
+            if (userSel) {
+                userSel.disabled = manual;
+                if (manual) userSel.value = '';
+                userSel.classList.toggle('opacity-50', manual);
+            }
+            if (userHint) {
+                userHint.textContent = manual
+                    ? 'No se usa: un viaje manual no aparece en ninguna app.'
+                    : 'Quién verá este viaje en la app móvil.';
+            }
+            if (modoHint) {
+                modoHint.textContent = manual
+                    ? 'No sale en el celular. Cargás vos la hora de salida y la de llegada; no se toman tiempos parada por parada.'
+                    : 'El chofer va marcando la llegada a cada parada desde el celular.';
+            }
         }
 
         // Habilita/deshabilita el input de temperatura según el valor de "Refrigerado"
@@ -19875,19 +19922,79 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
          *  - Si tiene proveedor → setea Contrato = Tercerizado + Proveedor (autocompletado).
          *  - Si no tiene proveedor → setea Contrato = Propio (limpia campos tercerizado).
          *  Se ejecuta solo al cambiar el chofer; el usuario puede override después. */
+        /** Nombres de chofer que ya existen, en mayúsculas. */
+        let _choferesConocidos = [];
+
+        /** Muestra u oculta el aviso de «este chofer no está en la lista». */
+        function refrescarAvisoChoferNuevo(driverName) {
+            const aviso = document.getElementById('new-trip-driver-new');
+            const nombre = document.getElementById('new-trip-driver-new-name');
+            if (!aviso) return;
+            const esNuevo = !!driverName && !_choferesConocidos.includes(driverName);
+            if (esNuevo) {
+                if (nombre) nombre.textContent = driverName;
+                aviso.classList.remove('hidden');
+            } else {
+                aviso.classList.add('hidden');
+            }
+        }
+
+        /** Guarda el chofer tipeado en el catálogo, para que la próxima ya esté. */
+        async function guardarChoferNuevo() {
+            const inp = document.getElementById('new-trip-driver');
+            const nombre = (inp?.value || '').trim().toUpperCase();
+            if (!nombre) return;
+            if (_choferesConocidos.includes(nombre)) {
+                refrescarAvisoChoferNuevo(nombre);
+                return;
+            }
+            try {
+                const res = await fetch(`${API_URL}/users`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
+                    body: JSON.stringify({
+                        fullName: nombre,
+                        username: nombre.replace(/\s+/g, '_'),
+                        role: 'CHOFER',
+                        password: '-'
+                    })
+                });
+                if (!res.ok && res.status !== 409) throw new Error('HTTP ' + res.status);
+                // 409 = ya existía con otro nombre de usuario: igual queda disponible.
+                _choferesConocidos.push(nombre);
+                const dl = document.getElementById('new-trip-driver-list');
+                if (dl) dl.innerHTML += `<option value="${escapeHtml(nombre)}"></option>`;
+                refrescarAvisoChoferNuevo(nombre);
+                if (typeof addNotification === 'function') {
+                    addNotification('success', 'Chofer guardado', `${nombre} ya queda en el catálogo.`);
+                }
+            } catch (e) {
+                if (typeof addNotification === 'function') {
+                    addNotification('error', 'No se pudo guardar', `${nombre} se usa en este viaje, pero no quedó en el catálogo.`);
+                }
+            }
+        }
+
         function onTripDriverChange() {
-            const driverName = (document.getElementById('new-trip-driver')?.value || '').trim().toUpperCase();
+            const inp = document.getElementById('new-trip-driver');
+            const driverName = (inp?.value || '').trim().toUpperCase();
+            if (inp && inp.value !== driverName) inp.value = driverName;
+            refrescarAvisoChoferNuevo(driverName);
             const contractSel = document.getElementById('new-trip-contract');
             const provInp = document.getElementById('new-trip-provider');
             if (!contractSel) return;
             const info = _driverProviderMap.get(driverName);
             if (info && info.providerId) {
-                // El chofer tiene proveedor asignado → autodetectar Tercerizado
+                // El chofer tiene proveedor asignado → es Tercerizado, sin dudas
                 contractSel.value = 'Tercerizado';
                 if (provInp) provInp.value = info.providerName || '';
-            } else {
-                // Sin proveedor asignado → marcar como Propio
-                contractSel.value = 'Propio';
+            } else if (driverName) {
+                // Sin proveedor: no se pisa la sugerencia del reparto. Solo se marca
+                // Propio si no hay ninguna sugerencia previa.
+                const sugerido = typeof contratoSugeridoPorReparto === 'function'
+                    ? contratoSugeridoPorReparto(document.getElementById('new-trip-reparto')?.value || '')
+                    : null;
+                if (!sugerido) contractSel.value = 'Propio';
                 if (provInp) provInp.value = '';
             }
             // Aplicar la lógica de toggle (muestra/oculta el campo de valor y proveedor)
@@ -19966,7 +20073,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             populateBusinessUnitSelect(trip.businessUnit || 'DMC');
             document.getElementById('new-trip-bu').value = normalizeBusinessUnit(trip.businessUnit || 'DMC');
 
-            document.getElementById('new-trip-driver').value = trip.driver || '';
+            document.getElementById('new-trip-driver').value = (trip.driver || '').toUpperCase();
+            const modoSelEdit = document.getElementById('new-trip-modo');
+            if (modoSelEdit) modoSelEdit.value = trip.isManual ? 'MANUAL' : 'APP';
+            onNewTripModoChange();
+            refrescarAvisoChoferNuevo((trip.driver || '').trim().toUpperCase());
             document.getElementById('new-trip-vehicle').value = trip.vehicleType || '';
             document.getElementById('new-trip-aux1').value = trip.auxiliar || '';
             document.getElementById('new-trip-aux2').value = trip.auxiliar2 || '';
@@ -20064,7 +20175,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
 
             const repartoValue = document.getElementById('new-trip-reparto').value || null;
-            const mobileUserValue = document.getElementById('new-trip-mobile-user').value || null;
+            const esManual = esViajeManual();
+            // Un viaje manual no se le asigna a ningún celular.
+            const mobileUserValue = esManual ? null : (document.getElementById('new-trip-mobile-user').value || null);
             // Refrigerado: default 'no'. Temperatura: solo si refrigerado === 'si'
             const refrigeratedValue = (document.getElementById('new-trip-refrigerated')?.value || 'no').toLowerCase() === 'si';
             const tempRaw = (document.getElementById('new-trip-temperature')?.value || '').toString().trim();
@@ -20087,8 +20200,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 providerValue = provRaw || 'EXTERNO';
             }
             const baseTripData = {
+                isManual: esManual,
                 businessUnit: document.getElementById('new-trip-bu').value,
-                driver: document.getElementById('new-trip-driver').value,
+                driver: (document.getElementById('new-trip-driver').value || '').trim().toUpperCase(),
                 vehicleType: document.getElementById('new-trip-vehicle').value,
                 auxiliar: document.getElementById('new-trip-aux1').value || null,
                 auxiliar2: document.getElementById('new-trip-aux2').value || null,
@@ -21228,9 +21342,18 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 <div class="grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
                     <div>
                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Chofer</label>
-                        <select id="new-trip-driver" onchange="onTripDriverChange()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                            <!-- Injected by JS -->
-                        </select>
+                        <input type="text" id="new-trip-driver" list="new-trip-driver-list" autocomplete="off"
+                               oninput="onTripDriverChange()" onchange="onTripDriverChange()"
+                               placeholder="Escribí o elegí un chofer…"
+                               class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold uppercase shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                        <datalist id="new-trip-driver-list"><!-- Injected by JS --></datalist>
+                        <div id="new-trip-driver-new" class="hidden mt-2 flex items-center gap-2">
+                            <span class="text-[10px] font-bold text-amber-700 flex-1">
+                                «<span id="new-trip-driver-new-name"></span>» no está en la lista. ¿Lo guardo?
+                            </span>
+                            <button type="button" onclick="guardarChoferNuevo()"
+                                    class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-[10px] font-bold hover:bg-indigo-700 transition-all uppercase whitespace-nowrap">Guardar chofer</button>
+                        </div>
                     </div>
                     <div id="new-trip-vehicle-container">
                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Coche / Vehículo</label>
@@ -21286,7 +21409,18 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                           <select id="new-trip-mobile-user" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                                <!-- Injected by JS -->
                           </select>
-                          <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Quién verá este viaje en la app móvil.</p>
+                          <p id="new-trip-mobile-user-hint" class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Quién verá este viaje en la app móvil.</p>
+                     </div>
+                 </div>
+
+                 <div class="grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
+                     <div>
+                          <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Tipo de viaje</label>
+                          <select id="new-trip-modo" onchange="onNewTripModoChange()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                               <option value="APP">Con app — el chofer marca cada parada</option>
+                               <option value="MANUAL">Manual — solo salida y llegada</option>
+                          </select>
+                          <p id="new-trip-modo-hint" class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">El chofer va marcando la llegada a cada parada desde el celular.</p>
                      </div>
                  </div>
 

@@ -3195,10 +3195,13 @@ app.get('/api/v1/routes', async (req, res) => {
     }
     const routes = await prisma.route.findMany({
         where,
-        include: { stops: { orderBy: { sequence: 'asc' }, include: { client: true } }, vehicle: true, driver: true, trip: { select: { id: true, businessUnit: true, reparto: true, zone: true, status: true, completedAt: true } } },
+        include: { stops: { orderBy: { sequence: 'asc' }, include: { client: true } }, vehicle: true, driver: true, trip: { select: { id: true, businessUnit: true, reparto: true, zone: true, status: true, completedAt: true, isManual: true } } },
         orderBy: { date: 'desc' }
     });
-    res.json(routes.map(withRetryReason));
+    // Un viaje manual no va a ningun celular: se filtra cuando la consulta viene
+    // de la app (pide por chofer). La web no manda driverId y los sigue viendo.
+    const visibles = driverId ? routes.filter((r: any) => r.trip?.isManual !== true) : routes;
+    res.json(visibles.map(withRetryReason));
 });
 
 /** Expone el motivo del ULTIMO intento fallido como campo plano `retryReason`,
@@ -6227,6 +6230,8 @@ app.post('/api/v1/trips', async (req, res) => {
             const sug = contratoPorReparto(datos.reparto);
             if (sug) datos.contractType = sug;
         }
+        // Un viaje manual no se le manda a ningun celular.
+        if (datos.isManual === true) datos.assignedMobileUser = null;
         const trip = await prisma.trip.create({ data: datos });
         await logAction(req, 'CREATE', 'trip', trip.id, trip.driver || String(trip.id), null, trip);
         io.emit('trip:created', { trip });
@@ -6243,6 +6248,8 @@ app.put('/api/v1/trips/:id', async (req, res) => {
     const { id } = req.params;
     const body = { ...req.body };
     delete body.stops;
+    // Un viaje manual no se le manda a ningun celular.
+    if (body.isManual === true) body.assignedMobileUser = null;
     try {
         const before = await prisma.trip.findUnique({ where: { id: parseInt(id) } });
         const trip = await prisma.trip.update({ where: { id: parseInt(id) }, data: body });
