@@ -19166,10 +19166,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             R23: 'Propio',      R24: 'Propio'
         };
 
-        /** Contrato sugerido para un reparto. Solo "R" + numero exacto:
-         *  "SAM 2 VIERNES R6" o "CDI (TODOS)" no entran en la regla. */
+        /** Contrato sugerido. Manda el numero de reparto del final del nombre:
+         *  "R12" y "SAM 2 VIERNES R12" son los dos del R12, aunque vayan a otros
+         *  puntos. "CDI (TODOS)" o "LIBRE" no tienen numero y quedan sin regla. */
         function contratoSugeridoPorReparto(reparto) {
-            const m = String(reparto || '').trim().toUpperCase().match(/^R\s*(\d{1,2})$/);
+            const m = String(reparto || '').trim().toUpperCase().match(/R\s*(\d{1,2})\s*$/);
             return m ? (CONTRATO_POR_REPARTO['R' + Number(m[1])] || null) : null;
         }
 

@@ -6084,9 +6084,11 @@ const CONTRATO_POR_REPARTO: Record<string, string> = {
     R23: 'Propio',      R24: 'Propio'
 };
 
-/** Solo "R" + numero exacto: "SAM 2 VIERNES R6" o "CDI (TODOS)" no entran. */
+/** Manda el numero de reparto del final del nombre: "R12" y "SAM 2 VIERNES R12"
+ *  son los dos del R12, aunque el segundo vaya a otros puntos.
+ *  "CDI (TODOS)" o "LIBRE" no tienen numero y quedan sin regla. */
 function contratoPorReparto(reparto: any): string | null {
-    const m = String(reparto || '').trim().toUpperCase().match(/^R\s*(\d{1,2})$/);
+    const m = String(reparto || '').trim().toUpperCase().match(/R\s*(\d{1,2})\s*$/);
     return m ? (CONTRATO_POR_REPARTO['R' + Number(m[1])] || null) : null;
 }
 
