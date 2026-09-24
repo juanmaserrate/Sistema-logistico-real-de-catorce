@@ -21840,6 +21840,10 @@ async function renderHdrMap(detail) {
     // como modal-body o modal-unblock-role-admin que NO son overlays.
     const MODAL_SELECTOR = '[id$="-modal"], #modal-salary-edit, #modal-unblock-role, #modal-repair, .modal-overlay';
 
+    // Formularios largos: un click al costado cerraba el modal y se perdia todo
+    // lo cargado. Estos solo se cierran con la X o con Cancelar.
+    const NO_CIERRAN_POR_CLICK_AFUERA = ['new-trip-modal'];
+
     /** Devuelve todos los modales actualmente VISIBLES (no tienen clase 'hidden'). */
     function getOpenModals() {
         const all = document.querySelectorAll(MODAL_SELECTOR);
@@ -21928,6 +21932,7 @@ async function renderHdrMap(detail) {
         if (!(modal instanceof HTMLElement)) return;
         if (!modal.matches(MODAL_SELECTOR)) return;
         if (modal.classList.contains('hidden')) return;
+        if (NO_CIERRAN_POR_CLICK_AFUERA.includes(modal.id)) return;
         hideModal(modal);
     }, false);
 
