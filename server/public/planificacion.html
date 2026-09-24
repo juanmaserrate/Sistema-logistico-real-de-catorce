@@ -19152,8 +19152,48 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (ul) ul.innerHTML = '';
         }
 
+        /**
+         * Contrato habitual de cada reparto. Se usa SOLO como sugerencia al crear
+         * un viaje nuevo: el operador puede cambiarlo antes de guardar.
+         * R15 y R21 no tienen regla (quedan como estan).
+         */
+        const CONTRATO_POR_REPARTO = {
+            R1: 'Tercerizado',  R2: 'Tercerizado',  R3: 'Tercerizado',  R4: 'Propio',
+            R5: 'Tercerizado',  R6: 'Propio',       R7: 'Tercerizado',  R8: 'Tercerizado',
+            R9: 'Propio',       R10: 'Tercerizado', R11: 'Propio',      R12: 'Tercerizado',
+            R13: 'Tercerizado', R14: 'Tercerizado', R16: 'Propio',      R17: 'Tercerizado',
+            R18: 'Tercerizado', R19: 'Propio',      R20: 'Tercerizado', R22: 'Propio',
+            R23: 'Propio',      R24: 'Propio'
+        };
+
+        /** Contrato sugerido para un reparto. Solo "R" + numero exacto:
+         *  "SAM 2 VIERNES R6" o "CDI (TODOS)" no entran en la regla. */
+        function contratoSugeridoPorReparto(reparto) {
+            const m = String(reparto || '').trim().toUpperCase().match(/^R\s*(\d{1,2})$/);
+            return m ? (CONTRATO_POR_REPARTO['R' + Number(m[1])] || null) : null;
+        }
+
+        /** Al elegir el reparto en un viaje NUEVO, deja marcado el contrato habitual. */
+        function aplicarContratoSugerido(reparto) {
+            const editando = !!(document.getElementById('new-trip-id')?.value || '').trim();
+            const sel = document.getElementById('new-trip-contract');
+            const sugerido = contratoSugeridoPorReparto(reparto);
+            const aviso = document.getElementById('new-trip-contract-hint');
+            if (editando || !sel || !sugerido) {
+                if (aviso) aviso.classList.add('hidden');
+                return;
+            }
+            sel.value = sugerido;
+            if (typeof toggleVehicleTypeField === 'function') toggleVehicleTypeField();
+            if (aviso) {
+                aviso.textContent = `Sugerido por ${String(reparto).toUpperCase()} — podés cambiarlo`;
+                aviso.classList.remove('hidden');
+            }
+        }
+
         async function onNewTripRepartoChange() {
             const reparto = (document.getElementById('new-trip-reparto')?.value || '').trim();
+            aplicarContratoSugerido(reparto);
             if (!reparto || /^libre$/i.test(reparto) || reparto === '') {
                 tripDeliveryRows = [];
                 renderTripDeliveryList();
@@ -21025,6 +21065,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                             <option value="Propio">Propio</option>
                             <option value="Tercerizado">Tercerizado</option>
                         </select>
+                        <p id="new-trip-contract-hint" class="hidden mt-1 text-[10px] font-bold text-indigo-500"></p>
                     </div>
                     <div id="new-trip-provider-container" class="hidden">
                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Proveedor tercerizado</label>

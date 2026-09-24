@@ -5339,6 +5339,46 @@ app.post('/api/admin/viajes-sin-cerrar', async (req: any, res: any) => {
     }
 });
 
+/** Pone el contrato (Propio/Tercerizado) segun el reparto en viajes ya creados.
+ *  Nunca toca los viajes de HOY que estan en camino.
+ *  POST /api/admin/trips-set-contract { key, desde, hasta, dryRun? } */
+app.post('/api/admin/trips-set-contract', async (req: any, res: any) => {
+    const { key, desde, hasta, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const ini = utcDayRange(String(desde)).start;
+        const fin = utcDayRange(String(hasta)).end;
+        const hoy = utcDayRange(buenosAiresYmd());
+        const viajes = await prisma.trip.findMany({
+            where: { date: { gte: ini, lte: fin } },
+            select: { id: true, date: true, reparto: true, contractType: true, status: true },
+            orderBy: { id: 'asc' }
+        });
+        const cambios: any[] = [];
+        const salteados: any[] = [];
+        for (const t of viajes) {
+            const sug = contratoPorReparto(t.reparto);
+            if (!sug) { salteados.push({ tripId: t.id, reparto: t.reparto, motivo: 'sin regla' }); continue; }
+            if (String(t.contractType || '') === sug) continue;
+            const esDeHoy = t.date >= hoy.start && t.date <= hoy.end;
+            const enCamino = !['COMPLETED', 'RETURNED', 'CANCELLED'].includes(String(t.status || '').toUpperCase());
+            if (esDeHoy && enCamino) {
+                salteados.push({ tripId: t.id, reparto: t.reparto, motivo: 'de hoy y en camino' });
+                continue;
+            }
+            cambios.push({ tripId: t.id, reparto: t.reparto, antes: t.contractType || null, despues: sug });
+        }
+        if (!dryRun) {
+            for (const c of cambios) {
+                await prisma.trip.update({ where: { id: c.tripId }, data: { contractType: c.despues } });
+            }
+        }
+        res.json({ dryRun: !!dryRun, revisados: viajes.length, cambiados: cambios.length, cambios, salteados });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
@@ -6034,9 +6074,32 @@ app.get('/api/v1/trips', async (req, res) => {
     res.json(filteredTrips);
 });
 
+/** Contrato habitual de cada reparto. R15 y R21 no tienen regla. */
+const CONTRATO_POR_REPARTO: Record<string, string> = {
+    R1: 'Tercerizado',  R2: 'Tercerizado',  R3: 'Tercerizado',  R4: 'Propio',
+    R5: 'Tercerizado',  R6: 'Propio',       R7: 'Tercerizado',  R8: 'Tercerizado',
+    R9: 'Propio',       R10: 'Tercerizado', R11: 'Propio',      R12: 'Tercerizado',
+    R13: 'Tercerizado', R14: 'Tercerizado', R16: 'Propio',      R17: 'Tercerizado',
+    R18: 'Tercerizado', R19: 'Propio',      R20: 'Tercerizado', R22: 'Propio',
+    R23: 'Propio',      R24: 'Propio'
+};
+
+/** Solo "R" + numero exacto: "SAM 2 VIERNES R6" o "CDI (TODOS)" no entran. */
+function contratoPorReparto(reparto: any): string | null {
+    const m = String(reparto || '').trim().toUpperCase().match(/^R\s*(\d{1,2})$/);
+    return m ? (CONTRATO_POR_REPARTO['R' + Number(m[1])] || null) : null;
+}
+
 app.post('/api/v1/trips', async (req, res) => {
     try {
-        const trip = await prisma.trip.create({ data: req.body });
+        const datos = { ...req.body };
+        // Si el viaje llega sin contrato, se completa con el habitual del reparto.
+        // Si viene con uno elegido, se respeta.
+        if (!String(datos.contractType || '').trim()) {
+            const sug = contratoPorReparto(datos.reparto);
+            if (sug) datos.contractType = sug;
+        }
+        const trip = await prisma.trip.create({ data: datos });
         await logAction(req, 'CREATE', 'trip', trip.id, trip.driver || String(trip.id), null, trip);
         io.emit('trip:created', { trip });
         // Notificar al chofer asignado (nuevo modelo) > reparto > driver legacy
