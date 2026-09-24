@@ -1305,10 +1305,12 @@ async function leerConfigAvisos(): Promise<ConfigAvisos> {
 
 /** Hora y minuto actuales en Buenos Aires. */
 function horaBuenosAires(): { hh: number; mm: number } {
+    // hourCycle 'h23' y no hour12:false: con hour12:false la medianoche se lee
+    // como las "24", y el aviso de las 15:00 salia apenas pasaba la medianoche.
     const f = new Intl.DateTimeFormat('es-AR', {
-        timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false
+        timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
     }).formatToParts(new Date());
-    const hh = Number(f.find((p) => p.type === 'hour')?.value || 0);
+    const hh = Number(f.find((p) => p.type === 'hour')?.value || 0) % 24;
     const mm = Number(f.find((p) => p.type === 'minute')?.value || 0);
     return { hh, mm };
 }
@@ -1325,7 +1327,7 @@ function hhmmBA(fecha: Date | null | undefined): string {
     if (!fecha) return '—';
     try {
         return new Date(fecha).toLocaleTimeString('es-AR', {
-            timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false
+            timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
         });
     } catch { return '—'; }
 }
