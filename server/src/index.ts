@@ -162,7 +162,14 @@ const trackingLimiter = rateLimit({
     legacyHeaders: false,
     message: { error: 'Demasiadas actualizaciones de ubicación.' }
 });
-app.use('/api/', generalLimiter);
+// El limite general NO se aplica al reporte de ubicacion: ese camino tiene el
+// suyo (trackingLimiter, 600/min). Si no se excluye, el general de 200/min corre
+// primero y le gana, y varios choferes detras de la misma IP de Claro/Movistar
+// se quedan sin reportar la señal.
+app.use('/api/', (req: any, res: any, next: any) => {
+    if (req.path === '/v1/tracking/location') return next();
+    return generalLimiter(req, res, next);
+});
 
 // ── Seguridad: Auth middleware aplicado a rutas sensibles ──────────────────────
 const PROTECTED_PREFIXES = [
