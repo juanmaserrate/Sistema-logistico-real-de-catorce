@@ -1361,6 +1361,7 @@
                                     <th>VTV</th>
                                     <th>Broma.</th>
                                     <th>Senasa</th>
+                                    <th>Seguro</th>
                                     <th>Licencia</th>
                                     <th>Motor</th>
                                     <th>Chasis</th>
@@ -17010,23 +17011,28 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     }
                 });
 
+                // El dato guardado en el servidor gana sobre el del navegador:
+                // el navegador es una copia vieja de una sola computadora.
+                const soloFechaTexto = (x) => String(x || '').split('T')[0];
                 maintenanceVehicles = Object.values(byPlate).map(v => {
                     const ext = maintData.vehicles[v.plate] || {};
                     return {
                         ...v,
-                        brand: ext.brand || '',
-                        model: ext.model || v.model || '',
-                        year: ext.year || null,
-                        vtv: ext.vtv || '',
-                        bromatologia: ext.bromatologia || '',
-                        senasa: ext.senasa || '',
-                        driverLicenseExpiry: ext.driverLicenseExpiry || '',
-                        motor: ext.motor || '',
-                        chasis: ext.chasis || '',
-                        driverName: ext.driverName || v.driverName || '',
+                        brand: v.brand || ext.brand || '',
+                        model: v.model || ext.model || '',
+                        year: v.year || ext.year || null,
+                        vtv: soloFechaTexto(v.vtvExpiry) || ext.vtv || '',
+                        bromatologia: v.bromatologia || ext.bromatologia || '',
+                        senasa: soloFechaTexto(v.senasaExpiry) || ext.senasa || '',
+                        seguro: soloFechaTexto(v.insuranceExpiry) || '',
+                        driverLicenseExpiry: v.driverLicense || ext.driverLicenseExpiry || '',
+                        motor: v.motor || ext.motor || '',
+                        chasis: v.chasis || ext.chasis || '',
+                        driverName: v.driverName || ext.driverName || '',
                         currentKm: v.currentKm ?? null
                     };
                 });
+                migrarPapelesDelNavegadorUnaVez(maintData, byPlate);
 
                 if (!selectedMaintenancePlate && maintenanceVehicles.length > 0) {
                     const firstWithRecords = maintenanceVehicles.find(v => (maintData.records?.[v.plate] || []).length > 0);
@@ -17068,6 +17074,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     <td class="px-4 py-2"><input type="date" value="${esc((v.vtv || '').split('T')[0])}" oninput="updateMaintenanceVehicleField('${v.plate}','vtv',this.value)" class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
                     <td class="px-4 py-2"><input type="text" value="${esc(v.bromatologia)}" oninput="updateMaintenanceVehicleField('${v.plate}','bromatologia',this.value)" class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
                     <td class="px-4 py-2"><input type="date" value="${esc((v.senasa || '').split('T')[0])}" oninput="updateMaintenanceVehicleField('${v.plate}','senasa',this.value)" class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
+                    <td class="px-4 py-2"><input type="date" value="${esc((v.seguro || '').split('T')[0])}" oninput="updateMaintenanceVehicleField('${v.plate}','seguro',this.value)" class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
                     <td class="px-4 py-2"><input type="date" value="${esc((v.driverLicenseExpiry || '').split('T')[0])}" oninput="updateMaintenanceVehicleField('${v.plate}','driverLicenseExpiry',this.value)" class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
                     <td class="px-4 py-2"><input type="text" value="${esc(v.motor)}" oninput="updateMaintenanceVehicleField('${v.plate}','motor',this.value)" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
                     <td class="px-4 py-2"><input type="text" value="${esc(v.chasis)}" oninput="updateMaintenanceVehicleField('${v.plate}','chasis',this.value)" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1"></td>
@@ -17089,6 +17096,39 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             lucide.createIcons();
         }
 
+        /** Nombre del campo en el servidor. Los que no estan aca no se guardan. */
+        const PAPELES_AL_SERVIDOR = {
+            vtv: 'vtvExpiry', senasa: 'senasaExpiry', seguro: 'insuranceExpiry',
+            bromatologia: 'bromatologia', driverLicenseExpiry: 'driverLicense',
+            brand: 'brand', year: 'year', motor: 'motor', chasis: 'chasis',
+            model: 'model', driverName: 'driverName'
+        };
+        const _papelesPendientes = {};
+        const _papelesTimers = {};
+
+        /** Manda los cambios al servidor un segundo despues de dejar de escribir,
+         *  para no pegarle en cada tecla. */
+        function guardarPapelesConEspera(plate) {
+            clearTimeout(_papelesTimers[plate]);
+            _papelesTimers[plate] = setTimeout(async () => {
+                const cambios = _papelesPendientes[plate];
+                if (!cambios || !Object.keys(cambios).length) return;
+                delete _papelesPendientes[plate];
+                try {
+                    const res = await fetch(API_URL + '/vehicles/' + encodeURIComponent(plate) + '/papeles', {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
+                        body: JSON.stringify(cambios)
+                    });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                } catch (e) {
+                    if (typeof addNotification === 'function') {
+                        addNotification('warning', 'Sin guardar', 'No se pudo guardar ' + plate + ' en el servidor. Queda solo en esta computadora.');
+                    }
+                }
+            }, 1000);
+        }
+
         function updateMaintenanceVehicleField(plate, field, value) {
             const data = getMaintenanceData();
             if (!data.vehicles[plate]) data.vehicles[plate] = {};
@@ -17096,6 +17136,52 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             setMaintenanceData(data);
             const idx = maintenanceVehicles.findIndex(v => v.plate === plate);
             if (idx >= 0) maintenanceVehicles[idx][field] = data.vehicles[plate][field];
+            const campoServidor = PAPELES_AL_SERVIDOR[field];
+            if (campoServidor) {
+                _papelesPendientes[plate] = { ...(_papelesPendientes[plate] || {}), [campoServidor]: value };
+                guardarPapelesConEspera(plate);
+            }
+        }
+
+        /** Los papeles vivian solo en este navegador. La primera vez que se abre
+         *  la flota se suben al servidor, para que los vea todo el mundo y entren
+         *  en el reporte de la Torre. Se hace una sola vez y no pisa lo que ya
+         *  este cargado en el servidor. */
+        async function migrarPapelesDelNavegadorUnaVez(maintData, byPlate) {
+            const MARCA = 'r14.papelesMigradosAlServidor';
+            try {
+                if (localStorage.getItem(MARCA)) return;
+                const aSubir = {};
+                for (const [plate, ext] of Object.entries(maintData.vehicles || {})) {
+                    const enServidor = byPlate[plate] || {};
+                    const campos = {};
+                    const poner = (clave, valor) => {
+                        const v = String(valor || '').trim();
+                        if (v) campos[clave] = v;
+                    };
+                    if (!enServidor.vtvExpiry) poner('vtvExpiry', ext.vtv);
+                    if (!enServidor.senasaExpiry) poner('senasaExpiry', ext.senasa);
+                    if (!enServidor.bromatologia) poner('bromatologia', ext.bromatologia);
+                    if (!enServidor.driverLicense) poner('driverLicense', ext.driverLicenseExpiry);
+                    if (!enServidor.brand) poner('brand', ext.brand);
+                    if (!enServidor.motor) poner('motor', ext.motor);
+                    if (!enServidor.chasis) poner('chasis', ext.chasis);
+                    if (!enServidor.year && ext.year) campos.year = ext.year;
+                    if (Object.keys(campos).length) aSubir[plate] = campos;
+                }
+                if (!Object.keys(aSubir).length) { localStorage.setItem(MARCA, '1'); return; }
+                const res = await fetch(API_URL + '/vehicles/papeles-bulk', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
+                    body: JSON.stringify({ vehiculos: aSubir })
+                });
+                if (!res.ok) return;
+                const j = await res.json();
+                localStorage.setItem(MARCA, '1');
+                if (j.guardados && typeof addNotification === 'function') {
+                    addNotification('success', 'Flota', j.guardados + ' unidades: los papeles quedaron guardados en el servidor.');
+                }
+            } catch (_) { /* si falla, se reintenta la proxima vez */ }
         }
 
         function saveMaintenanceVehicleRow(plate) {

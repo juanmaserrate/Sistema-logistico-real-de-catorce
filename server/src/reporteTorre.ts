@@ -197,10 +197,15 @@ export async function filasFlota(prisma: Prisma) {
         'Refrigerado': siNo(v.isRefrigerated),
         'Combustible': v.fuelType || '',
         'Km actual': numero(v.currentKm),
+        'Marca': v.brand || '',
+        'Anio': numero(v.year),
         'Vence VTV': soloFecha(v.vtvExpiry),
         'Vence seguro': soloFecha(v.insuranceExpiry),
         'Vence SENASA': soloFecha(v.senasaExpiry),
-        'Vence bromatologia': soloFecha(v.bromatologiaExpiry)
+        'Bromatologia': v.bromatologia || '',
+        'Vence licencia del chofer': v.driverLicense || '',
+        'Motor': v.motor || '',
+        'Chasis': v.chasis || ''
     }));
 }
 
@@ -259,8 +264,9 @@ const COLUMNAS: Record<string, string[]> = {
         'Ultima carga de envases'],
     mantenimiento: ['Fecha', 'Patente', 'Categoria', 'Mes', 'Trabajo realizado', 'Taller o proveedor',
         'Kilometros', 'Costo', 'Notas'],
-    flota: ['Patente', 'Modelo', 'Tipo de unidad', 'Contrato', 'Estado', 'Chofer habitual', 'Refrigerado',
-        'Combustible', 'Km actual', 'Vence VTV', 'Vence seguro', 'Vence SENASA', 'Vence bromatologia'],
+    flota: ['Patente', 'Modelo', 'Marca', 'Anio', 'Tipo de unidad', 'Contrato', 'Estado', 'Chofer habitual',
+        'Refrigerado', 'Combustible', 'Km actual', 'Vence VTV', 'Vence seguro', 'Vence SENASA', 'Bromatologia',
+        'Vence licencia del chofer', 'Motor', 'Chasis'],
     incidencias: ['Fecha', 'Hora', 'ID viaje', 'Reparto', 'Unidad de negocio', 'Tipo', 'Descripcion', 'Chofer',
         'Estado', 'Resolucion', 'Fecha de cierre']
 };

@@ -55,29 +55,36 @@ model Provider {
 }
 
 model Vehicle {
-  id                 String    @id @default(uuid())
-  tenantId           String
-  plate              String    @unique
-  model              String?
-  capacityWeight     Float?
-  capacityVolume     Float?
-  isRefrigerated     Boolean   @default(false)
-  status             String    @default("ACTIVE")
-  contractType       String?
-  driverName         String?
-  fuelType           String?
-  insurance          String?
-  usefulLife         String?
-  vehicleType        String?
-  currentKm          Float? // Kilometraje actual (actualizado por chofer al iniciar recorrido)
-  /// Vencimientos de los papeles. Se cargan a mano una vez y despues el sistema
-  /// avisa solo cuando se acerca la fecha.
-  vtvExpiry          DateTime?
-  insuranceExpiry    DateTime?
-  senasaExpiry       DateTime?
-  bromatologiaExpiry DateTime?
-  routes             Route[]
-  tenant             Tenant    @relation(fields: [tenantId], references: [id])
+  id              String    @id @default(uuid())
+  tenantId        String
+  plate           String    @unique
+  model           String?
+  capacityWeight  Float?
+  capacityVolume  Float?
+  isRefrigerated  Boolean   @default(false)
+  status          String    @default("ACTIVE")
+  contractType    String?
+  driverName      String?
+  fuelType        String?
+  insurance       String?
+  usefulLife      String?
+  vehicleType     String?
+  currentKm       Float? // Kilometraje actual (actualizado por chofer al iniciar recorrido)
+  /// Papeles y datos de la unidad. Antes vivian solo en el navegador del
+  /// operador (localStorage): se perdian al limpiar el navegador y nadie mas
+  /// los veia. Ahora quedan en la base.
+  vtvExpiry       DateTime?
+  insuranceExpiry DateTime?
+  senasaExpiry    DateTime?
+  /// Texto libre: a veces dice "VENCIDO (falta curso...)" en vez de una fecha.
+  bromatologia    String?
+  driverLicense   String?
+  brand           String?
+  year            Int?
+  motor           String?
+  chasis          String?
+  routes          Route[]
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
 }
 
 model Client {

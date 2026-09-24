@@ -7904,6 +7904,77 @@ app.patch('/api/v1/vehicles/:plate/km', async (req, res) => {
     }
 });
 
+// ── Vehiculo: papeles y datos de la unidad ───────────────────────────────────
+// Estos datos vivian en el navegador del operador. Ahora se guardan en la base,
+// asi los ve todo el mundo y entran en el reporte de la Torre.
+const CAMPOS_PAPELES_FECHA = ['vtvExpiry', 'insuranceExpiry', 'senasaExpiry'] as const;
+const CAMPOS_PAPELES_TEXTO = ['bromatologia', 'driverLicense', 'brand', 'motor', 'chasis', 'model', 'driverName'] as const;
+
+/** "2026-05-05" -> Date. Vacio o texto que no es fecha -> null. */
+function fechaPapel(v: any): Date | null {
+    const t = String(v ?? '').trim();
+    if (!/^\d{4}-\d{2}-\d{2}/.test(t)) return null;
+    const d = new Date(t.slice(0, 10) + 'T12:00:00Z');
+    return isNaN(d.getTime()) ? null : d;
+}
+
+function datosPapeles(body: any): any {
+    const data: any = {};
+    for (const c of CAMPOS_PAPELES_FECHA) if (c in body) data[c] = fechaPapel(body[c]);
+    for (const c of CAMPOS_PAPELES_TEXTO) if (c in body) data[c] = String(body[c] ?? '').trim() || null;
+    if ('year' in body) {
+        const n = Number(body.year);
+        data.year = Number.isFinite(n) && n > 1900 && n < 2100 ? Math.round(n) : null;
+    }
+    return data;
+}
+
+app.patch('/api/v1/vehicles/:plate/papeles', async (req: any, res: any) => {
+    try {
+        const plate = String(req.params.plate || '').trim().toUpperCase();
+        if (!plate) return res.status(400).json({ error: 'Falta la patente' });
+        const data = datosPapeles(req.body || {});
+        if (!Object.keys(data).length) return res.status(400).json({ error: 'No mandaste ningun campo' });
+        const vehicle = await prisma.vehicle.upsert({
+            where: { plate },
+            update: data,
+            create: { plate, tenantId: 'default-tenant', status: 'ACTIVE', ...data }
+        });
+        res.json({ success: true, plate: vehicle.plate });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message });
+    }
+});
+
+/** Carga de una vez los papeles de varias unidades (migracion desde el navegador).
+ *  POST /api/v1/vehicles/papeles-bulk { vehiculos: { PATENTE: {...} } } */
+app.post('/api/v1/vehicles/papeles-bulk', async (req: any, res: any) => {
+    try {
+        const entrada = req.body?.vehiculos || {};
+        const hechos: string[] = [];
+        const fallados: any[] = [];
+        for (const [patente, campos] of Object.entries<any>(entrada)) {
+            const plate = String(patente).trim().toUpperCase();
+            if (!plate) continue;
+            try {
+                const data = datosPapeles(campos || {});
+                if (!Object.keys(data).length) continue;
+                await prisma.vehicle.upsert({
+                    where: { plate },
+                    update: data,
+                    create: { plate, tenantId: 'default-tenant', status: 'ACTIVE', ...data }
+                });
+                hechos.push(plate);
+            } catch (e: any) {
+                fallados.push({ plate, error: e?.message });
+            }
+        }
+        res.json({ guardados: hechos.length, patentes: hechos, fallados });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message });
+    }
+});
+
 // ── Client: toggle requiresProofPhoto ────────────────────────────────────────
 app.patch('/api/v1/clients/:id/requires-proof', async (req, res) => {
     try {
