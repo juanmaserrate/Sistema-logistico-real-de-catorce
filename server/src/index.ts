@@ -5282,6 +5282,9 @@ app.get('/api/admin/mail-estado', async (req: any, res: any) => {
         destinatarios: cfg.to,
         hora: cfg.hora,
         activo: cfg.activo,
+        // Hora que lee el servidor: si esta mal, el aviso sale a destiempo.
+        horaAhoraBA: `${String(horaBuenosAires().hh).padStart(2, '0')}:${String(horaBuenosAires().mm).padStart(2, '0')}`,
+        yaSeAvisoHoy: (await prisma.appSettings.findUnique({ where: { key: 'mail_aviso_sin_cerrar_ultimo' } }))?.value || null,
     });
 });
 
