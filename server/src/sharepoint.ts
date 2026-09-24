@@ -60,6 +60,37 @@ function carpetaDestino(): string {
 export type ResultadoSubida = { ok: boolean; nombre: string; bytes?: number; url?: string; error?: string; codigo?: string };
 
 /**
+ * Crea la carpeta destino si no existe, un nivel por vez. Sin esto, la primera
+ * subida falla con "itemNotFound" y hay que ir a crearla a mano en SharePoint.
+ */
+async function asegurarCarpeta(drive: string, token: string): Promise<void> {
+    const partes = carpetaDestino().split('/').filter(Boolean);
+    let recorrido = '';
+    for (const parte of partes) {
+        const padre = recorrido;
+        recorrido = recorrido ? `${recorrido}/${parte}` : parte;
+        const ver = await fetch(
+            `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(drive)}/root:/${encodeURI(recorrido)}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (ver.ok) continue;
+        const destino = padre
+            ? `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(drive)}/root:/${encodeURI(padre)}:/children`
+            : `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(drive)}/root/children`;
+        const crear = await fetch(destino, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name: parte, folder: {}, '@microsoft.graph.conflictBehavior': 'fail' })
+        });
+        // 409 = ya existe (dos subidas a la vez): no es un error.
+        if (!crear.ok && crear.status !== 409) {
+            const err: any = await crear.json().catch(() => ({}));
+            throw new Error(`No se pudo crear la carpeta ${recorrido}: ${err?.error?.message || crear.status}`);
+        }
+    }
+}
+
+/**
  * Sube (o reemplaza) un archivo. Hasta 4 MB va en un solo envio; mas grande,
  * por sesion de carga en pedazos de 5 MB, que es lo que pide Graph.
  */
@@ -71,6 +102,7 @@ export async function subirArchivo(nombre: string, contenido: Buffer): Promise<R
     const ruta = `${carpetaDestino()}/${nombre}`;
     try {
         const token = await obtenerToken();
+        await asegurarCarpeta(drive, token);
         if (contenido.length <= 4 * 1024 * 1024) {
             const res = await fetch(
                 `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(drive)}/root:/${encodeURI(ruta)}:/content`,
