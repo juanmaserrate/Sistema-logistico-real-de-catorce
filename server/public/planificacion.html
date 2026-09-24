@@ -19785,7 +19785,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (inpChofer) {
                 inpChofer.placeholder = uniqueDrivers.length === 0
                     ? '⚠ No hay choferes cargados — escribí uno y guardalo'
-                    : 'Escribí o elegí un chofer…';
+                    : 'Seleccionar Chofer';
             }
 
             const auxOptions = '<option value="">Sin Auxiliar</option>' + uniqueAux.map(a => `<option value="${a}">${a}</option>`).join('');
@@ -21342,10 +21342,17 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 <div class="grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
                     <div>
                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Chofer</label>
-                        <input type="text" id="new-trip-driver" list="new-trip-driver-list" autocomplete="off"
-                               oninput="onTripDriverChange()" onchange="onTripDriverChange()"
-                               placeholder="Escribí o elegí un chofer…"
-                               class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold uppercase shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                        <div class="relative">
+                            <input type="text" id="new-trip-driver" list="new-trip-driver-list" autocomplete="off"
+                                   oninput="onTripDriverChange()" onchange="onTripDriverChange()"
+                                   placeholder="Seleccionar Chofer"
+                                   class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 pr-9 text-sm font-bold uppercase shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                            <svg class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3AED0]"
+                                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <path d="m6 9 6 6 6-6"></path>
+                            </svg>
+                        </div>
                         <datalist id="new-trip-driver-list"><!-- Injected by JS --></datalist>
                         <div id="new-trip-driver-new" class="hidden mt-2 flex items-center gap-2">
                             <span class="text-[10px] font-bold text-amber-700 flex-1">
