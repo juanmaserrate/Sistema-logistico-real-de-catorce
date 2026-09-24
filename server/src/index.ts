@@ -5386,6 +5386,23 @@ app.post('/api/admin/trips-set-contract', async (req: any, res: any) => {
     }
 });
 
+/** Borra las marcas de GPS de un equipo puntual (celular dado de baja o una
+ *  prueba que quedo en el mapa). Pide el deviceId exacto: no borra por prefijo.
+ *  POST /api/admin/borrar-ubicaciones { key, deviceId, dryRun? } */
+app.post('/api/admin/borrar-ubicaciones', async (req: any, res: any) => {
+    const { key, deviceId, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const id = String(deviceId || '').trim();
+    if (!id) return res.status(400).json({ error: 'Falta deviceId' });
+    try {
+        const cuantas = await prisma.deviceLocation.count({ where: { deviceId: id } });
+        if (!dryRun && cuantas) await prisma.deviceLocation.deleteMany({ where: { deviceId: id } });
+        res.json({ dryRun: !!dryRun, deviceId: id, encontradas: cuantas, borradas: dryRun ? 0 : cuantas });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
