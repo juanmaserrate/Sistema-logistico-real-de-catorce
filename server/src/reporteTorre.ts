@@ -130,7 +130,7 @@ export async function filasCajones(prisma: Prisma, desde: Date, hasta: Date) {
         select: {
             cratesDelivered: true, cratesRecovered: true, cratesUpdatedAt: true,
             actualArrival: true, sequence: true,
-            client: { select: { name: true, address: true, locality: true } },
+            client: { select: { name: true, address: true, localidad: true, partido: true } },
             route: {
                 select: {
                     date: true, tripId: true,
@@ -151,7 +151,8 @@ export async function filasCajones(prisma: Prisma, desde: Date, hasta: Date) {
             'Chofer': p.route?.trip?.driver || p.route?.driver?.fullName || p.route?.driver?.username || '',
             'Establecimiento': p.client?.name || '',
             'Direccion': p.client?.address || '',
-            'Localidad': p.client?.locality || '',
+            'Localidad': p.client?.localidad || '',
+            'Partido': p.client?.partido || '',
             'Orden de parada': p.sequence,
             'Hora de la parada': hora(p.actualArrival),
             // El chofer puede volver mas tarde a buscar los envases con la
@@ -260,7 +261,7 @@ const COLUMNAS: Record<string, string[]> = {
         'Temperatura', 'Estado', 'Salida deposito', 'Llegada deposito', 'Duracion horas', 'Paradas planificadas',
         'Paradas entregadas', 'Paradas no entregadas', 'Km recorridos', 'Costo', 'Estado de pago', 'Fecha de pago'],
     cajones: ['Fecha', 'ID viaje', 'Reparto', 'Unidad de negocio', 'Chofer', 'Establecimiento', 'Direccion',
-        'Localidad', 'Orden de parada', 'Tipo de movimiento', 'Tipo de envase', 'Cantidad', 'Hora de la parada',
+        'Localidad', 'Partido', 'Orden de parada', 'Tipo de movimiento', 'Tipo de envase', 'Cantidad', 'Hora de la parada',
         'Ultima carga de envases'],
     mantenimiento: ['Fecha', 'Patente', 'Categoria', 'Mes', 'Trabajo realizado', 'Taller o proveedor',
         'Kilometros', 'Costo', 'Notas'],
