@@ -5508,22 +5508,69 @@ app.post('/api/admin/borrar-ubicaciones', async (req: any, res: any) => {
     }
 });
 
+/** Un nombre de lugar de verdad. Descarta la basura que quedo en el campo
+ *  localidad de algunas escuelas: numeros sueltos ("14", "8") que en realidad
+ *  son parte de la direccion. */
+function esNombreDeLugar(v: any): boolean {
+    const t = String(v || '').trim();
+    if (t.length < 3) return false;
+    if (/^\d+$/.test(t)) return false;
+    return /[a-zA-ZáéíóúÁÉÍÓÚñÑ]{3}/.test(t);
+}
+
+/** Localidad util de una escuela: primero la propia, si no el partido. */
+function lugarDelCliente(cliente: any): string | null {
+    for (const v of [cliente?.localidad, cliente?.zone, cliente?.partido]) {
+        if (esNombreDeLugar(v)) return String(v).trim().toUpperCase();
+    }
+    return null;
+}
+
 /** Zona del viaje a partir de sus destinos: la que mas se repite entre las
  *  escuelas de la ruta. Empata -> gana la de la primera parada. */
 function zonaMayoritaria(paradas: any[]): { zona: string | null; cuantas: number; total: number } {
     const cuenta = new Map<string, number>();
     const orden: string[] = [];
+    let conDato = 0;
     for (const p of paradas) {
-        const v = String(p.client?.localidad || p.client?.zone || '').trim().toUpperCase();
+        const v = lugarDelCliente(p.client);
         if (!v) continue;
+        conDato++;
         if (!cuenta.has(v)) orden.push(v);
         cuenta.set(v, (cuenta.get(v) || 0) + 1);
     }
     if (!cuenta.size) return { zona: null, cuantas: 0, total: paradas.length };
     let mejor = orden[0];
     for (const v of orden) if ((cuenta.get(v) || 0) > (cuenta.get(mejor) || 0)) mejor = v;
-    return { zona: mejor, cuantas: cuenta.get(mejor) || 0, total: paradas.length };
+    return { zona: mejor, cuantas: cuenta.get(mejor) || 0, total: conDato };
 }
+
+/** Saca del campo localidad los valores que no son un lugar (numeros sueltos
+ *  que venian de la direccion). POST /api/admin/fix-client-localidad { key, dryRun? } */
+app.post('/api/admin/fix-client-localidad', async (req: any, res: any) => {
+    const { key, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const clientes = await prisma.client.findMany({
+            where: { localidad: { not: null } },
+            select: { id: true, name: true, localidad: true, partido: true, address: true }
+        });
+        const malos = clientes.filter((c: any) => !esNombreDeLugar(c.localidad));
+        if (!dryRun) {
+            for (const c of malos) {
+                await prisma.client.update({ where: { id: c.id }, data: { localidad: null } });
+            }
+        }
+        res.json({
+            dryRun: !!dryRun,
+            revisados: clientes.length,
+            limpiados: malos.length,
+            detalle: malos.map((c: any) => ({ escuela: c.name, tenia: c.localidad, partido: c.partido, direccion: c.address }))
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
 
 /** Completa la zona de los viajes que la tienen vacia (en la web se veian como
  *  "BS AS", que no es una zona real) usando el destino que mas se repite.
@@ -5540,7 +5587,7 @@ app.post('/api/admin/fix-trip-zone', async (req: any, res: any) => {
             where,
             select: {
                 id: true, date: true, zone: true, locality: true, reparto: true,
-                linkedRoute: { select: { stops: { select: { sequence: true, client: { select: { localidad: true, zone: true } } } } } }
+                linkedRoute: { select: { stops: { select: { sequence: true, client: { select: { localidad: true, zone: true, partido: true } } } } } }
             },
             orderBy: { id: 'asc' }
         });
@@ -6924,7 +6971,7 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
             if (!String(viaje?.zone || '').trim()) {
                 const paradas = await prisma.stop.findMany({
                     where: { routeId: route.id },
-                    select: { sequence: true, client: { select: { localidad: true, zone: true } } },
+                    select: { sequence: true, client: { select: { localidad: true, zone: true, partido: true } } },
                     orderBy: { sequence: 'asc' }
                 });
                 const { zona } = zonaMayoritaria(paradas);
