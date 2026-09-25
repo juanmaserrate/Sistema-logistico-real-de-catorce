@@ -1,6 +1,6 @@
 {
   "_comentario": "Configuracion de categorias para el dashboard estilo Excel GASTOS TRAFICO. Editable sin tocar codigo. version 1.0",
-  "_actualizado": "2026-06-05",
+  "_actualizado": "2026-09-25",
   "_notas": [
     "MESA = MAE: misma cosa, se diferencia por LOCALIDAD del viaje",
     "SAE LOMAS Z1/Z2/Z3, SAE QUILMES Zona 16/19, SAE LANUS Zona 4/8/14/17: se asignan por REPARTO (los Rs los va a pasar el usuario)",
@@ -19,7 +19,7 @@
       "label": "SAE BROWN",
       "localidades": {
         "Longchamps":  ["LONGCHAMPS"],
-        "Calzada":     ["CALZADA"],
+        "Calzada":     ["CALZADA", "RAFAEL CALZADA"],
         "Claypole":    ["CLAYPOLE", "CLAYPOLE "],
         "Don Orione":  ["DON ORIONE"],
         "Malvinas":    ["MALVINAS", "MALVINAS ARGENTINAS", "MLAVINAS"]
@@ -67,7 +67,7 @@
 
   "mesa_localidades_por_region": {
     "_comentario": "MESA/MAE se cuenta cuando BU = MESA o MAE. Se asigna a region segun localidad",
-    "Brown":   ["LONGCHAMPS", "CALZADA", "CLAYPOLE", "CLAYPOLE ", "DON ORIONE", "MALVINAS", "MALVINAS ARGENTINAS", "MLAVINAS", "ALTE BROWN", "ALMIRANTE BROWN", "ALTE. BROWN", "BURZACO", "ADROGUE", "GLEW"],
+    "Brown":   ["LONGCHAMPS", "CALZADA", "RAFAEL CALZADA", "CLAYPOLE", "CLAYPOLE ", "DON ORIONE", "MALVINAS", "MALVINAS ARGENTINAS", "MLAVINAS", "ALTE BROWN", "ALMIRANTE BROWN", "ALTE. BROWN", "BURZACO", "ADROGUE", "GLEW"],
     "Lomas":   ["LOMAS DE ZAMORA", "LOMAS", "LLAVALLOL", "LUIS GUILLON"],
     "Quilmes": ["QUILMES", "SOLANO", "BERAZATEGUI"],
     "Lanus":   ["LANUS"]
