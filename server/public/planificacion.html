@@ -13279,7 +13279,7 @@
                            </div>
                         </td>
                         <td>
-                            <div class="font-bold text-[#2B3674]">${t.zone || 'BS AS'}</div>
+                            <div class="font-bold text-[#2B3674]">${t.zone || t.locality || '—'}</div>
                             <div class="text-[10px] text-[#A3AED0] font-bold uppercase">${getLocalidadFromZone(t.zone)}</div>
                         </td>
                         <td class="font-bold text-[#1B2559]">${t.driver || 'N/A'}</td>
@@ -13852,7 +13852,7 @@
                         return d ? d.getTime() : (t.id || 0);
                     }
                 case 'zona-localidad':
-                    return (t.zone || 'BS AS').toString().toLowerCase();
+                    return (t.zone || t.locality || '').toString().toLowerCase();
                 case 'chofer':
                     return (t.driver || '').toString().toLowerCase();
                 case 'auxiliares':
@@ -14926,7 +14926,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                             matches = selectedValues.has(tripValue);
                             break;
                         case 'zona-localidad':
-                            tripValue = t.zone || 'BS AS';
+                            tripValue = t.zone || t.locality || '—';
                             matches = selectedValues.has(tripValue);
                             break;
                         case 'auxiliares':
@@ -15174,7 +15174,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         val = (trip.driver || 'N/A').trim();
                         break;
                     case 'zona-localidad':
-                        val = (trip.zone || 'BS AS').trim();
+                        val = (trip.zone || trip.locality || '—').trim();
                         break;
                     case 'auxiliares':
                         if (trip.auxiliar) values.add(trip.auxiliar.trim());

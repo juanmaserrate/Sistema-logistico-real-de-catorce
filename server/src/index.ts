@@ -5508,6 +5508,70 @@ app.post('/api/admin/borrar-ubicaciones', async (req: any, res: any) => {
     }
 });
 
+/** Zona del viaje a partir de sus destinos: la que mas se repite entre las
+ *  escuelas de la ruta. Empata -> gana la de la primera parada. */
+function zonaMayoritaria(paradas: any[]): { zona: string | null; cuantas: number; total: number } {
+    const cuenta = new Map<string, number>();
+    const orden: string[] = [];
+    for (const p of paradas) {
+        const v = String(p.client?.localidad || p.client?.zone || '').trim().toUpperCase();
+        if (!v) continue;
+        if (!cuenta.has(v)) orden.push(v);
+        cuenta.set(v, (cuenta.get(v) || 0) + 1);
+    }
+    if (!cuenta.size) return { zona: null, cuantas: 0, total: paradas.length };
+    let mejor = orden[0];
+    for (const v of orden) if ((cuenta.get(v) || 0) > (cuenta.get(mejor) || 0)) mejor = v;
+    return { zona: mejor, cuantas: cuenta.get(mejor) || 0, total: paradas.length };
+}
+
+/** Completa la zona de los viajes que la tienen vacia (en la web se veian como
+ *  "BS AS", que no es una zona real) usando el destino que mas se repite.
+ *  POST /api/admin/fix-trip-zone { key, dryRun?, desde?, hasta?, pisarTodo? } */
+app.post('/api/admin/fix-trip-zone', async (req: any, res: any) => {
+    const { key, dryRun, desde, hasta, pisarTodo } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const where: any = {};
+        if (desde && hasta) where.date = { gte: utcDayRange(String(desde)).start, lte: utcDayRange(String(hasta)).end };
+        // Solo los que no tienen zona, salvo que se pida repasar todos.
+        if (!pisarTodo) where.OR = [{ zone: null }, { zone: '' }];
+        const viajes = await prisma.trip.findMany({
+            where,
+            select: {
+                id: true, date: true, zone: true, locality: true, reparto: true,
+                linkedRoute: { select: { stops: { select: { sequence: true, client: { select: { localidad: true, zone: true } } } } } }
+            },
+            orderBy: { id: 'asc' }
+        });
+        const cambios: any[] = [];
+        const sinDatos: any[] = [];
+        for (const t of viajes) {
+            const paradas = [...(t.linkedRoute?.stops || [])].sort((a: any, b: any) => a.sequence - b.sequence);
+            const { zona, cuantas, total } = zonaMayoritaria(paradas);
+            if (!zona) { sinDatos.push({ tripId: t.id, reparto: t.reparto, paradas: total }); continue; }
+            if (String(t.zone || '').trim().toUpperCase() === zona) continue;
+            cambios.push({ tripId: t.id, reparto: t.reparto, antes: t.zone || null, despues: zona, apoyo: `${cuantas}/${total}` });
+        }
+        if (!dryRun) {
+            for (const c of cambios) {
+                // La localidad se completa igual que la zona: la web las muestra juntas.
+                await prisma.trip.update({ where: { id: c.tripId }, data: { zone: c.despues, locality: c.despues } });
+            }
+        }
+        res.json({
+            dryRun: !!dryRun,
+            revisados: viajes.length,
+            cambiados: cambios.length,
+            sinParadasConDatos: sinDatos.length,
+            cambios: cambios.slice(0, 200),
+            sinDatos: sinDatos.slice(0, 50)
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
@@ -6851,6 +6915,23 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
 
         if (ops.length > 0) {
             await prisma.$transaction(ops);
+        }
+
+        // Si el viaje no tiene zona, se completa con la de la mayoria de sus
+        // destinos. Sin esto la web mostraba "BS AS", que no es una zona real.
+        try {
+            const viaje = await prisma.trip.findUnique({ where: { id: tripId }, select: { zone: true } });
+            if (!String(viaje?.zone || '').trim()) {
+                const paradas = await prisma.stop.findMany({
+                    where: { routeId: route.id },
+                    select: { sequence: true, client: { select: { localidad: true, zone: true } } },
+                    orderBy: { sequence: 'asc' }
+                });
+                const { zona } = zonaMayoritaria(paradas);
+                if (zona) await prisma.trip.update({ where: { id: tripId }, data: { zone: zona, locality: zona } });
+            }
+        } catch (e: any) {
+            console.warn('[zona] no se pudo completar la zona del viaje:', e?.message || e);
         }
 
         // Notificar al chofer asignado y a cualquier listener global que las paradas cambiaron,
