@@ -5518,10 +5518,15 @@ function esNombreDeLugar(v: any): boolean {
     return /[a-zA-ZáéíóúÁÉÍÓÚñÑ]{3}/.test(t);
 }
 
-/** Localidad util de una escuela: primero la propia, si no el partido. */
+/** Localidad util de una escuela: primero la propia, si no el partido.
+ *  Se devuelve en mayusculas y SIN acentos, que es como estan cargadas las
+ *  zonas de los viajes ("LANUS"): si no, quedarian LANUS y LANUS con tilde
+ *  como dos zonas distintas en los filtros. */
 function lugarDelCliente(cliente: any): string | null {
     for (const v of [cliente?.localidad, cliente?.zone, cliente?.partido]) {
-        if (esNombreDeLugar(v)) return String(v).trim().toUpperCase();
+        if (esNombreDeLugar(v)) {
+            return String(v).trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+        }
     }
     return null;
 }
