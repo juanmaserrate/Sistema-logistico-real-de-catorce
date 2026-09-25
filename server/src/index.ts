@@ -5624,6 +5624,53 @@ app.post('/api/admin/fix-trip-zone', async (req: any, res: any) => {
     }
 });
 
+/** Censo de zonas: cuantos viajes hay con cada texto, para ver los mal tipeados.
+ *  GET /api/admin/zonas?key=... */
+app.get('/api/admin/zonas', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const filas = await prisma.trip.groupBy({ by: ['zone'], _count: { zone: true } });
+        const lista = filas
+            .map((f: any) => ({ zona: f.zone, viajes: f._count.zone }))
+            .sort((a: any, b: any) => b.viajes - a.viajes);
+        res.json({ distintas: lista.length, zonas: lista });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Unifica zonas escritas de varias formas. El mapa viene del que llama, para
+ *  que ningun cambio salga de una regla adivinada aca adentro.
+ *  POST /api/admin/normalize-trip-zones { key, mapa: { "ALTE BROWN": "ALMIRANTE BROWN" }, dryRun? } */
+app.post('/api/admin/normalize-trip-zones', async (req: any, res: any) => {
+    const { key, mapa, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!mapa || typeof mapa !== 'object') return res.status(400).json({ error: 'Falta el mapa de equivalencias' });
+    try {
+        const resultado: any[] = [];
+        for (const [viejo, nuevo] of Object.entries<any>(mapa)) {
+            const destino = String(nuevo || '').trim();
+            if (!destino) continue;
+            const viajes = await prisma.trip.findMany({
+                where: { zone: viejo },
+                select: { id: true, date: true, reparto: true }
+            });
+            if (!dryRun && viajes.length) {
+                await prisma.trip.updateMany({ where: { zone: viejo }, data: { zone: destino, locality: destino } });
+            }
+            resultado.push({ antes: viejo, despues: destino, viajes: viajes.length, ids: viajes.map((v: any) => v.id) });
+        }
+        res.json({
+            dryRun: !!dryRun,
+            grupos: resultado.length,
+            viajesTocados: resultado.reduce((a, r) => a + r.viajes, 0),
+            detalle: resultado
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
