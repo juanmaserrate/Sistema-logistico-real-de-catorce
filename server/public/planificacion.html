@@ -960,6 +960,61 @@
                     </div>
                 </div>
 
+                <!-- Operativo: lo que cargan los choferes -->
+                <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
+                    <div class="card-dark p-5 border border-emerald-100 bg-gradient-to-br from-emerald-50/70 to-white">
+                        <p class="text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-1">Cumplimiento</p>
+                        <p id="dash-kpi-cumplimiento" class="text-2xl font-black text-emerald-700">—</p>
+                        <p id="dash-kpi-cumplimiento-det" class="text-[10px] text-[#A3AED0] font-medium mt-1">paradas entregadas</p>
+                    </div>
+                    <div class="card-dark p-5 border border-[#F4F7FE]">
+                        <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">No entregadas</p>
+                        <p id="dash-kpi-no-entregadas" class="text-2xl font-black text-rose-600">0</p>
+                        <p class="text-[10px] text-[#A3AED0] font-medium mt-1">paradas del mes</p>
+                    </div>
+                    <div class="card-dark p-5 border border-[#F4F7FE]">
+                        <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">Duración media</p>
+                        <p id="dash-kpi-duracion" class="text-2xl font-black text-[#1B2559]">—</p>
+                        <p id="dash-kpi-duracion-det" class="text-[10px] text-[#A3AED0] font-medium mt-1">por viaje</p>
+                    </div>
+                    <div class="card-dark p-5 border border-amber-100 bg-gradient-to-br from-amber-50/70 to-white">
+                        <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-1">Cajones sin volver</p>
+                        <p id="dash-kpi-cajones" class="text-2xl font-black text-amber-700">0</p>
+                        <p id="dash-kpi-cajones-det" class="text-[10px] text-[#A3AED0] font-medium mt-1">saldo del mes</p>
+                    </div>
+                    <div class="card-dark p-5 border border-[#F4F7FE]">
+                        <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">Sin cerrar</p>
+                        <p id="dash-kpi-sin-cerrar" class="text-2xl font-black text-[#1B2559]">0</p>
+                        <p id="dash-kpi-sin-cerrar-det" class="text-[10px] text-[#A3AED0] font-medium mt-1">viajes del mes</p>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
+                    <div class="card-dark p-6 md:p-8">
+                        <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-1">Cumplimiento por reparto</h4>
+                        <p class="text-xs text-[#A3AED0] font-medium mb-4">Paradas entregadas sobre planificadas · de peor a mejor</p>
+                        <div class="relative h-[380px] w-full">
+                            <canvas id="dash-chart-cumplimiento"></canvas>
+                        </div>
+                    </div>
+                    <div class="card-dark p-6 md:p-8">
+                        <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-1">Envases: salen y vuelven</h4>
+                        <p class="text-xs text-[#A3AED0] font-medium mb-4">Cajones dejados y retirados por día</p>
+                        <div class="relative h-[380px] w-full">
+                            <canvas id="dash-chart-cajones"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-dark p-6 md:p-8">
+                    <div class="flex items-center justify-between gap-3 flex-wrap mb-1">
+                        <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest">Escuelas con cajones sin devolver</h4>
+                        <span id="dash-cajones-total" class="text-[11px] font-black text-amber-700"></span>
+                    </div>
+                    <p class="text-xs text-[#A3AED0] font-medium mb-4">Diferencia entre lo que se dejó y lo que se retiró en el mes</p>
+                    <div id="dash-cajones-escuelas" class="overflow-x-auto custom-scrollbar"></div>
+                </div>
+
                 <div class="card-dark p-6 md:p-8">
                     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-6">
                         <div>
@@ -13608,6 +13663,7 @@
             const dash = document.getElementById('view-dashboard');
             if (dash && !dash.classList.contains('hidden') && typeof renderLogisticsDashboard === 'function') {
                 renderLogisticsDashboard();
+                if (typeof renderMetricasOperativas === 'function') renderMetricasOperativas();
             }
         }
 
@@ -18180,6 +18236,132 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             await loadCostsData();
             await loadWeeklyData();
             renderLogisticsDashboard();
+            renderMetricasOperativas();
+        }
+
+        // ─── LO OPERATIVO: lo que cargan los choferes ────────────────────────
+        // Estos numeros no salen del listado de viajes: necesitan las paradas,
+        // asi que los calcula el servidor y aca solo se dibujan.
+        let __metricasCache = {};
+
+        async function renderMetricasOperativas() {
+            const mes = (document.getElementById('dashboard-month-select')
+                || document.getElementById('planning-month-select'))?.value || 'enero';
+            const anio = nowBuenosAires().year;
+            const clave = anio + '-' + mes;
+            try {
+                if (!__metricasCache[clave]) {
+                    const res = await fetch(`${API_URL}/dashboard/metricas?month=${mes}&year=${anio}`, { headers: getActorHeaders() });
+                    if (!res.ok) throw new Error('HTTP ' + res.status);
+                    __metricasCache[clave] = await res.json();
+                }
+                pintarMetricasOperativas(__metricasCache[clave]);
+            } catch (e) {
+                console.warn('[dash] metricas operativas:', e);
+            }
+        }
+
+        function _txt(id, valor) {
+            const el = document.getElementById(id);
+            if (el) el.textContent = valor;
+        }
+
+        function pintarMetricasOperativas(m) {
+            const nro = (n) => Number(n || 0).toLocaleString('es-AR');
+
+            _txt('dash-kpi-cumplimiento', m.paradas.cumplimiento != null ? m.paradas.cumplimiento + '%' : '—');
+            _txt('dash-kpi-cumplimiento-det', `${nro(m.paradas.entregadas)} de ${nro(m.paradas.planificadas)} paradas`);
+            _txt('dash-kpi-no-entregadas', nro(m.paradas.noEntregadas));
+            _txt('dash-kpi-duracion', m.duracion.promedioHoras != null ? m.duracion.promedioHoras.toFixed(2).replace('.', ',') + ' h' : '—');
+            _txt('dash-kpi-duracion-det', `medido en ${nro(m.duracion.viajesMedidos)} viajes`);
+            _txt('dash-kpi-cajones', nro(m.cajones.saldo));
+            _txt('dash-kpi-cajones-det', `salieron ${nro(m.cajones.dejados)}, volvieron ${nro(m.cajones.retirados)}`);
+            _txt('dash-kpi-sin-cerrar', nro(m.viajes.sinCerrar));
+            _txt('dash-kpi-sin-cerrar-det', `de ${nro(m.viajes.total)} viajes`);
+
+            // Tabla de escuelas con saldo: es el listado para ir a buscar los cajones
+            const host = document.getElementById('dash-cajones-escuelas');
+            if (host) {
+                const esc = m.cajones.escuelas || [];
+                _txt('dash-cajones-total', esc.length ? `${nro(m.cajones.saldo)} cajones · recupero ${m.cajones.recupero}%` : '');
+                host.innerHTML = esc.length ? `<table class="w-full text-left">
+                    <thead><tr class="bg-[#FAFBFF]">
+                        <th class="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#A3AED0]">Escuela</th>
+                        <th class="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#A3AED0]">Localidad</th>
+                        <th class="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#A3AED0] text-right">Dejados</th>
+                        <th class="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#A3AED0] text-right">Retirados</th>
+                        <th class="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#A3AED0] text-right">Saldo</th>
+                    </tr></thead>
+                    <tbody>${esc.map(e => `<tr class="hover:bg-[#FAFBFF] border-t border-[#F4F7FE]">
+                        <td class="px-3 py-2 text-[11px] font-bold text-[#1B2559]">${escapeHtml(e.escuela)}</td>
+                        <td class="px-3 py-2 text-[11px] text-[#A3AED0]">${escapeHtml(e.localidad || '—')}</td>
+                        <td class="px-3 py-2 text-[11px] text-right">${e.dejados}</td>
+                        <td class="px-3 py-2 text-[11px] text-right">${e.retirados}</td>
+                        <td class="px-3 py-2 text-[11px] text-right font-black text-amber-700">${e.saldo}</td>
+                    </tr>`).join('')}</tbody></table>`
+                    : '<p class="text-[11px] text-emerald-600 font-bold py-3">No quedaron cajones sin devolver en el mes.</p>';
+            }
+
+            // Los graficos necesitan Chart.js; los numeros y la tabla de arriba no.
+            if (typeof Chart === 'undefined') return;
+
+            // Cumplimiento por reparto: los 15 peores, que son los que hay que mirar
+            const ctxCump = document.getElementById('dash-chart-cumplimiento');
+            if (ctxCump) {
+                try { dashboardChartInstances.cumplimiento?.destroy(); } catch (_) {}
+                const filas = (m.porReparto || []).filter(r => r.planificadas >= 5).slice(0, 15);
+                dashboardChartInstances.cumplimiento = new Chart(ctxCump, {
+                    type: 'bar',
+                    data: {
+                        labels: filas.map(r => r.reparto),
+                        datasets: [{
+                            label: '% entregado',
+                            data: filas.map(r => r.cumplimiento),
+                            backgroundColor: filas.map(r => r.cumplimiento >= 95 ? 'rgba(16,185,129,.75)'
+                                : r.cumplimiento >= 85 ? 'rgba(245,158,11,.75)' : 'rgba(244,63,94,.75)'),
+                            borderRadius: 6
+                        }]
+                    },
+                    options: {
+                        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: (c) => {
+                                        const r = filas[c.dataIndex];
+                                        return `${r.cumplimiento}% — ${r.entregadas} de ${r.planificadas} paradas`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: { x: { max: 100, ticks: { callback: (v) => v + '%' } } }
+                    }
+                });
+            }
+
+            // Envases por dia: si la linea de retirados corre muy por debajo, hay plata parada
+            const ctxCaj = document.getElementById('dash-chart-cajones');
+            if (ctxCaj) {
+                try { dashboardChartInstances.cajones?.destroy(); } catch (_) {}
+                const dias = (m.porDia || []).filter(d => d.dejados || d.retirados);
+                dashboardChartInstances.cajones = new Chart(ctxCaj, {
+                    type: 'bar',
+                    data: {
+                        labels: dias.map(d => d.dia.slice(8) + '/' + d.dia.slice(5, 7)),
+                        datasets: [
+                            { label: 'Dejados', data: dias.map(d => d.dejados), backgroundColor: 'rgba(79,70,229,.8)', borderRadius: 4 },
+                            { label: 'Retirados', data: dias.map(d => d.retirados), backgroundColor: 'rgba(16,185,129,.8)', borderRadius: 4 }
+                        ]
+                    },
+                    options: {
+                        responsive: true, maintainAspectRatio: false,
+                        plugins: { legend: { position: 'bottom' } },
+                        scales: { x: { grid: { display: false } } }
+                    }
+                });
+            }
+
         }
 
         function renderTripsBreakdownTables(trips) {
