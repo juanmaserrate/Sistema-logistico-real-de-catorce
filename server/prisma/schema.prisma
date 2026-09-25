@@ -238,6 +238,9 @@ model Trip {
   /// Viaje manual: no va a ningun celular y no se le toman tiempos parada por
   /// parada. Solo la hora de salida y la de llegada, cargadas por el operador.
   isManual           Boolean        @default(false)
+  /// Subzona del Excel GASTOS TRAFICO (ej. "Zona 4"). Se completa sola a partir
+  /// del reparto: no se muestra ni se edita, existe para los reportes.
+  subzona            String?
   stops              TripStop[]
   locations          TripLocation[]
   linkedRoute        Route?

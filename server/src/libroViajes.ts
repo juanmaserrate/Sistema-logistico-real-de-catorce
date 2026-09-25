@@ -18,7 +18,7 @@ import { unzipSync, zipSync } from 'fflate';
 /** La hoja de datos dentro del zip de la plantilla. */
 const HOJA_DATOS = 'xl/worksheets/sheet2.xml';
 const CACHE_DINAMICA = 'xl/pivotCache/pivotCacheDefinition1.xml';
-const ULTIMA_COLUMNA = 'AC';
+const ULTIMA_COLUMNA = 'AD';
 
 /** Estilos que ya existen en la plantilla (salen de su fila de ejemplo). */
 const ESTILO_NORMAL = 2;
@@ -27,18 +27,19 @@ const ESTILO_DOS_DECIMALES = 4;
 const ESTILO_UN_DECIMAL = 5;
 const ESTILO_PLATA = 6;
 
-/** Columna (1-based) -> estilo, para las que no van con el normal. */
+/** Columna (1-based) -> estilo, para las que no van con el normal.
+ *  Ojo: si se agrega o saca una columna, estos numeros se corren. */
 const ESTILO_POR_COLUMNA: Record<number, number> = {
     2: ESTILO_FECHA,            // Fecha
-    22: ESTILO_DOS_DECIMALES,   // Duracion horas
-    26: ESTILO_UN_DECIMAL,      // Km recorridos
-    27: ESTILO_PLATA,           // Costo
-    29: ESTILO_FECHA            // Fecha de pago
+    23: ESTILO_DOS_DECIMALES,   // Duracion horas
+    27: ESTILO_UN_DECIMAL,      // Km recorridos
+    28: ESTILO_PLATA,           // Costo
+    30: ESTILO_FECHA            // Fecha de pago
 };
 
 /** Las columnas de la hoja, en orden. Tienen que coincidir con la plantilla. */
 export const COLUMNAS_LIBRO = [
-    'ID viaje', 'Fecha', 'Mes', 'Reparto', 'Zona', 'Localidad', 'Unidad de negocio',
+    'ID viaje', 'Fecha', 'Mes', 'Reparto', 'Zona', 'Subzona', 'Localidad', 'Unidad de negocio',
     'Contrato', 'Proveedor', 'Chofer', 'Auxiliar 1', 'Auxiliar 2', 'Auxiliar 3',
     'Patente', 'Tipo de vehiculo', 'Vuelta', 'Refrigerado', 'Temperatura', 'Estado',
     'Salida deposito', 'Llegada deposito', 'Duracion horas', 'Paradas planificadas',

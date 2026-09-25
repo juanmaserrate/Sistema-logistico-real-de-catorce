@@ -107,6 +107,8 @@ async function filasViajesDe(prisma: Prisma, where: any) {
             'Fecha': soloFecha(t.date),
             'Reparto': t.reparto || '',
             'Zona': t.zone || '',
+            // La subzona la pone el sistema segun el reparto; no se edita a mano
+            'Subzona': t.subzona || '',
             'Localidad': t.locality || '',
             'Unidad de negocio': t.businessUnit || '',
             'Contrato': t.contractType || '',
@@ -275,7 +277,7 @@ function aExcel(hoja: string, filas: any[], columnas: string[]): Buffer {
 
 /** Encabezados en un orden fijo: si un mes no hay datos, las columnas siguen estando. */
 const COLUMNAS: Record<string, string[]> = {
-    viajes: ['ID viaje', 'Fecha', 'Reparto', 'Zona', 'Localidad', 'Unidad de negocio', 'Contrato', 'Proveedor',
+    viajes: ['ID viaje', 'Fecha', 'Reparto', 'Zona', 'Subzona', 'Localidad', 'Unidad de negocio', 'Contrato', 'Proveedor',
         'Chofer', 'Auxiliar 1', 'Auxiliar 2', 'Auxiliar 3', 'Patente', 'Tipo de vehiculo', 'Vuelta', 'Refrigerado',
         'Temperatura', 'Estado', 'Salida deposito', 'Llegada deposito', 'Duracion horas', 'Paradas planificadas',
         'Paradas entregadas', 'Paradas no entregadas', 'Km recorridos', 'Costo', 'Estado de pago', 'Fecha de pago'],

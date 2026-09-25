@@ -46,12 +46,11 @@
     },
     "SAE_LANUS": {
       "label": "SAE LANUS",
-      "_pendiente": "Asignar repartos a Zona 4 / 8 / 14 / 17",
       "subzonas_por_reparto": {
-        "Zona 4":  [],
-        "Zona 8":  [],
-        "Zona 14": [],
-        "Zona 17": []
+        "Zona 4":  ["R12"],
+        "Zona 8":  ["R16"],
+        "Zona 14": ["R17"],
+        "Zona 17": ["R13"]
       },
       "localidades_fallback": ["LANUS"]
     },

@@ -5709,6 +5709,36 @@ app.post('/api/admin/normalize-trip-zones', async (req: any, res: any) => {
     }
 });
 
+/** Completa la subzona de los viajes ya cargados, a partir del reparto.
+ *  POST /api/admin/fix-trip-subzona { key, dryRun? } */
+app.post('/api/admin/fix-trip-subzona', async (req: any, res: any) => {
+    const { key, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const repartos = Object.keys(SUBZONA_POR_REPARTO);
+        const viajes = await prisma.trip.findMany({
+            where: { reparto: { in: repartos } },
+            select: { id: true, reparto: true, subzona: true }
+        });
+        const cambios = viajes
+            .map((t: any) => ({ tripId: t.id, reparto: t.reparto, antes: t.subzona, despues: subzonaPorReparto(t.reparto) }))
+            .filter((c: any) => c.despues && c.antes !== c.despues);
+        if (!dryRun) {
+            for (const [rep, sub] of Object.entries(SUBZONA_POR_REPARTO)) {
+                await prisma.trip.updateMany({ where: { reparto: rep }, data: { subzona: sub } });
+            }
+        }
+        const resumen: Record<string, number> = {};
+        for (const c of cambios) {
+            const sub = String(c.despues);
+            resumen[sub] = (resumen[sub] || 0) + 1;
+        }
+        res.json({ dryRun: !!dryRun, revisados: viajes.length, cambiados: cambios.length, porSubzona: resumen });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
@@ -6404,6 +6434,23 @@ app.get('/api/v1/trips', async (req, res) => {
     res.json(filteredTrips);
 });
 
+/**
+ * Subzona de cada reparto, como las agrupa el Excel GASTOS TRAFICO.
+ * No se muestra en ninguna pantalla: se guarda con el viaje para los reportes.
+ * Solo el nombre exacto del reparto: "SAM 2 VIERNES R12" es otro servicio y
+ * no entra hasta que se diga lo contrario.
+ */
+const SUBZONA_POR_REPARTO: Record<string, string> = {
+    R12: 'Zona 4',
+    R13: 'Zona 17',
+    R16: 'Zona 8',
+    R17: 'Zona 14'
+};
+
+function subzonaPorReparto(reparto: any): string | null {
+    return SUBZONA_POR_REPARTO[String(reparto || '').trim().toUpperCase()] || null;
+}
+
 /** Contrato habitual de cada reparto. R15 y R21 no tienen regla. */
 const CONTRATO_POR_REPARTO: Record<string, string> = {
     R1: 'Tercerizado',  R2: 'Tercerizado',  R3: 'Tercerizado',  R4: 'Propio',
@@ -6433,6 +6480,8 @@ app.post('/api/v1/trips', async (req, res) => {
         }
         // Un viaje manual no se le manda a ningun celular.
         if (datos.isManual === true) datos.assignedMobileUser = null;
+        // La subzona la pone el sistema, no el operador
+        datos.subzona = subzonaPorReparto(datos.reparto);
         const trip = await prisma.trip.create({ data: datos });
         await logAction(req, 'CREATE', 'trip', trip.id, trip.driver || String(trip.id), null, trip);
         io.emit('trip:created', { trip });
@@ -6451,6 +6500,8 @@ app.put('/api/v1/trips/:id', async (req, res) => {
     delete body.stops;
     // Un viaje manual no se le manda a ningun celular.
     if (body.isManual === true) body.assignedMobileUser = null;
+    // Si cambia el reparto, la subzona lo sigue
+    if ('reparto' in body) body.subzona = subzonaPorReparto(body.reparto);
     try {
         const before = await prisma.trip.findUnique({ where: { id: parseInt(id) } });
         const trip = await prisma.trip.update({ where: { id: parseInt(id) }, data: body });
