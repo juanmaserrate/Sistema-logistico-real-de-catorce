@@ -189,7 +189,10 @@ const PROTECTED_PREFIXES = [
     '/api/v1/crates',
 ];
 app.use((req: any, res: any, next: any) => {
-    if (PROTECTED_PREFIXES.some(p => req.path.startsWith(p) || (req.originalUrl || '').includes(p))) {
+    // Excepcion: el export de viajes tambien acepta la clave de servicio, como
+    // el resto de /api/admin. Sirve para probarlo sin iniciar sesion.
+    const esExportConClave = req.path.endsWith('/trips/export-xlsx') && req.body?.key === 'r14-basestop-2026';
+    if (!esExportConClave && PROTECTED_PREFIXES.some(p => req.path.startsWith(p) || (req.originalUrl || '').includes(p))) {
         return requireAuth(req, res, next);
     }
     next();
@@ -1566,6 +1569,11 @@ setInterval(async () => {
  */
 app.post('/api/v1/trips/export-xlsx', async (req: any, res: any) => {
     try {
+        // La web entra con su sesion. La clave de servicio se acepta igual que en
+        // el resto de /api/admin, para poder probar el armado sin iniciar sesion.
+        if (req.body?.key && req.body.key !== 'r14-basestop-2026') {
+            return res.status(403).json({ error: 'Forbidden' });
+        }
         const ids = (Array.isArray(req.body?.ids) ? req.body.ids : [])
             .map((x: any) => Number(x))
             .filter((n: number) => Number.isFinite(n));
