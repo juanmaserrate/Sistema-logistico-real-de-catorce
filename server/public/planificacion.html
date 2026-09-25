@@ -17831,9 +17831,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         // Mapeo Zona -> Localidad (verificado para zonas operativas actuales)
         const ZONE_LOCALITY_MAP = {
             'ADROGUE': 'Adrogue',
+            'ALMIRANTE BROWN': 'Almirante Brown',
             'ALTE BROWN': 'Almirante Brown',
             'ALTE. BROWN': 'Almirante Brown',
             'AVELLANEDA': 'Avellaneda',
+            'BANFIELD': 'Lomas de Zamora',
+            'BURZACO': 'Almirante Brown',
             'CABA': 'Ciudad Autonoma de Buenos Aires',
             'CALZADA': 'Almirante Brown',
             'CLAYPOLE': 'Almirante Brown',
@@ -17841,10 +17844,15 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             'GLEW': 'Glew',
             'LA PLATA': 'La Plata',
             'LANUS': 'Lanus',
+            'LLAVALLOL': 'Lomas de Zamora',
             'LOMAS DE ZAMORA': 'Lomas de Zamora',
             'LONGCHAMPS': 'Almirante Brown',
+            'MALVINAS': 'Almirante Brown',
             'MALVINAS ARGENTINAS': 'Almirante Brown',
+            'MINISTRO RIVADAVIA': 'Almirante Brown',
             'QUILMES': 'Quilmes',
+            'RAFAEL CALZADA': 'Almirante Brown',
+            'TEMPERLEY': 'Lomas de Zamora',
             'ZONA NORTE': 'Zona Norte (GBA)'
         };
 
@@ -17863,7 +17871,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const z = (zone || '').toString().trim().toUpperCase();
             if (!z) return 'N/D';
             if (ZONE_LOCALITY_MAP[z]) return ZONE_LOCALITY_MAP[z];
-            if (z.startsWith('R') || z.startsWith('UDI') || z.startsWith('SAM') || z.startsWith('CDI')) return 'GBA Sur';
+            // Cuando la "zona" en realidad es un codigo de reparto (R1, SAM 2, CDI)
+            // no sabemos la localidad y se agrupa en GBA Sur. Ojo: tiene que ser
+            // R + numero — con solo "empieza con R", RAFAEL CALZADA caia aca.
+            if (/^R\s*\d/.test(z) || /^(UDI|SAM|CDI)/.test(z)) return 'GBA Sur';
             return z;
         }
 
