@@ -5525,7 +5525,7 @@ function esNombreDeLugar(v: any): boolean {
 function lugarDelCliente(cliente: any): string | null {
     for (const v of [cliente?.localidad, cliente?.zone, cliente?.partido]) {
         if (esNombreDeLugar(v)) {
-            return String(v).trim().toUpperCase().normalize('NFD').replace(/[̀-ͯ]/g, '');
+            return String(v).trim().toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
         }
     }
     return null;
