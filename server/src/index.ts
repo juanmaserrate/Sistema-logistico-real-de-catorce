@@ -3,6 +3,7 @@ import express from 'express';
 import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail, limpiarTokenMail } from './mailer';
 import { armarReporte, filasViajesPorIds, mesDeFecha } from './reporteTorre';
 import { armarLibroViajes } from './libroViajes';
+import { metricasDelMes } from './metricasDashboard';
 import { subirArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnosticoSharepoint, limpiarTokenSharepoint } from './sharepoint';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
@@ -1592,6 +1593,31 @@ app.post('/api/v1/trips/export-xlsx', async (req: any, res: any) => {
     } catch (e: any) {
         console.error('POST trips/export-xlsx:', e);
         res.status(500).json({ error: e?.message || 'Error al armar el Excel' });
+    }
+});
+
+/**
+ * Numeros operativos del mes para el dashboard.
+ * GET /api/v1/dashboard/metricas?month=septiembre&year=2026
+ * (o ?desde=YYYY-MM-DD&hasta=YYYY-MM-DD)
+ */
+app.get('/api/v1/dashboard/metricas', async (req: any, res: any) => {
+    try {
+        let desde: Date, hasta: Date;
+        if (req.query.desde && req.query.hasta) {
+            desde = utcDayRange(String(req.query.desde)).start;
+            hasta = utcDayRange(String(req.query.hasta)).end;
+        } else {
+            const anio = Number(req.query.year) || new Date().getFullYear();
+            const mes = MONTH_TO_NUM[String(req.query.month || '').toLowerCase()];
+            if (mes === undefined) return res.status(400).json({ error: 'Falta el mes' });
+            desde = new Date(Date.UTC(anio, mes, 1, 0, 0, 0));
+            hasta = new Date(Date.UTC(anio, mes + 1, 0, 23, 59, 59));
+        }
+        res.json(await metricasDelMes(prisma, desde, hasta));
+    } catch (e: any) {
+        console.error('GET dashboard/metricas:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
     }
 });
 
