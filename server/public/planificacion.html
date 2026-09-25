@@ -18278,13 +18278,19 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         const _MES_MAP = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
 
+        /** Fila para los viajes de la region cuyo reparto todavia no tiene subzona. */
+        const FILA_SIN_SUBZONA = 'Sin subzona asignada';
+
         /** Construye matriz de conteos para una region segun el tipo de contrato.
          *  Retorna {filas: [{nombre, conteoPorMes: [12 numeros], total}], totalPorMes, totalGeneral} */
-        function _buildRegionMatrix(trips, cfg, regionKey, contractType) {
+        function _buildRegionMatrix(trips, cfg, regionKey, contractType, contados) {
             const region = cfg.regiones[regionKey];
             if (!region) return null;
             const filas = [];
             const conteo = new Map(); // nombre -> [12 ceros]
+            // `contados` junta los viajes que alguna tabla ya mostro, para poder
+            // avisar despues cuales no entraron en ninguna.
+            const marcar = (t) => { if (contados) contados.add(t.id); };
 
             const initRow = (n) => {
                 if (!conteo.has(n)) conteo.set(n, new Array(12).fill(0));
@@ -18302,7 +18308,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     for (const [label, zonas] of Object.entries(region.localidades)) {
                         if (zonas.some(z => _norm(z) === zone)) {
                             const m = _getTripMonthIdx(t);
-                            if (m >= 0) initRow(label)[m] += 1;
+                            if (m >= 0) { initRow(label)[m] += 1; marcar(t); }
                             return;
                         }
                     }
@@ -18320,9 +18326,20 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     for (const [label, rs] of Object.entries(region.subzonas_por_reparto)) {
                         if ((rs || []).some(r => _norm(r) === reparto)) {
                             const m = _getTripMonthIdx(t);
-                            if (m >= 0) initRow(label)[m] += 1;
+                            if (m >= 0) { initRow(label)[m] += 1; marcar(t); }
                             return;
                         }
+                    }
+                    // El reparto no esta asignado a ninguna subzona todavia. Si el
+                    // viaje es de la localidad de la region, se muestra igual en una
+                    // fila aparte: sino desaparecia del tablero sin que nadie lo note.
+                    // Ojo: si otra tabla ya lo conto (ej. LOMAS JARDINES, que va por
+                    // reparto exacto), no se vuelve a contar.
+                    if (contados && contados.has(t.id)) return;
+                    const respaldo = region.localidades_fallback || [];
+                    if (respaldo.length && respaldo.some(z => _norm(z) === _norm(t.zone))) {
+                        const m = _getTripMonthIdx(t);
+                        if (m >= 0) { initRow(FILA_SIN_SUBZONA)[m] += 1; marcar(t); }
                     }
                 });
             }
@@ -18337,7 +18354,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     const zone = _norm(t.zone);
                     if (repoLocs.some(z => _norm(z) === zone)) {
                         const m = _getTripMonthIdx(t);
-                        if (m >= 0) initRow('Reposiciones')[m] += 1;
+                        if (m >= 0) { initRow('Reposiciones')[m] += 1; marcar(t); }
                     }
                 });
             }
@@ -18576,13 +18593,21 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     SAE_LANUS: 'SAE LANUS ' + tab.toUpperCase(),
                     LOMAS_JARDINES: 'LOMAS JARDINES ' + tab.toUpperCase()
                 };
-                for (const regionKey of ['SAE_BROWN','SAE_LOMAS','SAE_QUILMES','SAE_LANUS','LOMAS_JARDINES']) {
-                    const mtx = _buildRegionMatrix(trips, cfg, regionKey, tab);
+                const contados = new Set();
+                // Primero las que matchean por reparto exacto: si no, la fila de
+                // respaldo de SAE LOMAS se quedaria con los viajes de R18/R19/R20.
+                const ORDEN_CALCULO = ['SAE_BROWN','LOMAS_JARDINES','SAE_LOMAS','SAE_QUILMES','SAE_LANUS'];
+                const ORDEN_PANTALLA = ['SAE_BROWN','SAE_LOMAS','SAE_QUILMES','SAE_LANUS','LOMAS_JARDINES'];
+                const matrices = {};
+                for (const regionKey of ORDEN_CALCULO) {
+                    matrices[regionKey] = _buildRegionMatrix(trips, cfg, regionKey, tab, contados);
+                }
+                for (const regionKey of ORDEN_PANTALLA) {
                     const region = cfg.regiones[regionKey];
                     const pendiente = !!(region.subzonas_por_reparto &&
                         Object.values(region.subzonas_por_reparto).every(arr => (!arr || arr.length === 0)) &&
                         regionKey !== 'LOMAS_JARDINES');
-                    html += _renderExcelTable(labels[regionKey], mtx, { pendiente });
+                    html += _renderExcelTable(labels[regionKey], matrices[regionKey], { pendiente });
                 }
 
                 // SEGUNDA VUELTA - solo en tab Propio (se mezclan ambos? El Excel no separa)
@@ -18590,11 +18615,49 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     const sv = _buildSecondVueltaMatrix(trips, cfg, null); // null = ambos
                     html += _renderExcelTable('SEGUNDA VUELTA (Propios + Tercerizados)', sv, {});
                 }
+                html += _avisoZonasSinTabla(trips, cfg, tab, contados);
             }
             host.innerHTML = html;
 
             // Lista de "sin clasificar" para ayudar al usuario a ver qué falta
             _renderUnclassifiedList(trips, cfg);
+        }
+
+        /**
+         * Viajes del tab que no aparecen en NINGUNA tabla, agrupados por zona.
+         * Sin esto un viaje a una localidad que nadie mapeo se pierde en silencio.
+         */
+        function _avisoZonasSinTabla(trips, cfg, tab, contados) {
+            const porZona = new Map();
+            let total = 0;
+            trips.forEach(t => {
+                if (!_matchesContract(t, tab)) return;
+                if (_isMaeOrMesa(t, cfg)) return;
+                if (contados.has(t.id)) return;
+                const z = _norm(t.zone) || '(sin zona)';
+                porZona.set(z, (porZona.get(z) || 0) + 1);
+                total++;
+            });
+            if (!total) return '';
+            const items = [...porZona.entries()].sort((a, b) => b[1] - a[1]);
+            return `<div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                <div class="flex items-center gap-2 mb-2">
+                    <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-700"></i>
+                    <h6 class="text-xs font-black uppercase tracking-widest text-amber-800">
+                        ${total} viajes no entran en ninguna tabla
+                    </h6>
+                </div>
+                <p class="text-[11px] text-amber-700 mb-3">
+                    Son localidades que todavía no están asignadas a ninguna región del Excel GASTOS TRAFICO.
+                </p>
+                <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    ${items.map(([z, n]) => `
+                        <div class="bg-white border border-amber-200 rounded-lg px-3 py-2">
+                            <p class="text-[10px] text-amber-700 font-bold uppercase truncate" title="${z}">${z}</p>
+                            <p class="text-sm font-black text-amber-900">${n} viajes</p>
+                        </div>`).join('')}
+                </div>
+            </div>`;
         }
 
         function _renderUnclassifiedList(trips, cfg) {
