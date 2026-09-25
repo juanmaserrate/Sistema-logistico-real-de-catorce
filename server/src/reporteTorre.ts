@@ -65,8 +65,27 @@ function estadoViaje(status: string | null | undefined, cerrado: boolean): strin
 // ─────────────────────────── Las cinco hojas ───────────────────────────
 
 export async function filasViajes(prisma: Prisma, desde: Date, hasta: Date) {
+    return filasViajesDe(prisma, { date: { gte: desde, lte: hasta } });
+}
+
+/** Los mismos viajes, pero eligiendo cuales por id. Lo usa el export de la web,
+ *  que manda exactamente los que el operador tiene en pantalla. */
+export async function filasViajesPorIds(prisma: Prisma, ids: number[]) {
+    if (!ids.length) return [];
+    return filasViajesDe(prisma, { id: { in: ids } });
+}
+
+const MESES_LIBRO = ['01 Enero', '02 Febrero', '03 Marzo', '04 Abril', '05 Mayo', '06 Junio',
+    '07 Julio', '08 Agosto', '09 Septiembre', '10 Octubre', '11 Noviembre', '12 Diciembre'];
+
+/** Nombre del mes de una fecha, para que la dinamica agrupe por texto. */
+export function mesDeFecha(f: Date | null): string {
+    return f ? MESES_LIBRO[new Date(f).getUTCMonth()] : '';
+}
+
+async function filasViajesDe(prisma: Prisma, where: any) {
     const viajes = await prisma.trip.findMany({
-        where: { date: { gte: desde, lte: hasta } },
+        where,
         include: {
             linkedRoute: {
                 select: {

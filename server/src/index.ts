@@ -1,7 +1,8 @@
 
 import express from 'express';
 import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail, limpiarTokenMail } from './mailer';
-import { armarReporte } from './reporteTorre';
+import { armarReporte, filasViajesPorIds, mesDeFecha } from './reporteTorre';
+import { armarLibroViajes } from './libroViajes';
 import { subirArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnosticoSharepoint, limpiarTokenSharepoint } from './sharepoint';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
@@ -1556,6 +1557,35 @@ setInterval(async () => {
         console.warn('[torre] reporte semanal:', e?.message || e);
     }
 }, 30 * 60 * 1000);
+
+/**
+ * Export de viajes con formato y tabla dinamica.
+ * La web manda los ids que tiene en pantalla, asi el archivo sale con lo mismo
+ * que esta viendo el operador: si filtro por mes o por dia, eso baja.
+ * POST /api/v1/trips/export-xlsx { ids: [...], titulo? }
+ */
+app.post('/api/v1/trips/export-xlsx', async (req: any, res: any) => {
+    try {
+        const ids = (Array.isArray(req.body?.ids) ? req.body.ids : [])
+            .map((x: any) => Number(x))
+            .filter((n: number) => Number.isFinite(n));
+        if (!ids.length) return res.status(400).json({ error: 'No mandaste ningun viaje' });
+        if (ids.length > 20000) return res.status(400).json({ error: 'Demasiados viajes de una vez' });
+
+        const filas = await filasViajesPorIds(prisma, ids);
+        // La columna Mes va entre Fecha y Reparto: la dinamica agrupa por ahi
+        const conMes = filas.map((f: any) => ({ ...f, Mes: mesDeFecha(f['Fecha']) }));
+        const buffer = armarLibroViajes(conMes, String(req.body?.titulo || 'VIAJES'));
+
+        const nombre = `R14 Viajes ${buenosAiresYmd()}.xlsx`;
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename="${nombre}"`);
+        res.send(buffer);
+    } catch (e: any) {
+        console.error('POST trips/export-xlsx:', e);
+        res.status(500).json({ error: e?.message || 'Error al armar el Excel' });
+    }
+});
 
 // --- SETTINGS API ---
 app.get('/api/v1/settings/:key', async (req, res) => {

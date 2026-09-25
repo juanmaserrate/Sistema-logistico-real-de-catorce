@@ -14695,10 +14695,73 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (typeof addNotification === 'function') addNotification('success', 'Excel exportado', `Se exportaron ${rows.length} viajes.`);
         }
 
-        function exportWeeklyExcel() {
+        /** Lo que hay que exportar: exactamente lo que se ve en pantalla.
+         *  Se vuelve a filtrar antes, por si el operador cambio un filtro y la
+         *  tabla todavia no se redibujo. */
+        function viajesALaVista() {
+            try { if (typeof filterWeeklyData === 'function') filterWeeklyData(); } catch (_) {}
+            return Array.isArray(filteredPlanning) ? filteredPlanning : (planningData || []);
+        }
+
+        /** Texto del filtro activo, para ponerlo de titulo en el Excel. */
+        function descripcionDelFiltro() {
+            const mes = document.getElementById('planning-month-select')?.value || '';
+            const modo = (typeof activeDateFilterMode !== 'undefined' && activeDateFilterMode) || 'mes';
+            const dia = document.getElementById('filter-single-date')?.value || '';
+            const desde = document.getElementById('filter-range-from')?.value || '';
+            const hasta = document.getElementById('filter-range-to')?.value || '';
+            const linda = (iso) => iso ? iso.split('-').reverse().join('/') : '';
+            if (modo === 'hoy') return 'VIAJES DE HOY';
+            if (modo === 'dia' && dia) return 'VIAJES DEL ' + linda(dia);
+            if (modo === 'rango' && (desde || hasta)) {
+                return 'VIAJES ' + (desde ? 'DEL ' + linda(desde) : '') + (hasta ? ' AL ' + linda(hasta) : '');
+            }
+            return 'VIAJES · ' + mes.toUpperCase();
+        }
+
+        /** Export con formato y tabla dinamica. Lo arma el servidor a partir de
+         *  una plantilla; si falla, se cae al export simple de siempre. */
+        async function exportWeeklyExcel() {
+            const data = viajesALaVista();
+            if (!data || data.length === 0) {
+                if (typeof addNotification === 'function') addNotification('warning', 'Export', 'No hay viajes para exportar con el filtro actual.');
+                return;
+            }
+            const ids = data.map(t => Number(t.id)).filter(Number.isFinite);
+            if (typeof addNotification === 'function') {
+                addNotification('info', 'Export', `Armando el Excel de ${ids.length} viajes…`);
+            }
+            try {
+                const res = await fetch(`${API_URL}/trips/export-xlsx`, {
+                    method: 'POST',
+                    headers: getActorHeaders(),
+                    body: JSON.stringify({ ids, titulo: descripcionDelFiltro() })
+                });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                const blob = await res.blob();
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `R14 Viajes ${new Date().toISOString().slice(0, 10)}.xlsx`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+                setTimeout(() => URL.revokeObjectURL(url), 4000);
+                if (typeof addNotification === 'function') {
+                    addNotification('success', 'Excel exportado', `${ids.length} viajes, con la tabla dinámica lista.`);
+                }
+            } catch (e) {
+                if (typeof addNotification === 'function') {
+                    addNotification('warning', 'Export', 'No se pudo armar el Excel con formato. Bajo el simple.');
+                }
+                exportWeeklyExcelSimple(data);
+            }
+        }
+
+        /** Export de respaldo: se arma en el navegador, sin dinamica. */
+        function exportWeeklyExcelSimple(data) {
             const monthEl = document.getElementById('planning-month-select');
             const month = monthEl ? monthEl.value : 'enero';
-            const data = (filteredPlanning && filteredPlanning.length > 0) ? filteredPlanning : planningData;
 
             if (!data || data.length === 0) {
                 if (typeof addNotification === 'function') addNotification('warning', 'Export', 'No hay datos para exportar.');
