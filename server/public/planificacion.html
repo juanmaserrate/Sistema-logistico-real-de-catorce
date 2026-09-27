@@ -18242,6 +18242,59 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             });
         }
 
+        /**
+         * Junta las variantes de una misma unidad de negocio para el tablero.
+         * En la base conviven "UDI1", "UDI 1", "UDI7/8", "UDI7y8" y "UDI 7Y8":
+         * son la misma unidad escrita de formas distintas y partian el grafico
+         * en barras de un viaje cada una. Esto es SOLO para mostrar: no cambia
+         * lo que esta guardado.
+         */
+        function agruparUnidadNegocio(valor) {
+            const v = String(valor || '').trim().toUpperCase().replace(/\s+/g, ' ');
+            if (!v) return 'Sin unidad';
+            if (/^ESC\s*VERANO$/.test(v)) return 'SAE';
+            if (/^DMC\s*\+?\s*SAM$/.test(v)) return 'DMC + SAM';
+            if (/^REPO(SICION)?$/.test(v)) return 'REPOSICION';
+            const udi = v.match(/^UDI\s*([0-9](?:\s*[\/Y]\s*[0-9])?)?$/);
+            if (udi) {
+                const nros = (udi[1] || '').replace(/\s/g, '').replace(/Y/g, '/');
+                return nros ? 'UDI ' + nros.replace('/', '-') : 'UDI';
+            }
+            return formatBusinessUnit(v);
+        }
+
+        /** Deja las primeras `cuantas` y suma el resto en "Otras": una barra por
+         *  cada unidad de un solo viaje no dice nada y aplasta a las grandes. */
+        function juntarLaCola(pares, cuantas) {
+            if (pares.length <= cuantas + 1) return pares;
+            const cola = pares.slice(cuantas).reduce((a, x) => a + x[1], 0);
+            return cola > 0 ? [...pares.slice(0, cuantas), ['Otras', cola]] : pares.slice(0, cuantas);
+        }
+
+        /** Escribe el numero al final de cada barra horizontal. Chart.js solo no
+         *  lo hace y el plugin oficial no esta cargado. */
+        const pluginValorAlFinal = {
+            id: 'valorAlFinal',
+            afterDatasetsDraw(chart) {
+                const { ctx } = chart;
+                chart.data.datasets.forEach((ds, di) => {
+                    const meta = chart.getDatasetMeta(di);
+                    if (meta.hidden) return;
+                    meta.data.forEach((barra, i) => {
+                        const v = ds.data[i];
+                        if (!v) return;
+                        ctx.save();
+                        ctx.font = 'bold 11px system-ui, sans-serif';
+                        ctx.fillStyle = '#1B2559';
+                        ctx.textAlign = 'left';
+                        ctx.textBaseline = 'middle';
+                        ctx.fillText(Number(v).toLocaleString('es-AR'), barra.x + 8, barra.y);
+                        ctx.restore();
+                    });
+                });
+            }
+        };
+
         function formatDashMoney(v) {
             return '$ ' + Math.round(v).toLocaleString('es-AR');
         }
@@ -18511,6 +18564,25 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 });
             }
 
+            // Filas por unidad de negocio. Va ANTES que las de reparto: es mas
+            // especifico, y un viaje de esa unidad cuenta ahi aunque su reparto
+            // tambien figure en una subzona.
+            if (region.subzonas_por_bu) {
+                Object.keys(region.subzonas_por_bu).forEach(initRow);
+                trips.forEach(t => {
+                    if (!_matchesContract(t, contractType)) return;
+                    if (contados && contados.has(t.id)) return;
+                    const bu = _norm(t.businessUnit);
+                    for (const [label, unidades] of Object.entries(region.subzonas_por_bu)) {
+                        if ((unidades || []).some(u => _norm(u) === bu)) {
+                            const m = _getTripMonthIdx(t);
+                            if (m >= 0) { initRow(label)[m] += 1; marcar(t); }
+                            return;
+                        }
+                    }
+                });
+            }
+
             // Tipo sub-zonas por reparto (SAE_LOMAS, SAE_QUILMES, SAE_LANUS, LOMAS_JARDINES)
             if (region.subzonas_por_reparto) {
                 Object.keys(region.subzonas_por_reparto).forEach(initRow);
@@ -18518,6 +18590,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     if (!_matchesContract(t, contractType)) return;
                     if (_isMaeOrMesa(t, cfg)) return;
                     if (_isReposicion(t, cfg)) return;
+                    if (contados && contados.has(t.id)) return;
                     const reparto = _norm(t.tripType || t.reparto);
                     for (const [label, rs] of Object.entries(region.subzonas_por_reparto)) {
                         if ((rs || []).some(r => _norm(r) === reparto)) {
@@ -18835,6 +18908,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
             // BUs que asumimos forman parte de SAE (Brown/Lomas/Quilmes/Lanus): DMC, SAE, etc.
             ['DMC','SAE','DMC+SAM','DMC + SAM'].forEach(b => knownBUs.add(_norm(b)));
+            // Las que tienen fila propia en alguna region tampoco son "sin clasificar"
+            for (const region of Object.values(cfg.regiones || {})) {
+                for (const unidades of Object.values(region.subzonas_por_bu || {})) {
+                    (unidades || []).forEach(b => knownBUs.add(_norm(b)));
+                }
+            }
 
             const unclassified = {};
             trips.forEach(t => {
@@ -19015,10 +19094,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
             const buTripsMap = {};
             trips.forEach(t => {
-                const bu = formatBusinessUnit(normalizeBusinessUnit(t.businessUnit) || t.businessUnit || 'S/D');
+                const bu = agruparUnidadNegocio(t.businessUnit);
                 buTripsMap[bu] = (buTripsMap[bu] || 0) + 1;
             });
-            const buTripsSorted = Object.entries(buTripsMap).sort((a, b) => b[1] - a[1]);
+            const buTripsSorted = juntarLaCola(Object.entries(buTripsMap).sort((a, b) => b[1] - a[1]), 12);
 
             // Tablas de recuento de viajes Propios vs Tercerizados por Localidad / Zona / BU
             renderTripsBreakdownTables(trips);
@@ -19029,23 +19108,49 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
             const ctxBuTrips = document.getElementById('dash-chart-bu-trips');
             if (ctxBuTrips) {
+                const totalBu = buTripsSorted.reduce((a, x) => a + x[1], 0);
                 dashboardChartInstances.buTrips = new Chart(ctxBuTrips, {
                     type: 'bar',
+                    plugins: [pluginValorAlFinal],
                     data: {
                         labels: buTripsSorted.length ? buTripsSorted.map(x => x[0]) : ['Sin datos'],
                         datasets: [{
                             label: 'Viajes',
                             data: buTripsSorted.length ? buTripsSorted.map(x => x[1]) : [0],
-                            backgroundColor: 'rgba(99, 102, 241, 0.78)'
+                            // La mas grande bien marcada y el resto degradando:
+                            // se ve de un vistazo quien manda.
+                            backgroundColor: buTripsSorted.map((x, i) =>
+                                x[0] === 'Otras' ? 'rgba(163,174,208,.55)'
+                                    : `rgba(99, 102, 241, ${Math.max(0.3, 0.9 - i * 0.055)})`),
+                            borderRadius: 6,
+                            barPercentage: 0.82,
+                            categoryPercentage: 0.88
                         }]
                     },
                     options: {
                         indexAxis: 'y',
                         responsive: true,
                         maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
+                        layout: { padding: { right: 46 } },
+                        plugins: {
+                            legend: { display: false },
+                            tooltip: {
+                                callbacks: {
+                                    label: (c) => {
+                                        const n = c.parsed.x;
+                                        const pct = totalBu ? Math.round((n / totalBu) * 1000) / 10 : 0;
+                                        return `${n.toLocaleString('es-AR')} viajes · ${pct}% del período`;
+                                    }
+                                }
+                            }
+                        },
                         scales: {
-                            x: { beginAtZero: true, ticks: { stepSize: 1 } }
+                            x: { display: false, beginAtZero: true, grace: '6%' },
+                            y: {
+                                grid: { display: false },
+                                border: { display: false },
+                                ticks: { font: { size: 11, weight: 'bold' }, color: '#1B2559' }
+                            }
                         }
                     }
                 });

@@ -56,6 +56,10 @@
     },
     "LOMAS_JARDINES": {
       "label": "LOMAS JARDINES",
+      "_nota_bu": "subzonas_por_bu arma filas por unidad de negocio, no por reparto",
+      "subzonas_por_bu": {
+        "Sistemas Alternativos": ["SISTEMAS ALTERNATIVOS", "SIST ALTERNATIVOS", "SISTEMAS ALTERNATIVOS LOMAS"]
+      },
       "subzonas_por_reparto": {
         "R18": ["R18"],
         "R19": ["R19"],
