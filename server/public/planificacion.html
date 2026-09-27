@@ -14783,8 +14783,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
          */
         async function analisisParaElExcel(viajes) {
             const cfg = await loadTripCategoriesConfig();
-            if (!cfg) return [];
+            if (!cfg) return { filas: [], categorias: {} };
             const filas = [];
+            // tripId -> { region, categoria }: va como columna en la hoja de viajes,
+            // asi se puede filtrar el detalle por la misma categoria del cuadro.
+            const asignaciones = new Map();
             const etiquetas = {
                 SAE_BROWN: 'SAE BROWN', SAE_LOMAS: 'SAE LOMAS', SAE_QUILMES: 'SAE QUILMES',
                 SAE_LANUS: 'SAE LANUS', LOMAS_JARDINES: 'LOMAS JARDINES'
@@ -14795,7 +14798,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             for (const contrato of ['propio', 'tercerizado']) {
                 const contados = new Set();
                 for (const regionKey of ORDEN) {
-                    const mtx = _buildRegionMatrix(viajes, cfg, regionKey, contrato, contados);
+                    const mtx = _buildRegionMatrix(viajes, cfg, regionKey, contrato, contados, asignaciones);
                     if (!mtx) continue;
                     mtx.filas.filter(f => f.total > 0).forEach(f => filas.push({
                         contrato: contrato === 'propio' ? 'Propio' : 'Tercerizado',
@@ -14819,7 +14822,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     }));
                 }
             } catch (_) { /* si MESA falla, el resto del analisis sale igual */ }
-            return filas;
+            return { filas, categorias: Object.fromEntries(asignaciones) };
         }
 
         /** Export con formato y tabla dinamica. Lo arma el servidor a partir de
@@ -14835,11 +14838,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 addNotification('info', 'Export', `Armando el Excel de ${ids.length} viajes…`);
             }
             try {
-                const analisis = await analisisParaElExcel(data);
+                const { filas: analisis, categorias } = await analisisParaElExcel(data);
                 const res = await fetch(`${API_URL}/trips/export-xlsx`, {
                     method: 'POST',
                     headers: getActorHeaders(),
-                    body: JSON.stringify({ ids, titulo: descripcionDelFiltro(), analisis })
+                    body: JSON.stringify({ ids, titulo: descripcionDelFiltro(), analisis, categorias })
                 });
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 const blob = await res.blob();
@@ -18580,14 +18583,18 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         /** Construye matriz de conteos para una region segun el tipo de contrato.
          *  Retorna {filas: [{nombre, conteoPorMes: [12 numeros], total}], totalPorMes, totalGeneral} */
-        function _buildRegionMatrix(trips, cfg, regionKey, contractType, contados) {
+        function _buildRegionMatrix(trips, cfg, regionKey, contractType, contados, asignaciones) {
             const region = cfg.regiones[regionKey];
             if (!region) return null;
             const filas = [];
             const conteo = new Map(); // nombre -> [12 ceros]
-            // `contados` junta los viajes que alguna tabla ya mostro, para poder
-            // avisar despues cuales no entraron en ninguna.
-            const marcar = (t) => { if (contados) contados.add(t.id); };
+            // `contados` junta los viajes que alguna tabla ya conto, para que
+            // ninguno entre dos veces. `asignaciones` guarda ADEMAS en que fila
+            // cayo cada uno: es lo que despues va como columna en el Excel.
+            const marcar = (t, categoria) => {
+                if (contados) contados.add(t.id);
+                if (asignaciones) asignaciones.set(t.id, { region: region.label || regionKey, categoria });
+            };
 
             const initRow = (n) => {
                 if (!conteo.has(n)) conteo.set(n, new Array(12).fill(0));
@@ -18605,7 +18612,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     for (const [label, zonas] of Object.entries(region.localidades)) {
                         if (zonas.some(z => _norm(z) === zone)) {
                             const m = _getTripMonthIdx(t);
-                            if (m >= 0) { initRow(label)[m] += 1; marcar(t); }
+                            if (m >= 0) { initRow(label)[m] += 1; marcar(t, label); }
                             return;
                         }
                     }
@@ -18624,7 +18631,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     for (const [label, unidades] of Object.entries(region.subzonas_por_bu)) {
                         if ((unidades || []).some(u => _norm(u) === bu)) {
                             const m = _getTripMonthIdx(t);
-                            if (m >= 0) { initRow(label)[m] += 1; marcar(t); }
+                            if (m >= 0) { initRow(label)[m] += 1; marcar(t, label); }
                             return;
                         }
                     }
@@ -18643,7 +18650,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     for (const [label, rs] of Object.entries(region.subzonas_por_reparto)) {
                         if ((rs || []).some(r => _norm(r) === reparto)) {
                             const m = _getTripMonthIdx(t);
-                            if (m >= 0) { initRow(label)[m] += 1; marcar(t); }
+                            if (m >= 0) { initRow(label)[m] += 1; marcar(t, label); }
                             return;
                         }
                     }
@@ -18656,7 +18663,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     const respaldo = region.localidades_fallback || [];
                     if (respaldo.length && respaldo.some(z => _norm(z) === _norm(t.zone))) {
                         const m = _getTripMonthIdx(t);
-                        if (m >= 0) { initRow(FILA_SIN_SUBZONA)[m] += 1; marcar(t); }
+                        if (m >= 0) { initRow(FILA_SIN_SUBZONA)[m] += 1; marcar(t, FILA_SIN_SUBZONA); }
                     }
                 });
             }
@@ -18671,7 +18678,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     const zone = _norm(t.zone);
                     if (repoLocs.some(z => _norm(z) === zone)) {
                         const m = _getTripMonthIdx(t);
-                        if (m >= 0) { initRow('Reposiciones')[m] += 1; marcar(t); }
+                        if (m >= 0) { initRow('Reposiciones')[m] += 1; marcar(t, 'Reposiciones'); }
                     }
                 });
             }

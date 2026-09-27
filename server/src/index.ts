@@ -1582,8 +1582,19 @@ app.post('/api/v1/trips/export-xlsx', async (req: any, res: any) => {
         if (ids.length > 20000) return res.status(400).json({ error: 'Demasiados viajes de una vez' });
 
         const filas = await filasViajesPorIds(prisma, ids);
+        // La categoria del conteo la calcula la web (las mismas tablas de la
+        // pantalla) y llega como { tripId: { region, categoria } }.
+        const categorias = req.body?.categorias || {};
         // La columna Mes va entre Fecha y Reparto: la dinamica agrupa por ahi
-        const conMes = filas.map((f: any) => ({ ...f, Mes: mesDeFecha(f['Fecha']) }));
+        const conMes = filas.map((f: any) => {
+            const c = categorias[String(f['ID viaje'])] || {};
+            return {
+                ...f,
+                Mes: mesDeFecha(f['Fecha']),
+                'Region UN': c.region || '',
+                'Categoria UN': c.categoria || ''
+            };
+        });
         // El analisis lo calcula la web con lo que tiene en pantalla; aca solo
         // se escribe. Si no viene, el Excel sale con esa hoja vacia.
         const analisis = Array.isArray(req.body?.analisis) ? req.body.analisis : [];

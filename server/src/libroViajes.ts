@@ -25,12 +25,13 @@ const HOJA_DATOS = 'xl/worksheets/sheet2.xml';
 const HOJA_CONTEO = 'xl/worksheets/sheet3.xml';
 const CACHE_DINAMICA = 'xl/pivotCache/pivotCacheDefinition1.xml';
 
-const ULTIMA_COLUMNA = 'AD';
+const ULTIMA_COLUMNA = 'AF';
 const ULTIMA_COLUMNA_CONTEO = 'N';
 
 /** Las columnas de la hoja "Viajes", en orden. Coinciden con la plantilla. */
 export const COLUMNAS_LIBRO = [
-    'ID viaje', 'Fecha', 'Mes', 'Reparto', 'Zona', 'Subzona', 'Localidad', 'Unidad de negocio',
+    'ID viaje', 'Fecha', 'Mes', 'Reparto', 'Zona', 'Subzona', 'Region UN', 'Categoria UN',
+    'Localidad', 'Unidad de negocio',
     'Contrato', 'Proveedor', 'Chofer', 'Auxiliar 1', 'Auxiliar 2', 'Auxiliar 3',
     'Patente', 'Tipo de vehiculo', 'Vuelta', 'Refrigerado', 'Temperatura', 'Estado',
     'Salida deposito', 'Llegada deposito', 'Duracion horas', 'Paradas planificadas',
