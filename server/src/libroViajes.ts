@@ -126,6 +126,17 @@ function armarHojaConteo(hoja: string, analisis: FilaConteo[]): string {
 
     const filasXml: string[] = [];
     let nro = 1;
+
+    // Sin analisis la hoja quedaba en blanco y no se entendia por que. Mejor
+    // decirlo: casi siempre es una pestania abierta con la version vieja.
+    if (!bloques.length) {
+        filasXml.push(filaXml(1, [{ valor: 'Sin datos del conteo', estilo: S.titulo }]));
+        filasXml.push(filaXml(2, [{
+            valor: 'El navegador no mandó el análisis. Recargá la página con Ctrl+F5 y volvé a exportar.',
+            estilo: S.categoria
+        }]));
+    }
+
     for (const bloque of bloques) {
         const porMes = Array.from({ length: 12 }, (_, m) =>
             bloque.filas.reduce((a, f) => a + (Number(f.meses?.[m]) || 0), 0));

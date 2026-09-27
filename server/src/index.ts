@@ -80,7 +80,9 @@ app.use(cors({
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: ['Content-Type', 'Authorization', 'X-Actor-Name', 'X-Actor-Id']
 }));
-app.use(express.json());
+// 5 MB: el export manda los ids y la categoria de cada viaje. Con el limite
+// por defecto (100 kb) un export de un anio entero se rechazaba con 413.
+app.use(express.json({ limit: '5mb' }));
 
 // ── Seguridad: JWT ────────────────────────────────────────────────────────────
 const JWT_SECRET = process.env.JWT_SECRET || 'r14-dev-secret-CAMBIAR-en-produccion';
