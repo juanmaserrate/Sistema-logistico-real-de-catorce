@@ -17,6 +17,7 @@ import { unzipSync, zipSync } from 'fflate';
 
 /** La hoja de datos dentro del zip de la plantilla. */
 const HOJA_DATOS = 'xl/worksheets/sheet2.xml';
+const HOJA_CONTEO = 'xl/worksheets/sheet3.xml';
 const CACHE_DINAMICA = 'xl/pivotCache/pivotCacheDefinition1.xml';
 const ULTIMA_COLUMNA = 'AD';
 
@@ -46,6 +47,14 @@ export const COLUMNAS_LIBRO = [
     'Paradas entregadas', 'Paradas no entregadas', 'Km recorridos', 'Costo',
     'Estado de pago', 'Fecha de pago'
 ];
+
+/** Hoja "Conteo por UN": una fila por categoria, los 12 meses y el total. */
+export const COLUMNAS_CONTEO = ['Contrato', 'Region', 'Categoria', 'Ene', 'Feb', 'Mar', 'Abr',
+    'May', 'Jun', 'Jul', 'Ago', 'Sep', 'Oct', 'Nov', 'Dic', 'Total'];
+const ULTIMA_COLUMNA_CONTEO = 'P';
+
+/** Fila tal como la manda la web, ya calculada con lo que se ve en pantalla. */
+export type FilaConteo = { contrato: string; region: string; categoria: string; meses: number[]; total: number };
 
 function escapar(v: string): string {
     return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -84,7 +93,7 @@ function celda(fila: number, columna: number, valor: any): string {
 /**
  * Devuelve el .xlsx listo. `filas` son objetos con las claves de COLUMNAS_LIBRO.
  */
-export function armarLibroViajes(filas: any[], titulo?: string): Buffer {
+export function armarLibroViajes(filas: any[], titulo?: string, analisis?: FilaConteo[]): Buffer {
     const rutaPlantilla = path.join(__dirname, '..', 'templates', 'plantilla_viajes.xlsx');
     const zip = unzipSync(new Uint8Array(fs.readFileSync(rutaPlantilla)));
 
@@ -120,6 +129,31 @@ export function armarLibroViajes(filas: any[], titulo?: string): Buffer {
         cache = cache.replace('<pivotCacheDefinition ', '<pivotCacheDefinition refreshOnLoad="1" ');
     }
     zip[CACHE_DINAMICA] = enc.encode(cache);
+
+    // Hoja del conteo por unidad de negocio. Si la web no la manda, queda la
+    // de la plantilla con su fila de ejemplo, asi que se vacia igual.
+    if (zip[HOJA_CONTEO]) {
+        let conteo = dec.decode(zip[HOJA_CONTEO]);
+        const encConteo = conteo.match(/<row r="1"[\s\S]*?<\/row>/);
+        if (encConteo) {
+            const filasConteo = (analisis || []).map((f, i) => {
+                const nro = i + 2;
+                const meses = Array.from({ length: 12 }, (_, m) => Number(f.meses?.[m]) || 0);
+                const valores: any[] = [f.contrato, f.region, f.categoria, ...meses, Number(f.total) || 0];
+                // Un cero en un mes sin viajes solo ensucia: se deja la celda vacia
+                const celdas = valores
+                    .map((v, c) => celda(nro, c + 1, c >= 3 && c <= 14 && !v ? '' : v))
+                    .join('');
+                return `<row r="${nro}">${celdas}</row>`;
+            });
+            const ultima = Math.max(filasConteo.length + 1, 2);
+            const rangoConteo = `A1:${ULTIMA_COLUMNA_CONTEO}${ultima}`;
+            conteo = conteo.replace(/<sheetData>[\s\S]*<\/sheetData>/, `<sheetData>${encConteo[0]}${filasConteo.join('')}</sheetData>`);
+            conteo = conteo.replace(/<dimension ref="[^"]*"\/>/, `<dimension ref="${rangoConteo}"/>`);
+            conteo = conteo.replace(/<autoFilter ref="[^"]*"\/>/, `<autoFilter ref="${rangoConteo}"/>`);
+            zip[HOJA_CONTEO] = enc.encode(conteo);
+        }
+    }
 
     if (titulo) {
         const HOJA_RESUMEN = 'xl/worksheets/sheet1.xml';

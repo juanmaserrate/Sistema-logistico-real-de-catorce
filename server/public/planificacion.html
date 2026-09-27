@@ -14775,6 +14775,53 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             return 'VIAJES · ' + mes.toUpperCase();
         }
 
+        /**
+         * Arma el conteo de viajes por unidad de negocio para la hoja del Excel.
+         * Usa las MISMAS tablas que el modulo de pantalla, sobre los viajes que
+         * se estan exportando: si filtraste por un dia, el analisis es de ese dia.
+         * Sale plano (una fila por categoria) para poder filtrarlo en Excel.
+         */
+        async function analisisParaElExcel(viajes) {
+            const cfg = await loadTripCategoriesConfig();
+            if (!cfg) return [];
+            const filas = [];
+            const etiquetas = {
+                SAE_BROWN: 'SAE BROWN', SAE_LOMAS: 'SAE LOMAS', SAE_QUILMES: 'SAE QUILMES',
+                SAE_LANUS: 'SAE LANUS', LOMAS_JARDINES: 'LOMAS JARDINES'
+            };
+            // Mismo orden de calculo que en pantalla: las que van por reparto
+            // exacto primero, para no contar un viaje dos veces.
+            const ORDEN = ['SAE_BROWN', 'LOMAS_JARDINES', 'SAE_LOMAS', 'SAE_QUILMES', 'SAE_LANUS'];
+            for (const contrato of ['propio', 'tercerizado']) {
+                const contados = new Set();
+                for (const regionKey of ORDEN) {
+                    const mtx = _buildRegionMatrix(viajes, cfg, regionKey, contrato, contados);
+                    if (!mtx) continue;
+                    mtx.filas.filter(f => f.total > 0).forEach(f => filas.push({
+                        contrato: contrato === 'propio' ? 'Propio' : 'Tercerizado',
+                        region: etiquetas[regionKey] || regionKey,
+                        categoria: f.nombre,
+                        meses: f.conteoPorMes,
+                        total: f.total
+                    }));
+                }
+            }
+            // MESA / MAE, que en pantalla es una solapa aparte
+            try {
+                const mesa = _buildMesaMatrix(viajes, cfg) || {};
+                for (const [region, mtx] of Object.entries(mesa)) {
+                    (mtx.filas || []).filter(f => f.total > 0).forEach(f => filas.push({
+                        contrato: 'MESA / MAE',
+                        region: region.toUpperCase(),
+                        categoria: f.nombre,
+                        meses: f.conteoPorMes,
+                        total: f.total
+                    }));
+                }
+            } catch (_) { /* si MESA falla, el resto del analisis sale igual */ }
+            return filas;
+        }
+
         /** Export con formato y tabla dinamica. Lo arma el servidor a partir de
          *  una plantilla; si falla, se cae al export simple de siempre. */
         async function exportWeeklyExcel() {
@@ -14788,10 +14835,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 addNotification('info', 'Export', `Armando el Excel de ${ids.length} viajes…`);
             }
             try {
+                const analisis = await analisisParaElExcel(data);
                 const res = await fetch(`${API_URL}/trips/export-xlsx`, {
                     method: 'POST',
                     headers: getActorHeaders(),
-                    body: JSON.stringify({ ids, titulo: descripcionDelFiltro() })
+                    body: JSON.stringify({ ids, titulo: descripcionDelFiltro(), analisis })
                 });
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 const blob = await res.blob();

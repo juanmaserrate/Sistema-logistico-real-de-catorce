@@ -1584,7 +1584,10 @@ app.post('/api/v1/trips/export-xlsx', async (req: any, res: any) => {
         const filas = await filasViajesPorIds(prisma, ids);
         // La columna Mes va entre Fecha y Reparto: la dinamica agrupa por ahi
         const conMes = filas.map((f: any) => ({ ...f, Mes: mesDeFecha(f['Fecha']) }));
-        const buffer = armarLibroViajes(conMes, String(req.body?.titulo || 'VIAJES'));
+        // El analisis lo calcula la web con lo que tiene en pantalla; aca solo
+        // se escribe. Si no viene, el Excel sale con esa hoja vacia.
+        const analisis = Array.isArray(req.body?.analisis) ? req.body.analisis : [];
+        const buffer = armarLibroViajes(conMes, String(req.body?.titulo || 'VIAJES'), analisis);
 
         const nombre = `R14 Viajes ${buenosAiresYmd()}.xlsx`;
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
