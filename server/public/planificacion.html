@@ -18789,6 +18789,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     SAE_LANUS: 'SAE LANUS ' + tab.toUpperCase(),
                     LOMAS_JARDINES: 'LOMAS JARDINES ' + tab.toUpperCase()
                 };
+                // Marca los viajes que ya conto una tabla. No se muestra en pantalla:
+                // sirve para que ninguno se cuente dos veces.
                 const contados = new Set();
                 // Primero las que matchean por reparto exacto: si no, la fila de
                 // respaldo de SAE LOMAS se quedaria con los viajes de R18/R19/R20.
@@ -18811,49 +18813,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     const sv = _buildSecondVueltaMatrix(trips, cfg, null); // null = ambos
                     html += _renderExcelTable('SEGUNDA VUELTA (Propios + Tercerizados)', sv, {});
                 }
-                html += _avisoZonasSinTabla(trips, cfg, tab, contados);
             }
             host.innerHTML = html;
 
             // Lista de "sin clasificar" para ayudar al usuario a ver qué falta
             _renderUnclassifiedList(trips, cfg);
-        }
-
-        /**
-         * Viajes del tab que no aparecen en NINGUNA tabla, agrupados por zona.
-         * Sin esto un viaje a una localidad que nadie mapeo se pierde en silencio.
-         */
-        function _avisoZonasSinTabla(trips, cfg, tab, contados) {
-            const porZona = new Map();
-            let total = 0;
-            trips.forEach(t => {
-                if (!_matchesContract(t, tab)) return;
-                if (_isMaeOrMesa(t, cfg)) return;
-                if (contados.has(t.id)) return;
-                const z = _norm(t.zone) || '(sin zona)';
-                porZona.set(z, (porZona.get(z) || 0) + 1);
-                total++;
-            });
-            if (!total) return '';
-            const items = [...porZona.entries()].sort((a, b) => b[1] - a[1]);
-            return `<div class="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                <div class="flex items-center gap-2 mb-2">
-                    <i data-lucide="alert-triangle" class="w-4 h-4 text-amber-700"></i>
-                    <h6 class="text-xs font-black uppercase tracking-widest text-amber-800">
-                        ${total} viajes no entran en ninguna tabla
-                    </h6>
-                </div>
-                <p class="text-[11px] text-amber-700 mb-3">
-                    Son localidades que todavía no están asignadas a ninguna región del Excel GASTOS TRAFICO.
-                </p>
-                <div class="grid grid-cols-2 md:grid-cols-4 gap-2">
-                    ${items.map(([z, n]) => `
-                        <div class="bg-white border border-amber-200 rounded-lg px-3 py-2">
-                            <p class="text-[10px] text-amber-700 font-bold uppercase truncate" title="${z}">${z}</p>
-                            <p class="text-sm font-black text-amber-900">${n} viajes</p>
-                        </div>`).join('')}
-                </div>
-            </div>`;
         }
 
         function _renderUnclassifiedList(trips, cfg) {
