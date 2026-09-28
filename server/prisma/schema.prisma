@@ -241,6 +241,10 @@ model Trip {
   /// Subzona del Excel GASTOS TRAFICO (ej. "Zona 4"). Se completa sola a partir
   /// del reparto: no se muestra ni se edita, existe para los reportes.
   subzona            String?
+  /// Campos que el operador agrego por su cuenta desde "Campos del viaje".
+  /// { "id-del-campo": valor }. Van aca para no tener que tocar la tabla cada
+  /// vez que alguien necesita un dato nuevo.
+  camposExtra        Json?
   stops              TripStop[]
   locations          TripLocation[]
   linkedRoute        Route?

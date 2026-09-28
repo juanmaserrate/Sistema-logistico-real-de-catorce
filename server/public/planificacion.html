@@ -18358,6 +18358,212 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
         };
 
+
+        // ═══ CAMPOS DEL VIAJE ═══════════════════════════════════════════════
+        // El operador elige que campos ve al crear un viaje y puede sumar los
+        // suyos. La configuracion se guarda en el servidor (AppSettings), asi
+        // que vale para todos. Los datos de contacto quedan afuera a proposito.
+
+        /** Campos del sistema que se pueden ocultar. Los que no estan en esta
+         *  lista (fecha, contrato, reparto, chofer) son la base del viaje. */
+        const CAMPOS_DEL_SISTEMA = [
+            { id: 'new-trip-bu', nombre: 'Unidad de negocio' },
+            { id: 'new-trip-vuelta', nombre: 'Vuelta del día' },
+            { id: 'new-trip-vehicle', nombre: 'Coche / Vehículo' },
+            { id: 'new-trip-aux1', nombre: 'Auxiliar 1' },
+            { id: 'new-trip-aux2', nombre: 'Auxiliar 2' },
+            { id: 'new-trip-aux3', nombre: 'Auxiliar 3' },
+            { id: 'new-trip-zone', nombre: 'Localidad' },
+            { id: 'new-trip-loc', nombre: 'Partido (Auto)' },
+            { id: 'new-trip-mobile-user', nombre: 'Usuario App' },
+            { id: 'new-trip-modo', nombre: 'Tipo de viaje' },
+            { id: 'new-trip-exit', nombre: 'Hora de salida' },
+            { id: 'new-trip-return', nombre: 'Hora de llegada' },
+            { id: 'new-trip-refrigerated', nombre: 'Refrigerado' },
+            { id: 'new-trip-temperature', nombre: 'Temperatura' }
+        ];
+
+        let _configCampos = { ocultos: [], extra: [] };
+
+        /** El bloque que envuelve al campo: el primer ancestro que tiene su
+         *  propia etiqueta. Asi se oculta el campo con su titulo, no solo la
+         *  cajita, y no hace falta marcar el HTML. */
+        function contenedorDelCampo(id) {
+            let el = document.getElementById(id);
+            while (el && el !== document.body) {
+                if (el.querySelector && el.querySelector(':scope > label')) return el;
+                el = el.parentElement;
+            }
+            return null;
+        }
+
+        async function cargarConfigCampos() {
+            try {
+                const res = await fetch(`${API_URL}/settings/campos_viaje`, { headers: getActorHeaders() });
+                const v = res.ok ? await res.json() : null;
+                _configCampos = {
+                    ocultos: Array.isArray(v?.ocultos) ? v.ocultos : [],
+                    extra: Array.isArray(v?.extra) ? v.extra : []
+                };
+            } catch (_) {
+                _configCampos = { ocultos: [], extra: [] };
+            }
+            return _configCampos;
+        }
+
+        /** Aplica la configuracion al formulario: esconde lo destildado y
+         *  dibuja los campos propios. */
+        function aplicarConfigCampos() {
+            for (const c of CAMPOS_DEL_SISTEMA) {
+                const caja = contenedorDelCampo(c.id);
+                if (caja) caja.style.display = _configCampos.ocultos.includes(c.id) ? 'none' : '';
+            }
+            const host = document.getElementById('new-trip-extra');
+            if (!host) return;
+            const extra = _configCampos.extra || [];
+            host.classList.toggle('hidden', extra.length === 0);
+            host.innerHTML = extra.map(c => {
+                const comun = 'w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500';
+                let control;
+                if (c.tipo === 'lista') {
+                    const ops = (c.opciones || []).map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+                    control = `<select id="extra-${c.id}" class="${comun}"><option value=""></option>${ops}</select>`;
+                } else {
+                    const tipo = c.tipo === 'numero' ? 'number' : (c.tipo === 'fecha' ? 'date' : 'text');
+                    control = `<input type="${tipo}" id="extra-${c.id}" class="${comun}">`;
+                }
+                return `<div>
+                    <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">${escapeHtml(c.nombre)}</label>
+                    ${control}
+                </div>`;
+            }).join('');
+        }
+
+        /** Lo cargado en los campos propios, para guardarlo con el viaje. */
+        function leerCamposExtra() {
+            const out = {};
+            for (const c of (_configCampos.extra || [])) {
+                const el = document.getElementById('extra-' + c.id);
+                const v = (el?.value ?? '').toString().trim();
+                if (v !== '') out[c.id] = c.tipo === 'numero' ? Number(v) : v;
+            }
+            return Object.keys(out).length ? out : null;
+        }
+
+        /** Pone en pantalla los valores guardados al editar un viaje. */
+        function pintarCamposExtra(valores) {
+            const v = valores || {};
+            for (const c of (_configCampos.extra || [])) {
+                const el = document.getElementById('extra-' + c.id);
+                if (el) el.value = v[c.id] ?? '';
+            }
+        }
+
+        // ── El modal de configuracion ───────────────────────────────────────
+        async function abrirCamposViaje() {
+            await cargarConfigCampos();
+            renderCamposSistema();
+            renderCamposPropios();
+            document.getElementById('campos-viaje-modal').classList.remove('hidden');
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function cerrarCamposViajeModal() {
+            document.getElementById('campos-viaje-modal').classList.add('hidden');
+        }
+
+        function renderCamposSistema() {
+            const host = document.getElementById('campos-sistema-lista');
+            if (!host) return;
+            host.innerHTML = CAMPOS_DEL_SISTEMA.map(c => {
+                const visible = !_configCampos.ocultos.includes(c.id);
+                return `<label class="flex items-center gap-2 bg-[#F8FAFF] border border-[#F4F7FE] rounded-xl px-3 py-2.5 cursor-pointer hover:bg-[#F4F7FE]">
+                    <input type="checkbox" ${visible ? 'checked' : ''} onchange="alternarCampoSistema('${c.id}', this.checked)"
+                           class="w-4 h-4 accent-indigo-600">
+                    <span class="text-xs font-bold text-[#1B2559]">${escapeHtml(c.nombre)}</span>
+                </label>`;
+            }).join('');
+        }
+
+        function alternarCampoSistema(id, visible) {
+            const ocultos = new Set(_configCampos.ocultos);
+            if (visible) ocultos.delete(id); else ocultos.add(id);
+            _configCampos.ocultos = [...ocultos];
+        }
+
+        function renderCamposPropios() {
+            const host = document.getElementById('campos-propios-lista');
+            if (!host) return;
+            const extra = _configCampos.extra || [];
+            if (!extra.length) {
+                host.innerHTML = '<p class="text-[11px] text-[#A3AED0] font-medium py-2">Todavía no agregaste ninguno.</p>';
+                return;
+            }
+            const nombreTipo = { texto: 'Texto', numero: 'Número', fecha: 'Fecha', lista: 'Lista' };
+            host.innerHTML = extra.map(c => `
+                <div class="flex items-center gap-3 bg-white border border-[#E0E5F2] rounded-xl px-4 py-2.5">
+                    <span class="text-xs font-bold text-[#1B2559] flex-1">${escapeHtml(c.nombre)}</span>
+                    <span class="text-[10px] font-bold text-[#A3AED0] uppercase">${nombreTipo[c.tipo] || c.tipo}</span>
+                    <button type="button" onclick="borrarCampoPropio('${c.id}')"
+                            class="text-rose-500 hover:text-rose-700" title="Borrar">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i>
+                    </button>
+                </div>`).join('');
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function onTipoCampoNuevo() {
+            const tipo = document.getElementById('campo-nuevo-tipo')?.value;
+            const wrap = document.getElementById('campo-nuevo-opciones-wrap');
+            if (wrap) wrap.style.display = tipo === 'lista' ? '' : 'none';
+        }
+
+        function agregarCampoPropio() {
+            const nombre = (document.getElementById('campo-nuevo-nombre')?.value || '').trim();
+            if (!nombre) return alert('Escribí el nombre del campo.');
+            const tipo = document.getElementById('campo-nuevo-tipo')?.value || 'texto';
+            const opciones = tipo === 'lista'
+                ? (document.getElementById('campo-nuevo-opciones')?.value || '').split(',').map(x => x.trim()).filter(Boolean)
+                : [];
+            if (tipo === 'lista' && !opciones.length) return alert('Escribí al menos una opción, separadas por coma.');
+            // El id se arma del nombre y no cambia nunca: es la clave con la que
+            // quedan guardados los valores en los viajes.
+            const base = nombre.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '') || 'campo';
+            let id = base, n = 2;
+            while ((_configCampos.extra || []).some(c => c.id === id)) id = base + '_' + (n++);
+            _configCampos.extra = [...(_configCampos.extra || []), { id, nombre, tipo, opciones }];
+            document.getElementById('campo-nuevo-nombre').value = '';
+            document.getElementById('campo-nuevo-opciones').value = '';
+            renderCamposPropios();
+        }
+
+        function borrarCampoPropio(id) {
+            const campo = (_configCampos.extra || []).find(c => c.id === id);
+            if (!campo) return;
+            if (!confirm(`¿Sacar el campo «${campo.nombre}» del formulario?\n\nLo que ya se cargó en viajes anteriores queda guardado, pero deja de verse.`)) return;
+            _configCampos.extra = (_configCampos.extra || []).filter(c => c.id !== id);
+            renderCamposPropios();
+        }
+
+        async function guardarCamposViaje() {
+            try {
+                const res = await fetch(`${API_URL}/settings`, {
+                    method: 'POST',
+                    headers: getActorHeaders(),
+                    body: JSON.stringify({ key: 'campos_viaje', value: _configCampos })
+                });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                aplicarConfigCampos();
+                cerrarCamposViajeModal();
+                if (typeof addNotification === 'function') {
+                    addNotification('success', 'Campos del viaje', 'Guardado. Lo ven todos los usuarios.');
+                }
+            } catch (e) {
+                alert('No se pudo guardar: ' + e.message);
+            }
+        }
+
         function formatDashMoney(v) {
             return '$ ' + Math.round(v).toLocaleString('es-AR');
         }
@@ -20323,6 +20529,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (modoSel) modoSel.value = 'APP';
             onNewTripModoChange();
             refrescarAvisoChoferNuevo('');
+            // Los campos que el operador eligio ver, y los suyos propios
+            cargarConfigCampos().then(() => { aplicarConfigCampos(); pintarCamposExtra(null); });
             resetTripDeliveryPanelForNewTrip();
         }
 
@@ -20496,6 +20704,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             await openNewTripModal(); // This opens and populates dropdowns
             
             document.getElementById('new-trip-id').value = trip.id;
+            cargarConfigCampos().then(() => { aplicarConfigCampos(); pintarCamposExtra(trip.camposExtra); });
             document.getElementById('new-trip-modal-title').innerText = `Editar Viaje #${trip.id}`;
             document.getElementById('new-trip-save-btn').innerText = 'GUARDAR CAMBIOS';
 
@@ -20658,6 +20867,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 providerValue = provRaw || 'EXTERNO';
             }
             const baseTripData = {
+                camposExtra: leerCamposExtra(),
                 isManual: esManual,
                 businessUnit: document.getElementById('new-trip-bu').value,
                 driver: (document.getElementById('new-trip-driver').value || '').trim().toUpperCase(),
@@ -21628,6 +21838,63 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
     </div>
 
 <!-- New Trip Modal -->
+    <!-- MODAL: CAMPOS DEL VIAJE -->
+    <div id="campos-viaje-modal" class="modal-overlay hidden fixed inset-0 z-[70] flex items-center justify-center p-3" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
+        <div class="bg-white rounded-3xl w-[96vw] max-w-3xl max-h-[92vh] shadow-2xl overflow-hidden flex flex-col">
+            <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center gap-3 bg-[#F8FAFF]">
+                <div>
+                    <h3 class="font-black text-[#1B2559] uppercase tracking-widest text-sm">Campos del viaje</h3>
+                    <p class="text-xs text-[#A3AED0] font-medium mt-1">Elegí qué se ve al crear un viaje y agregá los datos que necesites.</p>
+                </div>
+                <button onclick="cerrarCamposViajeModal()" class="text-[#A3AED0] hover:text-[#1B2559] transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <div class="p-6 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+                <div>
+                    <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest mb-1">Campos del sistema</h4>
+                    <p class="text-[11px] text-[#A3AED0] font-medium mb-3">Destildá los que no uses: dejan de aparecer en el formulario. Los datos ya cargados no se borran.</p>
+                    <div id="campos-sistema-lista" class="grid grid-cols-1 sm:grid-cols-2 gap-2"></div>
+                </div>
+                <div class="border-t border-[#F4F7FE] pt-5">
+                    <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest mb-1">Campos propios</h4>
+                    <p class="text-[11px] text-[#A3AED0] font-medium mb-3">Se guardan con cada viaje y salen en el export.</p>
+                    <div id="campos-propios-lista" class="space-y-2 mb-4"></div>
+                    <div class="bg-[#F8FAFF] border border-[#F4F7FE] rounded-2xl p-4 grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
+                        <div class="sm:col-span-5">
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Nombre</label>
+                            <input id="campo-nuevo-nombre" type="text" placeholder="Ej. Nº de remito"
+                                   class="w-full bg-white border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <div class="sm:col-span-3">
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Tipo</label>
+                            <select id="campo-nuevo-tipo" onchange="onTipoCampoNuevo()"
+                                    class="w-full bg-white border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="texto">Texto</option>
+                                <option value="numero">Número</option>
+                                <option value="fecha">Fecha</option>
+                                <option value="lista">Lista de opciones</option>
+                            </select>
+                        </div>
+                        <div class="sm:col-span-4" id="campo-nuevo-opciones-wrap" style="display:none">
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Opciones (separadas por coma)</label>
+                            <input id="campo-nuevo-opciones" type="text" placeholder="Sí, No, Pendiente"
+                                   class="w-full bg-white border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold outline-none focus:ring-2 focus:ring-indigo-500">
+                        </div>
+                        <div class="sm:col-span-12">
+                            <button type="button" onclick="agregarCampoPropio()"
+                                    class="px-4 py-2.5 rounded-xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all">
+                                Agregar campo
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="p-5 border-t border-[#F4F7FE] bg-[#F8FAFF] flex justify-end gap-3">
+                <button onclick="cerrarCamposViajeModal()" class="px-5 py-3 rounded-xl text-[11px] font-bold text-[#A3AED0] hover:text-[#1B2559]">Cerrar</button>
+                <button onclick="guardarCamposViaje()" class="px-6 py-3 rounded-xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200">GUARDAR</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL: CATÁLOGO DE CHOFERES / AUXILIARES / REPARTOS -->
     <div id="catalog-modal" class="hidden fixed inset-0 z-[60] flex items-center justify-center p-3" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
         <div class="bg-white rounded-3xl w-[96vw] max-w-4xl max-h-[92vh] shadow-2xl overflow-hidden flex flex-col">
@@ -21704,6 +21971,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         <div class="bg-white rounded-3xl w-[96vw] max-w-6xl max-h-[92vh] shadow-2xl overflow-hidden flex flex-col">
             <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center bg-[#F8FAFF]">
                 <h3 id="new-trip-modal-title" class="font-black text-[#1B2559] uppercase tracking-widest text-sm">Nuevo Viaje</h3>
+                <button type="button" onclick="abrirCamposViaje()" title="Elegir qué campos se ven"
+                        class="ml-3 px-3 py-1.5 rounded-xl bg-[#F4F7FE] text-[#1B2559] text-[10px] font-bold hover:bg-[#E0E5F2] transition-all inline-flex items-center gap-1.5">
+                    <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i> CAMPOS
+                </button>
                 <button onclick="closeNewTripModal()" class="text-[#A3AED0] hover:text-[#1B2559] transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
             <div class="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
@@ -21876,6 +22147,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                           </select>
                           <p id="new-trip-mobile-user-hint" class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Quién verá este viaje en la app móvil.</p>
                      </div>
+                 </div>
+
+                 <div id="new-trip-extra" class="hidden grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
+                     <!-- Campos que agrego el operador -->
                  </div>
 
                  <div class="grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
