@@ -6495,7 +6495,48 @@ function subzonaPorReparto(reparto: any): string | null {
     return SUBZONA_POR_REPARTO[String(reparto || '').trim().toUpperCase()] || null;
 }
 
-/** Contrato habitual de cada reparto. R15 y R21 no tienen regla. */
+/**
+ * Reglas por reparto y por mes: quien lo hace, si es propio o tercerizado, con
+ * que proveedor y a que tarifa. Se cargan desde la pantalla "Reglas por
+ * reparto" y viven en AppSettings, porque cambian mes a mes.
+ *
+ * Forma: { "2026-09": { "R1": { tipo, chofer, proveedor, tarifa } }, ... }
+ */
+type ReglaReparto = { tipo?: string; chofer?: string; proveedor?: string; tarifa?: number | null; auxiliares?: string };
+
+/** Mes de una fecha en formato "YYYY-MM", en hora de Buenos Aires. */
+function mesDeLaFecha(fecha: any): string {
+    const f = fecha ? new Date(fecha) : new Date();
+    if (isNaN(f.getTime())) return buenosAiresYmd().slice(0, 7);
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Argentina/Buenos_Aires', year: 'numeric', month: '2-digit'
+    }).format(f).slice(0, 7);
+}
+
+async function reglaDelReparto(reparto: any, fecha: any): Promise<ReglaReparto | null> {
+    const clave = String(reparto || '').trim().toUpperCase();
+    if (!clave) return null;
+    try {
+        const row = await prisma.appSettings.findUnique({ where: { key: 'reglas_repartos' } });
+        if (!row) return null;
+        const todo = JSON.parse(row.value) || {};
+        const mes = mesDeLaFecha(fecha);
+        // Si el mes del viaje todavia no se cargo, se usa el ultimo mes cargado:
+        // las reglas siguen valiendo hasta que alguien las cambie.
+        const meses = Object.keys(todo).sort();
+        const elegido = todo[mes] ? mes : meses.filter((m) => m <= mes).pop() || meses[meses.length - 1];
+        const delMes = todo[elegido] || {};
+        // "SAM 2 VIERNES R12" sigue la regla del R12
+        const m = clave.match(/R\s*(\d{1,2})\s*$/);
+        return delMes[clave] || (m ? delMes['R' + Number(m[1])] : null) || null;
+    } catch (e: any) {
+        console.warn('[reglas] no se pudieron leer:', e?.message || e);
+        return null;
+    }
+}
+
+/** Contrato habitual de cada reparto. Respaldo para cuando no hay reglas
+ *  cargadas todavia; lo que manda es la tabla de "Reglas por reparto". */
 const CONTRATO_POR_REPARTO: Record<string, string> = {
     R1: 'Tercerizado',  R2: 'Tercerizado',  R3: 'Tercerizado',  R4: 'Propio',
     R5: 'Tercerizado',  R6: 'Propio',       R7: 'Tercerizado',  R8: 'Tercerizado',
@@ -6516,11 +6557,13 @@ function contratoPorReparto(reparto: any): string | null {
 app.post('/api/v1/trips', async (req, res) => {
     try {
         const datos = { ...req.body };
-        // Si el viaje llega sin contrato, se completa con el habitual del reparto.
-        // Si viene con uno elegido, se respeta.
+        // Si el viaje llega sin contrato, se completa con la regla del reparto
+        // para ese mes. Si viene con uno elegido, se respeta.
         if (!String(datos.contractType || '').trim()) {
-            const sug = contratoPorReparto(datos.reparto);
+            const regla = await reglaDelReparto(datos.reparto, datos.date);
+            const sug = regla?.tipo || contratoPorReparto(datos.reparto);
             if (sug) datos.contractType = sug;
+            if (regla?.proveedor && !String(datos.provider || '').trim()) datos.provider = regla.proveedor;
         }
         // Un viaje manual no se le manda a ningun celular.
         if (datos.isManual === true) datos.assignedMobileUser = null;
