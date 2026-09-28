@@ -6513,26 +6513,55 @@ function mesDeLaFecha(fecha: any): string {
     }).format(f).slice(0, 7);
 }
 
+/** Nombres iguales aunque esten escritos distinto: sin acentos, sin mayusculas
+ *  y sin importar el orden. "DAROSA DANIEL" = "Daniel Darosa ". */
+function mismoNombrePersona(a: any, b: any): boolean {
+    const partes = (v: any) => String(v || '').toUpperCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .split(/[^A-Z0-9]+/).filter((x) => x.length > 2);
+    const pa = partes(a), pb = partes(b);
+    return pa.length > 0 && pb.length > 0 && pa.some((x) => pb.includes(x));
+}
+
+/** Las reglas del mes que corresponde a esa fecha. Si ese mes no se cargo, vale
+ *  el ultimo cargado antes: las reglas siguen hasta que alguien las cambie. */
+async function reglasDelMes(fecha: any): Promise<{ repartos: any; choferes: any[] }> {
+    const vacio = { repartos: {}, choferes: [] };
+    try {
+        const row = await prisma.appSettings.findUnique({ where: { key: 'reglas_repartos' } });
+        if (!row) return vacio;
+        const todo = JSON.parse(row.value) || {};
+        const meses = Object.keys(todo).sort();
+        if (!meses.length) return vacio;
+        const mes = mesDeLaFecha(fecha);
+        const elegido = todo[mes] ? mes : (meses.filter((m) => m <= mes).pop() || meses[meses.length - 1]);
+        const delMes = todo[elegido] || {};
+        // Formato viejo: el mes era directamente el mapa de repartos
+        if (delMes.repartos || delMes.choferes) {
+            return { repartos: delMes.repartos || {}, choferes: delMes.choferes || [] };
+        }
+        return { repartos: delMes, choferes: [] };
+    } catch (e: any) {
+        console.warn('[reglas] no se pudieron leer:', e?.message || e);
+        return vacio;
+    }
+}
+
 async function reglaDelReparto(reparto: any, fecha: any): Promise<ReglaReparto | null> {
     const clave = String(reparto || '').trim().toUpperCase();
     if (!clave) return null;
-    try {
-        const row = await prisma.appSettings.findUnique({ where: { key: 'reglas_repartos' } });
-        if (!row) return null;
-        const todo = JSON.parse(row.value) || {};
-        const mes = mesDeLaFecha(fecha);
-        // Si el mes del viaje todavia no se cargo, se usa el ultimo mes cargado:
-        // las reglas siguen valiendo hasta que alguien las cambie.
-        const meses = Object.keys(todo).sort();
-        const elegido = todo[mes] ? mes : meses.filter((m) => m <= mes).pop() || meses[meses.length - 1];
-        const delMes = todo[elegido] || {};
-        // "SAM 2 VIERNES R12" sigue la regla del R12
-        const m = clave.match(/R\s*(\d{1,2})\s*$/);
-        return delMes[clave] || (m ? delMes['R' + Number(m[1])] : null) || null;
-    } catch (e: any) {
-        console.warn('[reglas] no se pudieron leer:', e?.message || e);
-        return null;
-    }
+    const { repartos } = await reglasDelMes(fecha);
+    // "SAM 2 VIERNES R12" sigue la regla del R12
+    const m = clave.match(/R\s*(\d{1,2})\s*$/);
+    return repartos[clave] || (m ? repartos['R' + Number(m[1])] : null) || null;
+}
+
+/** Para los choferes que no tienen reparto propio. Se usa solo cuando el
+ *  reparto del viaje no tiene regla. */
+async function reglaDelChofer(chofer: any, fecha: any): Promise<ReglaReparto | null> {
+    if (!String(chofer || '').trim()) return null;
+    const { choferes } = await reglasDelMes(fecha);
+    return (choferes || []).find((c: any) => mismoNombrePersona(c.chofer, chofer)) || null;
 }
 
 /** Contrato habitual de cada reparto. Respaldo para cuando no hay reglas
@@ -6560,7 +6589,8 @@ app.post('/api/v1/trips', async (req, res) => {
         // Si el viaje llega sin contrato, se completa con la regla del reparto
         // para ese mes. Si viene con uno elegido, se respeta.
         if (!String(datos.contractType || '').trim()) {
-            const regla = await reglaDelReparto(datos.reparto, datos.date);
+            const regla = (await reglaDelReparto(datos.reparto, datos.date))
+                || (await reglaDelChofer(datos.driver, datos.date));
             const sug = regla?.tipo || contratoPorReparto(datos.reparto);
             if (sug) datos.contractType = sug;
             if (regla?.proveedor && !String(datos.provider || '').trim()) datos.provider = regla.proveedor;
