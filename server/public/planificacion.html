@@ -714,7 +714,7 @@
                                     </th>
                                     <th class="relative">
                                         <div class="inline-flex items-center gap-1 cursor-pointer" onclick="toggleHeaderFilter('zona-localidad', this)">
-                                            <span>Zona / Localidad</span>
+                                            <span>Localidad / Partido</span>
                                             <i data-lucide="chevron-down" class="w-3 h-3 text-[#A3AED0]"></i>
                                         </div>
                                     </th>
@@ -1043,15 +1043,15 @@
                         </div>
                     </div>
                     <div class="card-dark p-6 md:p-8">
-                        <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-1">Viajes por zona</h4>
-                        <p class="text-xs text-[#A3AED0] font-medium mb-4">Conteo por código / zona de ruta</p>
+                        <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-1">Viajes por localidad</h4>
+                        <p class="text-xs text-[#A3AED0] font-medium mb-4">Conteo por localidad de la ruta</p>
                         <div class="relative h-[340px] w-full">
                             <canvas id="dash-chart-zone-trips"></canvas>
                         </div>
                     </div>
                     <div class="card-dark p-6 md:p-8">
-                        <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-1">Viajes por localidad</h4>
-                        <p class="text-xs text-[#A3AED0] font-medium mb-4">Agrupado según mapeo zona → localidad</p>
+                        <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-1">Viajes por partido</h4>
+                        <p class="text-xs text-[#A3AED0] font-medium mb-4">Localidades agrupadas por partido</p>
                         <div class="relative h-[340px] w-full">
                             <canvas id="dash-chart-localidad-trips"></canvas>
                         </div>
@@ -1063,7 +1063,7 @@
                     <div class="flex items-center justify-between mb-6 gap-4 flex-wrap">
                         <div>
                             <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-1">Recuento de viajes</h4>
-                            <p class="text-xs text-[#A3AED0] font-medium">Propios vs Tercerizados — desglosado por Localidad, Zona y Unidad de negocio</p>
+                            <p class="text-xs text-[#A3AED0] font-medium">Propios vs Tercerizados — desglosado por Partido, Localidad y Unidad de negocio</p>
                         </div>
                         <div class="flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest">
                             <span class="inline-flex items-center gap-2 text-indigo-600"><span class="w-3 h-3 rounded-full bg-indigo-500"></span>Propios</span>
@@ -1074,12 +1074,12 @@
                     <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
                         <!-- Por Localidad -->
                         <div class="bg-[#FAFBFF] rounded-2xl p-5">
-                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-widest mb-3">Por Localidad</h5>
+                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-widest mb-3">Por Partido</h5>
                             <div class="overflow-x-auto custom-scrollbar">
                                 <table class="w-full text-left text-sm">
                                     <thead>
                                         <tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">
-                                            <th class="py-2 pr-2">Localidad</th>
+                                            <th class="py-2 pr-2">Partido</th>
                                             <th class="py-2 px-2 text-right">Propios</th>
                                             <th class="py-2 px-2 text-right">Terc.</th>
                                             <th class="py-2 pl-2 text-right">Total</th>
@@ -1102,12 +1102,12 @@
 
                         <!-- Por Zona -->
                         <div class="bg-[#FAFBFF] rounded-2xl p-5">
-                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-widest mb-3">Por Zona</h5>
+                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-widest mb-3">Por Localidad</h5>
                             <div class="overflow-x-auto custom-scrollbar">
                                 <table class="w-full text-left text-sm">
                                     <thead>
                                         <tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">
-                                            <th class="py-2 pr-2">Zona</th>
+                                            <th class="py-2 pr-2">Localidad</th>
                                             <th class="py-2 px-2 text-right">Propios</th>
                                             <th class="py-2 px-2 text-right">Terc.</th>
                                             <th class="py-2 pl-2 text-right">Total</th>
@@ -4426,7 +4426,7 @@
                 <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600"><i data-lucide="check-circle" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Completadas</p><p class="text-2xl font-extrabold text-[#1B2559]">${totalCompleted}</p></div></div>
             `;
 
-            thead.innerHTML = '<tr><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Chofer</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Viajes</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Paradas</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Completadas</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">% \u00c9xito</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Zonas</th></tr>';
+            thead.innerHTML = '<tr><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Chofer</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Viajes</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Paradas</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Completadas</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">% \u00c9xito</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Localidades</th></tr>';
 
             tbody.innerHTML = rows.map(([name, d]) => {
                 const pct = d.stops > 0 ? Math.round((d.completed / d.stops) * 100) : 0;
@@ -4487,7 +4487,7 @@
                 <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-amber-50 flex items-center justify-center text-amber-600"><i data-lucide="route" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Repartos distintos</p><p class="text-2xl font-extrabold text-[#1B2559]">${new Set(trips.map(t=>t.reparto).filter(Boolean)).size}</p></div></div>
             `;
 
-            thead.innerHTML = '<tr><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Chofer</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Viajes</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Repartos</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Veh\u00edculo</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-right">Costo ($)</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Zonas</th></tr>';
+            thead.innerHTML = '<tr><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Chofer</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Viajes</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Repartos</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Veh\u00edculo</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-right">Costo ($)</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Localidades</th></tr>';
 
             tbody.innerHTML = rows.map(([name, d]) => {
                 return `<tr class="hover:bg-[#F8FAFF] transition-colors"><td class="px-6 py-4 font-bold text-[#1B2559]">${name}</td><td class="px-6 py-4 text-center font-bold">${d.trips}</td><td class="px-6 py-4 text-sm">${[...d.repartos].join(', ') || '-'}</td><td class="px-6 py-4 text-sm font-medium">${[...d.vehicles].join(', ') || '-'}</td><td class="px-6 py-4 text-right font-bold text-emerald-700">$${Math.round(d.cost).toLocaleString()}</td><td class="px-6 py-4 text-sm text-[#A3AED0]">${[...d.zones].join(', ') || '-'}</td></tr>`;
@@ -4506,7 +4506,7 @@
                 <div class="card-dark p-5 flex items-center gap-4"><div class="w-11 h-11 rounded-full bg-emerald-50 flex items-center justify-center text-emerald-600"><i data-lucide="dollar-sign" class="w-5 h-5"></i></div><div><p class="text-[11px] font-bold text-[#A3AED0] uppercase">Costo total</p><p class="text-2xl font-extrabold text-[#1B2559]">$${Math.round(totalCost).toLocaleString()}</p></div></div>
             `;
 
-            thead.innerHTML = '<tr><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Fecha</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Chofer</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Reparto</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Zona</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Contrato</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Estado</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-right">Costo ($)</th></tr>';
+            thead.innerHTML = '<tr><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Fecha</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Chofer</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Reparto</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest">Localidad</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Contrato</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-center">Estado</th><th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest text-right">Costo ($)</th></tr>';
 
             const sorted = [...trips].sort((a, b) => (a.date || '').localeCompare(b.date || ''));
             tbody.innerHTML = sorted.map(t => {
@@ -14735,7 +14735,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     'Unidad Negocio': t.businessUnit || '',
                     'Chofer': t.driver || '',
                     'Reparto': (t.reparto || t.tripType || '').toUpperCase(),
-                    'Zona': t.zone || '',
+                    'Localidad': t.zone || '',
                     'Valor ($)': Number(t.value) || 0,
                     'Estado': paidSet.has(Number(t.id)) ? 'PAGADO' : 'PENDIENTE',
                     'ID Viaje': t.id,
@@ -14822,7 +14822,19 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     }));
                 }
             } catch (_) { /* si MESA falla, el resto del analisis sale igual */ }
-            return { filas, categorias: Object.fromEntries(asignaciones) };
+            // Se agrega el partido de cada viaje: la tabla de equivalencias
+            // localidad -> partido esta aca, no en el servidor.
+            const categorias = {};
+            for (const v of viajes) {
+                const asignado = asignaciones.get(v.id) || {};
+                const partido = typeof getLocalidadFromZone === 'function' ? getLocalidadFromZone(v.zone) : '';
+                categorias[v.id] = {
+                    region: asignado.region || '',
+                    categoria: asignado.categoria || '',
+                    partido: partido === 'N/D' ? '' : partido
+                };
+            }
+            return { filas, categorias };
         }
 
         /** Export con formato y tabla dinamica. Lo arma el servidor a partir de
@@ -14903,8 +14915,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const rows = data.map(t => ({
                 'ID': t.id || '',
                 'Fecha': t.date || '',
-                'Zona': t.zone || '',
-                'Localidad': (typeof getLocalidadFromZone === 'function' ? getLocalidadFromZone(t.zone) : '') || '',
+                'Localidad': t.zone || '',
+                'Partido': (typeof getLocalidadFromZone === 'function' ? getLocalidadFromZone(t.zone) : '') || '',
                 'Chofer': t.driver || '',
                 'Auxiliar 1': t.auxiliar || '',
                 'Auxiliar 2': t.auxiliar2 || '',
@@ -14977,7 +14989,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         return {
                             date: date.toISOString(),
                             driver:       field(row, 'Chofer', 'Driver', 'driver', 'CHOFER') || null,
-                            zone:         field(row, 'Zona', 'Zone', 'zone', 'ZONA') || null,
+                            zone:         field(row, 'Localidad', 'Zona', 'Zone', 'zone', 'ZONA', 'LOCALIDAD') || null,
                             vehicle:      field(row, 'Patente', 'Plate', 'Vehicle', 'vehicle') || null,
                             businessUnit: field(row, 'Unidad Negocio', 'BusinessUnit', 'BU') || null,
                             contractType: field(row, 'Contrato', 'ContractType', 'Contract') || null,
@@ -20243,8 +20255,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (zoneDl) zoneDl.innerHTML = uniqueZones.map(z => `<option value="${escapeHtml(z)}">${escapeHtml(z)}</option>`).join('');
             const zoneInput = document.getElementById('new-trip-zone');
             zoneInput.placeholder = uniqueZones.length === 0
-                ? '⚠ No hay zonas cargadas — cargá un cliente o un viaje con zona'
-                : 'Escribí o seleccioná una zona…';
+                ? '⚠ No hay localidades cargadas — cargá un cliente o un viaje con localidad'
+                : 'Escribí o seleccioná una localidad…';
 
             document.getElementById('new-trip-vehicle').innerHTML = '<option value="">Seleccionar Vehículo</option>' + uniqueVehicles.map(v => `<option value="${v}">${v}</option>`).join('');
             populateBusinessUnitSelect('DMC');
@@ -21564,7 +21576,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         </select>
                     </div>
                     <div>
-                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Zona</label>
+                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Localidad</label>
                         <select id="bulk-edit-zone" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500">
                             <option value="">— No cambiar —</option>
                         </select>
@@ -21839,12 +21851,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
                 <div class="grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
                     <div>
-                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Zona</label>
-                        <input type="text" id="new-trip-zone" list="new-trip-zone-list" placeholder="Escribí o seleccioná una zona…" autocomplete="off" oninput="autoFillLocalidad()" onchange="autoFillLocalidad()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Localidad</label>
+                        <input type="text" id="new-trip-zone" list="new-trip-zone-list" placeholder="Escribí o seleccioná una localidad…" autocomplete="off" oninput="autoFillLocalidad()" onchange="autoFillLocalidad()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                         <datalist id="new-trip-zone-list"></datalist>
                     </div>
                     <div>
-                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Localidad (Auto)</label>
+                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Partido (Auto)</label>
                         <input type="text" id="new-trip-loc" readonly class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#A3AED0] shadow-sm outline-none">
                     </div>
                 </div>

@@ -30,8 +30,8 @@ const ULTIMA_COLUMNA_CONTEO = 'N';
 
 /** Las columnas de la hoja "Viajes", en orden. Coinciden con la plantilla. */
 export const COLUMNAS_LIBRO = [
-    'ID viaje', 'Fecha', 'Mes', 'Reparto', 'Zona', 'Subzona', 'Region UN', 'Categoria UN',
-    'Localidad', 'Unidad de negocio',
+    'ID viaje', 'Fecha', 'Mes', 'Reparto', 'Localidad', 'Partido', 'Subzona', 'Region UN', 'Categoria UN',
+    'Unidad de negocio',
     'Contrato', 'Proveedor', 'Chofer', 'Auxiliar 1', 'Auxiliar 2', 'Auxiliar 3',
     'Patente', 'Tipo de vehiculo', 'Vuelta', 'Refrigerado', 'Temperatura', 'Estado',
     'Salida deposito', 'Llegada deposito', 'Duracion horas', 'Paradas planificadas',

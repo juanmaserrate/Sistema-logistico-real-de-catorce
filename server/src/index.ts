@@ -1593,6 +1593,8 @@ app.post('/api/v1/trips/export-xlsx', async (req: any, res: any) => {
             return {
                 ...f,
                 Mes: mesDeFecha(f['Fecha']),
+                // El partido sale de la tabla de equivalencias que vive en la web
+                Partido: c.partido || '',
                 'Region UN': c.region || '',
                 'Categoria UN': c.categoria || ''
             };
