@@ -6296,6 +6296,8 @@ app.post('/api/admin/borrar-viajes', async (req: any, res: any) => {
             aplicado: aplicar,
             desde, hasta,
             viajes: viajes.length,
+            // Los ids, para poder sacar el respaldo antes de borrar
+            ids: aplicar ? undefined : ids,
             porMes,
             viajesSinCerrar: enCamino,
             seLlevaTambien: {
