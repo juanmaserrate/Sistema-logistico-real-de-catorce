@@ -5786,6 +5786,108 @@ app.post('/api/admin/fix-trip-subzona', async (req: any, res: any) => {
 /** Pone el modulo Cajones en 0: borra los cajones cargados en las paradas.
  *  Antes guarda una copia en AppSettings (crates_backup_<fecha>) para poder volver atras.
  *  POST /api/admin/reset-crates { key, dryRun? } */
+/** Unifica a una persona que quedo cargada con el nombre mal escrito.
+ *  Cambia el nombre en los viajes (chofer y auxiliares) y en la ficha de
+ *  personal. Los sueldos y las reglas por reparto NO se tocan: se informan
+ *  para revisarlos a mano, porque ahi el nombre es parte de la clave.
+ *
+ *  POST /api/admin/renombrar-persona  { key, de, a, aplicar }
+ *  Sin aplicar:true solo informa que cambiaria. */
+app.post('/api/admin/renombrar-persona', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const de = String(req.body?.de || '').trim();
+    const a = String(req.body?.a || '').trim();
+    if (!de || !a) return res.status(400).json({ error: 'Faltan "de" y "a"' });
+    const aplicar = req.body?.aplicar === true;
+
+    const norm = (v: any) => String(v || '').trim().toUpperCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+    const objetivo = norm(de);
+    if (!objetivo) return res.status(400).json({ error: '"de" quedo vacio' });
+
+    /** Un campo puede traer varios nombres separados por coma: se cambia solo
+     *  el que coincide, los demas quedan como estaban. */
+    const cambiarEnLista = (valor: any): string | null => {
+        if (!valor) return null;
+        const partes = String(valor).split(',');
+        let toco = false;
+        const nuevas = partes.map((p) => {
+            const limpio = p.trim();
+            if (norm(limpio) === objetivo) { toco = true; return a; }
+            return limpio;
+        });
+        return toco ? nuevas.filter(Boolean).join(', ') : null;
+    };
+
+    try {
+        const CAMPOS = ['driver', 'auxiliar', 'auxiliar2', 'auxiliar3', 'assignedMobileUser'] as const;
+        const trips = await prisma.trip.findMany({
+            select: { id: true, date: true, reparto: true, driver: true, auxiliar: true, auxiliar2: true, auxiliar3: true, assignedMobileUser: true }
+        });
+        const cambios: any[] = [];
+        for (const t of trips) {
+            const data: any = {};
+            const detalle: any = {};
+            for (const c of CAMPOS) {
+                const nuevo = cambiarEnLista((t as any)[c]);
+                if (nuevo !== null) { data[c] = nuevo; detalle[c] = { antes: (t as any)[c], despues: nuevo }; }
+            }
+            if (Object.keys(data).length) {
+                cambios.push({ id: t.id, fecha: t.date, reparto: t.reparto, data, detalle });
+            }
+        }
+
+        const users = await prisma.user.findMany({ select: { id: true, username: true, fullName: true, role: true } });
+        const usuariosACambiar = users.filter((u) => norm(u.fullName) === objetivo);
+        const usuariosYaConEseNombre = users
+            .filter((u) => norm(u.fullName) === norm(a))
+            .map((u) => ({ username: u.username, fullName: u.fullName, role: u.role }));
+
+        // Solo se informan: aca el nombre forma parte de la clave
+        const sueldos = (await prisma.employeeSalary.findMany())
+            .filter((x: any) => norm(`${x.firstName || ''} ${x.lastName}`) === objetivo || norm(x.lastName) === objetivo)
+            .map((x: any) => ({ id: x.id, month: x.month, firstName: x.firstName, lastName: x.lastName }));
+
+        const filaReglas = await prisma.appSettings.findUnique({ where: { key: 'reglas_repartos' } });
+        const reglasConEseNombre: any[] = [];
+        if (filaReglas) {
+            try {
+                const todo = JSON.parse(filaReglas.value) || {};
+                for (const [mes, bloque] of Object.entries<any>(todo)) {
+                    const repartos = bloque?.repartos || bloque || {};
+                    for (const [rep, r] of Object.entries<any>(repartos)) {
+                        if (norm(r?.chofer) === objetivo) reglasConEseNombre.push({ mes, reparto: rep, campo: 'chofer' });
+                        if (String(r?.auxiliares || '').split(',').some((x) => norm(x) === objetivo)) {
+                            reglasConEseNombre.push({ mes, reparto: rep, campo: 'auxiliares' });
+                        }
+                    }
+                    for (const c of (bloque?.choferes || [])) {
+                        if (norm(c?.chofer) === objetivo) reglasConEseNombre.push({ mes, campo: 'chofer suelto' });
+                    }
+                }
+            } catch (_) { /* si no se puede leer, no se informa */ }
+        }
+
+        if (aplicar) {
+            for (const c of cambios) await prisma.trip.update({ where: { id: c.id }, data: c.data });
+            for (const u of usuariosACambiar) await prisma.user.update({ where: { id: u.id }, data: { fullName: a } });
+        }
+
+        res.json({
+            aplicado: aplicar,
+            de, a,
+            viajes: cambios.length,
+            ejemplos: cambios.slice(0, 10).map((c) => ({ id: c.id, fecha: c.fecha, reparto: c.reparto, ...c.detalle })),
+            usuariosRenombrados: usuariosACambiar.map((u) => ({ username: u.username, antes: u.fullName, role: u.role })),
+            ojo_usuariosQueYaSeLlamanAsi: usuariosYaConEseNombre,
+            revisar_sueldos: sueldos,
+            revisar_reglasRepartos: reglasConEseNombre
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/admin/reset-crates', async (req: any, res: any) => {
     const { key, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
