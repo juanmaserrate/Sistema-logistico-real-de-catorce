@@ -546,6 +546,13 @@ tfoot tr.payments-total-row span,
     margin: 0 0.35rem;
 }
 
+/* El titulo de cada pantalla. Antes iba en blanco sobre el degradado;
+   desde que la barra dejo de flotar, el fondo es claro. */
+.page-heading #header-title { color: var(--on-surface); }
+.page-heading #header-desc { color: var(--on-surface-muted); }
+[data-theme="dark"] .page-heading #header-title { color: #e8eaed !important; }
+[data-theme="dark"] .page-heading #header-desc { color: rgba(255, 255, 255, 0.55) !important; }
+
 /* ---------- 11. NOTIFICATIONS ---------- */
 .notification-panel {
     position: absolute;
