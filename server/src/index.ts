@@ -6241,6 +6241,78 @@ app.get('/api/admin/chofer-proveedor', async (req: any, res: any) => {
     }
 });
 
+/** Borra los viajes de un rango de fechas. BORRAR NO TIENE VUELTA ATRAS.
+ *  Sin aplicar:true solo informa que se llevaria puesto.
+ *
+ *  Las paradas y las marcas de GPS del viaje se borran solas (cascade). Las
+ *  rutas NO: quedarian huerfanas con sus paradas, asi que se borran aparte
+ *  salvo que se pida lo contrario.
+ *
+ *  POST /api/admin/borrar-viajes { key, desde, hasta, aplicar, dejarRutas? } */
+app.post('/api/admin/borrar-viajes', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const { desde, hasta } = req.body || {};
+    if (!desde || !hasta) return res.status(400).json({ error: 'Faltan "desde" y "hasta" (YYYY-MM-DD)' });
+    const aplicar = req.body?.aplicar === true;
+    const dejarRutas = req.body?.dejarRutas === true;
+
+    try {
+        const ini = utcDayRange(String(desde)).start;
+        const fin = utcDayRange(String(hasta)).end;
+
+        const viajes = await prisma.trip.findMany({
+            where: { date: { gte: ini, lte: fin } },
+            select: { id: true, date: true, status: true, linkedRoute: { select: { id: true } } }
+        });
+        const ids = viajes.map((t) => t.id);
+        const routeIds = viajes.map((t: any) => t.linkedRoute?.id).filter(Boolean) as number[];
+
+        const [paradas, ubicaciones, paradasDeRuta, gpsDeRuta] = await Promise.all([
+            prisma.tripStop.count({ where: { tripId: { in: ids } } }),
+            prisma.tripLocation.count({ where: { tripId: { in: ids } } }),
+            routeIds.length ? prisma.stop.count({ where: { routeId: { in: routeIds } } }) : Promise.resolve(0),
+            routeIds.length ? prisma.deviceLocation.count({ where: { routeId: { in: routeIds } } }) : Promise.resolve(0)
+        ]);
+
+        // Por mes, para poder controlar contra lo que se espera
+        const porMes: Record<string, number> = {};
+        for (const t of viajes) {
+            const k = mesDeLaFecha(t.date);
+            porMes[k] = (porMes[k] || 0) + 1;
+        }
+        const enCamino = viajes.filter((t) => !['COMPLETED', 'RETURNED', 'CANCELLED'].includes(String(t.status || '').toUpperCase())).length;
+
+        if (aplicar) {
+            if (!dejarRutas && routeIds.length) {
+                await prisma.deviceLocation.updateMany({ where: { routeId: { in: routeIds } }, data: { routeId: null } });
+                await prisma.stop.deleteMany({ where: { routeId: { in: routeIds } } });
+                await prisma.route.deleteMany({ where: { id: { in: routeIds } } });
+            }
+            // TripStop y TripLocation se van en cascada con el viaje
+            await prisma.trip.deleteMany({ where: { id: { in: ids } } });
+        }
+
+        res.json({
+            aplicado: aplicar,
+            desde, hasta,
+            viajes: viajes.length,
+            porMes,
+            viajesSinCerrar: enCamino,
+            seLlevaTambien: {
+                paradasDelViaje: paradas,
+                marcasGpsDelViaje: ubicaciones,
+                rutas: dejarRutas ? 0 : routeIds.length,
+                paradasDeEsasRutas: dejarRutas ? 0 : paradasDeRuta,
+                marcasGpsDeEsasRutas: gpsDeRuta
+            },
+            rutasQueQuedarianHuerfanas: dejarRutas ? routeIds.length : 0
+        });
+    } catch (e: any) {
+        console.error('borrar-viajes:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/admin/reset-crates', async (req: any, res: any) => {
     const { key, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
