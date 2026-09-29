@@ -190,6 +190,7 @@ const PROTECTED_PREFIXES = [
     '/api/v1/salaries',
     '/api/upload-photo',
     '/api/v1/crates',
+    '/api/v1/catalogos',
 ];
 app.use((req: any, res: any, next: any) => {
     // Excepcion: el export de viajes tambien acepta la clave de servicio, como
@@ -8411,6 +8412,64 @@ app.delete('/api/v1/users/:id', async (req, res) => {
     } catch (e: any) {
         if (e?.code === 'P2025') return res.status(404).json({ error: 'Usuario no encontrado' });
         res.status(500).json({ error: (e as Error).message });
+    }
+});
+
+// ── CATALOGOS DEL FORMULARIO DE VIAJE ─────────────────────────────────────
+// Las listas que ofrece cada desplegable al crear un viaje. Se editan desde
+// Ajustes, asi que van con sesion (no con la clave de servicio).
+
+/** Solo estos campos se pueden tocar: el resto son valores de los que depende
+ *  el sistema (Propio/Tercerizado, APP/MANUAL) o salen de otro modulo. */
+const CAMPOS_DE_CATALOGO: Record<string, string> = {
+    businessUnit: 'Unidad de negocio',
+    vehicleType: 'Tipo de vehiculo'
+};
+
+/** Cuantos viajes usa cada valor. Con desde/hasta se acota al periodo.
+ *  GET /api/v1/catalogos/uso?campo=businessUnit */
+app.get('/api/v1/catalogos/uso', async (req: any, res: any) => {
+    const campo = String(req.query.campo || '');
+    if (!CAMPOS_DE_CATALOGO[campo]) return res.status(400).json({ error: 'Campo no editable' });
+    try {
+        const where: any = {};
+        if (req.query.desde && req.query.hasta) {
+            where.date = { gte: utcDayRange(String(req.query.desde)).start, lte: utcDayRange(String(req.query.hasta)).end };
+        }
+        const filas = await prisma.trip.groupBy({
+            by: [campo as any],
+            where,
+            _count: { _all: true }
+        });
+        const uso = filas
+            .map((f: any) => ({ valor: f[campo] || '', viajes: f._count._all }))
+            .filter((x: any) => x.valor)
+            .sort((a: any, b: any) => b.viajes - a.viajes);
+        res.json({ campo, uso, total: uso.reduce((n: number, x: any) => n + x.viajes, 0) });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Cambia un valor por otro en todos los viajes que lo usan. Sirve tanto para
+ *  renombrar (nombre nuevo) como para reasignar antes de borrar.
+ *  POST /api/v1/catalogos/reemplazar { campo, de, a } */
+app.post('/api/v1/catalogos/reemplazar', async (req: any, res: any) => {
+    const campo = String(req.body?.campo || '');
+    if (!CAMPOS_DE_CATALOGO[campo]) return res.status(400).json({ error: 'Campo no editable' });
+    const de = String(req.body?.de || '').trim();
+    const a = String(req.body?.a || '').trim();
+    if (!de) return res.status(400).json({ error: 'Falta "de"' });
+    if (!a) return res.status(400).json({ error: 'Falta "a"' });
+    if (de === a) return res.json({ viajes: 0, sinCambios: true });
+    try {
+        const r = await prisma.trip.updateMany({
+            where: { [campo]: { equals: de, mode: 'insensitive' } } as any,
+            data: { [campo]: a } as any
+        });
+        res.json({ campo, de, a, viajes: r.count });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
     }
 });
 

@@ -20,7 +20,7 @@
          Plan gratuito: 50k cargas de mapa/mes. -->
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="/css/planificacion.css?v=20260928e">
+    <link rel="stylesheet" href="/css/planificacion.css?v=20260929a">
     <script src="/js/r14-utils.js"></script>
     <script src="/js/r14-notifications.js"></script>
 </head>
@@ -599,6 +599,27 @@
                         <div class="flex-1"></div>
                         <button onclick="abrirCamposViaje()" class="mt-6 w-full px-6 py-3.5 rounded-2xl bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 uppercase tracking-widest">
                             <i data-lucide="pencil" class="w-4 h-4"></i> Editar campos
+                        </button>
+                    </div>
+
+                    <!-- Listas de los desplegables -->
+                    <div class="card-dark p-8 flex flex-col">
+                        <div class="flex items-start gap-4">
+                            <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                                <i data-lucide="list" class="w-6 h-6"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <h4 class="text-base font-bold text-[#1B2559]">Listas de los desplegables</h4>
+                                <p class="text-xs text-[#A3AED0] font-medium mt-1 leading-relaxed">Las opciones que ofrece cada desplegable al crear un viaje: unidades de negocio y tipos de vehículo. Podés renombrarlas y borrarlas.</p>
+                            </div>
+                        </div>
+                        <div class="mt-5">
+                            <span id="ajustes-listas-resumen" class="inline-block px-3 py-1.5 rounded-xl bg-[#F4F7FE] text-[10px] font-bold text-[#A3AED0] uppercase tracking-widest">Cargando...</span>
+                        </div>
+                        <p class="text-[11px] text-[#A3AED0] font-medium mt-4 leading-relaxed">Al renombrar, se cambia también en los viajes ya cargados. Antes de borrar te aviso cuántos viajes la usan.</p>
+                        <div class="flex-1"></div>
+                        <button onclick="abrirListasFormulario()" class="mt-6 w-full px-6 py-3.5 rounded-2xl bg-amber-500 text-white text-[11px] font-bold hover:bg-amber-600 transition-all shadow-lg shadow-amber-200 flex items-center justify-center gap-2 uppercase tracking-widest">
+                            <i data-lucide="pencil" class="w-4 h-4"></i> Editar listas
                         </button>
                     </div>
                 </div>
@@ -18424,6 +18445,201 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
 
 
+
+        // ═══ LISTAS DE LOS DESPLEGABLES ══════════════════════════
+        // Las opciones que ofrece cada desplegable al crear un viaje. Solo se
+        // tocan las que son un catalogo propio: las demas salen de otro modulo
+        // (Personal, Rutas, Clientes) o son fijas del sistema.
+
+        const LISTAS_DEL_FORMULARIO = {
+            businessUnit: { titulo: 'Unidades de negocio', clave: 'business_units', singular: 'unidad de negocio' },
+            vehicleType: { titulo: 'Tipos de veh\u00edculo', clave: 'vehicle_types', singular: 'tipo de veh\u00edculo' }
+        };
+
+        let _listaActiva = 'businessUnit';
+        let _listaOpciones = [];   // las opciones del catalogo
+        let _listaUso = {};        // cuantos viajes usa cada una
+
+        async function abrirListasFormulario() {
+            document.getElementById('listas-formulario-modal').classList.remove('hidden');
+            await cambiarListaFormulario('businessUnit');
+        }
+
+        function cerrarListasFormulario() {
+            document.getElementById('listas-formulario-modal').classList.add('hidden');
+            // Los desplegables del formulario se rearman con lo que quedo
+            if (typeof populateBusinessUnitSelect === 'function') {
+                try { populateBusinessUnitSelect(); } catch (_) { /* el form puede estar cerrado */ }
+            }
+            cargarVistaAjustes();
+        }
+
+        async function cambiarListaFormulario(campo) {
+            _listaActiva = campo;
+            for (const k of Object.keys(LISTAS_DEL_FORMULARIO)) {
+                const tab = document.getElementById('tab-lista-' + k);
+                if (!tab) continue;
+                const activo = k === campo;
+                tab.classList.toggle('bg-[#F4F7FE]', activo);
+                tab.classList.toggle('text-[#1B2559]', activo);
+                tab.classList.toggle('text-[#A3AED0]', !activo);
+            }
+            document.getElementById('listas-tabla').classList.add('hidden');
+            document.getElementById('listas-cargando').classList.remove('hidden');
+            await cargarListaFormulario();
+            renderListaFormulario();
+        }
+
+        async function cargarListaFormulario() {
+            const def = LISTAS_DEL_FORMULARIO[_listaActiva];
+            // El catalogo guardado
+            try {
+                const res = await fetch(`${API_URL}/settings/${def.clave}`, { headers: getActorHeaders() });
+                const v = res.ok ? await res.json() : null;
+                _listaOpciones = Array.isArray(v) ? v.filter(Boolean) : [];
+            } catch (_) {
+                _listaOpciones = [];
+            }
+            // Cuantos viajes usa cada valor (y valores que estan en viajes pero no en el catalogo)
+            _listaUso = {};
+            try {
+                const res = await fetch(`${API_URL}/catalogos/uso?campo=${_listaActiva}`, { headers: getActorHeaders() });
+                if (res.ok) {
+                    const d = await res.json();
+                    for (const u of (d.uso || [])) _listaUso[u.valor] = u.viajes;
+                }
+            } catch (_) { /* sin conteo, igual se puede editar */ }
+            // Lo que aparece en viajes tambien es una opcion real
+            const juntas = new Set([..._listaOpciones, ...Object.keys(_listaUso)]);
+            _listaOpciones = [...juntas].filter(Boolean).sort((a, b) => a.localeCompare(b, 'es'));
+        }
+
+        function renderListaFormulario() {
+            document.getElementById('listas-cargando').classList.add('hidden');
+            document.getElementById('listas-tabla').classList.remove('hidden');
+            const body = document.getElementById('listas-tbody');
+            const def = LISTAS_DEL_FORMULARIO[_listaActiva];
+            if (!_listaOpciones.length) {
+                body.innerHTML = `<tr><td colspan="3" class="px-3 py-6 text-[11px] text-[#A3AED0] font-medium">Todav\u00eda no hay ninguna ${def.singular} cargada.</td></tr>`;
+            } else {
+                body.innerHTML = _listaOpciones.map((op) => {
+                    const n = _listaUso[op] || 0;
+                    return `<tr class="hover:bg-[#FAFBFF]">
+                        <td class="px-3 py-2.5 text-xs font-black text-[#1B2559]">${escapeHtml(op)}</td>
+                        <td class="px-3 py-2.5 text-right text-[11px] font-bold ${n ? 'text-[#1B2559]' : 'text-[#A3AED0]'}">${n ? n : '\u2014'}</td>
+                        <td class="px-3 py-2.5 text-right whitespace-nowrap">
+                            <button onclick="renombrarOpcionLista('${escapeHtml(op).replace(/'/g, "\\'")}')" class="text-indigo-500 hover:text-indigo-700 mr-2" title="Renombrar"><i data-lucide="pencil" class="w-4 h-4"></i></button>
+                            <button onclick="borrarOpcionLista('${escapeHtml(op).replace(/'/g, "\\'")}')" class="text-rose-500 hover:text-rose-700" title="Borrar"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                        </td>
+                    </tr>`;
+                }).join('');
+            }
+            const usadas = _listaOpciones.filter(o => _listaUso[o]).length;
+            document.getElementById('listas-aviso').textContent =
+                `${_listaOpciones.length} opciones \u00b7 ${usadas} en uso`;
+            if (window.lucide) lucide.createIcons();
+        }
+
+        /** Guarda el catalogo (la lista de opciones) en el servidor. */
+        async function guardarCatalogoLista(lista) {
+            const def = LISTAS_DEL_FORMULARIO[_listaActiva];
+            const limpia = [...new Set(lista.map(x => String(x).trim().toUpperCase()).filter(Boolean))]
+                .sort((a, b) => a.localeCompare(b, 'es'));
+            await fetch(`${API_URL}/settings`, {
+                method: 'POST',
+                headers: getActorHeaders(),
+                body: JSON.stringify({ key: def.clave, value: limpia })
+            });
+            // El catalogo de unidades tiene su copia en el navegador
+            if (_listaActiva === 'businessUnit') {
+                try { localStorage.setItem(BUSINESS_UNIT_STORAGE_KEY, JSON.stringify(limpia)); } catch (_) {}
+                if (typeof _buCache !== 'undefined') _buCache = limpia;
+            }
+            return limpia;
+        }
+
+        /** Cambia el valor en los viajes ya cargados. */
+        async function reemplazarEnViajes(de, a) {
+            const res = await fetch(`${API_URL}/catalogos/reemplazar`, {
+                method: 'POST',
+                headers: getActorHeaders(),
+                body: JSON.stringify({ campo: _listaActiva, de, a })
+            });
+            if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'HTTP ' + res.status);
+            return (await res.json()).viajes || 0;
+        }
+
+        async function agregarOpcionLista() {
+            const inp = document.getElementById('lista-nueva-opcion');
+            const v = String(inp.value || '').trim().toUpperCase();
+            if (!v) return;
+            if (_listaOpciones.some(o => o.toUpperCase() === v)) return alert(v + ' ya est\u00e1 en la lista.');
+            _listaOpciones = await guardarCatalogoLista([..._listaOpciones, v]);
+            inp.value = '';
+            renderListaFormulario();
+        }
+
+        async function renombrarOpcionLista(op) {
+            const def = LISTAS_DEL_FORMULARIO[_listaActiva];
+            const n = _listaUso[op] || 0;
+            const nuevo = prompt(`Nuevo nombre para "${op}":`, op);
+            if (nuevo === null) return;
+            const v = String(nuevo).trim().toUpperCase();
+            if (!v || v === op.toUpperCase()) return;
+            if (_listaOpciones.some(o => o.toUpperCase() === v)) {
+                if (!confirm(`"${v}" ya existe. \u00bfJuntar las dos en una sola?`)) return;
+            }
+            try {
+                if (n) await reemplazarEnViajes(op, v);
+                _listaOpciones = await guardarCatalogoLista([..._listaOpciones.filter(o => o !== op), v]);
+                await cargarListaFormulario();
+                renderListaFormulario();
+                if (typeof addNotification === 'function') {
+                    addNotification('success', def.titulo, n
+                        ? `"${op}" pas\u00f3 a "${v}" en ${n} viaje${n === 1 ? '' : 's'}.`
+                        : `"${op}" pas\u00f3 a "${v}".`);
+                }
+            } catch (e) {
+                alert('No se pudo renombrar: ' + e.message);
+            }
+        }
+
+        async function borrarOpcionLista(op) {
+            const def = LISTAS_DEL_FORMULARIO[_listaActiva];
+            const n = _listaUso[op] || 0;
+            if (!n) {
+                if (!confirm(`\u00bfBorrar "${op}" de la lista? No la usa ning\u00fan viaje.`)) return;
+                _listaOpciones = await guardarCatalogoLista(_listaOpciones.filter(o => o !== op));
+                renderListaFormulario();
+                return;
+            }
+            // Hay viajes usandola: primero hay que decir a cual pasan
+            const otras = _listaOpciones.filter(o => o !== op);
+            if (!otras.length) return alert(`No se puede borrar "${op}": la usan ${n} viajes y no hay otra opci\u00f3n a la que pasarlos.`);
+            const destino = prompt(
+                `"${op}" la usan ${n} viaje${n === 1 ? '' : 's'}.\n\n` +
+                `Para borrarla hay que pasar esos viajes a otra ${def.singular}.\n` +
+                `Escrib\u00ed a cu\u00e1l:\n\n${otras.join('\n')}`,
+                otras[0]
+            );
+            if (destino === null) return;
+            const v = String(destino).trim().toUpperCase();
+            const elegida = otras.find(o => o.toUpperCase() === v);
+            if (!elegida) return alert(`"${destino}" no est\u00e1 en la lista. No se borr\u00f3 nada.`);
+            if (!confirm(`Se van a pasar ${n} viaje${n === 1 ? '' : 's'} de "${op}" a "${elegida}" y despu\u00e9s se borra "${op}". \u00bfSeguir?`)) return;
+            try {
+                const movidos = await reemplazarEnViajes(op, elegida);
+                _listaOpciones = await guardarCatalogoLista(_listaOpciones.filter(o => o !== op));
+                await cargarListaFormulario();
+                renderListaFormulario();
+                if (typeof addNotification === 'function') {
+                    addNotification('success', def.titulo, `${movidos} viaje${movidos === 1 ? '' : 's'} pasaron a "${elegida}". Se borr\u00f3 "${op}".`);
+                }
+                if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
+            } catch (e) {
+                alert('No se pudo borrar: ' + e.message);
+            }
+        }
         // ═══ BOTON ACTUALIZAR ════════════════════════════════
         // Los datos llegan solos por WebSocket, pero si la conexion en vivo se
         // cayo (red, celular del chofer, el servidor reiniciando) la pantalla se
@@ -18611,6 +18827,17 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 chip('ajustes-campos-resumen', partes.join(' · '));
             } catch (_) {
                 chip('ajustes-campos-resumen', 'No se pudieron leer');
+            }
+            // Listas de los desplegables
+            try {
+                const [bu, vt] = await Promise.all([
+                    fetch(`${API_URL}/catalogos/uso?campo=businessUnit`, { headers: getActorHeaders() }).then(r => r.ok ? r.json() : null),
+                    fetch(`${API_URL}/catalogos/uso?campo=vehicleType`, { headers: getActorHeaders() }).then(r => r.ok ? r.json() : null)
+                ]);
+                const n1 = (bu?.uso || []).length, n2 = (vt?.uso || []).length;
+                chip('ajustes-listas-resumen', `${n1} unidades de negocio \u00b7 ${n2} tipos de veh\u00edculo`);
+            } catch (_) {
+                chip('ajustes-listas-resumen', 'No se pudieron leer');
             }
             if (window.lucide) lucide.createIcons();
         }
@@ -22384,6 +22611,59 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
     </div>
 
 <!-- New Trip Modal -->
+    <!-- MODAL: LISTAS DE LOS DESPLEGABLES -->
+    <div id="listas-formulario-modal" class="modal-overlay hidden fixed inset-0 z-[70] flex items-center justify-center p-3" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
+        <div class="bg-white rounded-3xl w-[96vw] max-w-3xl max-h-[92vh] shadow-2xl overflow-hidden flex flex-col">
+            <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center gap-3 bg-[#F8FAFF]">
+                <div>
+                    <h3 class="font-black text-[#1B2559] uppercase tracking-widest text-sm">Listas de los desplegables</h3>
+                    <p class="text-xs text-[#A3AED0] font-medium mt-1">Las opciones que se ofrecen al crear un viaje.</p>
+                </div>
+                <button onclick="cerrarListasFormulario()" class="text-[#A3AED0] hover:text-[#1B2559]"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+
+            <div class="px-6 pt-5 flex gap-2 border-b border-[#F4F7FE]">
+                <button id="tab-lista-businessUnit" onclick="cambiarListaFormulario('businessUnit')"
+                        class="px-4 py-2.5 rounded-t-xl text-[11px] font-black uppercase tracking-widest text-[#1B2559] bg-[#F4F7FE]">Unidades de negocio</button>
+                <button id="tab-lista-vehicleType" onclick="cambiarListaFormulario('vehicleType')"
+                        class="px-4 py-2.5 rounded-t-xl text-[11px] font-black uppercase tracking-widest text-[#A3AED0]">Tipos de vehículo</button>
+            </div>
+
+            <div class="p-6 overflow-auto custom-scrollbar flex-1">
+                <div id="listas-cargando" class="py-10 text-center text-[11px] font-bold text-[#A3AED0]">Cargando…</div>
+                <table id="listas-tabla" class="w-full text-left hidden">
+                    <thead class="bg-[#FAFBFF]">
+                        <tr class="text-[9px] font-black uppercase tracking-widest text-[#A3AED0]">
+                            <th class="px-3 py-2">Opción</th>
+                            <th class="px-3 py-2 text-right">Viajes que la usan</th>
+                            <th class="px-3 py-2 text-right w-24"></th>
+                        </tr>
+                    </thead>
+                    <tbody id="listas-tbody" class="divide-y divide-[#F4F7FE]"></tbody>
+                </table>
+                <div class="mt-4 flex items-center gap-2">
+                    <input id="lista-nueva-opcion" type="text" placeholder="Agregar una opción…" class="flex-1 bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold uppercase outline-none">
+                    <button onclick="agregarOpcionLista()" class="px-4 py-2.5 rounded-xl bg-[#F4F7FE] text-[#1B2559] text-[10px] font-bold hover:bg-[#E0E5F2]">Agregar</button>
+                </div>
+
+                <div class="mt-8 border-t border-[#F4F7FE] pt-5">
+                    <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest mb-2">Las otras listas se editan en su módulo</h4>
+                    <ul class="text-[11px] text-[#A3AED0] font-medium space-y-1.5">
+                        <li><b class="text-[#1B2559]">Chofer y auxiliares</b> — en Datos › Personal</li>
+                        <li><b class="text-[#1B2559]">Reparto / Ruta</b> — en Planificación › Rutas Predefinidas</li>
+                        <li><b class="text-[#1B2559]">Localidad</b> — sale de los clientes, en Datos › Clientes</li>
+                        <li><b class="text-[#1B2559]">Contrato, Tipo de viaje, Vuelta y Refrigerado</b> — son fijos: el sistema hace cuentas distintas según cada valor</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="p-5 border-t border-[#F4F7FE] bg-[#F8FAFF] flex justify-between items-center gap-3">
+                <span id="listas-aviso" class="text-[11px] font-bold text-[#A3AED0]"></span>
+                <button onclick="cerrarListasFormulario()" class="px-6 py-3 rounded-xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200">LISTO</button>
+            </div>
+        </div>
+    </div>
+
     <!-- MODAL: REGLAS POR REPARTO -->
     <div id="reglas-repartos-modal" class="modal-overlay hidden fixed inset-0 z-[70] flex items-center justify-center p-3" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
         <div class="bg-white rounded-3xl w-[97vw] max-w-6xl max-h-[92vh] shadow-2xl overflow-hidden flex flex-col">
