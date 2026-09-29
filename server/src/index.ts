@@ -5998,6 +5998,50 @@ app.get('/api/admin/usuarios-app-en-viajes', async (req: any, res: any) => {
     }
 });
 
+/** Borra cuentas que ya no se usan. Antes de borrar comprueba que no les
+ *  cuelgue nada (rutas, incidencias, ubicaciones, viajes que las tengan como
+ *  usuario de la app): si algo cuelga NO borra y lo informa, para migrarlo
+ *  primero. Borrar no tiene vuelta atras.
+ *
+ *  POST /api/admin/borrar-cuentas  { key, usernames: [], aplicar } */
+app.post('/api/admin/borrar-cuentas', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const pedidos: string[] = Array.isArray(req.body?.usernames) ? req.body.usernames.map((x: any) => String(x).trim()).filter(Boolean) : [];
+    if (!pedidos.length) return res.status(400).json({ error: 'Falta "usernames" (lista)' });
+    const aplicar = req.body?.aplicar === true;
+
+    try {
+        const informe: any[] = [];
+        for (const username of pedidos) {
+            const u = await prisma.user.findUnique({ where: { username } });
+            if (!u) { informe.push({ username, estado: 'no existe' }); continue; }
+
+            const [rutas, incidencias, ubicaciones, viajes] = await Promise.all([
+                prisma.route.count({ where: { driverId: u.id } }),
+                prisma.incident.count({ where: { driverId: u.id } }),
+                prisma.deviceLocation.count({ where: { driverId: u.id } }),
+                prisma.trip.count({ where: { assignedMobileUser: username } })
+            ]);
+            const cuelga = { rutas, incidencias, ubicaciones, viajes };
+            const vacia = rutas === 0 && incidencias === 0 && ubicaciones === 0 && viajes === 0;
+
+            if (!vacia) {
+                informe.push({ username, fullName: u.fullName, role: u.role, estado: 'NO se borra: tiene datos', cuelga });
+                continue;
+            }
+            if (aplicar) {
+                await prisma.user.delete({ where: { id: u.id } });
+                informe.push({ username, fullName: u.fullName, role: u.role, estado: 'borrada' });
+            } else {
+                informe.push({ username, fullName: u.fullName, role: u.role, estado: 'lista para borrar' });
+            }
+        }
+        res.json({ aplicado: aplicar, cuentas: informe });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/admin/reset-crates', async (req: any, res: any) => {
     const { key, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
