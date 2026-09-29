@@ -3512,6 +3512,21 @@
         };
         // Caché en memoria de unidades de negocio (se carga desde /api/v1/settings/business_units al init)
         let _buCache = null;
+        // Tipos de vehículo cargados desde Ajustes. El desplegable del viaje los
+        // suma a los que ya aparecen en viajes: si no, un tipo nuevo no se podría
+        // elegir hasta que exista un viaje que lo use.
+        let _tiposVehiculoCache = [];
+
+        async function cargarTiposDeVehiculo() {
+            try {
+                const res = await fetch(`${API_URL}/settings/vehicle_types`);
+                const v = res.ok ? await res.json() : null;
+                _tiposVehiculoCache = Array.isArray(v) ? v.filter(Boolean) : [];
+            } catch (_) {
+                _tiposVehiculoCache = [];
+            }
+            return _tiposVehiculoCache;
+        }
 
         /** Normaliza strings para comparaciones robustas (quita acentos, puntuación y espacios) **/
         // norm(), normalizeBusinessUnit() → js/r14-utils.js
@@ -16911,7 +16926,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     loadSalariesData(),
                     loadMaintenanceData(),
                     loadCostsData(),
-                    loadBusinessUnitsFromApi()
+                    loadBusinessUnitsFromApi(),
+                    cargarTiposDeVehiculo()
                 ]);
                 // Restaurar la última vista visitada (o ir a 'weekly' por defecto)
                 let lastView = localStorage.getItem('r14.lastView') || 'weekly';
@@ -18471,6 +18487,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (typeof populateBusinessUnitSelect === 'function') {
                 try { populateBusinessUnitSelect(); } catch (_) { /* el form puede estar cerrado */ }
             }
+            cargarTiposDeVehiculo();
             cargarVistaAjustes();
         }
 
@@ -21207,7 +21224,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 .sort((a, b) => a.localeCompare(b, 'es'));
 
             // We usually have basic vehicle types like VANS, MINIBUS, DUCATO
-            const uniqueVehicles = [...new Set(planningData.map(t => t.vehicleType).filter(Boolean))].sort();
+            const uniqueVehicles = [...new Set([
+                ...(_tiposVehiculoCache || []),
+                ...planningData.map(t => t.vehicleType).filter(Boolean)
+            ])].sort();
             if (uniqueVehicles.length === 0) uniqueVehicles.push('VANS', 'MINIBUS', 'DUCATO', 'UTILITARIO');
 
             // El campo de chofer es escribible: las opciones van en un datalist,
