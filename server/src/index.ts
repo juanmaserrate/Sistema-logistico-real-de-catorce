@@ -6161,7 +6161,12 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
                     // Propio no lleva proveedor: no se carga
                 } else {
                     const yaTiene = String(t.provider || '').trim();
-                    const distinto = yaTiene.toUpperCase() !== prov.toUpperCase();
+                    // Con pisarProveedor tambien se uniforma la grafia: si no,
+                    // "PABLO LOSSI" y "Pablo Lossi" salen como dos proveedores
+                    // distintos en la Planilla de Pagos.
+                    const distinto = pisarProveedor === true
+                        ? yaTiene !== prov
+                        : yaTiene.toUpperCase() !== prov.toUpperCase();
                     if (distinto && (!yaTiene || pisarProveedor === true)) {
                         data.provider = prov;
                         detalle.proveedor = { antes: t.provider || null, despues: prov };
