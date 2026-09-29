@@ -5799,6 +5799,8 @@ app.post('/api/admin/renombrar-persona', async (req: any, res: any) => {
     const a = String(req.body?.a || '').trim();
     if (!de || !a) return res.status(400).json({ error: 'Faltan "de" y "a"' });
     const aplicar = req.body?.aplicar === true;
+    // 'no-tocar' (por defecto) solo informa las cuentas; 'renombrar' las cambia
+    const queHacerConUsuarios = String(req.body?.usuarios || 'no-tocar');
 
     const norm = (v: any) => String(v || '').trim().toUpperCase()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
@@ -5868,9 +5870,28 @@ app.post('/api/admin/renombrar-persona', async (req: any, res: any) => {
             } catch (_) { /* si no se puede leer, no se informa */ }
         }
 
+        // Cuanto se usa cada cuenta, para poder decidir cual conviene dejar
+        const candidatas = [...usuariosACambiar, ...users.filter((u) => norm(u.fullName) === norm(a))];
+        const usoDeCuentas: any[] = [];
+        for (const u of candidatas) {
+            const [rutas, ultimaRuta, ubicaciones] = await Promise.all([
+                prisma.route.count({ where: { driverId: u.id } }),
+                prisma.route.findFirst({ where: { driverId: u.id }, orderBy: { date: 'desc' }, select: { date: true } }),
+                prisma.deviceLocation.count({ where: { driverId: u.id } })
+            ]);
+            usoDeCuentas.push({
+                username: u.username, fullName: u.fullName, role: u.role,
+                rutasAsignadas: rutas,
+                ultimaRuta: ultimaRuta?.date ? new Date(ultimaRuta.date).toISOString().slice(0, 10) : null,
+                reportesGps: ubicaciones
+            });
+        }
+
         if (aplicar) {
             for (const c of cambios) await prisma.trip.update({ where: { id: c.id }, data: c.data });
-            for (const u of usuariosACambiar) await prisma.user.update({ where: { id: u.id }, data: { fullName: a } });
+            if (queHacerConUsuarios === 'renombrar') {
+                for (const u of usuariosACambiar) await prisma.user.update({ where: { id: u.id }, data: { fullName: a } });
+            }
         }
 
         res.json({
@@ -5878,8 +5899,10 @@ app.post('/api/admin/renombrar-persona', async (req: any, res: any) => {
             de, a,
             viajes: cambios.length,
             ejemplos: cambios.slice(0, 10).map((c) => ({ id: c.id, fecha: c.fecha, reparto: c.reparto, ...c.detalle })),
-            usuariosRenombrados: usuariosACambiar.map((u) => ({ username: u.username, antes: u.fullName, role: u.role })),
+            usuarios: queHacerConUsuarios,
+            usuariosConEseNombre: usuariosACambiar.map((u) => ({ username: u.username, antes: u.fullName, role: u.role })),
             ojo_usuariosQueYaSeLlamanAsi: usuariosYaConEseNombre,
+            usoDeCuentas,
             revisar_sueldos: sueldos,
             revisar_reglasRepartos: reglasConEseNombre
         });
