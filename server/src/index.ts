@@ -6058,6 +6058,8 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
     if (!desde || !hasta) return res.status(400).json({ error: 'Faltan "desde" y "hasta" (YYYY-MM-DD)' });
     const tocarContrato = req.body?.contrato !== false;
     const tocarProveedor = req.body?.proveedor !== false;
+    // Si el reparto no tiene regla, el contrato lo decide el chofer
+    const usarChofer = req.body?.usarChofer === true;
 
     try {
         const ini = utcDayRange(String(desde)).start;
@@ -6071,21 +6073,36 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
         });
 
         // Mapa chofer -> proveedor, armado con las reglas del mes de cada viaje
-        const cacheMapa = new Map<string, Map<string, string>>();
-        const mapaDeChoferes = async (fecha: any): Promise<Map<string, string>> => {
+        type ReglaDeChofer = { tipo?: string; proveedor?: string };
+        const cacheMapa = new Map<string, Map<string, ReglaDeChofer>>();
+        const mapaDeChoferes = async (fecha: any): Promise<Map<string, ReglaDeChofer>> => {
             const mes = mesDeLaFecha(fecha);
             if (cacheMapa.has(mes)) return cacheMapa.get(mes)!;
             const { repartos, choferes } = await reglasDelMes(fecha);
-            const mapa = new Map<string, string>();
-            for (const r of Object.values<any>(repartos || {})) {
-                if (r?.chofer && r?.proveedor) mapa.set(String(r.chofer).trim(), String(r.proveedor).trim());
-            }
+            const mapa = new Map<string, ReglaDeChofer>();
+            const guardar = (nombre: any, r: any) => {
+                const n = String(nombre || '').trim();
+                if (!n) return;
+                const prev = mapa.get(n) || {};
+                mapa.set(n, {
+                    tipo: r?.tipo || prev.tipo,
+                    proveedor: r?.proveedor || prev.proveedor
+                });
+            };
+            for (const r of Object.values<any>(repartos || {})) guardar(r?.chofer, r);
             // Los choferes sueltos pisan: son la regla propia de esa persona
-            for (const c of (choferes || [])) {
-                if (c?.chofer && c?.proveedor) mapa.set(String(c.chofer).trim(), String(c.proveedor).trim());
-            }
+            for (const c of (choferes || [])) guardar(c?.chofer, c);
             cacheMapa.set(mes, mapa);
             return mapa;
+        };
+
+        /** La regla del chofer del viaje, buscada por nombre. */
+        const reglaDelChoferDelViaje = async (chofer: any, fecha: any): Promise<ReglaDeChofer | null> => {
+            const nombre = String(chofer || '').trim();
+            if (!nombre) return null;
+            const mapa = await mapaDeChoferes(fecha);
+            for (const [n, r] of mapa.entries()) if (mismoNombrePersona(n, nombre)) return r;
+            return null;
         };
 
         const cambios: any[] = [];
@@ -6106,11 +6123,18 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
 
             if (tocarContrato) {
                 const regla = await reglaDelReparto(t.reparto, t.date);
-                const sug = regla?.tipo || null;
+                let sug = regla?.tipo || null;
                 if (!sug) {
                     const clave = String(t.reparto || '(sin reparto)').toUpperCase();
                     sinReglaDeReparto.set(clave, (sinReglaDeReparto.get(clave) || 0) + 1);
-                } else if (String(t.contractType || '') !== sug) {
+                    // Sin regla de reparto, decide el chofer (si se pidio asi)
+                    if (usarChofer) {
+                        const porChofer = await reglaDelChoferDelViaje(t.driver, t.date);
+                        if (porChofer?.tipo) sug = porChofer.tipo;
+                    }
+                }
+                if (!sug) { /* no hay de donde sacarlo */ }
+                else if (String(t.contractType || '') !== sug) {
                     data.contractType = sug;
                     detalle.contrato = { antes: t.contractType || null, despues: sug };
                 }
@@ -6118,11 +6142,7 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
 
             if (tocarProveedor) {
                 const chofer = String(t.driver || '').trim();
-                const mapa = await mapaDeChoferes(t.date);
-                let prov: string | null = null;
-                for (const [nombre, proveedor] of mapa.entries()) {
-                    if (mismoNombrePersona(nombre, chofer)) { prov = proveedor; break; }
-                }
+                const prov = (await reglaDelChoferDelViaje(chofer, t.date))?.proveedor || null;
                 // El contrato que va a quedar despues de este mismo pase
                 const contratoFinal = String(data.contractType || t.contractType || '');
                 if (!prov) {
@@ -6174,6 +6194,33 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
             proveedoresQueCambian: contar(pisados),
             salteados: salteados.slice(0, 40),
             salteadosTotal: salteados.length
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Que proveedor tiene cargado cada chofer en los viajes de un rango.
+ *  Sirve para controlar que la carga masiva no mezclo a dos personas.
+ *  GET /api/admin/chofer-proveedor?key=...&desde=YYYY-MM-DD&hasta=YYYY-MM-DD */
+app.get('/api/admin/chofer-proveedor', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const ini = utcDayRange(String(req.query.desde)).start;
+        const fin = utcDayRange(String(req.query.hasta)).end;
+        const viajes = await prisma.trip.findMany({
+            where: { date: { gte: ini, lte: fin } },
+            select: { driver: true, provider: true, contractType: true, reparto: true }
+        });
+        const m = new Map<string, number>();
+        for (const t of viajes) {
+            const clave = `${String(t.driver || '(sin chofer)').trim()} | ${String(t.contractType || '-')} | ${String(t.provider || '(sin proveedor)').trim()}`;
+            m.set(clave, (m.get(clave) || 0) + 1);
+        }
+        res.json({
+            viajes: viajes.length,
+            filas: [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], 'es'))
+                .map(([k, v]) => { const [chofer, contrato, proveedor] = k.split(' | '); return { chofer, contrato, proveedor, viajes: v }; })
         });
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error' });
@@ -6914,7 +6961,15 @@ function mismoNombrePersona(a: any, b: any): boolean {
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
         .split(/[^A-Z0-9]+/).filter((x) => x.length > 2);
     const pa = partes(a), pb = partes(b);
-    return pa.length > 0 && pb.length > 0 && pa.some((x) => pb.includes(x));
+    if (!pa.length || !pb.length) return false;
+    // Identicos (aunque esten en otro orden o escritos con otros acentos)
+    if (pa.length === pb.length && [...pa].sort().join(' ') === [...pb].sort().join(' ')) return true;
+    const comunes = pa.filter((x) => pb.includes(x)).length;
+    // Con una sola palabra cargada ("Josue") alcanza con que aparezca
+    if (pa.length === 1 || pb.length === 1) return comunes >= 1;
+    // Si no, tienen que coincidir nombre Y apellido: compartir solo el apellido
+    // mezclaria a Javier Gareis con Martin Gareis.
+    return comunes >= 2;
 }
 
 /** Las reglas del mes que corresponde a esa fecha. Si ese mes no se cargo, vale

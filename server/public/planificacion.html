@@ -20,7 +20,7 @@
          Plan gratuito: 50k cargas de mapa/mes. -->
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="/css/planificacion.css?v=20260928d">
+    <link rel="stylesheet" href="/css/planificacion.css?v=20260928e">
     <script src="/js/r14-utils.js"></script>
     <script src="/js/r14-notifications.js"></script>
 </head>
@@ -18637,8 +18637,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 .split(/[^A-Z0-9]+/).filter(x => x.length > 2).sort();
             const pa = partes(a), pb = partes(b);
             if (!pa.length || !pb.length) return false;
-            // Alcanza con que compartan un apellido o nombre largo
-            return pa.some(x => pb.includes(x));
+            if (pa.length === pb.length && pa.join(' ') === pb.join(' ')) return true;
+            const comunes = pa.filter(x => pb.includes(x)).length;
+            // Con una sola palabra cargada ("Josue") alcanza con que aparezca
+            if (pa.length === 1 || pb.length === 1) return comunes >= 1;
+            // Si no, tienen que coincidir nombre Y apellido: compartir solo el
+            // apellido mezclaria a Javier Gareis con Martin Gareis.
+            return comunes >= 2;
         }
 
         async function cargarReglasRepartos() {
