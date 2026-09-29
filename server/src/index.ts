@@ -6042,6 +6042,134 @@ app.post('/api/admin/borrar-cuentas', async (req: any, res: any) => {
     }
 });
 
+/** Aplica las reglas por reparto a viajes YA cargados.
+ *  - El contrato (Propio/Tercerizado) sale del REPARTO del viaje.
+ *  - El proveedor sale del CHOFER del viaje: se arma un mapa chofer -> proveedor
+ *    con las reglas del mes (las de cada reparto y las de los choferes sueltos).
+ *
+ *  No toca los viajes de hoy que todavia estan en camino, ni pisa un proveedor
+ *  ya cargado salvo que se pida con pisarProveedor:true.
+ *
+ *  POST /api/admin/aplicar-reglas-a-viajes
+ *      { key, desde, hasta, contrato?, proveedor?, pisarProveedor?, aplicar } */
+app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
+    const { key, desde, hasta, aplicar, pisarProveedor } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!desde || !hasta) return res.status(400).json({ error: 'Faltan "desde" y "hasta" (YYYY-MM-DD)' });
+    const tocarContrato = req.body?.contrato !== false;
+    const tocarProveedor = req.body?.proveedor !== false;
+
+    try {
+        const ini = utcDayRange(String(desde)).start;
+        const fin = utcDayRange(String(hasta)).end;
+        const hoy = utcDayRange(buenosAiresYmd());
+
+        const viajes = await prisma.trip.findMany({
+            where: { date: { gte: ini, lte: fin } },
+            select: { id: true, date: true, reparto: true, driver: true, contractType: true, provider: true, status: true },
+            orderBy: { id: 'asc' }
+        });
+
+        // Mapa chofer -> proveedor, armado con las reglas del mes de cada viaje
+        const cacheMapa = new Map<string, Map<string, string>>();
+        const mapaDeChoferes = async (fecha: any): Promise<Map<string, string>> => {
+            const mes = mesDeLaFecha(fecha);
+            if (cacheMapa.has(mes)) return cacheMapa.get(mes)!;
+            const { repartos, choferes } = await reglasDelMes(fecha);
+            const mapa = new Map<string, string>();
+            for (const r of Object.values<any>(repartos || {})) {
+                if (r?.chofer && r?.proveedor) mapa.set(String(r.chofer).trim(), String(r.proveedor).trim());
+            }
+            // Los choferes sueltos pisan: son la regla propia de esa persona
+            for (const c of (choferes || [])) {
+                if (c?.chofer && c?.proveedor) mapa.set(String(c.chofer).trim(), String(c.proveedor).trim());
+            }
+            cacheMapa.set(mes, mapa);
+            return mapa;
+        };
+
+        const cambios: any[] = [];
+        const salteados: any[] = [];
+        const sinReglaDeReparto = new Map<string, number>();
+        const sinProveedorParaElChofer = new Map<string, number>();
+
+        for (const t of viajes) {
+            const esDeHoy = t.date >= hoy.start && t.date <= hoy.end;
+            const enCamino = !['COMPLETED', 'RETURNED', 'CANCELLED'].includes(String(t.status || '').toUpperCase());
+            if (esDeHoy && enCamino) {
+                salteados.push({ tripId: t.id, reparto: t.reparto, motivo: 'de hoy y en camino' });
+                continue;
+            }
+
+            const data: any = {};
+            const detalle: any = {};
+
+            if (tocarContrato) {
+                const regla = await reglaDelReparto(t.reparto, t.date);
+                const sug = regla?.tipo || null;
+                if (!sug) {
+                    const clave = String(t.reparto || '(sin reparto)').toUpperCase();
+                    sinReglaDeReparto.set(clave, (sinReglaDeReparto.get(clave) || 0) + 1);
+                } else if (String(t.contractType || '') !== sug) {
+                    data.contractType = sug;
+                    detalle.contrato = { antes: t.contractType || null, despues: sug };
+                }
+            }
+
+            if (tocarProveedor) {
+                const chofer = String(t.driver || '').trim();
+                const mapa = await mapaDeChoferes(t.date);
+                let prov: string | null = null;
+                for (const [nombre, proveedor] of mapa.entries()) {
+                    if (mismoNombrePersona(nombre, chofer)) { prov = proveedor; break; }
+                }
+                // El contrato que va a quedar despues de este mismo pase
+                const contratoFinal = String(data.contractType || t.contractType || '');
+                if (!prov) {
+                    if (chofer && contratoFinal.toLowerCase() === 'tercerizado') {
+                        sinProveedorParaElChofer.set(chofer, (sinProveedorParaElChofer.get(chofer) || 0) + 1);
+                    }
+                } else if (contratoFinal.toLowerCase() !== 'tercerizado') {
+                    // Propio no lleva proveedor: no se carga
+                } else {
+                    const yaTiene = String(t.provider || '').trim();
+                    const distinto = yaTiene.toUpperCase() !== prov.toUpperCase();
+                    if (distinto && (!yaTiene || pisarProveedor === true)) {
+                        data.provider = prov;
+                        detalle.proveedor = { antes: t.provider || null, despues: prov };
+                    } else if (distinto && yaTiene) {
+                        salteados.push({ tripId: t.id, chofer, motivo: `ya tiene proveedor "${yaTiene}" (la regla dice "${prov}")` });
+                    }
+                }
+            }
+
+            if (Object.keys(data).length) {
+                cambios.push({ tripId: t.id, fecha: new Date(t.date).toISOString().slice(0, 10), reparto: t.reparto, chofer: t.driver, data, detalle });
+            }
+        }
+
+        if (aplicar === true) {
+            for (const c of cambios) await prisma.trip.update({ where: { id: c.tripId }, data: c.data });
+        }
+
+        const contar = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ nombre: k, viajes: v }));
+        res.json({
+            aplicado: aplicar === true,
+            revisados: viajes.length,
+            cambiados: cambios.length,
+            porContrato: cambios.filter((c) => c.detalle.contrato).length,
+            porProveedor: cambios.filter((c) => c.detalle.proveedor).length,
+            ejemplos: cambios.slice(0, 15),
+            repartosSinRegla: contar(sinReglaDeReparto),
+            choferesSinProveedor: contar(sinProveedorParaElChofer),
+            salteados: salteados.slice(0, 40),
+            salteadosTotal: salteados.length
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/admin/reset-crates', async (req: any, res: any) => {
     const { key, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
