@@ -140,6 +140,9 @@
                     <a href="#users" id="btn-users" class="header-nav-item">
                         <i data-lucide="key-round" class="w-4 h-4"></i> Usuarios
                     </a>
+                    <a href="#ajustes" id="btn-ajustes" class="header-nav-item">
+                        <i data-lucide="settings-2" class="w-4 h-4"></i> Ajustes
+                    </a>
                     <span class="nav-section-divider" aria-hidden="true"></span>
                     <span class="nav-section-label">Datos</span>
                     <a href="#employees" id="btn-employees" class="header-nav-item">
@@ -553,6 +556,58 @@
                 </div>
             </div>
 
+            <!-- VIEW: AJUSTES -->
+            <div id="view-ajustes" class="hidden view-animate space-y-6">
+                <div class="card-dark p-8">
+                    <h3 class="text-2xl font-bold text-[#1B2559]">Ajustes del sistema</h3>
+                    <p class="text-sm text-[#A3AED0] font-medium mt-1">Lo que define cómo se comporta el sistema al operar. Los cambios valen para los viajes nuevos, no tocan los ya cargados.</p>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                    <!-- Reglas por reparto -->
+                    <div class="card-dark p-8 flex flex-col">
+                        <div class="flex items-start gap-4">
+                            <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
+                                <i data-lucide="list-checks" class="w-6 h-6"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <h4 class="text-base font-bold text-[#1B2559]">Reglas por reparto</h4>
+                                <p class="text-xs text-[#A3AED0] font-medium mt-1 leading-relaxed">Quién hace cada reparto, si es propio o tercerizado, con qué proveedor y a qué tarifa. También los choferes que trabajan sin reparto fijo. Cambian mes a mes.</p>
+                            </div>
+                        </div>
+                        <div class="mt-5">
+                            <span id="ajustes-reglas-resumen" class="inline-block px-3 py-1.5 rounded-xl bg-[#F4F7FE] text-[10px] font-bold text-[#A3AED0] uppercase tracking-widest">Cargando...</span>
+                        </div>
+                        <p class="text-[11px] text-[#A3AED0] font-medium mt-4 leading-relaxed">Al crear un viaje, el sistema sugiere contrato, proveedor y tarifa según estas reglas. Todo queda editable.</p>
+                        <div class="flex-1"></div>
+                        <button onclick="abrirReglasRepartos()" class="mt-6 w-full px-6 py-3.5 rounded-2xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 uppercase tracking-widest">
+                            <i data-lucide="pencil" class="w-4 h-4"></i> Editar reglas
+                        </button>
+                    </div>
+
+                    <!-- Campos del viaje -->
+                    <div class="card-dark p-8 flex flex-col">
+                        <div class="flex items-start gap-4">
+                            <div class="w-12 h-12 rounded-2xl bg-emerald-50 text-emerald-600 flex items-center justify-center shrink-0">
+                                <i data-lucide="sliders-horizontal" class="w-6 h-6"></i>
+                            </div>
+                            <div class="min-w-0">
+                                <h4 class="text-base font-bold text-[#1B2559]">Campos del viaje</h4>
+                                <p class="text-xs text-[#A3AED0] font-medium mt-1 leading-relaxed">Qué campos aparecen en el formulario de Nuevo Viaje. Podés ocultar los que no usás y agregar campos propios. Los contactos no se tocan.</p>
+                            </div>
+                        </div>
+                        <div class="mt-5">
+                            <span id="ajustes-campos-resumen" class="inline-block px-3 py-1.5 rounded-xl bg-[#F4F7FE] text-[10px] font-bold text-[#A3AED0] uppercase tracking-widest">Cargando...</span>
+                        </div>
+                        <p class="text-[11px] text-[#A3AED0] font-medium mt-4 leading-relaxed">Los campos propios se guardan con el viaje. Todavía no salen en el Excel.</p>
+                        <div class="flex-1"></div>
+                        <button onclick="abrirCamposViaje()" class="mt-6 w-full px-6 py-3.5 rounded-2xl bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 flex items-center justify-center gap-2 uppercase tracking-widest">
+                            <i data-lucide="pencil" class="w-4 h-4"></i> Editar campos
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- VIEW: WEEKLY PLANNING (The Big Table with all columns) -->
             <div id="view-weekly" class="view-animate space-y-6">
                 <!-- Content Header & Filters -->
@@ -654,9 +709,6 @@
                             </button>
                             <button onclick="openColumnSettingsModal()" class="px-4 py-3 bg-white rounded-2xl text-[#A3AED0] hover:text-indigo-600 hover:bg-indigo-50 transition-all shadow-sm" title="Configurar columnas">
                                 <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
-                            </button>
-                            <button onclick="abrirReglasRepartos()" class="px-4 py-3 bg-white rounded-2xl text-[#A3AED0] hover:text-indigo-600 hover:bg-indigo-50 transition-all shadow-sm" title="Reglas por reparto: chofer, proveedor y tarifa de cada mes">
-                                <i data-lucide="list-checks" class="w-4 h-4"></i>
                             </button>
                         </div>
                     </div>
@@ -3670,8 +3722,8 @@
 
         // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
         const ACCESS_PROFILES = {
-            SUPERADMIN: ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'],
-            TRAFICO: ['control','drivers-status','crates','hdr','weekly','payments','dashboard','budget','fleets','maintenance','routes','users','employees','schools','reports','incidents'],
+            SUPERADMIN: ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','employees','salaries','schools','reports','incidents','audit'],
+            TRAFICO: ['control','drivers-status','crates','hdr','weekly','payments','dashboard','budget','fleets','maintenance','routes','users','ajustes','employees','schools','reports','incidents'],
             RRHH: ['salaries','employees'],
             ADMINISTRACION: ['weekly','payments','dashboard','budget','salaries','schools','reports']
         };
@@ -3707,7 +3759,7 @@
             }
 
             // Hide/show nav buttons based on access
-            const allSections = ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports'];
+            const allSections = ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','employees','salaries','schools','reports'];
             allSections.forEach(sec => {
                 const btn = document.getElementById('btn-' + sec);
                 if (btn) {
@@ -3873,7 +3925,7 @@
             return { ...stored, ...hardcoded };
         }
 
-        const ALL_MODULES = ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','employees','salaries','schools','reports','incidents','audit'];
+        const ALL_MODULES = ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','employees','salaries','schools','reports','incidents','audit'];
 
         function renderProfileAssignments() {
             const tbody = document.getElementById('profile-assignments-body');
@@ -4012,6 +4064,7 @@
                 maintenance: 'Mantenimiento de Flota',
                 employees: 'Gestión de Personal',
                 users: 'Gestión de Usuarios',
+                ajustes: 'Ajustes del sistema',
                 salaries: 'Liquidación de Sueldos',
                 schools: 'Clientes',
                 routes: 'Editor de Rutas',
@@ -4033,6 +4086,7 @@
                 maintenance: 'Seguimiento técnico preventivo y correctivo de la flota propia',
                 employees: 'Acceso unificado a legajos de choferes, auxiliares y liquidaciones',
                 users: 'Administración manual de credenciales para choferes y administradores',
+                ajustes: 'Cómo se comporta el sistema: reglas por reparto y campos del formulario de viaje',
                 salaries: 'Nómina detallada con cálculo de adicionales, jornales y brutos',
                 schools: 'Directorio Maestro de Clientes, ubicaciones y zonas',
                 routes: 'Diseño y estructuración de recorridos predefinidos',
@@ -4088,6 +4142,7 @@
             if(id === 'budget') { budgetInit(); }
             if(id === 'fleets') { if (typeof fleetsLoadList === 'function') fleetsLoadList(); }
             if(id === 'incidents') loadIncidents();
+            if(id === 'ajustes') cargarVistaAjustes();
             if(id === 'audit') loadAuditLog();
             if(id === 'historial') loadHistorial();
             // Mostrar/ocultar la barra flotante de resultado de Presupuestar
@@ -18363,6 +18418,48 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
 
 
+
+        // ═══ AJUSTES ═══════════════════════════════════════════
+        // La vista junta los modulos de configuracion y muestra, de un vistazo,
+        // que hay cargado en cada uno.
+
+        async function cargarVistaAjustes() {
+            const chip = (id, texto) => {
+                const el = document.getElementById(id);
+                if (el) el.textContent = texto;
+            };
+            // Reglas del mes en curso
+            try {
+                await cargarReglasRepartos();
+                const meses = Object.keys(_reglasRepartos).sort();
+                const hoy = mesDeFecha(null);
+                const elegido = _reglasRepartos[hoy] ? hoy : meses[meses.length - 1];
+                if (!elegido) {
+                    chip('ajustes-reglas-resumen', 'Sin reglas cargadas');
+                } else {
+                    const datos = reglasDelMes(null);
+                    const nRep = Object.keys(datos.repartos || {}).length;
+                    const nCho = (datos.choferes || []).length;
+                    const partes = [nRep + (nRep === 1 ? ' reparto' : ' repartos')];
+                    if (nCho) partes.push(nCho + (nCho === 1 ? ' chofer suelto' : ' choferes sueltos'));
+                    chip('ajustes-reglas-resumen', nombreDeMes(elegido) + ' · ' + partes.join(' · '));
+                }
+            } catch (_) {
+                chip('ajustes-reglas-resumen', 'No se pudieron leer');
+            }
+            // Campos del formulario
+            try {
+                await cargarConfigCampos();
+                const ocultos = (_configCampos.ocultos || []).length;
+                const propios = (_configCampos.extra || []).length;
+                const partes = [ocultos ? ocultos + (ocultos === 1 ? ' campo oculto' : ' campos ocultos') : 'Ninguno oculto'];
+                if (propios) partes.push(propios + (propios === 1 ? ' campo propio' : ' campos propios'));
+                chip('ajustes-campos-resumen', partes.join(' · '));
+            } catch (_) {
+                chip('ajustes-campos-resumen', 'No se pudieron leer');
+            }
+            if (window.lucide) lucide.createIcons();
+        }
         // ═══ REGLAS POR REPARTO ═════════════════════════════════════════════
         // Quien hace cada reparto, si es propio o tercerizado, con que proveedor
         // y a que tarifa. Cambian mes a mes, asi que se guardan por mes:
@@ -22326,14 +22423,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         <div class="bg-white rounded-3xl w-[96vw] max-w-6xl max-h-[92vh] shadow-2xl overflow-hidden flex flex-col">
             <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center bg-[#F8FAFF]">
                 <h3 id="new-trip-modal-title" class="font-black text-[#1B2559] uppercase tracking-widest text-sm">Nuevo Viaje</h3>
-                <button type="button" onclick="abrirReglasRepartos()" title="Quién hace cada reparto y si es propio o tercerizado"
-                        class="ml-3 px-3 py-1.5 rounded-xl bg-[#F4F7FE] text-[#1B2559] text-[10px] font-bold hover:bg-[#E0E5F2] transition-all inline-flex items-center gap-1.5">
-                    <i data-lucide="list-checks" class="w-3.5 h-3.5"></i> REGLAS
-                </button>
-                <button type="button" onclick="abrirCamposViaje()" title="Elegir qué campos se ven"
-                        class="ml-3 px-3 py-1.5 rounded-xl bg-[#F4F7FE] text-[#1B2559] text-[10px] font-bold hover:bg-[#E0E5F2] transition-all inline-flex items-center gap-1.5">
-                    <i data-lucide="sliders-horizontal" class="w-3.5 h-3.5"></i> CAMPOS
-                </button>
                 <button onclick="closeNewTripModal()" class="text-[#A3AED0] hover:text-[#1B2559] transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
             <div class="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
