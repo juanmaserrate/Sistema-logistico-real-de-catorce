@@ -3713,8 +3713,8 @@
 
         // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
         const ACCESS_PROFILES = {
-            SUPERADMIN: ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','employees','salaries','schools','reports','incidents','audit'],
-            TRAFICO: ['control','drivers-status','crates','hdr','weekly','payments','dashboard','budget','fleets','maintenance','routes','users','ajustes','employees','schools','reports','incidents'],
+            SUPERADMIN: ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','employees','salaries','schools','reports','incidents','audit','historial'],
+            TRAFICO: ['control','drivers-status','crates','hdr','weekly','payments','dashboard','budget','fleets','maintenance','routes','users','ajustes','employees','schools','reports','incidents','historial'],
             RRHH: ['salaries','employees'],
             ADMINISTRACION: ['weekly','payments','dashboard','budget','salaries','schools','reports']
         };
@@ -3750,7 +3750,7 @@
             }
 
             // Hide/show nav buttons based on access
-            const allSections = ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','employees','salaries','schools','reports'];
+            const allSections = ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','employees','salaries','schools','reports','incidents','audit','historial'];
             allSections.forEach(sec => {
                 const btn = document.getElementById('btn-' + sec);
                 if (btn) {
@@ -3922,7 +3922,7 @@
             return { ...stored, ...hardcoded };
         }
 
-        const ALL_MODULES = ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','employees','salaries','schools','reports','incidents','audit'];
+        const ALL_MODULES = ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','employees','salaries','schools','reports','incidents','audit','historial'];
 
         function renderProfileAssignments() {
             const tbody = document.getElementById('profile-assignments-body');
