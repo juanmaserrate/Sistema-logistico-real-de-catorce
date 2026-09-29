@@ -6060,6 +6060,10 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
     const tocarProveedor = req.body?.proveedor !== false;
     // Si el reparto no tiene regla, el contrato lo decide el chofer
     const usarChofer = req.body?.usarChofer === true;
+    // Valor a dejar en los tercerizados cuyo chofer no tiene proveedor conocido
+    // (sirve para limpiar un proveedor cargado por error)
+    const proveedorSiNoHayRegla = typeof req.body?.proveedorSiNoHayRegla === 'string'
+        ? String(req.body.proveedorSiNoHayRegla) : null;
 
     try {
         const ini = utcDayRange(String(desde)).start;
@@ -6148,6 +6152,10 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
                 if (!prov) {
                     if (chofer && contratoFinal.toLowerCase() === 'tercerizado') {
                         sinProveedorParaElChofer.set(chofer, (sinProveedorParaElChofer.get(chofer) || 0) + 1);
+                        if (proveedorSiNoHayRegla !== null && String(t.provider || '') !== proveedorSiNoHayRegla) {
+                            data.provider = proveedorSiNoHayRegla;
+                            detalle.proveedor = { antes: t.provider || null, despues: proveedorSiNoHayRegla };
+                        }
                     }
                 } else if (contratoFinal.toLowerCase() !== 'tercerizado') {
                     // Propio no lleva proveedor: no se carga
