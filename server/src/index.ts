@@ -5911,6 +5911,93 @@ app.post('/api/admin/renombrar-persona', async (req: any, res: any) => {
     }
 });
 
+/** Junta dos cuentas de la misma persona: pasa todo lo que cuelga de la cuenta
+ *  vieja a la que se queda, sin tocar el usuario ni la clave de la que se queda
+ *  (el chofer sigue entrando igual que siempre).
+ *
+ *  Mueve: rutas asignadas, ubicaciones GPS, incidencias y el "usuario de la app"
+ *  que guarda cada viaje.
+ *
+ *  POST /api/admin/migrar-cuenta-chofer  { key, de, a, aplicar }
+ *  "de" y "a" son usernames. Sin aplicar:true solo informa. */
+app.post('/api/admin/migrar-cuenta-chofer', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const deU = String(req.body?.de || '').trim();
+    const aU = String(req.body?.a || '').trim();
+    if (!deU || !aU) return res.status(400).json({ error: 'Faltan "de" y "a" (usernames)' });
+    if (deU.toUpperCase() === aU.toUpperCase()) return res.status(400).json({ error: 'Son la misma cuenta' });
+    const aplicar = req.body?.aplicar === true;
+
+    try {
+        const vieja = await prisma.user.findUnique({ where: { username: deU } });
+        const queda = await prisma.user.findUnique({ where: { username: aU } });
+        if (!vieja) return res.status(404).json({ error: `No existe la cuenta "${deU}"` });
+        if (!queda) return res.status(404).json({ error: `No existe la cuenta "${aU}"` });
+
+        const [rutas, ubicaciones, incidencias] = await Promise.all([
+            prisma.route.count({ where: { driverId: vieja.id } }),
+            prisma.deviceLocation.count({ where: { driverId: vieja.id } }),
+            prisma.incident.count({ where: { driverId: vieja.id } })
+        ]);
+        // Los viajes guardan el usuario de la app por TEXTO, no por id
+        const viajesApuntando = await prisma.trip.count({ where: { assignedMobileUser: deU } });
+
+        if (aplicar) {
+            await prisma.route.updateMany({ where: { driverId: vieja.id }, data: { driverId: queda.id } });
+            await prisma.deviceLocation.updateMany({ where: { driverId: vieja.id }, data: { driverId: queda.id } });
+            await prisma.incident.updateMany({ where: { driverId: vieja.id }, data: { driverId: queda.id } });
+            await prisma.trip.updateMany({ where: { assignedMobileUser: deU }, data: { assignedMobileUser: aU } });
+        }
+
+        res.json({
+            aplicado: aplicar,
+            de: { username: vieja.username, fullName: vieja.fullName, role: vieja.role },
+            a: { username: queda.username, fullName: queda.fullName, role: queda.role },
+            movido: { rutas, ubicaciones, incidencias, viajesConEseUsuarioApp: viajesApuntando },
+            nota: 'La cuenta vieja queda vacia pero sigue existiendo. Borrarla o bloquearla es aparte.'
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Quien es el "usuario de la app" de cada viaje, y si ese texto resuelve a una
+ *  cuenta que existe. Sirve para detectar viajes que quedaron apuntando a una
+ *  cuenta que no es.
+ *  GET /api/admin/usuarios-app-en-viajes?key=... */
+app.get('/api/admin/usuarios-app-en-viajes', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const filtro = String(req.query.contiene || '').trim().toUpperCase();
+        const trips = await prisma.trip.findMany({
+            where: { assignedMobileUser: { not: null } },
+            select: { id: true, date: true, assignedMobileUser: true, driver: true }
+        });
+        const users = await prisma.user.findMany({ select: { username: true, fullName: true, role: true } });
+        const existe = new Set(users.map((u) => u.username.toUpperCase()));
+
+        const porUsuario = new Map<string, { viajes: number; ultima: string | null; cuentaExiste: boolean }>();
+        for (const t of trips) {
+            const mu = String(t.assignedMobileUser || '').trim();
+            if (!mu) continue;
+            if (filtro && !mu.toUpperCase().includes(filtro)) continue;
+            const fecha = new Date(t.date).toISOString().slice(0, 10);
+            const prev = porUsuario.get(mu) || { viajes: 0, ultima: null, cuentaExiste: existe.has(mu.toUpperCase()) };
+            prev.viajes++;
+            if (!prev.ultima || fecha > prev.ultima) prev.ultima = fecha;
+            porUsuario.set(mu, prev);
+        }
+        res.json({
+            total: trips.length,
+            usuarios: [...porUsuario.entries()]
+                .sort((x, y) => y[1].viajes - x[1].viajes)
+                .map(([usuarioApp, v]) => ({ usuarioApp, ...v }))
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/admin/reset-crates', async (req: any, res: any) => {
     const { key, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
