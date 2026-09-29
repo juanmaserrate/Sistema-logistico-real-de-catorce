@@ -6214,13 +6214,13 @@ app.get('/api/admin/chofer-proveedor', async (req: any, res: any) => {
         });
         const m = new Map<string, number>();
         for (const t of viajes) {
-            const clave = `${String(t.driver || '(sin chofer)').trim()} | ${String(t.contractType || '-')} | ${String(t.provider || '(sin proveedor)').trim()}`;
+            const clave = `${String(t.driver || '(sin chofer)').trim()} | ${String(t.reparto || '(sin reparto)').trim()} | ${String(t.contractType || '-')} | ${String(t.provider || '(sin proveedor)').trim()}`;
             m.set(clave, (m.get(clave) || 0) + 1);
         }
         res.json({
             viajes: viajes.length,
             filas: [...m.entries()].sort((a, b) => a[0].localeCompare(b[0], 'es'))
-                .map(([k, v]) => { const [chofer, contrato, proveedor] = k.split(' | '); return { chofer, contrato, proveedor, viajes: v }; })
+                .map(([k, v]) => { const [chofer, reparto, contrato, proveedor] = k.split(' | '); return { chofer, reparto, contrato, proveedor, viajes: v }; })
         });
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error' });
