@@ -329,27 +329,21 @@ tfoot tr.payments-total-row span,
 }
 
 /* ---------- 10. HEADER & NAVIGATION ---------- */
-.header-area {
-    background: var(--header-gradient);
-    height: 240px;
-    position: absolute;
-    top: 0; left: 0; right: 0;
-    z-index: 0;
-    border-bottom-left-radius: 2rem;
-    border-bottom-right-radius: 2rem;
-}
+/* La barra va pegada arriba y de lado a lado: no flota sobre el contenido. */
+.header-area { display: none; }
 
 .app-header {
     position: relative;
     z-index: 90;
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
     gap: 0;
-    padding: 0 24px 12px;
+    padding: 0;
+    background: var(--header-gradient);
+    border-radius: 0;
+    box-shadow: 0 1px 0 rgba(255, 255, 255, 0.06);
     overflow: visible;
-}
-@media (min-width: 1024px) {
-    .app-header { padding: 0 40px 14px; }
 }
 
 .top-nav {
@@ -359,32 +353,142 @@ tfoot tr.payments-total-row span,
     justify-content: space-between;
     flex-wrap: wrap;
     gap: 10px 16px;
-    padding-top: 6px;
+    padding: 10px 24px;
     overflow: visible;
 }
+@media (min-width: 1024px) {
+    .top-nav { padding: 10px 40px; }
+}
 
+/* Fila de menues, al estilo Odoo: pocos nombres arriba, el resto adentro. */
 .header-nav-row {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    align-content: flex-start;
-    gap: 0.35rem;
-    padding: 0.5rem;
+    align-content: center;
+    gap: 0.25rem;
+    padding: 0 24px;
     border-bottom: none;
-    background: rgba(255, 255, 255, 0.04);
-    border-radius: 1rem;
-    margin: 0 -0.5rem;
-    width: calc(100% + 1rem);
+    background: rgba(0, 0, 0, 0.14);
+    border-radius: 0;
+    margin: 0;
+    width: 100%;
+}
+@media (min-width: 1024px) {
+    .header-nav-row { padding: 0 40px; }
 }
 .header-nav-scroll {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     align-content: center;
-    gap: 0.35rem 0.3rem;
+    gap: 0.15rem;
     flex: 1 1 auto;
     min-width: 0;
-    padding: 2px 0;
+    padding: 0;
+}
+
+/* ---- Menu desplegable ---- */
+.nav-menu { position: relative; flex-shrink: 0; }
+
+.nav-menu-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.7rem 0.85rem;
+    border: none;
+    background: transparent;
+    border-radius: 0;
+    font-family: 'Inter', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.62);
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.15s ease, color 0.15s ease;
+    box-shadow: inset 0 -2px 0 transparent;
+}
+.nav-menu-btn:hover { color: #fff; background: rgba(255, 255, 255, 0.10); }
+.nav-menu-btn .nav-menu-caret {
+    width: 12px; height: 12px;
+    opacity: 0.55;
+    transition: transform 0.18s ease;
+}
+.nav-menu.is-open .nav-menu-btn {
+    color: #fff;
+    background: rgba(255, 255, 255, 0.14);
+}
+.nav-menu.is-open .nav-menu-caret { transform: rotate(180deg); }
+/* El menu que contiene la pantalla abierta queda subrayado */
+.nav-menu-btn-active {
+    color: #fff !important;
+    box-shadow: inset 0 -2px 0 #fff;
+}
+
+.nav-menu-panel {
+    display: none;
+    position: absolute;
+    top: calc(100% + 2px);
+    left: 0;
+    z-index: 200;
+    min-width: 232px;
+    padding: 0.4rem;
+    background: #fff;
+    border: 1px solid rgba(25, 28, 30, 0.08);
+    border-radius: 0.75rem;
+    box-shadow: 0 12px 32px rgba(25, 28, 30, 0.18);
+}
+.nav-menu.is-open .nav-menu-panel { display: block; }
+/* Si el menu queda cerca del borde derecho, se abre hacia la izquierda */
+.nav-menu-panel.align-right { left: auto; right: 0; }
+
+.nav-menu-item {
+    display: flex;
+    align-items: center;
+    gap: 0.6rem;
+    width: 100%;
+    padding: 0.55rem 0.7rem;
+    border-radius: 0.5rem;
+    font-family: 'Inter', sans-serif;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--on-surface-variant);
+    text-decoration: none;
+    white-space: nowrap;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+}
+.nav-menu-item:hover { background: var(--primary-soft); color: var(--primary); }
+.nav-menu-item i,
+.nav-menu-item svg { width: 16px; height: 16px; flex-shrink: 0; opacity: 0.75; }
+.nav-menu-item-active {
+    background: var(--primary-tint);
+    color: var(--primary);
+    font-weight: 800;
+}
+.nav-menu-item-active svg { opacity: 1; }
+.nav-menu-badge.hidden { display: none !important; }
+.nav-menu-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: #fb7185;
+    flex-shrink: 0;
+    margin-left: 1px;
+}
+.nav-menu-badge {
+    margin-left: auto;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: var(--danger);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 900;
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 .header-nav-item {
@@ -393,8 +497,8 @@ tfoot tr.payments-total-row span,
     align-items: center;
     text-decoration: none;
     gap: 0.35rem;
-    padding: 0.45rem 0.65rem;
-    border-radius: 0.75rem;
+    padding: 0.55rem 0.7rem;
+    border-radius: 0.5rem;
     font-size: 11px;
     font-weight: 700;
     font-family: 'Inter', sans-serif;
@@ -422,6 +526,7 @@ tfoot tr.payments-total-row span,
     .header-nav-item { font-size: 12px; padding: 0.5rem 0.75rem; }
 }
 
+/* Sin uso desde que la barra pasó a menues; se deja por compatibilidad. */
 .nav-section-label {
     font-size: 9px;
     font-weight: 800;
@@ -667,6 +772,18 @@ tfoot tr.payments-total-row span,
 
 /* Dark — header */
 [data-theme="dark"] .app-header { border-color: transparent !important; }
+[data-theme="dark"] .header-nav-row { background: rgba(0, 0, 0, 0.28) !important; }
+[data-theme="dark"] .nav-menu-btn { color: rgba(255, 255, 255, 0.55) !important; }
+[data-theme="dark"] .nav-menu-btn:hover,
+[data-theme="dark"] .nav-menu.is-open .nav-menu-btn { color: #fff !important; background: rgba(255, 255, 255, 0.10) !important; }
+[data-theme="dark"] .nav-menu-panel {
+    background: #1b1e24 !important;
+    border-color: rgba(255, 255, 255, 0.10) !important;
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55) !important;
+}
+[data-theme="dark"] .nav-menu-item { color: rgba(255, 255, 255, 0.70) !important; }
+[data-theme="dark"] .nav-menu-item:hover { background: rgba(180, 160, 240, 0.14) !important; color: #c9baff !important; }
+[data-theme="dark"] .nav-menu-item-active { background: rgba(180, 160, 240, 0.18) !important; color: #c9baff !important; }
 [data-theme="dark"] .header-nav-item { color: rgba(255, 255, 255, 0.45) !important; }
 [data-theme="dark"] .header-nav-item:hover { background: rgba(255, 255, 255, 0.08) !important; color: #fff !important; }
 [data-theme="dark"] .header-nav-item-active { background: rgba(180, 160, 240, 0.15) !important; color: #c9baff !important; }
