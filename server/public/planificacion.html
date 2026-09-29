@@ -20,7 +20,7 @@
          Plan gratuito: 50k cargas de mapa/mes. -->
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="/css/planificacion.css?v=20260928c">
+    <link rel="stylesheet" href="/css/planificacion.css?v=20260928d">
     <script src="/js/r14-utils.js"></script>
     <script src="/js/r14-notifications.js"></script>
 </head>
@@ -161,6 +161,11 @@
                     </div>
                 </nav>
                 <div class="flex items-center gap-1 shrink-0">
+                    <button type="button" id="btn-refrescar" onclick="refrescarPantalla()" title="Actualizar los datos de esta pantalla"
+                            class="header-nav-item flex items-center gap-1.5">
+                        <i data-lucide="refresh-cw" class="w-4 h-4"></i>
+                        <span id="refrescar-hora" class="hidden lg:inline text-[10px] font-bold opacity-70"></span>
+                    </button>
                     <button type="button" onclick="openGlobalSearch()" title="Buscar (Ctrl+K)" class="header-nav-item flex items-center gap-1.5">
                         <i data-lucide="search" class="w-4 h-4"></i>
                         <kbd class="hidden sm:inline text-[9px] font-bold bg-white/20 px-1.5 py-0.5 rounded">Ctrl+K</kbd>
@@ -18418,6 +18423,94 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
 
 
+
+        // ═══ BOTON ACTUALIZAR ════════════════════════════════
+        // Los datos llegan solos por WebSocket, pero si la conexion en vivo se
+        // cayo (red, celular del chofer, el servidor reiniciando) la pantalla se
+        // queda vieja sin avisar. Este boton vuelve a pedir los datos de la
+        // pantalla abierta, sin recargar la pagina: no se pierden los filtros ni
+        // lo que haya escrito el operador.
+        //
+        // Solo LEE. No manda nada al servidor ni toca lo que reportan los
+        // celulares: ellos escriben por su cuenta y por otro camino.
+
+        let _refrescando = false;
+
+        /** Que funcion trae los datos de cada pantalla. */
+        const CARGA_POR_PANTALLA = {
+            weekly:          () => loadWeeklyData(),
+            control:         () => loadControlLiveData(),
+            'drivers-status': () => loadDriverStatus(),
+            crates:          () => loadCratesModule(),
+            hdr:             () => loadHdrList(),
+            payments:        () => loadPaymentsView(),
+            dashboard:       () => refreshLogisticsDashboard(),
+            maintenance:     () => loadMaintenanceData(),
+            employees:       () => Promise.all([loadProvidersList(), loadEmployeesSection(), loadSalariesTable()]),
+            salaries:        () => loadSalariesTable(),
+            users:           () => { loadUsers(); renderProfileAssignments(); },
+            schools:         () => loadSchools(),
+            routes:          () => loadRouteTemplates(),
+            fleets:          () => fleetsLoadList(),
+            incidents:       () => loadIncidents(),
+            audit:           () => loadAuditLog(),
+            historial:       () => loadHistorial(),
+            ajustes:         () => cargarVistaAjustes()
+        };
+
+        /** La pantalla que se esta viendo, leida del DOM (no de localStorage). */
+        function pantallaAbierta() {
+            const vista = document.querySelector('#main-view > div[id^="view-"]:not(.hidden)');
+            return vista ? vista.id.replace('view-', '') : '';
+        }
+
+        async function refrescarPantalla() {
+            if (_refrescando) return;
+            const btn = document.getElementById('btn-refrescar');
+            const icono = btn?.querySelector('i, svg');
+            _refrescando = true;
+            btn?.classList.add('refrescando');
+            try {
+                // Si el tiempo real se cayo, aprovechamos para volver a engancharlo
+                try { if (typeof _socket !== 'undefined' && _socket && !_socket.connected) _socket.connect(); } catch (_) { /* sin socket */ }
+
+                const id = pantallaAbierta();
+                const carga = CARGA_POR_PANTALLA[id];
+                if (carga) {
+                    // El cache de viajes dura 60s: sin invalidarlo el boton no
+                    // traeria nada nuevo. Los datos viejos siguen en pantalla
+                    // mientras llegan los nuevos.
+                    if (id === 'weekly' && typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
+                    await carga();
+                }
+                try { await refreshIncidentsBadge(); } catch (_) { /* no es critico */ }
+                marcarHoraDeRefresco();
+
+                // Sin aviso en la campana cuando sale bien: alcanzan el icono
+                // girando y la hora, y si no se llenaria de "Actualizado".
+                if (!carga && typeof addNotification === 'function') {
+                    addNotification('info', 'Sin datos que actualizar', 'Esta pantalla no trae información del servidor.');
+                }
+            } catch (e) {
+                if (typeof addNotification === 'function') {
+                    addNotification('warning', 'No se pudo actualizar', e?.message || 'Revisá la conexión e intentá de nuevo.');
+                }
+            } finally {
+                _refrescando = false;
+                btn?.classList.remove('refrescando');
+                if (window.lucide && icono) lucide.createIcons();
+            }
+        }
+
+        /** Deja a la vista de que hora son los datos que se estan mirando. */
+        function marcarHoraDeRefresco() {
+            const el = document.getElementById('refrescar-hora');
+            const ahora = new Date();
+            const hhmm = String(ahora.getHours()).padStart(2, '0') + ':' + String(ahora.getMinutes()).padStart(2, '0');
+            if (el) el.textContent = hhmm;
+            const btn = document.getElementById('btn-refrescar');
+            if (btn) btn.title = `Actualizar los datos de esta pantalla · última: ${hhmm}`;
+        }
         // ═══ MENUES DE LA BARRA ═════════════════════════════════
         // Las pantallas estan agrupadas por tema, como en Odoo: arriba quedan
         // seis nombres y cada uno despliega las suyas.

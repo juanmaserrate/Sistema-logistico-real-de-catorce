@@ -553,6 +553,12 @@ tfoot tr.payments-total-row span,
 [data-theme="dark"] .page-heading #header-title { color: #e8eaed !important; }
 [data-theme="dark"] .page-heading #header-desc { color: rgba(255, 255, 255, 0.55) !important; }
 
+/* Boton Actualizar: mientras pide los datos, el icono gira y no acepta clicks */
+#btn-refrescar.refrescando { pointer-events: none; opacity: 0.65; }
+#btn-refrescar.refrescando i,
+#btn-refrescar.refrescando svg { animation: girar-refresco 0.9s linear infinite; }
+@keyframes girar-refresco { to { transform: rotate(360deg); } }
+
 /* ---------- 11. NOTIFICATIONS ---------- */
 .notification-panel {
     position: absolute;
