@@ -20,7 +20,7 @@
          Plan gratuito: 50k cargas de mapa/mes. -->
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="/css/planificacion.css?v=20260929a">
+    <link rel="stylesheet" href="/css/planificacion.css?v=20260929b">
     <script src="/js/r14-utils.js"></script>
     <script src="/js/r14-notifications.js"></script>
 </head>
@@ -3583,22 +3583,73 @@
             saveBusinessUnitsCatalog([...current, v]);
         }
 
+        /**
+         * Un viaje puede llevar VARIAS unidades de negocio. Se guardan en el
+         * mismo campo separadas por coma ("DMC, SAE") y cada una cuenta 1 en
+         * los reportes.
+         */
+        function unidadesDeNegocio(valor) {
+            return [...new Set(
+                String(valor || '').split(',').map(x => normalizeBusinessUnit(x)).filter(Boolean)
+            )];
+        }
+
         function populateBusinessUnitSelect(selectedValue = '') {
-            const buSel = document.getElementById('new-trip-bu');
-            if (!buSel) return;
-            const dynamic = [...new Set((planningData || []).map(t => normalizeBusinessUnit(t.businessUnit)).filter(Boolean))];
-            // Bug fix: si el viaje editado tiene una BU que no está en el catálogo
-            // (ej. importada de un Excel viejo), antes quedaba vacía al editar.
-            // Ahora aseguramos que la BU deseada esté en el catálogo antes de armar el select.
-            const wantedRaw = normalizeBusinessUnit(selectedValue) || normalizeBusinessUnit(buSel.value);
-            const list = saveBusinessUnitsCatalog([
-                ...getBusinessUnitsCatalog(),
-                ...dynamic,
-                ...(wantedRaw ? [wantedRaw] : [])
-            ]);
-            const wanted = wantedRaw || 'DMC';
-            buSel.innerHTML = list.map(bu => `<option value="${bu}">${bu}</option>`).join('');
-            buSel.value = list.includes(wanted) ? wanted : (list.includes('DMC') ? 'DMC' : list[0] || '');
+            const campo = document.getElementById('new-trip-bu');
+            if (!campo) return;
+            const dynamic = [...new Set((planningData || []).flatMap(t => unidadesDeNegocio(t.businessUnit)))];
+            // Si el viaje editado trae una unidad que no está en el catálogo
+            // (ej. importada de un Excel viejo), se suma para no perderla.
+            const elegidas = unidadesDeNegocio(selectedValue !== '' ? selectedValue : campo.value);
+            const list = saveBusinessUnitsCatalog([...getBusinessUnitsCatalog(), ...dynamic, ...elegidas]);
+            if (!elegidas.length) {
+                const porDefecto = list.includes('DMC') ? 'DMC' : (list[0] || '');
+                if (porDefecto) elegidas.push(porDefecto);
+            }
+            campo.value = elegidas.join(', ');
+            pintarUnidadesDelViaje(list);
+        }
+
+        /** Las pastillas de las unidades elegidas y el desplegable para sumar otra. */
+        function pintarUnidadesDelViaje(catalogo) {
+            const campo = document.getElementById('new-trip-bu');
+            const caja = document.getElementById('new-trip-bu-chips');
+            const sel = document.getElementById('new-trip-bu-agregar');
+            if (!campo || !caja) return;
+            const list = catalogo || getBusinessUnitsCatalog();
+            const elegidas = unidadesDeNegocio(campo.value);
+
+            caja.innerHTML = elegidas.length
+                ? elegidas.map(u => `<span class="inline-flex items-center gap-1.5 pl-3 pr-1.5 py-1.5 rounded-lg bg-indigo-600 text-white text-[11px] font-bold">
+                        ${escapeHtml(u)}
+                        <button type="button" onclick="sacarUnidadDelViaje('${escapeHtml(u).replace(/'/g, "\\'")}')"
+                                class="w-4 h-4 rounded-full bg-white/25 hover:bg-white/40 flex items-center justify-center leading-none" title="Sacar">&times;</button>
+                     </span>`).join('')
+                : '<span class="text-[11px] font-bold text-[#A3AED0] px-2">Sin unidad — elegí una abajo</span>';
+
+            if (sel) {
+                const quedan = list.filter(u => !elegidas.includes(u));
+                sel.innerHTML = '<option value="">+ Agregar unidad…</option>'
+                    + quedan.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
+                sel.value = '';
+            }
+        }
+
+        function agregarUnidadAlViaje(valor) {
+            const u = normalizeBusinessUnit(valor);
+            if (!u) return;
+            const campo = document.getElementById('new-trip-bu');
+            const elegidas = unidadesDeNegocio(campo.value);
+            if (!elegidas.includes(u)) elegidas.push(u);
+            campo.value = elegidas.join(', ');
+            pintarUnidadesDelViaje();
+        }
+
+        function sacarUnidadDelViaje(valor) {
+            const campo = document.getElementById('new-trip-bu');
+            const elegidas = unidadesDeNegocio(campo.value).filter(u => u !== normalizeBusinessUnit(valor));
+            campo.value = elegidas.join(', ');
+            pintarUnidadesDelViaje();
         }
 
         function addBusinessUnitOption() {
@@ -3608,7 +3659,7 @@
             if (!v) return;
             ensureBusinessUnitInCatalog(v);
             input.value = '';
-            populateBusinessUnitSelect(v);
+            agregarUnidadAlViaje(v);
             if (typeof addNotification === 'function') {
                 addNotification('success', 'Unidad agregada', `${v} quedó disponible para próximos viajes.`);
             }
@@ -14520,7 +14571,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     provs.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
             }
             if (buSel) {
-                const bus = [...new Set((planningData || []).map(t => (t.businessUnit || '').toString().trim().toUpperCase()))]
+                const bus = [...new Set((planningData || []).flatMap(t => unidadesDeNegocio(t.businessUnit)))]
                     .filter(Boolean).sort();
                 buSel.innerHTML = '<option value="">Todas</option>' +
                     bus.map(b => `<option value="${escapeHtml(b)}">${escapeHtml(b)}</option>`).join('');
@@ -14605,8 +14656,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 }
                 // Filtro UN
                 if (buFilter) {
-                    const b = (t.businessUnit || '').toString().trim().toUpperCase();
-                    if (b !== buFilter) return false;
+                    // El viaje puede llevar varias: alcanza con que una sea la buscada
+                    if (!unidadesDeNegocio(t.businessUnit).includes(buFilter)) return false;
                 }
                 // Filtro estado
                 if (statusFilter === 'paid' && !paidSet.has(Number(t.id))) return false;
@@ -15219,10 +15270,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                             tripValue = (t.assignedMobileUser || '--').toString().trim().toUpperCase();
                             matches = selectedValues.has(tripValue);
                             break;
-                        case 'bu':
+                        case 'bu': {
+                            // Con varias unidades, alcanza con que una este elegida
+                            const us = unidadesDeNegocio(t.businessUnit).map(formatBusinessUnit);
                             tripValue = formatBusinessUnit(t.businessUnit);
-                            matches = selectedValues.has(tripValue);
+                            matches = us.length ? us.some(u => selectedValues.has(u)) : selectedValues.has(tripValue);
                             break;
+                        }
                         case 'contrato':
                             tripValue = _normalizeFilterVal(t.contractType || 'Externo');
                             matches = selectedValues.has(tripValue);
@@ -15466,8 +15520,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         val = (trip.assignedMobileUser || '--').toString().trim().toUpperCase();
                         break;
                     case 'bu':
-                        val = formatBusinessUnit(trip.businessUnit);
-                        break;
+                        // Una opcion por unidad, no la combinacion entera
+                        for (const u of unidadesDeNegocio(trip.businessUnit)) values.add(formatBusinessUnit(u));
+                        return;
                     case 'contrato':
                         val = _normalizeFilterVal(trip.contractType || 'Externo');
                         break;
@@ -19466,11 +19521,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 if (!mapZone[z]) mapZone[z] = { propio: 0, terc: 0 };
                 mapZone[z][k] += 1;
 
-                const bu = (typeof formatBusinessUnit === 'function')
-                    ? formatBusinessUnit((typeof normalizeBusinessUnit === 'function' ? normalizeBusinessUnit(t.businessUnit) : t.businessUnit) || t.businessUnit || 'S/D')
-                    : (t.businessUnit || 'S/D');
-                if (!mapBu[bu]) mapBu[bu] = { propio: 0, terc: 0 };
-                mapBu[bu][k] += 1;
+                // Un viaje con varias unidades cuenta 1 en cada una
+                const unidades = unidadesDeNegocio(t.businessUnit);
+                for (const u of (unidades.length ? unidades : ['S/D'])) {
+                    const bu = (typeof formatBusinessUnit === 'function') ? formatBusinessUnit(u) : u;
+                    if (!mapBu[bu]) mapBu[bu] = { propio: 0, terc: 0 };
+                    mapBu[bu][k] += 1;
+                }
             });
 
             renderBreakdownTable(mapLoc, 'dash-table-loc-body', 'dash-table-loc-total', 'dash-table-loc-tp', 'dash-table-loc-tt', 'dash-table-loc-ta');
@@ -19538,9 +19595,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             return String(v || '').trim().toUpperCase();
         }
 
+        /** Un viaje puede llevar varias unidades: alcanza con que una coincida. */
         function _matchesAny(value, list) {
-            const v = _norm(value);
-            return (list || []).some(x => _norm(x) === v);
+            const unidades = (typeof unidadesDeNegocio === 'function' ? unidadesDeNegocio(value) : [value]).map(_norm);
+            const vs = unidades.length ? unidades : [_norm(value)];
+            return (list || []).some(x => vs.includes(_norm(x)));
         }
 
         const _MES_MAP = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
@@ -19594,9 +19653,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 trips.forEach(t => {
                     if (!_matchesContract(t, contractType)) return;
                     if (contados && contados.has(t.id)) return;
-                    const bu = _norm(t.businessUnit);
+                    const bus = unidadesDeNegocio(t.businessUnit).map(_norm);
                     for (const [label, unidades] of Object.entries(region.subzonas_por_bu)) {
-                        if ((unidades || []).some(u => _norm(u) === bu)) {
+                        if ((unidades || []).some(u => bus.includes(_norm(u)))) {
                             const m = _getTripMonthIdx(t);
                             if (m >= 0) { initRow(label)[m] += 1; marcar(t, label); }
                             return;
@@ -19735,9 +19794,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             Object.keys(items).forEach(k => conteo.set(k, new Array(12).fill(0)));
             trips.forEach(t => {
                 if (contractType && !_matchesContract(t, contractType)) return;
-                const bu = _norm(t.businessUnit);
+                const usDelViaje = unidadesDeNegocio(t.businessUnit).map(_norm);
                 for (const [label, bus] of Object.entries(items)) {
-                    if ((bus || []).some(b => _norm(b) === bu)) {
+                    if ((bus || []).some(b => usDelViaje.includes(_norm(b)))) {
                         const m = _getTripMonthIdx(t);
                         if (m >= 0) conteo.get(label)[m] += 1;
                         return;
@@ -19939,10 +19998,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
             const unclassified = {};
             trips.forEach(t => {
-                const bu = _norm(t.businessUnit) || 'SIN_BU';
-                if (knownBUs.has(bu)) return;
-                if (!unclassified[bu]) unclassified[bu] = 0;
-                unclassified[bu] += 1;
+                const unidades = unidadesDeNegocio(t.businessUnit).map(_norm);
+                for (const bu of (unidades.length ? unidades : ['SIN_BU'])) {
+                    if (knownBUs.has(bu)) continue;
+                    if (!unclassified[bu]) unclassified[bu] = 0;
+                    unclassified[bu] += 1;
+                }
             });
 
             const entries = Object.entries(unclassified).sort((a,b) => b[1] - a[1]);
@@ -20066,6 +20127,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 });
             }
 
+            // Ojo: aca NO se reparte por unidad. Un viaje con varias unidades va
+            // entero bajo su combinacion ("DMC, SAE"): repetir el costo en cada
+            // una inflaria el gasto total.
             const buCostMap = {};
             trips.forEach(t => {
                 const bu = formatBusinessUnit(normalizeBusinessUnit(t.businessUnit) || t.businessUnit || 'S/D');
@@ -20114,10 +20178,16 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 });
             }
 
+            // Un viaje con varias unidades suma 1 en cada una, asi que la suma
+            // de las barras puede dar mas que el total de viajes.
             const buTripsMap = {};
             trips.forEach(t => {
-                const bu = agruparUnidadNegocio(t.businessUnit);
-                buTripsMap[bu] = (buTripsMap[bu] || 0) + 1;
+                const unidades = unidadesDeNegocio(t.businessUnit);
+                const lista = unidades.length ? unidades : [''];
+                for (const u of lista) {
+                    const bu = agruparUnidadNegocio(u);
+                    buTripsMap[bu] = (buTripsMap[bu] || 0) + 1;
+                }
             });
             const buTripsSorted = juntarLaCola(Object.entries(buTripsMap).sort((a, b) => b[1] - a[1]), 12);
 
@@ -21305,7 +21375,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             toggleVehicleTypeField(); // Hide vehicle + proveedor + valor cuando es Propio
 
             document.getElementById('new-trip-loc').value = '';
-            document.getElementById('new-trip-bu').value = document.getElementById('new-trip-bu').value || 'DMC';
+            populateBusinessUnitSelect(document.getElementById('new-trip-bu').value || 'DMC');
             document.getElementById('new-trip-exit').value = '';
             document.getElementById('new-trip-return').value = '';
             // Refrigerado default = No, temperatura vacía y deshabilitada
@@ -21529,9 +21599,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 const generic = ['EXTERNO', 'R14 LOG', 'PROPIO'];
                 provInpEdit.value = (p && !generic.includes(p.toUpperCase())) ? p : '';
             }
-            ensureBusinessUnitInCatalog(trip.businessUnit || 'DMC');
+            // Cada unidad del viaje por separado: el campo puede traer varias
+            for (const u of unidadesDeNegocio(trip.businessUnit)) ensureBusinessUnitInCatalog(u);
             populateBusinessUnitSelect(trip.businessUnit || 'DMC');
-            document.getElementById('new-trip-bu').value = normalizeBusinessUnit(trip.businessUnit || 'DMC');
 
             document.getElementById('new-trip-driver').value = (trip.driver || '').toUpperCase();
             const modoSelEdit = document.getElementById('new-trip-modo');
@@ -22918,10 +22988,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     </div>
                     <div>
                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Unidad de Negocio</label>
-                        <select id="new-trip-bu" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                        <div id="new-trip-bu-chips" class="w-full min-h-[46px] bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2 flex flex-wrap gap-1.5 items-center shadow-sm"></div>
+                        <input type="hidden" id="new-trip-bu">
+                        <select id="new-trip-bu-agregar" onchange="agregarUnidadAlViaje(this.value)" class="mt-2 w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                        <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Podés elegir más de una: el viaje cuenta 1 en cada unidad.</p>
                         <div class="mt-2 flex gap-2">
-                            <input type="text" id="new-trip-bu-new" placeholder="Agregar nueva unidad..." class="flex-1 bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl px-3 py-2 text-xs font-bold uppercase shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                            <button type="button" onclick="addBusinessUnitOption()" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-[10px] font-bold hover:bg-indigo-700 transition-all uppercase">Agregar</button>
+                            <input type="text" id="new-trip-bu-new" placeholder="Crear una unidad que no está..." class="flex-1 bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl px-3 py-2 text-xs font-bold uppercase shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                            <button type="button" onclick="addBusinessUnitOption()" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-[10px] font-bold hover:bg-indigo-700 transition-all uppercase">Crear</button>
                         </div>
                     </div>
                 </div>

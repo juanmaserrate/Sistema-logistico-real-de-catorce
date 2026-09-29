@@ -8441,10 +8441,19 @@ app.get('/api/v1/catalogos/uso', async (req: any, res: any) => {
             where,
             _count: { _all: true }
         });
-        const uso = filas
-            .map((f: any) => ({ valor: f[campo] || '', viajes: f._count._all }))
-            .filter((x: any) => x.valor)
-            .sort((a: any, b: any) => b.viajes - a.viajes);
+        // Un viaje puede llevar varias unidades separadas por coma ("DMC, SAE"):
+        // cada una suma 1, asi que el total puede superar la cantidad de viajes.
+        const porValor = new Map<string, number>();
+        for (const f of filas as any[]) {
+            const bruto = String(f[campo] || '');
+            const partes = campo === 'businessUnit'
+                ? bruto.split(',').map((x) => x.trim()).filter(Boolean)
+                : [bruto.trim()].filter(Boolean);
+            for (const p of partes) porValor.set(p, (porValor.get(p) || 0) + f._count._all);
+        }
+        const uso = [...porValor.entries()]
+            .map(([valor, viajes]) => ({ valor, viajes }))
+            .sort((a, b) => b.viajes - a.viajes);
         res.json({ campo, uso, total: uso.reduce((n: number, x: any) => n + x.viajes, 0) });
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error' });
@@ -8463,11 +8472,33 @@ app.post('/api/v1/catalogos/reemplazar', async (req: any, res: any) => {
     if (!a) return res.status(400).json({ error: 'Falta "a"' });
     if (de === a) return res.json({ viajes: 0, sinCambios: true });
     try {
-        const r = await prisma.trip.updateMany({
-            where: { [campo]: { equals: de, mode: 'insensitive' } } as any,
-            data: { [campo]: a } as any
+        if (campo !== 'businessUnit') {
+            const r = await prisma.trip.updateMany({
+                where: { [campo]: { equals: de, mode: 'insensitive' } } as any,
+                data: { [campo]: a } as any
+            });
+            return res.json({ campo, de, a, viajes: r.count });
+        }
+        // La unidad puede ser una de varias en el mismo viaje ("DMC, SAE"):
+        // hay que cambiar solo esa parte y dejar las otras como estaban.
+        const candidatos = await prisma.trip.findMany({
+            where: { businessUnit: { contains: de, mode: 'insensitive' } },
+            select: { id: true, businessUnit: true }
         });
-        res.json({ campo, de, a, viajes: r.count });
+        const igual = (x: string, y: string) => x.trim().toUpperCase() === y.trim().toUpperCase();
+        let tocados = 0;
+        for (const t of candidatos) {
+            const partes = String(t.businessUnit || '').split(',').map((x) => x.trim()).filter(Boolean);
+            if (!partes.some((p) => igual(p, de))) continue;   // "DMC" no debe pisar "DMC + SAM"
+            const nuevas: string[] = [];
+            for (const p of partes) {
+                const v = igual(p, de) ? a : p;
+                if (!nuevas.some((x) => igual(x, v))) nuevas.push(v);   // sin repetir
+            }
+            await prisma.trip.update({ where: { id: t.id }, data: { businessUnit: nuevas.join(', ') } });
+            tocados++;
+        }
+        res.json({ campo, de, a, viajes: tocados });
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error' });
     }
