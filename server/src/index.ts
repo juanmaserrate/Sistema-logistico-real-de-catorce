@@ -6153,6 +6153,15 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
         }
 
         const contar = (m: Map<string, number>) => [...m.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => ({ nombre: k, viajes: v }));
+        // Que proveedor tenian los viajes cuyo proveedor se reemplaza
+        const pisados = new Map<string, number>();
+        for (const c of cambios) {
+            const antes = c.detalle?.proveedor?.antes;
+            if (antes) {
+                const clave = `${antes} -> ${c.detalle.proveedor.despues}`;
+                pisados.set(clave, (pisados.get(clave) || 0) + 1);
+            }
+        }
         res.json({
             aplicado: aplicar === true,
             revisados: viajes.length,
@@ -6162,6 +6171,7 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
             ejemplos: cambios.slice(0, 15),
             repartosSinRegla: contar(sinReglaDeReparto),
             choferesSinProveedor: contar(sinProveedorParaElChofer),
+            proveedoresQueCambian: contar(pisados),
             salteados: salteados.slice(0, 40),
             salteadosTotal: salteados.length
         });
