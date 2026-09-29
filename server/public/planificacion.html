@@ -111,7 +111,7 @@
                             <a href="#drivers-status" id="btn-drivers-status" class="nav-menu-item" role="menuitem"><i data-lucide="radio"></i> <span>Estado de Choferes</span></a>
                             <a href="#weekly" id="btn-weekly" class="nav-menu-item" role="menuitem"><i data-lucide="layout-dashboard"></i> <span>Logística Semanal</span></a>
                             <a href="#hdr" id="btn-hdr" class="nav-menu-item" role="menuitem"><i data-lucide="history"></i> <span>HDR</span></a>
-                            <a href="#crates" id="btn-crates" class="nav-menu-item" role="menuitem"><i data-lucide="package"></i> <span>Cajones</span></a>
+                            <a href="#crates" id="btn-crates" class="nav-menu-item" role="menuitem"><i data-lucide="package"></i> <span>Cajones con seña</span></a>
                         </div>
                     </div>
                     <div class="nav-menu" id="nav-menu-planificacion" data-menu="planificacion">
@@ -1050,7 +1050,7 @@
                         <p id="dash-kpi-duracion-det" class="text-[10px] text-[#A3AED0] font-medium mt-1">por viaje</p>
                     </div>
                     <div class="card-dark p-5 border border-amber-100 bg-gradient-to-br from-amber-50/70 to-white">
-                        <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-1">Cajones sin volver</p>
+                        <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-1">Cajones con seña sin volver</p>
                         <p id="dash-kpi-cajones" class="text-2xl font-black text-amber-700">0</p>
                         <p id="dash-kpi-cajones-det" class="text-[10px] text-[#A3AED0] font-medium mt-1">saldo del mes</p>
                     </div>
@@ -1071,7 +1071,7 @@
                     </div>
                     <div class="card-dark p-6 md:p-8">
                         <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-1">Envases: salen y vuelven</h4>
-                        <p class="text-xs text-[#A3AED0] font-medium mb-4">Cajones dejados y retirados por día</p>
+                        <p class="text-xs text-[#A3AED0] font-medium mb-4">Cajones con seña dejados y retirados por día</p>
                         <div class="relative h-[380px] w-full">
                             <canvas id="dash-chart-cajones"></canvas>
                         </div>
@@ -1080,7 +1080,7 @@
 
                 <div class="card-dark p-6 md:p-8">
                     <div class="flex items-center justify-between gap-3 flex-wrap mb-1">
-                        <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest">Escuelas con cajones sin devolver</h4>
+                        <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest">Escuelas con cajones con seña sin devolver</h4>
                         <span id="dash-cajones-total" class="text-[11px] font-black text-amber-700"></span>
                     </div>
                     <p class="text-xs text-[#A3AED0] font-medium mb-4">Diferencia entre lo que se dejó y lo que se retiró en el mes</p>
@@ -2059,8 +2059,8 @@
                 <div class="card-dark overflow-hidden">
                     <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
                         <div>
-                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Cajones</h4>
-                            <p class="text-xs text-[#A3AED0] mt-1">Lo que cargan los choferes en la app al finalizar cada parada. <b>Saldo</b> = dejados &minus; recuperados = cajones que quedaron en el establecimiento.</p>
+                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Cajones con seña</h4>
+                            <p class="text-xs text-[#A3AED0] mt-1">Lo que cargan los choferes en la app al finalizar cada parada. <b>Saldo</b> = dejados &minus; recuperados = cajones con seña que quedaron en el establecimiento.</p>
                         </div>
                         <div class="flex flex-wrap items-end gap-2">
                             <label class="text-[10px] font-bold text-[#A3AED0] uppercase">Desde<input type="date" id="crates-from" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></label>
@@ -4141,7 +4141,7 @@
             const titles = {
                 control: 'Torre de Control / En Vivo',
                 'drivers-status': 'Estado de Choferes',
-                crates: 'Cajones',
+                crates: 'Cajones con seña',
                 hdr: 'Historial de Rutas (HDR)',
                 fleets: 'Flotas — Datos de vehículos',
                 weekly: 'Planificación Semanal',
@@ -4163,7 +4163,7 @@
             const descs = {
                 control: 'Monitoreo en tiempo real de operaciones y estados de tránsito',
                 'drivers-status': 'Quién está reportando señal y quién no, entre los choferes con viaje asignado',
-                crates: 'Cajones dejados y recuperados por reparto y por establecimiento',
+                crates: 'Cajones con seña dejados y recuperados por reparto y por establecimiento',
                 hdr: 'Recorridos finalizados con paradas, horarios y trazado GPS de la flota',
                 fleets: 'Configuración de cada camión reutilizable en presupuestos (valor, consumo, mantenimiento, etc.)',
                 weekly: 'Gestión centralizada de la operación logística de Real de Catorce',
@@ -4420,7 +4420,7 @@
                     <td class="py-2 px-2 text-right font-bold">${r.recuperados}</td>
                     ${_cratesSaldoCell(r.saldo)}
                 </tr>`;
-            }).join('') : '<tr><td colspan="6" class="py-3 px-2 text-[#A3AED0]">Todavia no hay cajones cargados en este periodo.</td></tr>';
+            }).join('') : '<tr><td colspan="6" class="py-3 px-2 text-[#A3AED0]">Todavia no hay cajones con seña cargados en este periodo.</td></tr>';
             renderCratesEstablishments();
         }
 
@@ -12376,7 +12376,7 @@
                     m.cratesUpdatedAt = new Date().toISOString();
                     td.innerHTML = fmtCrates(m);
                     if (typeof addNotification === 'function') {
-                        addNotification('success', 'Cajones', 'Guardado. Se ve en el módulo Cajones.');
+                        addNotification('success', 'Cajones con seña', 'Guardado. Se ve en el módulo Cajones con seña.');
                     }
                 } catch (e) {
                     td.innerHTML = original;
@@ -13301,7 +13301,7 @@
                                     <th class="px-2 py-2 text-center w-28">Estado</th>
                                     <th class="px-2 py-2 text-center w-20">Llegada</th>
                                     <th class="px-2 py-2 text-center w-20">Salida</th>
-                                    <th class="px-2 py-2 text-center w-24">📦 Cajones</th>
+                                    <th class="px-2 py-2 text-center w-24">📦 Cajones con seña</th>
                                     <th class="px-2 py-2 text-center w-12">Foto</th>
                                 </tr>
                             </thead>
@@ -13325,7 +13325,7 @@
                                             title="Doble click para corregir la hora de salida">${fmtTime(m.actualDeparture)}</td>
                                         <td class="px-2 py-2 text-center text-[10px] text-[#2B3674] hover:bg-indigo-50 cursor-pointer"
                                             ondblclick="editStopCrates(this, ${tripId}, ${m.stopId || 'null'})"
-                                            title="Doble click para cargar o corregir los cajones (bajados / recuperados)">${fmtCrates(m)}</td>
+                                            title="Doble click para cargar o corregir los cajones con seña (bajados / recuperados)">${fmtCrates(m)}</td>
                                         <td class="px-2 py-2 text-center">${photo}</td>
                                     </tr>`;
                                 }).join('')}
@@ -14336,7 +14336,7 @@
                 </table>
                 <div class="sec-title">Observaciones</div>
                 <div class="obs"></div>
-                <div class="sec-title">Envases · Entrada y salida de cajones</div>
+                <div class="sec-title">Envases · Entrada y salida de cajones con seña</div>
                 <table class="env">
                     <thead><tr>${envHead}</tr></thead>
                     <tbody>${envRow('ARMADO (salida)')}${envRow('CARGA (salida)')}${envRow('RECEPCIÓN (entrada)')}</tbody>

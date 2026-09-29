@@ -98,7 +98,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   const [tracking, setTracking] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const [deliveryModalStop, setDeliveryModalStop] = useState<Stop | null>(null);
-  // Cajones de una parada ya cerrada (el chofer vuelve mas tarde a buscarlos)
+  // Cajones con seña de una parada ya cerrada (el chofer vuelve mas tarde a buscarlos)
   const [cratesModalStop, setCratesModalStop] = useState<Stop | null>(null);
   // Estado de la señal: 'ok' verde, 'queued' amarillo (hay cola pendiente), 'error' rojo.
   const [signalState, setSignalState] = useState<'ok' | 'queued' | 'error'>('ok');
@@ -931,7 +931,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
               {selConcluded ? (
                 <View style={styles.concludedBanner}>
                   <Text style={styles.concludedBannerTxt}>
-                    ✓ Viaje concluido — solo consulta. Tus entregas del día quedan a la vista hasta mañana. Si volvés a buscar cajones, cargalos con el botón 📦 de esa parada.
+                    ✓ Viaje concluido — solo consulta. Tus entregas del día quedan a la vista hasta mañana. Si volvés a buscar cajones con seña, cargalos con el botón 📦 de esa parada.
                   </Text>
                 </View>
               ) : null}
@@ -1072,7 +1072,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                     {(isDone || isFailed) && !isBase ? (
                       <Pressable style={styles.tlBtnCrates} onPress={() => setCratesModalStop(st)}>
                         <Text style={styles.tlBtnCratesTxt}>
-                          📦 {(st.cratesDelivered != null || st.cratesRecovered != null) ? 'Corregir cajones' : 'Cargar cajones'}
+                          📦 {(st.cratesDelivered != null || st.cratesRecovered != null) ? 'Corregir cajones con seña' : 'Cargar cajones con seña'}
                         </Text>
                         <Text style={styles.tlBtnCratesSub}>Podés cargarlos aunque el viaje ya esté cerrado</Text>
                       </Pressable>

@@ -181,10 +181,10 @@ export async function filasCajones(prisma: Prisma, desde: Date, hasta: Date) {
             'Ultima carga de envases': hora(p.cratesUpdatedAt)
         };
         if (p.cratesDelivered != null) {
-            filas.push({ ...base, 'Tipo de movimiento': 'Salida', 'Tipo de envase': 'Cajon', 'Cantidad': p.cratesDelivered });
+            filas.push({ ...base, 'Tipo de movimiento': 'Salida', 'Tipo de envase': 'Cajon con seña', 'Cantidad': p.cratesDelivered });
         }
         if (p.cratesRecovered != null) {
-            filas.push({ ...base, 'Tipo de movimiento': 'Entrada', 'Tipo de envase': 'Cajon', 'Cantidad': p.cratesRecovered });
+            filas.push({ ...base, 'Tipo de movimiento': 'Entrada', 'Tipo de envase': 'Cajon con seña', 'Cantidad': p.cratesRecovered });
         }
     }
     return filas;
@@ -314,7 +314,7 @@ export async function armarReporte(prisma: Prisma, anio?: number): Promise<Archi
 
     return [
         armar('viajes', `TMS VIAJES ${a}.xlsx`, 'Viajes', viajes),
-        armar('cajones', `TMS CAJONES ${a}.xlsx`, 'Cajones', cajones),
+        armar('cajones', `TMS CAJONES ${a}.xlsx`, 'Cajones con seña', cajones),
         armar('mantenimiento', `TMS MANTENIMIENTO ${a}.xlsx`, 'Mantenimiento', mantenimiento),
         armar('flota', `TMS FLOTA.xlsx`, 'Flota', flota),
         armar('incidencias', `TMS INCIDENCIAS ${a}.xlsx`, 'Incidencias', incidencias)

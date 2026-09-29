@@ -12,7 +12,7 @@ type Props = {
   onSaved: (stopId: number, cratesDelivered: number | null, cratesRecovered: number | null) => void;
 };
 
-/** Cajones de una parada YA cerrada.
+/** Cajones con seña de una parada YA cerrada.
  *  Nace de como trabajan los choferes: dejan los cajones, siguen el recorrido y
  *  vuelven mas tarde a buscarlos — a veces con el viaje ya finalizado. Esta
  *  ventana toca SOLO los cajones: no cambia el estado de la entrega, ni las
@@ -41,7 +41,7 @@ export default function CratesModal({ visible, stop, onClose, onSaved }: Props) 
       onSaved(stop.id, dejados, recuperados);
       onClose();
       if (res?.queued) {
-        Alert.alert('Guardado sin señal', 'Los cajones se envían solos cuando vuelva la conexión.');
+        Alert.alert('Guardado sin señal', 'Los cajones con seña se envían solos cuando vuelva la conexión.');
       }
     } catch (e: any) {
       Alert.alert('No se pudo guardar', e?.message || 'Probá de nuevo en un momento.');
@@ -56,7 +56,7 @@ export default function CratesModal({ visible, stop, onClose, onSaved }: Props) 
     <Modal visible transparent animationType="slide" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 12) + 8 }]}>
-          <Text style={styles.title}>📦 Cajones</Text>
+          <Text style={styles.title}>📦 Cajones con seña</Text>
           <Text style={styles.sub} numberOfLines={2}>{stop.client?.name || 'Parada'}</Text>
           <Text style={styles.hint}>
             Podés cargarlos aunque la entrega o el viaje ya estén cerrados. No cambia nada más.
@@ -70,7 +70,7 @@ export default function CratesModal({ visible, stop, onClose, onSaved }: Props) 
               <Text style={styles.cancelTxt}>Cancelar</Text>
             </Pressable>
             <Pressable style={[styles.save, saving && styles.saveOff]} onPress={guardar} disabled={saving}>
-              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveTxt}>Guardar cajones</Text>}
+              {saving ? <ActivityIndicator color="#fff" /> : <Text style={styles.saveTxt}>Guardar cajones con seña</Text>}
             </Pressable>
           </View>
         </View>

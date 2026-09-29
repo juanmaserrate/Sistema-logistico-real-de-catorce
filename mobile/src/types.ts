@@ -29,7 +29,7 @@ export interface Stop {
   observations?: string | null;
   proofPhotoUrl?: string | null;
   deliveryWithoutIssues?: boolean | null;
-  /** Cajones dejados / recuperados en la parada (null = no se cargó) */
+  /** Cajones con seña dejados / recuperados en la parada (null = no se cargó) */
   cratesDelivered?: number | null;
   cratesRecovered?: number | null;
   reasonCode?: string | null;

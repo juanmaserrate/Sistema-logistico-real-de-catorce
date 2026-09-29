@@ -51,7 +51,7 @@ const RETRY_REASONS = [
   { code: 'otro', label: 'Otro (ver observaciones)' },
 ];
 
-/** Selector de cajones pensado para usar parado en la puerta, con una mano:
+/** Selector de cajones con seña pensado para usar parado en la puerta, con una mano:
  *  - "No aplica" es el valor por defecto: si el chofer no toca nada, no se
  *    registra nada (no es obligatorio).
  *  - Un toque en 1..10 elige la cantidad.
@@ -428,7 +428,7 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
                 </Pressable>
                 {!isBase ? (
                   <View style={styles.cratesBox}>
-                    <Text style={styles.cratesTitle}>📦 Cajones <Text style={styles.cratesOptional}>(opcional)</Text></Text>
+                    <Text style={styles.cratesTitle}>📦 Cajones con seña <Text style={styles.cratesOptional}>(opcional)</Text></Text>
                     <CratePicker label="Bajé" value={cratesDelivered} onChange={setCratesDelivered} />
                     <CratePicker label="Recuperé" value={cratesRecovered} onChange={setCratesRecovered} />
                   </View>
@@ -536,7 +536,7 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
                   </Pressable>
                 ))}
                 <View style={styles.cratesBox}>
-                  <Text style={styles.cratesTitle}>📦 Cajones vacíos <Text style={styles.cratesOptional}>(opcional)</Text></Text>
+                  <Text style={styles.cratesTitle}>📦 Cajones con seña <Text style={styles.cratesOptional}>(opcional)</Text></Text>
                   <CratePicker label="Recuperé" value={cratesRecovered} onChange={setCratesRecovered} />
                 </View>
                 <TextInput
