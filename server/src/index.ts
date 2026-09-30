@@ -6850,7 +6850,13 @@ app.post('/api/admin/set-proveedor-por-chofer', async (req: any, res: any) => {
     const pisar = req.body?.pisar === true;
     const aplicar = req.body?.aplicar === true;
 
-    const GENERICOS = ['', 'EXTERNO', 'R14 LOG', 'PROPIO', '#N/A'];
+    // Sin proveedor de verdad = vacio, EXTERNO o #N/A: nadie sabe quien es.
+    // "R14 LOG" y "PROPIO" NO entran: eso ya dice que el viaje es de la casa,
+    // es una afirmacion y no un dato faltante. Con tambienLosPropios:true se
+    // incluyen, para cuando hay que corregir viajes mal marcados como propios.
+    const GENERICOS = req.body?.tambienLosPropios === true
+        ? ['', 'EXTERNO', '#N/A', 'R14 LOG', 'PROPIO']
+        : ['', 'EXTERNO', '#N/A'];
     const norm = (v: any) => String(v || '').trim().toUpperCase()
         .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ');
 
