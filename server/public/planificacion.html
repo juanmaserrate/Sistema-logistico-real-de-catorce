@@ -21678,6 +21678,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         // Mapa de nombre completo (uppercase) → { providerId, providerName }
         // Se construye al abrir el modal y se usa para auto-detectar Tercerizado.
         const _driverProviderMap = new Map();
+        // Nombre completo (uppercase) → "PROPIO" | "TERCERIZADO", tal como quedo
+        // cargado en la ficha de personal. El proveedor solo lo tienen los
+        // tercerizados, asi que sin esto un propio se deducia por descarte.
+        const _driverContractMap = new Map();
 
         /** Trae el catálogo de clientes para poder completar la lista de zonas
          *  aunque la vista semanal actual no tenga viajes con zona cargada. */
@@ -21713,6 +21717,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
             // Construir mapa de proveedor por chofer/auxiliar usando los datos de TODOS los roles
             _driverProviderMap.clear();
+            _driverContractMap.clear();
             const _addToMap = (list) => {
                 for (const u of (list || [])) {
                     const name = (u.fullName || u.username || '').trim().toUpperCase();
@@ -21722,6 +21727,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                             providerId: u.providerId,
                             providerName: u.provider.name
                         });
+                    }
+                    const contrato = String(u.contractType || '').trim().toUpperCase();
+                    if (contrato === 'PROPIO' || contrato === 'TERCERIZADO') {
+                        _driverContractMap.set(name, contrato);
                     }
                 }
             };
@@ -21991,10 +22000,27 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const provInp = document.getElementById('new-trip-provider');
             if (!contractSel) return;
             const info = _driverProviderMap.get(driverName);
+            const contratoFicha = _driverContractMap.get(driverName) || null;
+            const avisoFicha = document.getElementById('new-trip-contract-hint');
+            const decirPorLaFicha = (texto) => {
+                if (!avisoFicha) return;
+                avisoFicha.textContent = texto;
+                avisoFicha.classList.remove('hidden');
+            };
             if (info && info.providerId) {
                 // El chofer tiene proveedor asignado → es Tercerizado, sin dudas
                 contractSel.value = 'Tercerizado';
                 if (provInp) provInp.value = info.providerName || '';
+                decirPorLaFicha(`Ficha de ${driverName}: Tercerizado · ${info.providerName} — podés cambiarlo`);
+            } else if (contratoFicha === 'TERCERIZADO') {
+                // La ficha dice tercerizado pero no tiene proveedor cargado: se
+                // sugiere igual y se avisa que falta, en vez de caer en Propio.
+                contractSel.value = 'Tercerizado';
+                decirPorLaFicha(`Ficha de ${driverName}: Tercerizado, pero no tiene proveedor cargado — completalo a mano`);
+            } else if (contratoFicha === 'PROPIO') {
+                contractSel.value = 'Propio';
+                if (provInp) provInp.value = '';
+                decirPorLaFicha(`Ficha de ${driverName}: Propio — podés cambiarlo`);
             } else if (driverName) {
                 // Sin proveedor: no se pisa la sugerencia del reparto. Solo se marca
                 // Propio si no hay ninguna sugerencia previa.
