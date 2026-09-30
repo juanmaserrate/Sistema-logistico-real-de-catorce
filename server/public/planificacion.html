@@ -19118,6 +19118,23 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             return repartos[clave] || (m ? repartos['R' + Number(m[1])] : null) || null;
         }
 
+        /** La tarifa que cobra un proveedor ese mes, sacada de los repartos que
+         *  ya hace. Para los repartos sin tarifa propia. */
+        function tarifaDeProveedor(proveedor, fechaIso) {
+            const buscado = String(proveedor || '').trim();
+            if (!buscado) return null;
+            const { repartos } = reglasDelMes(fechaIso);
+            const tarifas = [];
+            for (const r of Object.values(repartos || {})) {
+                if (!r?.tarifa || !r?.proveedor) continue;
+                if (mismoNombre(r.proveedor, buscado)) tarifas.push(Number(r.tarifa));
+            }
+            if (!tarifas.length) return null;
+            const veces = new Map();
+            for (const t of tarifas) veces.set(t, (veces.get(t) || 0) + 1);
+            return [...veces.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
+        }
+
         /** Chofer sin reparto propio: solo se mira si el reparto no tiene regla. */
         function reglaDeChofer(chofer, fechaIso) {
             if (!String(chofer || '').trim()) return null;
@@ -20912,11 +20929,19 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (typeof toggleVehicleTypeField === 'function') toggleVehicleTypeField();
 
             const partes = [sugerido];
-            if (sugerido === 'Tercerizado' && regla) {
+            if (sugerido === 'Tercerizado') {
                 const prov = document.getElementById('new-trip-provider');
-                if (prov && regla.proveedor) { prov.value = String(regla.proveedor).toUpperCase(); partes.push(regla.proveedor); }
+                const proveedor = regla?.proveedor || '';
+                if (prov && proveedor) { prov.value = String(proveedor).toUpperCase(); partes.push(proveedor); }
+                // La tarifa: primero la del reparto; si no tiene, la del proveedor
+                let tarifa = regla?.tarifa ? Number(regla.tarifa) : null;
+                let segun = '';
+                if (!tarifa && proveedor) {
+                    tarifa = tarifaDeProveedor(proveedor, fecha);
+                    if (tarifa) segun = ' (tarifa de ' + proveedor + ')';
+                }
                 const val = document.getElementById('new-trip-value');
-                if (val && regla.tarifa) { val.value = regla.tarifa; partes.push('$' + Number(regla.tarifa).toLocaleString('es-AR')); }
+                if (val && tarifa) { val.value = tarifa; partes.push('$' + Number(tarifa).toLocaleString('es-AR') + segun); }
             }
             if (aviso) {
                 const mes = mesDeFecha(fecha);
