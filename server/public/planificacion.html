@@ -146,7 +146,7 @@
                         <div class="nav-menu-panel" role="menu">
                             <a href="#dashboard" id="btn-dashboard" class="nav-menu-item" role="menuitem"><i data-lucide="line-chart"></i> <span>Dashboard logístico</span></a>
                             <a href="#reports" id="btn-reports" class="nav-menu-item" role="menuitem"><i data-lucide="file-bar-chart"></i> <span>Reportes</span></a>
-                            <a href="#crates-sim" id="btn-crates-sim" class="nav-menu-item" role="menuitem"><i data-lucide="package-search"></i> <span>Cajones en tránsito (simulación)</span></a>
+                            <a href="#crates-sim" id="btn-crates-sim" class="nav-menu-item" role="menuitem"><i data-lucide="package-search"></i> <span>Cajones en tránsito</span></a>
                             <a href="#incidents" id="btn-incidents" class="nav-menu-item" role="menuitem"><i data-lucide="alert-triangle"></i> <span>Incidencias</span><span id="incidents-badge" class="nav-menu-badge hidden">0</span></a>
                             <a href="#audit" id="btn-audit" class="nav-menu-item" role="menuitem"><i data-lucide="shield-check"></i> <span>Auditoría</span></a>
                             <a href="#historial" id="btn-historial" class="nav-menu-item" role="menuitem"><i data-lucide="history"></i> <span>Historial</span></a>
@@ -2129,14 +2129,10 @@
 
             <!-- VIEW: CAJONES EN TRANSITO (SIMULACION CONGELADA) -->
             <div id="view-crates-sim" class="hidden view-animate space-y-6">
-                <div class="rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
-                    <p class="text-xs font-black text-amber-800 uppercase tracking-widest">Reporte simulado</p>
-                    <p class="text-sm text-amber-900 mt-1" id="crates-sim-aviso">Los días que el arqueo manual del Excel no llegó a cubrir están completados por simulación para dejar el saldo en calle en el número fijado. No se actualiza con lo que cargan los choferes.</p>
-                </div>
                 <div class="card-dark overflow-hidden">
                     <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
                         <div>
-                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Cajones en tránsito (simulación)</h4>
+                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Cajones en tránsito</h4>
                             <p class="text-xs text-[#A3AED0] mt-1" id="crates-sim-periodo">&mdash;</p>
                         </div>
                         <button onclick="loadCratesSimModule()" class="bg-[#451ebb] text-white rounded-lg px-4 py-2 text-sm font-bold self-start lg:self-auto">Actualizar</button>
@@ -2154,12 +2150,17 @@
                             </table></div>
                         </div>
                         <div>
-                            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                            <button type="button" onclick="toggleCratesSimEst()" class="w-full flex flex-wrap items-center justify-between gap-2 mb-2 text-left hover:bg-[#F4F7FE] rounded-lg py-1 px-1 -mx-1 transition-colors">
                                 <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-wider">Detalle por establecimiento <span id="crates-sim-est-filter-label" class="font-normal normal-case text-[#A3AED0]"></span></h5>
-                                <div class="flex items-center gap-2">
-                                    <input id="crates-sim-est-search" oninput="renderCratesSimEstablishments()" placeholder="Buscar establecimiento..." class="bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm text-[#1B2559] w-56">
-                                    <button id="crates-sim-clear-reparto" onclick="setCratesSimRepartoFilter(null)" class="hidden text-xs font-bold text-indigo-600 hover:underline">Ver todos</button>
-                                </div>
+                                <span class="flex items-center gap-2 shrink-0">
+                                    <span id="crates-sim-est-count" class="text-[10px] font-bold text-[#A3AED0] uppercase tracking-wider"></span>
+                                    <svg id="crates-sim-est-chevron" class="w-4 h-4 text-[#A3AED0] transition-transform duration-200" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg>
+                                </span>
+                            </button>
+                            <div id="crates-sim-est-panel" class="hidden">
+                            <div class="flex items-center gap-2 mb-2">
+                                <input id="crates-sim-est-search" oninput="renderCratesSimEstablishments()" placeholder="Buscar establecimiento..." class="bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm text-[#1B2559] w-56">
+                                <button id="crates-sim-clear-reparto" onclick="setCratesSimRepartoFilter(null)" class="hidden text-xs font-bold text-indigo-600 hover:underline">Ver todos</button>
                             </div>
                             <div class="overflow-x-auto"><table class="w-full text-sm">
                                 <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left">
@@ -2168,6 +2169,7 @@
                                 </tr></thead>
                                 <tbody id="crates-sim-by-est"></tbody>
                             </table></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -4248,7 +4250,7 @@
                 control: 'Torre de Control / En Vivo',
                 'drivers-status': 'Estado de Choferes',
                 crates: 'Cajones con seña',
-                'crates-sim': 'Cajones en tránsito (simulación)',
+                'crates-sim': 'Cajones en tránsito',
                 hdr: 'Historial de Rutas (HDR)',
                 fleets: 'Flotas — Datos de vehículos',
                 weekly: 'Planificación Semanal',
@@ -4272,7 +4274,7 @@
                 control: 'Monitoreo en tiempo real de operaciones y estados de tránsito',
                 'drivers-status': 'Quién está reportando señal y quién no, entre los choferes con viaje asignado',
                 crates: 'Cajones con seña dejados y recuperados por reparto y por establecimiento',
-                'crates-sim': 'Reporte fijo: los días sin arqueo manual completados por simulación. No lo actualiza la app',
+                'crates-sim': 'Cajones dejados y recuperados por reparto y por establecimiento — reporte fijo',
                 hdr: 'Recorridos finalizados con paradas, horarios y trazado GPS de la flota',
                 fleets: 'Configuración de cada camión reutilizable en presupuestos (valor, consumo, mantenimiento, etc.)',
                 weekly: 'Gestión centralizada de la operación logística de Real de Catorce',
@@ -4566,6 +4568,14 @@
         // dejo guardado el endpoint de admin. La app movil no lo toca.
         let _cratesSimData = null;
         let _cratesSimReparto = null;
+        let _cratesSimEstAbierto = false;   // el detalle arranca plegado
+
+        function toggleCratesSimEst(abrir) {
+            _cratesSimEstAbierto = (abrir === undefined) ? !_cratesSimEstAbierto : !!abrir;
+            document.getElementById('crates-sim-est-panel')?.classList.toggle('hidden', !_cratesSimEstAbierto);
+            const chevron = document.getElementById('crates-sim-est-chevron');
+            if (chevron) chevron.style.transform = _cratesSimEstAbierto ? 'rotate(180deg)' : '';
+        }
 
         async function loadCratesSimModule() {
             const body = document.getElementById('crates-sim-by-reparto');
@@ -4583,6 +4593,8 @@
                     return;
                 }
                 _cratesSimData = data;
+                _cratesSimReparto = null;
+                toggleCratesSimEst(false);
                 renderCratesSimModule();
             } catch (e) {
                 body.innerHTML = `<tr><td colspan="6" class="py-3 px-2 text-rose-600 font-bold">Error: ${_cratesEsc(e.message || e)}</td></tr>`;
@@ -4591,6 +4603,8 @@
 
         function setCratesSimRepartoFilter(reparto) {
             _cratesSimReparto = reparto;
+            // Si eligio un reparto es porque quiere ver sus establecimientos.
+            if (reparto) toggleCratesSimEst(true);
             renderCratesSimModule();
         }
 
@@ -4599,14 +4613,11 @@
             if (!d) return;
             const fdia = iso => iso ? iso.split('-').reverse().slice(0, 2).join('/') : '—';
             const per = document.getElementById('crates-sim-periodo');
-            if (per) per.textContent = `Del ${fdia(d.desde)} al ${fdia(d.hasta)} — generado el ${new Date(d.generadoEl).toLocaleString('es-AR')}`;
-            const aviso = document.getElementById('crates-sim-aviso');
-            if (aviso) {
-                const dias = (d.ajuste?.diasAjustados || []).map(fdia).join(', ');
-                aviso.textContent = `Días completados por simulación: ${dias || '—'}. `
-                    + `Se sumaron ${d.ajuste?.cajonesAgregados ?? 0} cajones recuperados repartidos en ${d.ajuste?.paradasTocadas ?? 0} paradas `
-                    + `para dejar el saldo en calle en ${d.objetivo}. Lo que registró la app en ese período es un saldo de ${d.real?.saldo ?? '—'}. `
-                    + `Es un reporte fijo: no se actualiza con lo que cargan los choferes.`;
+            if (per) {
+                const desdeEstimado = (d.ajuste?.diasAjustados || [])[0];
+                per.textContent = `Del ${fdia(d.desde)} al ${fdia(d.hasta)} — reporte fijo, no se actualiza con la app. `
+                    + `Del ${fdia(desdeEstimado || d.corte)} en adelante los valores son estimados`
+                    + (d.real?.saldo != null ? ` (saldo registrado por la app en el período: ${d.real.saldo})` : '') + '.';
             }
 
             const t = d.totales;
@@ -4649,6 +4660,8 @@
             );
             const lbl = document.getElementById('crates-sim-est-filter-label');
             if (lbl) lbl.textContent = _cratesSimReparto ? `— reparto ${_cratesSimReparto}` : '';
+            const cuenta = document.getElementById('crates-sim-est-count');
+            if (cuenta) cuenta.textContent = `${list.length} establecimiento${list.length === 1 ? '' : 's'}`;
             document.getElementById('crates-sim-clear-reparto')?.classList.toggle('hidden', !_cratesSimReparto);
             const fmt = iso => iso ? new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '—';
             tbody.innerHTML = list.length ? list.map(e => `
