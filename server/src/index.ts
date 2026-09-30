@@ -6741,6 +6741,32 @@ app.get('/api/admin/cuentas-por-tipo', async (req: any, res: any) => {
     }
 });
 
+/** Dar de baja (o reactivar) fichas de personal con la clave de servicio.
+ *  POST /api/admin/dar-de-baja { key, usernames: [...], alta? } */
+app.post('/api/admin/dar-de-baja', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const pedidos: string[] = Array.isArray(req.body?.usernames)
+        ? req.body.usernames.map((x: any) => String(x).trim()).filter(Boolean) : [];
+    if (!pedidos.length) return res.status(400).json({ error: 'Falta "usernames" (lista)' });
+    const activo = req.body?.alta === true;
+    try {
+        const informe: any[] = [];
+        for (const username of pedidos) {
+            const u = await prisma.user.findUnique({ where: { username } });
+            if (!u) { informe.push({ username, estado: 'no existe' }); continue; }
+            if (u.active === activo) {
+                informe.push({ username, fullName: u.fullName, estado: activo ? 'ya estaba activa' : 'ya estaba de baja' });
+                continue;
+            }
+            await prisma.user.update({ where: { id: u.id }, data: { active: activo } });
+            informe.push({ username, fullName: u.fullName, role: u.role, estado: activo ? 'reactivada' : 'dada de baja' });
+        }
+        res.json({ alta: activo, cuentas: informe });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Las fichas de personal a las que todavia les falta el dato que define como
  *  se costean: si el chofer es propio o tercerizado, si el auxiliar cobra fijo
  *  o jornal. Es el mismo listado que muestra "Problemas de carga y costeo",
