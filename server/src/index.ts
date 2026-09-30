@@ -9235,6 +9235,52 @@ app.delete('/api/v1/trips/:id', async (req, res) => {
     }
 });
 
+/** Borra muchos viajes de una sola vez. Borrar de a uno desde el navegador era
+ *  un pedido HTTP y unas siete consultas por viaje: con 4000 viajes eso son
+ *  miles de idas y vueltas y varios minutos sin que la pantalla diga nada.
+ *  Aca se hace por lotes con deleteMany, que es una consulta por tabla.
+ *  POST /api/v1/trips/bulk-delete { ids: [1,2,3] } */
+app.post('/api/v1/trips/bulk-delete', async (req: any, res: any) => {
+    const ids: number[] = Array.isArray(req.body?.ids)
+        ? [...new Set(req.body.ids.map((x: any) => parseInt(x)).filter((n: number) => Number.isFinite(n)))]
+        : [];
+    if (!ids.length) return res.status(400).json({ error: 'Falta "ids" (lista de numeros)' });
+
+    try {
+        const total = { viajes: 0, rutas: 0, paradas: 0, paradasDelViaje: 0, marcasGps: 0, ubicaciones: 0 };
+        // En lotes, para no armar un IN gigante en una sola consulta.
+        const LOTE = 400;
+        for (let i = 0; i < ids.length; i += LOTE) {
+            const lote = ids.slice(i, i + LOTE);
+            const rutas = await prisma.route.findMany({ where: { tripId: { in: lote } }, select: { id: true } });
+            const rutaIds = rutas.map((r) => r.id);
+
+            if (rutaIds.length) {
+                // Las marcas de GPS se conservan para el historial: solo se
+                // desactivan, igual que al borrar un viaje de a uno.
+                const gps = await prisma.deviceLocation.updateMany({
+                    where: { routeId: { in: rutaIds }, isActive: true }, data: { isActive: false }
+                });
+                total.marcasGps += gps.count;
+                total.paradas += (await prisma.stop.deleteMany({ where: { routeId: { in: rutaIds } } })).count;
+                total.rutas += (await prisma.route.deleteMany({ where: { id: { in: rutaIds } } })).count;
+            }
+            total.ubicaciones += (await prisma.tripLocation.deleteMany({ where: { tripId: { in: lote } } })).count;
+            total.paradasDelViaje += (await (prisma as any).tripStop.deleteMany({ where: { tripId: { in: lote } } })).count;
+            total.viajes += (await prisma.trip.deleteMany({ where: { id: { in: lote } } })).count;
+        }
+
+        // Una sola entrada de auditoria con el resumen, no una por viaje.
+        await logAction(req, 'DELETE', 'trip', 0, `${total.viajes} viajes (borrado masivo)`,
+            { ids, pedidos: ids.length }, total);
+        io.emit('trips:bulkDeleted', { ids, total });
+        res.json({ success: true, pedidos: ids.length, ...total });
+    } catch (e: any) {
+        console.error('bulk-delete trips:', e);
+        res.status(500).json({ error: e?.message || 'Error borrando los viajes' });
+    }
+});
+
 // Trip Tracking & Stops — Paradas con lat/lng desde Client si no se envían
 app.get('/api/v1/trips/:id/stops', async (req, res) => {
     try {

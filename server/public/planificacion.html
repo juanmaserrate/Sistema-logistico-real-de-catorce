@@ -14714,29 +14714,50 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (ids.length === 0) return;
             if (!confirm(`¿Eliminar ${ids.length} viaje(s) seleccionados? Esta acción no se puede deshacer.`)) return;
 
-            // Bug fix: antes se borraban del UI TODOS los selectedTripIds aunque algunos
-            // hayan fallado en el backend → el usuario veía que "desaparecieron" pero al
-            // refrescar reaparecían. Ahora solo quitamos del UI los que efectivamente
-            // se borraron en el server.
-            let ok = 0, fail = 0;
-            const okIds = [];
-            for (const id of ids) {
-                try {
-                    const res = await fetch(`${API_URL}/trips/${id}`, { method: 'DELETE', headers: getActorHeaders() });
-                    if (res.ok) { ok++; okIds.push(id); } else { fail++; }
-                } catch (_) { fail++; }
+            // Se manda la lista entera al servidor y el borrado se hace ahi por
+            // lotes. Antes se hacia un pedido por viaje: con 4000 seleccionados
+            // eran 4000 pedidos, varios minutos, y la pantalla no decia nada.
+            const btn = document.querySelector('button[onclick="bulkDeleteTrips()"]');
+            const textoOriginal = btn?.innerHTML;
+            if (btn) {
+                btn.disabled = true;
+                btn.classList.add('opacity-60', 'pointer-events-none');
+                btn.innerHTML = `Eliminando ${ids.length} viajes...`;
             }
+            try {
+                const res = await fetch(`${API_URL}/trips/bulk-delete`, {
+                    method: 'POST',
+                    headers: getActorHeaders(),
+                    body: JSON.stringify({ ids })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || `El servidor respondió ${res.status}`);
 
-            const okIdSet = new Set(okIds);
-            if (typeof __weeklyTripsById !== 'undefined') okIds.forEach(id => __weeklyTripsById.delete(id));
-            if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
-            planningData = planningData.filter(t => !okIdSet.has(t.id));
-            clearTripSelection();
-            filterWeeklyData();
+                const borrados = new Set(ids);
+                if (typeof __weeklyTripsById !== 'undefined') ids.forEach(id => __weeklyTripsById.delete(id));
+                if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
+                planningData = planningData.filter(t => !borrados.has(t.id));
+                clearTripSelection();
+                filterWeeklyData();
 
-            if (typeof addNotification === 'function') {
-                if (fail === 0) addNotification('success', 'Eliminación masiva', `${ok} viaje(s) eliminados correctamente.`);
-                else addNotification('warning', 'Eliminación parcial', `${ok} eliminados, ${fail} con error.`);
+                if (typeof addNotification === 'function') {
+                    const detalle = `${data.viajes} viaje(s), ${data.rutas || 0} recorrido(s) y ${data.paradas || 0} parada(s).`;
+                    if (data.viajes === ids.length) addNotification('success', 'Eliminación masiva', `Se eliminaron ${detalle}`);
+                    else addNotification('warning', 'Eliminación parcial', `Se pidieron ${ids.length} y se eliminaron ${detalle}`);
+                }
+            } catch (e) {
+                if (typeof addNotification === 'function') {
+                    addNotification('error', 'No se pudo eliminar', String(e.message || e));
+                } else {
+                    alert('No se pudo eliminar: ' + (e.message || e));
+                }
+            } finally {
+                if (btn) {
+                    btn.disabled = false;
+                    btn.classList.remove('opacity-60', 'pointer-events-none');
+                    btn.innerHTML = textoOriginal;
+                    if (window.lucide) lucide.createIcons();
+                }
             }
         }
 
