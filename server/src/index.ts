@@ -6988,7 +6988,10 @@ app.post('/api/admin/renombrar-proveedor', async (req: any, res: any) => {
             where: { provider: { not: null } },
             select: { id: true, date: true, reparto: true, driver: true, provider: true, value: true }
         });
-        const aCambiar = viajes.filter((t: any) => norm(t.provider) === objetivo);
+        // Solo los que realmente cambian: si ya esta escrito igual al destino,
+        // no se toca (la comparacion es sin mayusculas, asi que el grupo entero
+        // entra en el filtro pero los que ya estan bien no se reescriben).
+        const aCambiar = viajes.filter((t: any) => norm(t.provider) === objetivo && String(t.provider) !== a);
         if (aplicar) {
             for (const t of aCambiar) {
                 await prisma.trip.update({ where: { id: t.id }, data: { provider: a } });
