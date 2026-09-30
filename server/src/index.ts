@@ -6008,12 +6008,12 @@ app.post('/api/admin/fix-trip-subzona', async (req: any, res: any) => {
     try {
         // Se revisan todos: la subzona ya no depende solo del reparto.
         const viajes = await prisma.trip.findMany({
-            select: { id: true, reparto: true, locality: true, contractType: true, subzona: true }
+            select: { id: true, reparto: true, zone: true, locality: true, contractType: true, subzona: true }
         });
         const cambios = viajes
             .map((t: any) => ({
-                tripId: t.id, reparto: t.reparto, localidad: t.locality, contrato: t.contractType,
-                antes: t.subzona, despues: subzonaDelViaje(t.reparto, t.locality, t.contractType)
+                tripId: t.id, reparto: t.reparto, localidad: t.zone || t.locality, contrato: t.contractType,
+                antes: t.subzona, despues: subzonaDelViaje(t.reparto, t.zone || t.locality, t.contractType)
             }))
             .filter((c: any) => c.despues && c.antes !== c.despues);
         if (!dryRun) {
@@ -8272,6 +8272,8 @@ function subzonaPorReparto(reparto: any): string | null {
 const SUBZONA_LOMAS_PROPIO = 'JARDINES PROPIOS';
 const SUBZONA_LOMAS_TERCERIZADO = 'JARDINES TERCERIZADOS';
 
+/** La localidad del viaje vive en el campo "zone" (el "locality" esta casi
+ *  siempre vacio), asi que se consulta ese primero. */
 function esLomas(localidad: any): boolean {
     return String(localidad || '').trim().toUpperCase()
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('LOMAS');
@@ -8419,7 +8421,7 @@ app.post('/api/v1/trips', async (req, res) => {
         // Un viaje manual no se le manda a ningun celular.
         if (datos.isManual === true) datos.assignedMobileUser = null;
         // La subzona la pone el sistema, no el operador
-        datos.subzona = subzonaDelViaje(datos.reparto, datos.locality, datos.contractType);
+        datos.subzona = subzonaDelViaje(datos.reparto, datos.zone || datos.locality, datos.contractType);
         const trip = await prisma.trip.create({ data: datos });
         await logAction(req, 'CREATE', 'trip', trip.id, trip.driver || String(trip.id), null, trip);
         io.emit('trip:created', { trip });
@@ -8443,10 +8445,12 @@ app.put('/api/v1/trips/:id', async (req, res) => {
         // La subzona sigue al reparto, a la localidad y al contrato. Se
         // recalcula con lo que queda despues de la edicion, no solo con lo que
         // vino en el body: cambiar el contrato tambien la mueve.
-        if ('reparto' in body || 'locality' in body || 'contractType' in body) {
+        if ('reparto' in body || 'zone' in body || 'locality' in body || 'contractType' in body) {
+            const zonaFinal = 'zone' in body ? body.zone : before?.zone;
+            const locFinal = 'locality' in body ? body.locality : before?.locality;
             body.subzona = subzonaDelViaje(
                 'reparto' in body ? body.reparto : before?.reparto,
-                'locality' in body ? body.locality : before?.locality,
+                zonaFinal || locFinal,
                 'contractType' in body ? body.contractType : before?.contractType
             );
         }
