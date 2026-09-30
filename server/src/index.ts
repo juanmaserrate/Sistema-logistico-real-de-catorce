@@ -6900,6 +6900,71 @@ app.post('/api/admin/set-proveedor-por-chofer', async (req: any, res: any) => {
     }
 });
 
+/** Todos los nombres de proveedor tal como estan escritos en los viajes,
+ *  agrupados por nombre normalizado. Sirve para ver los que son el mismo
+ *  proveedor escrito distinto (mayusculas, acentos, espacios de mas).
+ *  GET /api/admin/proveedores-en-viajes?key=...[&desde=&hasta=] */
+app.get('/api/admin/proveedores-en-viajes', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const ymd = (v: any) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null;
+        const desde = ymd(req.query.desde);
+        const hasta = ymd(req.query.hasta);
+        const where: any = { provider: { not: null } };
+        if (desde && hasta) where.date = { gte: utcDayRange(desde).start, lte: utcDayRange(hasta).end };
+
+        const viajes = await prisma.trip.findMany({ where, select: { date: true, provider: true } });
+        const fichas = await prisma.provider.findMany({ select: { name: true } });
+        const norm = (v: any) => String(v || '').trim().toUpperCase()
+            .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ');
+
+        const grupos = new Map<string, Map<string, { viajes: number; primero: string; ultimo: string }>>();
+        for (const t of viajes as any[]) {
+            const tal = String(t.provider || '').trim();
+            if (!tal) continue;
+            const k = norm(tal);
+            if (!grupos.has(k)) grupos.set(k, new Map());
+            const dentro = grupos.get(k)!;
+            const dia = new Date(t.date).toISOString().slice(0, 10);
+            const prev = dentro.get(tal) || { viajes: 0, primero: dia, ultimo: dia };
+            prev.viajes++;
+            if (dia < prev.primero) prev.primero = dia;
+            if (dia > prev.ultimo) prev.ultimo = dia;
+            dentro.set(tal, prev);
+        }
+
+        const nombresFicha = new Set(fichas.map((f) => norm(f.name)));
+        const salida = [...grupos.entries()].map(([k, dentro]) => {
+            const variantes = [...dentro.entries()]
+                .map(([tal, x]) => ({ tal, ...x }))
+                .sort((a, b) => b.viajes - a.viajes);
+            // El nombre bueno: el de la ficha de proveedor si existe, y si no el
+            // que mas viajes tiene.
+            const deFicha = fichas.find((f) => norm(f.name) === k);
+            return {
+                normalizado: k,
+                sugerido: deFicha ? deFicha.name : variantes[0].tal,
+                existeComoProveedor: nombresFicha.has(k),
+                viajes: variantes.reduce((n, v) => n + v.viajes, 0),
+                duplicado: variantes.length > 1,
+                variantes
+            };
+        }).sort((a, b) => Number(b.duplicado) - Number(a.duplicado) || b.viajes - a.viajes);
+
+        res.json({
+            desde: desde || '(todo)', hasta: hasta || '(todo)',
+            viajesConProveedor: viajes.length,
+            nombresDistintos: [...new Set(viajes.map((t: any) => String(t.provider).trim()))].length,
+            proveedoresReales: salida.length,
+            duplicadosPorEscritura: salida.filter((x) => x.duplicado).length,
+            grupos: salida
+        });
+    } catch (e: any) {
+        console.error('proveedores-en-viajes:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Unifica dos nombres de proveedor. El proveedor viaja como texto en el viaje
  *  y tambien en las reglas por reparto, asi que hay que cambiarlo en los tres
  *  lados: los viajes, las reglas y la ficha de proveedor si existe.

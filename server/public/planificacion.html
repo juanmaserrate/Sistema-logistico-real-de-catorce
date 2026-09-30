@@ -21231,10 +21231,25 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 return;
             }
             const fecha = document.getElementById('new-trip-date')?.value || '';
-            const chofer = (document.getElementById('new-trip-driver')?.value || '').trim();
-            // Primero la regla del reparto; si no tiene, la del chofer suelto
+            const chofer = (document.getElementById('new-trip-driver')?.value || '').trim().toUpperCase();
+            if (reparto == null) reparto = document.getElementById('new-trip-reparto')?.value || '';
             const regla = reglaDeReparto(reparto, fecha) || reglaDeChofer(chofer, fecha);
-            const sugerido = regla?.tipo || contratoSugeridoPorReparto(reparto);
+
+            // EL CHOFER DICTAMINA EL TIPO DE VIAJE. Si su ficha de personal esta
+            // identificada, manda ella: un chofer propio que cubre un reparto
+            // tercerizado hace un viaje propio. La regla del reparto queda para
+            // los choferes sin ficha, y para aportar la tarifa.
+            const contratoFicha = _driverContractMap.get(chofer) || null;
+            const provFicha = _driverProviderMap.get(chofer) || null;
+
+            let sugerido, deDonde;
+            if (contratoFicha) {
+                sugerido = contratoFicha === 'PROPIO' ? 'Propio' : 'Tercerizado';
+                deDonde = `la ficha de ${chofer}`;
+            } else {
+                sugerido = regla?.tipo || contratoSugeridoPorReparto(reparto);
+                deDonde = regla ? `la regla de ${String(reparto).toUpperCase()}` : null;
+            }
             if (!sugerido) {
                 if (aviso) aviso.classList.add('hidden');
                 return;
@@ -21242,11 +21257,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             sel.value = sugerido;
             if (typeof toggleVehicleTypeField === 'function') toggleVehicleTypeField();
 
+            const prov = document.getElementById('new-trip-provider');
             const partes = [sugerido];
             if (sugerido === 'Tercerizado') {
-                const prov = document.getElementById('new-trip-provider');
-                const proveedor = regla?.proveedor || '';
+                // El proveedor: primero el de la ficha del chofer, si no el de la regla
+                const proveedor = provFicha?.providerName || regla?.proveedor || '';
                 if (prov && proveedor) { prov.value = String(proveedor).toUpperCase(); partes.push(proveedor); }
+                else if (contratoFicha === 'TERCERIZADO') partes.push('falta el proveedor');
                 // La tarifa: primero la del reparto; si no tiene, la del proveedor
                 let tarifa = regla?.tarifa ? Number(regla.tarifa) : null;
                 let segun = '';
@@ -21256,11 +21273,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 }
                 const val = document.getElementById('new-trip-value');
                 if (val && tarifa) { val.value = tarifa; partes.push('$' + Number(tarifa).toLocaleString('es-AR') + segun); }
+            } else if (contratoFicha === 'PROPIO' && prov) {
+                prov.value = '';   // un viaje propio no lleva proveedor tercerizado
             }
             if (aviso) {
                 const mes = mesDeFecha(fecha);
-                aviso.textContent = `Según la regla de ${String(reparto).toUpperCase()}${mes ? ' (' + nombreDeMes(mes) + ')' : ''}: ${partes.join(' · ')} — podés cambiarlo`;
-                aviso.dataset.origen = 'reparto';
+                aviso.textContent = `Según ${deDonde}${!contratoFicha && mes ? ' (' + nombreDeMes(mes) + ')' : ''}: ${partes.join(' · ')} — podés cambiarlo`;
+                aviso.dataset.origen = contratoFicha ? 'ficha' : 'reparto';
                 aviso.classList.remove('hidden');
             }
             avisarChoferDistinto(reparto);
@@ -22000,42 +22019,22 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const contractSel = document.getElementById('new-trip-contract');
             const provInp = document.getElementById('new-trip-provider');
             if (!contractSel) return;
-            const info = _driverProviderMap.get(driverName);
-            const contratoFicha = _driverContractMap.get(driverName) || null;
+            // La sugerencia la hace una sola funcion, para que el chofer
+            // dictamine el tipo tanto si se elige primero el chofer como si se
+            // elige primero el reparto.
+            if (_driverContractMap.has(driverName) || _driverProviderMap.has(driverName)) {
+                aplicarContratoSugerido(null);
+                return;
+            }
             const avisoFicha = document.getElementById('new-trip-contract-hint');
-            const decirPorLaFicha = (texto) => {
-                if (!avisoFicha) return;
-                avisoFicha.textContent = texto;
-                avisoFicha.dataset.origen = 'ficha';
-                avisoFicha.classList.remove('hidden');
-            };
-            // Si el aviso que hay en pantalla es de otro chofer, se limpia. El
-            // que escribio la regla del reparto no se toca.
-            const borrarAvisoDeFicha = () => {
-                if (avisoFicha && avisoFicha.dataset.origen === 'ficha') {
-                    avisoFicha.textContent = '';
-                    delete avisoFicha.dataset.origen;
-                    avisoFicha.classList.add('hidden');
-                }
-            };
-            if (info && info.providerId) {
-                // El chofer tiene proveedor asignado → es Tercerizado, sin dudas
-                contractSel.value = 'Tercerizado';
-                if (provInp) provInp.value = info.providerName || '';
-                decirPorLaFicha(`Ficha de ${driverName}: Tercerizado · ${info.providerName} — podés cambiarlo`);
-            } else if (contratoFicha === 'TERCERIZADO') {
-                // La ficha dice tercerizado pero no tiene proveedor cargado: se
-                // sugiere igual y se avisa que falta, en vez de caer en Propio.
-                contractSel.value = 'Tercerizado';
-                decirPorLaFicha(`Ficha de ${driverName}: Tercerizado, pero no tiene proveedor cargado — completalo a mano`);
-            } else if (contratoFicha === 'PROPIO') {
-                contractSel.value = 'Propio';
-                if (provInp) provInp.value = '';
-                decirPorLaFicha(`Ficha de ${driverName}: Propio — podés cambiarlo`);
-            } else if (driverName) {
-                borrarAvisoDeFicha();
-                // Sin proveedor ni ficha: no se pisa la sugerencia del reparto.
-                // Solo se marca Propio si no hay ninguna sugerencia previa.
+            if (avisoFicha && avisoFicha.dataset.origen === 'ficha') {
+                avisoFicha.textContent = '';
+                delete avisoFicha.dataset.origen;
+                avisoFicha.classList.add('hidden');
+            }
+            if (driverName) {
+                // Sin ficha: no se pisa la sugerencia del reparto. Solo se marca
+                // Propio si no hay ninguna sugerencia previa.
                 const sugerido = typeof contratoSugeridoPorReparto === 'function'
                     ? contratoSugeridoPorReparto(document.getElementById('new-trip-reparto')?.value || '')
                     : null;
