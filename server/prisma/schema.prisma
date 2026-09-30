@@ -24,7 +24,11 @@ model User {
   password     String
   fullName     String
   role         String     @default("DRIVER")
-  payType      String? // "FIJO" | "JORNAL" para CHOFER/AUXILIAR (impacta costo logistico)
+  payType      String? // "FIJO" | "JORNAL" para AUXILIAR. null = todavia sin identificar
+  /// Para las fichas de CHOFER: "PROPIO" | "TERCERIZADO". null = todavia sin
+  /// identificar. Hace falta un campo propio porque providerId vacio no alcanza:
+  /// no distingue "es de la casa" de "nadie lo definio todavia".
+  contractType String?
   pushToken    String? // Token Expo para notificaciones push
   /// Si tiene un proveedor asignado, sus viajes se consideran Tercerizados.
   /// Si es null, sus viajes son Propios.

@@ -8405,7 +8405,7 @@ app.get('/api/v1/users', async (req, res) => {
             orderBy: [{ role: 'asc' }, { username: 'asc' }],
             select: {
                 id: true, username: true, fullName: true, role: true,
-                payType: true, tenantId: true, createdAt: true,
+                payType: true, contractType: true, tenantId: true, createdAt: true,
                 providerId: true,
                 provider: { select: { id: true, name: true } }
             }
@@ -8533,6 +8533,12 @@ app.post('/api/v1/users', async (req, res) => {
             const pt = String(req.body.payType).trim().toUpperCase();
             if (['FIJO', 'JORNAL'].includes(pt)) payType = pt;
         }
+        // Para las fichas de chofer: PROPIO | TERCERIZADO (null = sin identificar)
+        let contractType: string | null = null;
+        if (req.body?.contractType) {
+            const ct = String(req.body.contractType).trim().toUpperCase();
+            if (['PROPIO', 'TERCERIZADO'].includes(ct)) contractType = ct;
+        }
         const user = await prisma.user.create({
             data: {
                 username,
@@ -8540,9 +8546,10 @@ app.post('/api/v1/users', async (req, res) => {
                 fullName: fullName || username,
                 role,
                 payType,
+                contractType,
                 tenantId: 'default-tenant'
             },
-            select: { id: true, username: true, fullName: true, role: true, payType: true, tenantId: true, createdAt: true }
+            select: { id: true, username: true, fullName: true, role: true, payType: true, contractType: true, tenantId: true, createdAt: true }
         });
         await logAction(req, 'CREATE', 'user', user.id, user.username, null, { username: user.username, role: user.role });
         res.status(201).json(user);
@@ -8604,6 +8611,22 @@ app.patch('/api/v1/users/:id', async (req, res) => {
         if (req.body?.providerId !== undefined) {
             const raw = req.body.providerId;
             data.providerId = (raw == null || raw === '') ? null : String(raw).trim();
+            // Si se le pone proveedor, es tercerizado: no hace falta marcarlo aparte
+            if (data.providerId && req.body?.contractType === undefined) data.contractType = 'TERCERIZADO';
+        }
+        if (req.body?.contractType !== undefined) {
+            const raw = req.body.contractType;
+            if (raw == null || raw === '') {
+                data.contractType = null;
+            } else {
+                const ct = String(raw).trim().toUpperCase();
+                if (!['PROPIO', 'TERCERIZADO'].includes(ct)) {
+                    return res.status(400).json({ error: 'contractType invalido (PROPIO | TERCERIZADO)' });
+                }
+                data.contractType = ct;
+                // Propio no lleva proveedor
+                if (ct === 'PROPIO' && req.body?.providerId === undefined) data.providerId = null;
+            }
         }
         if (Object.keys(data).length === 0) return res.status(400).json({ error: 'Sin cambios para actualizar' });
 
@@ -8612,7 +8635,7 @@ app.patch('/api/v1/users/:id', async (req, res) => {
             data,
             select: {
                 id: true, username: true, fullName: true, role: true,
-                payType: true, tenantId: true, createdAt: true,
+                payType: true, contractType: true, tenantId: true, createdAt: true,
                 providerId: true,
                 provider: { select: { id: true, name: true } }
             }

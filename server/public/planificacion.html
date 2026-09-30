@@ -1571,6 +1571,7 @@
                         </div>
                         <div class="flex items-center gap-2">
                             <span id="emp-chofer-count" class="text-xs font-bold text-sky-600 bg-sky-50 px-3 py-1.5 rounded-xl">0</span>
+                            <span id="emp-chofer-pendientes" class="hidden text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl"></span>
                             <div class="flex bg-[#F4F7FE] rounded-xl p-0.5">
                                 <button onclick="setEmpFilter('chofer','todos')" id="emp-chofer-f-todos" class="px-3 py-1.5 rounded-lg text-[10px] font-bold bg-white text-[#1B2559] shadow-sm">Todos</button>
                                 <button onclick="setEmpFilter('chofer','activo')" id="emp-chofer-f-activo" class="px-3 py-1.5 rounded-lg text-[10px] font-bold text-[#A3AED0]">Activos</button>
@@ -1583,6 +1584,7 @@
                             <thead><tr>
                                 <th class="px-6 py-3 text-[10px] font-bold text-[#A3AED0] uppercase">Nombre</th>
                                 <th class="px-6 py-3 text-[10px] font-bold text-[#A3AED0] uppercase">Estado</th>
+                                <th class="px-6 py-3 text-[10px] font-bold text-[#A3AED0] uppercase">Contrato</th>
                                 <th class="px-6 py-3 text-[10px] font-bold text-[#A3AED0] uppercase">Proveedor</th>
                                 <th class="px-6 py-3 text-[10px] font-bold text-[#A3AED0] uppercase">Origen</th>
                                 <th class="px-6 py-3 text-[10px] font-bold text-[#A3AED0] uppercase text-right">Acciones</th>
@@ -1610,6 +1612,7 @@
                         </div>
                         <div class="flex items-center gap-2">
                             <span id="emp-aux-count" class="text-xs font-bold text-amber-600 bg-amber-50 px-3 py-1.5 rounded-xl">0</span>
+                            <span id="emp-aux-pendientes" class="hidden text-xs font-bold text-amber-700 bg-amber-50 px-3 py-1.5 rounded-xl"></span>
                             <div class="flex bg-[#F4F7FE] rounded-xl p-0.5">
                                 <button onclick="setEmpFilter('aux','todos')" id="emp-aux-f-todos" class="px-3 py-1.5 rounded-lg text-[10px] font-bold bg-white text-[#1B2559] shadow-sm">Todos</button>
                                 <button onclick="setEmpFilter('aux','activo')" id="emp-aux-f-activo" class="px-3 py-1.5 rounded-lg text-[10px] font-bold text-[#A3AED0]">Activos</button>
@@ -1622,6 +1625,7 @@
                             <thead><tr>
                                 <th class="px-6 py-3 text-[10px] font-bold text-[#A3AED0] uppercase">Nombre</th>
                                 <th class="px-6 py-3 text-[10px] font-bold text-[#A3AED0] uppercase">Estado</th>
+                                <th class="px-6 py-3 text-[10px] font-bold text-[#A3AED0] uppercase">Forma de pago</th>
                                 <th class="px-6 py-3 text-[10px] font-bold text-[#A3AED0] uppercase">Proveedor</th>
                                 <th class="px-6 py-3 text-[10px] font-bold text-[#A3AED0] uppercase">Origen</th>
                                 <th class="px-6 py-3 text-[10px] font-bold text-[#A3AED0] uppercase text-right">Acciones</th>
@@ -4749,7 +4753,10 @@
                 const res = await fetch(`${API_URL}/users`, { headers: getActorHeaders() });
                 if (!res.ok) throw new Error('No se pudo cargar usuarios');
                 const data = await res.json();
-                usersData = Array.isArray(data) ? data : [];
+                // Esta pantalla es "quien puede entrar al sistema". Las fichas de
+                // personal (CHOFER y AUXILIAR) no tienen login: viven en Personal.
+                usersData = (Array.isArray(data) ? data : [])
+                    .filter(u => !['CHOFER', 'AUXILIAR'].includes(String(u?.role || '').toUpperCase()));
                 renderUsersTable();
             } catch (e) {
                 console.error('Error loading users', e);
@@ -21875,8 +21882,22 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (countEl) countEl.innerText = filtered.length;
 
             if (filtered.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="5" class="text-center py-6 text-[#A3AED0] text-xs font-bold">Sin registros</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="6" class="text-center py-6 text-[#A3AED0] text-xs font-bold">Sin registros</td></tr>`;
                 return;
+            }
+
+            // Lo que falta definir de cada persona. Mientras este vacio, el
+            // sistema no sabe como costear sus viajes.
+            const pendiente = (u) => type === 'chofer'
+                ? !String(u.contractType || '').trim()
+                : !String(u.payType || '').trim();
+            const cuantosPendientes = filtered.filter(pendiente).length;
+            const avisoEl = document.getElementById(`emp-${type === 'chofer' ? 'chofer' : 'aux'}-pendientes`);
+            if (avisoEl) {
+                avisoEl.textContent = cuantosPendientes
+                    ? `${cuantosPendientes} sin identificar`
+                    : '';
+                avisoEl.classList.toggle('hidden', !cuantosPendientes);
             }
 
             // Generar opciones de proveedor (con uno preseleccionado por user)
@@ -21890,19 +21911,44 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 return opts.join('');
             };
 
+            const selCls = 'bg-[#F4F7FE] border-0 rounded-lg px-3 py-1.5 text-[11px] font-bold text-[#1B2559] outline-none cursor-pointer';
             tbody.innerHTML = filtered.map(u => {
                 const isBlocked = u.role === 'BLOCKED';
                 const name = u.fullName || u.username || '';
                 const safeName = name.replace(/"/g, '&quot;');
                 const currentProvId = u.providerId || '';
+                const falta = pendiente(u);
+
+                // Chofer: propio o tercerizado. Auxiliar: fijo o jornal.
+                const ct = String(u.contractType || '').toUpperCase();
+                const pt = String(u.payType || '').toUpperCase();
+                const celdaIdentificacion = type === 'chofer'
+                    ? `<td class="px-6 py-3">
+                        <select onchange="setEmployeeContract('${u.id}', this.value, '${type}')" class="${selCls} ${falta ? 'ring-2 ring-amber-400' : ''}" title="\u00bfEs de la casa o de un proveedor?">
+                            <option value="" ${!ct ? 'selected' : ''}>\u2014 Sin identificar \u2014</option>
+                            <option value="PROPIO" ${ct === 'PROPIO' ? 'selected' : ''}>Propio</option>
+                            <option value="TERCERIZADO" ${ct === 'TERCERIZADO' ? 'selected' : ''}>Tercerizado</option>
+                        </select>
+                       </td>`
+                    : `<td class="px-6 py-3">
+                        <select onchange="setEmployeePayType('${u.id}', this.value, '${type}')" class="${selCls} ${falta ? 'ring-2 ring-amber-400' : ''}" title="\u00bfCobra sueldo fijo o por jornal?">
+                            <option value="" ${!pt ? 'selected' : ''}>\u2014 Sin identificar \u2014</option>
+                            <option value="FIJO" ${pt === 'FIJO' ? 'selected' : ''}>Fijo</option>
+                            <option value="JORNAL" ${pt === 'JORNAL' ? 'selected' : ''}>Jornal</option>
+                        </select>
+                       </td>`;
+
                 return `
                 <tr class="${isBlocked ? 'opacity-50' : ''} hover:bg-[#F4F7FE] transition-colors">
                     <td class="px-6 py-3 font-bold ${isBlocked ? 'line-through text-[#A3AED0]' : 'text-[#1B2559]'}">${name}</td>
                     <td class="px-6 py-3">
                         ${isBlocked
                             ? `<span class="status-badge bg-rose-100 text-rose-700 text-[10px]">Inactivo</span>`
-                            : `<span class="status-badge bg-emerald-100 text-emerald-700 text-[10px]">Activo</span>`}
+                            : falta
+                                ? `<span class="status-badge bg-amber-100 text-amber-700 text-[10px]">Sin identificar</span>`
+                                : `<span class="status-badge bg-emerald-100 text-emerald-700 text-[10px]">Activo</span>`}
                     </td>
+                    ${celdaIdentificacion}
                     <td class="px-6 py-3">
                         <select onchange="setEmployeeProvider('${u.id}', this.value, '${type}')" class="bg-[#F4F7FE] border-0 rounded-lg px-3 py-1.5 text-[11px] font-bold text-[#1B2559] outline-none cursor-pointer ${currentProvId ? 'ring-2 ring-purple-300' : ''}" title="Asignar proveedor (tercerizado) o dejar Propio">
                             ${providerOptionsHtml(currentProvId)}
@@ -22030,6 +22076,40 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 await loadEmployeesSection();
             } catch (e) {
                 alert('Error: ' + e.message);
+            }
+        }
+
+        /** Chofer: propio o tercerizado. Si pasa a Propio se le saca el proveedor. */
+        async function setEmployeeContract(userId, contractType, type) {
+            await guardarDatoDeFicha(userId, { contractType: contractType || null }, type,
+                contractType === 'PROPIO' ? 'Marcado como Propio'
+                    : contractType === 'TERCERIZADO' ? 'Marcado como Tercerizado \u2014 eleg\u00ed el proveedor al lado'
+                    : 'Queda sin identificar');
+        }
+
+        /** Auxiliar: sueldo fijo o por jornal. */
+        async function setEmployeePayType(userId, payType, type) {
+            await guardarDatoDeFicha(userId, { payType: payType || null }, type,
+                payType ? `Marcado como ${payType === 'FIJO' ? 'Fijo' : 'Jornal'}` : 'Queda sin identificar');
+        }
+
+        async function guardarDatoDeFicha(userId, cambio, type, aviso) {
+            try {
+                const res = await fetch(`${API_URL}/users/${userId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
+                    body: JSON.stringify(cambio)
+                });
+                if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Error');
+                const updated = await res.json();
+                const list = type === 'chofer' ? empChoferData : empAuxData;
+                const idx = list.findIndex(u => u.id === userId);
+                if (idx >= 0) list[idx] = { ...list[idx], ...updated };
+                renderEmpTable(type);
+                if (typeof addNotification === 'function') addNotification('success', 'Ficha actualizada', aviso);
+            } catch (e) {
+                alert('No se pudo guardar: ' + e.message);
+                renderEmpTable(type);
             }
         }
 
