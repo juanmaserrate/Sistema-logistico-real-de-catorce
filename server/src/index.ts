@@ -490,19 +490,33 @@ async function upsertDriverUserForPlanning(driverName: string | null | undefined
  * Prioriza trip.assignedMobileUser (chofer nombrado) > trip.reparto > trip.driver (legacy).
  * Devuelve el User correspondiente o null si no se puede resolver.
  */
-/** Busca el usuario DRIVER por nombre, probando con espacios y con guiones bajos.
- *  Sin distinguir mayusculas: antes buscaba "JUAN" exacto y un chofer creado como
- *  "juan" nunca era encontrado, asi que sus viajes quedaban asignados a otro
- *  usuario y en su app no le aparecia nada. */
+/** Busca la cuenta del chofer por nombre, probando con espacios y con guiones
+ *  bajos. Sin distinguir mayusculas: antes buscaba "JUAN" exacto y un chofer
+ *  creado como "juan" nunca era encontrado, asi que sus viajes quedaban
+ *  asignados a otro usuario y en su app no le aparecia nada.
+ *
+ *  Mira el usuario Y el nombre completo, y no solo los DRIVER: si la cuenta
+ *  existe con el usuario mal escrito, o quedo con rol CHOFER, o esta dada de
+ *  baja, hay que ENCONTRARLA igual. Si no, cada viaje con ese nombre fabricaba
+ *  una cuenta nueva y los duplicados volvian solos. */
 async function findDriverUser(name: string) {
     const base = String(name || '').trim();
     if (!base) return null;
     const variantes = [...new Set([base, base.replace(/\s+/g, '_'), base.replace(/_/g, ' ')])];
-    for (const v of variantes) {
-        const user = await prisma.user.findFirst({
-            where: { username: { equals: v, mode: 'insensitive' }, role: 'DRIVER' }
-        });
-        if (user) return user;
+    // Primero la cuenta que puede recibir viajes; despues cualquiera con ese nombre
+    for (const roles of [['DRIVER'], ['CHOFER'], ['BLOCKED']]) {
+        for (const v of variantes) {
+            const user = await prisma.user.findFirst({
+                where: {
+                    role: { in: roles },
+                    OR: [
+                        { username: { equals: v, mode: 'insensitive' } },
+                        { fullName: { equals: v, mode: 'insensitive' } }
+                    ]
+                }
+            });
+            if (user) return user;
+        }
     }
     return null;
 }
@@ -8508,7 +8522,9 @@ app.patch('/api/v1/users/:id/block', async (req, res) => {
         if (!id) return res.status(400).json({ error: 'id es obligatorio' });
         const blocked = Boolean(req.body?.blocked);
         let role = blocked ? 'BLOCKED' : String(req.body?.role || 'DRIVER').trim().toUpperCase();
-        if (!['DRIVER', 'ADMIN'].includes(role) && !blocked) role = 'DRIVER';
+        // Al reactivar se devuelve el rol que tenia. Antes CHOFER y AUXILIAR no
+        // estaban en la lista y se convertian en DRIVER, que es otra cosa.
+        if (!['DRIVER', 'ADMIN', 'CHOFER', 'AUXILIAR'].includes(role) && !blocked) role = 'DRIVER';
 
         const user = await prisma.user.update({
             where: { id },

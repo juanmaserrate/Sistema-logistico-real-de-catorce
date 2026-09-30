@@ -22121,15 +22121,34 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (_empSyncDone) return;
             _empSyncDone = true;
 
+            // TODAS las cuentas que ya existen, del tipo que sean. Antes solo se
+            // miraban las de tipo CHOFER: como la cuenta del chofer que usa la
+            // app es de tipo DRIVER, no la encontraba y le creaba una ficha
+            // nueva cada vez. Por eso los duplicados volvian despues de
+            // borrarlos.
+            let todasLasCuentas = [];
+            try {
+                todasLasCuentas = await fetch(`${API_URL}/users`, { headers: getActorHeaders() })
+                    .then(r => r.ok ? r.json() : []);
+                if (!Array.isArray(todasLasCuentas)) todasLasCuentas = [];
+            } catch (_) { /* sin la lista, se compara solo con lo que ya se cargo */ }
+            const nombresUsados = new Set(todasLasCuentas.flatMap(u => [
+                (u.fullName || '').toLowerCase(),
+                (u.username || '').toLowerCase(),
+                (u.username || '').replace(/_/g, ' ').toLowerCase(),
+                (u.fullName || '').replace(/\s+/g, '_').toLowerCase()
+            ]).filter(Boolean));
+
             // Comparar por fullName Y por username para evitar duplicados
-            const existingChoferes = new Set(choferList.flatMap(u => [
+            const existingChoferes = new Set([...nombresUsados, ...choferList.flatMap(u => [
                 (u.fullName || '').toLowerCase(),
                 (u.username || '').toLowerCase()
-            ]).filter(Boolean));
-            const existingAux = new Set(auxList.flatMap(u => [
+            ]).filter(Boolean)]);
+            const existingAux = new Set([...nombresUsados, ...auxList.flatMap(u => [
                 (u.fullName || '').toLowerCase(),
-                (u.username || '').toLowerCase()
-            ]).filter(Boolean));
+                (u.username || '').toLowerCase(),
+                ('AUX_' + (u.fullName || '').replace(/\s+/g, '_')).toLowerCase()
+            ]).filter(Boolean)]);
 
             const tripDrivers = [...new Set((planningData || []).map(t => t.driver).filter(n => n && n !== 'N/A' && n !== '--' && n !== 'SIN CHOFER'))];
             const tripAuxRaw = (planningData || []).flatMap(t =>
