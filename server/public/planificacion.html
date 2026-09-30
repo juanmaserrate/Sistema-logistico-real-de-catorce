@@ -20,7 +20,7 @@
          Plan gratuito: 50k cargas de mapa/mes. -->
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="/css/planificacion.css?v=20260929c">
+    <link rel="stylesheet" href="/css/planificacion.css?v=20260930a">
     <script src="/js/r14-utils.js"></script>
     <script src="/js/r14-notifications.js"></script>
 </head>
@@ -3959,6 +3959,8 @@
                 localStorage.setItem('r14.loggedRole', u.role || 'ADMIN');
                 if (data.token) localStorage.setItem('r14.authToken', data.token);
 
+                // Los permisos valen para todas las computadoras: se traen del servidor
+                await cargarPerfilesDelServidor();
                 const profile = getUserProfile(u.username || username);
                 applyAccessControl(profile);
                 document.getElementById('login-gate').style.display = 'none';
@@ -3993,10 +3995,11 @@
         }
 
         // Auto-login check on page load
-        function checkExistingSession() {
+        async function checkExistingSession() {
             const savedUser = localStorage.getItem('r14.loggedUser');
             const savedUsername = localStorage.getItem('r14.loggedUsername');
             if (savedUser && savedUsername) {
+                await cargarPerfilesDelServidor();
                 const profile = getUserProfile(savedUsername);
                 applyAccessControl(profile);
                 document.getElementById('login-gate').style.display = 'none';
@@ -4043,6 +4046,25 @@
 
         function saveStoredProfiles(profiles) {
             localStorage.setItem('r14.user_profiles', JSON.stringify(profiles));
+            // Y en el servidor, que es lo que ven todas las computadoras
+            fetch(`${API_URL}/settings`, {
+                method: 'POST',
+                headers: getActorHeaders(),
+                body: JSON.stringify({ key: 'user_profiles', value: profiles })
+            }).catch(() => { /* sin red, queda la copia del navegador */ });
+        }
+
+        /** Trae del servidor los permisos de todos y los deja listos para usar.
+         *  Antes solo se miraba el navegador: los permisos que asignaba uno no
+         *  llegaban a la computadora del otro. */
+        async function cargarPerfilesDelServidor() {
+            try {
+                const res = await fetch(`${API_URL}/settings/user_profiles`);
+                const v = res.ok ? await res.json() : null;
+                if (v && typeof v === 'object' && Object.keys(v).length) {
+                    localStorage.setItem('r14.user_profiles', JSON.stringify(v));
+                }
+            } catch (_) { /* sin red, vale lo que haya en el navegador */ }
         }
 
         function getAllProfileAssignments() {
@@ -5640,7 +5662,7 @@
                     const routeId = ids[idx];
                     const color = colors[idx % colors.length];
                     try {
-                        const res = await fetch(`${API_URL}/routes/${routeId}/geometry`);
+                        const res = await fetch(`${API_URL}/routes/${routeId}/geometry`, { headers: getActorHeaders() });
                         const data = await res.json();
                         if (token !== controlPlannedRoutesToken) return;
                         if (!res.ok || !data.points || data.points.length < 2) continue;
@@ -6678,7 +6700,7 @@
                 clearControlTrailPolylines();
                 const [histRes, sumRes] = await Promise.all([
                     fetch(`${API_URL}/tracking/history?routeId=${routeId}&hours=24&limit=5000`),
-                    fetch(`${API_URL}/routes/${routeId}/live-summary`)
+                    fetch(`${API_URL}/routes/${routeId}/live-summary`, { headers: getActorHeaders() })
                 ]);
                 const hist = histRes.ok ? await histRes.json() : { points: [] };
                 const summary = sumRes.ok ? await sumRes.json() : null;
@@ -11225,7 +11247,7 @@
         // refleje el estado real del servidor (no un incremento +1 que nunca se decrementa).
         async function refreshIncidentsBadge() {
             try {
-                const res = await fetch(`${API_URL}/incidents`);
+                const res = await fetch(`${API_URL}/incidents`, { headers: getActorHeaders() });
                 if (!res.ok) return;
                 const list = await res.json();
                 const arr = Array.isArray(list) ? list : [];
@@ -11245,7 +11267,7 @@
             cancelIncidentSelection();
             container.innerHTML = '<div class="col-span-full text-center py-16"><div class="inline-block w-6 h-6 border-2 border-indigo-600 border-t-transparent rounded-full animate-spin"></div></div>';
             try {
-                const res = await fetch(`${API_URL}/incidents`);
+                const res = await fetch(`${API_URL}/incidents`, { headers: getActorHeaders() });
                 let incidents = await res.json();
                 if (!Array.isArray(incidents)) incidents = [];
 
@@ -11388,7 +11410,7 @@
                 if (user)   q.set('user', user);
                 if (from)   q.set('from', from);
                 if (to)     q.set('to', to + 'T23:59:59');
-                const res  = await fetch(`${API_URL}/audit?${q}`);
+                const res  = await fetch(`${API_URL}/audit?${q}`, { headers: getActorHeaders() });
                 const data = await res.json();
                 auditTotal = data.total || 0;
                 const logs = data.logs || [];
@@ -11579,7 +11601,7 @@
 
         async function loadSchools() {
             try {
-                const res = await fetch(`${API_URL}/clients`);
+                const res = await fetch(`${API_URL}/clients`, { headers: getActorHeaders() });
                 if (!res.ok) throw new Error('API unreachable');
                 allSchools = await res.json();
                 selectedSchoolsForDelete = new Set(
@@ -12939,7 +12961,7 @@
             const trip = getWeeklyTripById(tripId);
             const reparto = trip ? String(trip.tripType || trip.reparto || '').trim() : '';
             try {
-                const res = await fetch(`${API_URL}/trips/${tripId}/delivery-stops`);
+                const res = await fetch(`${API_URL}/trips/${tripId}/delivery-stops`, { headers: getActorHeaders() });
                 const data = await res.json();
                 // Detectar si el viaje ya inició — múltiples señales:
                 // 1) routeStarted explícito desde el backend
@@ -13008,7 +13030,7 @@
                 // Fallback: cargar TripStops del viaje (importados del Excel u otras fuentes)
                 if (rows.length === 0) {
                     try {
-                        const tsr = await fetch(`${API_URL}/trips/${tripId}/stops`);
+                        const tsr = await fetch(`${API_URL}/trips/${tripId}/stops`, { headers: getActorHeaders() });
                         if (tsr.ok) {
                             const tsData = await tsr.json();
                             const tripStops = Array.isArray(tsData) ? tsData : (tsData.stops || []);
@@ -13074,7 +13096,7 @@
             // Asegurar lista cargada
             if (!allSchools.length) {
                 try {
-                    const res = await fetch(`${API_URL}/clients`);
+                    const res = await fetch(`${API_URL}/clients`, { headers: getActorHeaders() });
                     if (res.ok) allSchools = await res.json();
                 } catch (e) {
                     console.warn(e);
@@ -13459,7 +13481,7 @@
             const count = document.getElementById('weekly-inc-count-' + tripId);
             if (!list) return;
             try {
-                const res = await fetch(`${API_URL}/incidents?tripId=${tripId}`);
+                const res = await fetch(`${API_URL}/incidents?tripId=${tripId}`, { headers: getActorHeaders() });
                 let incs = await res.json();
                 if (!Array.isArray(incs)) incs = [];
                 // Backend podría no filtrar por tripId; filtramos en front por seguridad
@@ -16814,7 +16836,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
             if (allSchools.length === 0) {
                 try {
-                    const res = await fetch(`${API_URL}/clients`);
+                    const res = await fetch(`${API_URL}/clients`, { headers: getActorHeaders() });
                     allSchools = await res.json();
                     renderVrpList();
                 } catch (e) {
@@ -17121,7 +17143,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 // For now, combining API vehicles with local storage or defaults for extended fields
                 let apiVehicles = [];
                 try {
-                    const res = await fetch(`${API_URL}/vehicles`);
+                    const res = await fetch(`${API_URL}/vehicles`, { headers: getActorHeaders() });
                     if (res.ok) apiVehicles = await res.json();
                 } catch (_) {
                     apiVehicles = [];
@@ -17315,7 +17337,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             try {
                 // 1. Fetch Records from DB
                 try {
-                    const resRecs = await fetch(`${API_URL}/maintenance`);
+                    const resRecs = await fetch(`${API_URL}/maintenance`, { headers: getActorHeaders() });
                     if (resRecs.ok) {
                         const dbRecs = await resRecs.json();
                         const recordsByPlate = {};
@@ -17334,7 +17356,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
                 let apiVehicles = [];
                 try {
-                    const resVehicles = await fetch(`${API_URL}/vehicles`);
+                    const resVehicles = await fetch(`${API_URL}/vehicles`, { headers: getActorHeaders() });
                     apiVehicles = await resVehicles.json();
                 } catch (_) {
                     apiVehicles = [];
@@ -17343,8 +17365,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 let trips = planningData || [];
                 if (!trips || trips.length === 0) {
                     try {
-                        const month = document.getElementById('planning-month-select')?.value || 'enero';
-                        const resTrips = await fetch(`${API_URL}/trips?month=${month}`);
+                        const MESES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+                        const month = document.getElementById('planning-month-select')?.value || MESES[new Date().getMonth()];
+                        const resTrips = await fetch(`${API_URL}/trips?month=${month}`, { headers: getActorHeaders() });
                         trips = await resTrips.json();
                     } catch (_) {
                         trips = [];
@@ -17787,7 +17810,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         function addRepairRow() {
             const targetPlate = selectedMaintenancePlate || maintenanceVehicles[0]?.plate;
-            if (!targetPlate) return;
+            if (!targetPlate) {
+                // Antes salia sin hacer nada y el boton parecia roto
+                alert('Todavía no hay ningún vehículo en la lista, así que no hay a quién cargarle la reparación. Cargá la unidad en Datos > Flotas y volvé a entrar a Mantenimiento.');
+                return;
+            }
             const data = getMaintenanceData();
             if (!data.records[targetPlate]) data.records[targetPlate] = [];
             data.records[targetPlate].push({
@@ -18206,7 +18233,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         
         async function loadSalariesData() {
             try {
-                const res = await fetch(`${API_URL}/salaries`);
+                const res = await fetch(`${API_URL}/salaries`, { headers: getActorHeaders() });
                 if (res.ok) {
                     const data = await res.json();
                     if (data.length > 0) {
@@ -21066,7 +21093,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (editor) editor.classList.remove('hidden');
             tripDeliveryRows = [];
             try {
-                const res = await fetch(`${API_URL}/trips/${tripId}/delivery-stops`);
+                const res = await fetch(`${API_URL}/trips/${tripId}/delivery-stops`, { headers: getActorHeaders() });
                 const data = await res.json();
                 tripDeliveryRows = (data.stops || []).map((s) => ({
                     clientId: s.clientId,
