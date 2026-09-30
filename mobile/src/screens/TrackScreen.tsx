@@ -41,6 +41,7 @@ import {
 } from '../api';
 import StopDeliveryModal from '../components/StopDeliveryModal';
 import CratesModal from '../components/CratesModal';
+import { resumenPorProveedor } from '../components/CajonesPorProveedor';
 import IncidentModal from '../components/IncidentModal';
 import ReorderModal from '../components/ReorderModal';
 import {
@@ -1049,6 +1050,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                           <Text style={styles.tlCrates}>
                             📦 {[st.cratesDelivered != null ? `Bajó ${st.cratesDelivered}` : null,
                               st.cratesRecovered != null ? `Recuperó ${st.cratesRecovered}` : null].filter(Boolean).join(' · ')}
+                            {resumenPorProveedor(st) ? `\n${resumenPorProveedor(st)}` : ''}
                           </Text>
                         ) : null}
                         {st.observations ? (
@@ -1072,7 +1074,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                     {(isDone || isFailed) && !isBase ? (
                       <Pressable style={styles.tlBtnCrates} onPress={() => setCratesModalStop(st)}>
                         <Text style={styles.tlBtnCratesTxt}>
-                          📦 {(st.cratesDelivered != null || st.cratesRecovered != null) ? 'Corregir cajones con seña' : 'Cargar cajones con seña'}
+                          📦 {(st.cratesDelivered != null || st.cratesRecovered != null) ? 'Corregir cajones' : 'Cargar cajones'}
                         </Text>
                         <Text style={styles.tlBtnCratesSub}>Podés cargarlos aunque el viaje ya esté cerrado</Text>
                       </Pressable>
@@ -1193,12 +1195,12 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         visible={cratesModalStop != null}
         stop={cratesModalStop}
         onClose={() => setCratesModalStop(null)}
-        onSaved={(stopId, d, r) => {
+        onSaved={(stopId, cambios) => {
           // Actualizacion inmediata en pantalla; el refresh del server confirma.
           if (selId != null) {
             setRoutes((prev) => prev.map((rt) => rt.id !== selId ? rt : {
               ...rt,
-              stops: rt.stops.map((s) => s.id === stopId ? { ...s, cratesDelivered: d, cratesRecovered: r } : s),
+              stops: rt.stops.map((s) => s.id === stopId ? { ...s, ...cambios } : s),
             }));
           }
           loadRoutes({ silent: true }).catch(() => {});

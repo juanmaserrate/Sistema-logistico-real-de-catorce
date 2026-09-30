@@ -194,6 +194,17 @@ model Stop {
   /// Última vez que se tocaron los cajones. Sirve para detectar el retiro tardío:
   /// el chofer vuelve más tarde a buscar los cajones, con la entrega ya cerrada.
   cratesUpdatedAt       DateTime?
+  /// Cajones abiertos por proveedor del envase. Es lo que el chofer carga en la
+  /// app: cuantos dejo y cuantos recupero de cada uno. Los totales de arriba
+  /// (cratesDelivered / cratesRecovered) son la SUMA de estos tres y los
+  /// calcula el servidor, para que ningun reporte viejo quede sin dato.
+  /// null = el chofer no lo cargo; 0 = lo cargo y no hubo cajones de ese proveedor.
+  cratesDeliveredPeco      Int?
+  cratesRecoveredPeco      Int?
+  cratesDeliveredPlasticos Int?
+  cratesRecoveredPlasticos Int?
+  cratesDeliveredBurzaco   Int?
+  cratesRecoveredBurzaco   Int?
   client                Client    @relation(fields: [clientId], references: [id])
   route                 Route     @relation(fields: [routeId], references: [id])
 

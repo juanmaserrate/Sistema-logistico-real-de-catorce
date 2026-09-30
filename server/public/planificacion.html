@@ -111,7 +111,7 @@
                             <a href="#drivers-status" id="btn-drivers-status" class="nav-menu-item" role="menuitem"><i data-lucide="radio"></i> <span>Estado de Choferes</span></a>
                             <a href="#weekly" id="btn-weekly" class="nav-menu-item" role="menuitem"><i data-lucide="layout-dashboard"></i> <span>Logística Semanal</span></a>
                             <a href="#hdr" id="btn-hdr" class="nav-menu-item" role="menuitem"><i data-lucide="history"></i> <span>HDR</span></a>
-                            <a href="#crates" id="btn-crates" class="nav-menu-item" role="menuitem"><i data-lucide="package"></i> <span>Cajones con seña</span></a>
+                            <a href="#crates" id="btn-crates" class="nav-menu-item" role="menuitem"><i data-lucide="package"></i> <span>Cajones</span></a>
                         </div>
                     </div>
                     <div class="nav-menu" id="nav-menu-planificacion" data-menu="planificacion">
@@ -2087,8 +2087,8 @@
                 <div class="card-dark overflow-hidden">
                     <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
                         <div>
-                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Cajones con seña</h4>
-                            <p class="text-xs text-[#A3AED0] mt-1">Lo que cargan los choferes en la app al finalizar cada parada. <b>Saldo</b> = dejados &minus; recuperados = cajones con seña que quedaron en el establecimiento.</p>
+                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Cajones</h4>
+                            <p class="text-xs text-[#A3AED0] mt-1">Lo que cargan los choferes en la app al finalizar cada parada, separado por proveedor del envase: <b>Peco</b>, <b>Plásticos</b> y <b>Burzaco</b>. <b>Saldo</b> = dejados &minus; recuperados = cajones que quedaron en el establecimiento.</p>
                         </div>
                         <div class="flex flex-wrap items-end gap-2">
                             <label class="text-[10px] font-bold text-[#A3AED0] uppercase">Desde<input type="date" id="crates-from" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></label>
@@ -2098,6 +2098,16 @@
                     </div>
                     <div class="p-6 bg-white space-y-6">
                         <div id="crates-kpis" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+                        <div>
+                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-wider mb-2">Por proveedor del envase</h5>
+                            <div class="overflow-x-auto"><table class="w-full text-sm">
+                                <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left">
+                                    <th class="py-2 px-2">Proveedor</th><th class="py-2 px-2 text-right">Dejados</th>
+                                    <th class="py-2 px-2 text-right">Recuperados</th><th class="py-2 px-2 text-right">Saldo en la calle</th>
+                                </tr></thead>
+                                <tbody id="crates-by-proveedor"></tbody>
+                            </table></div>
+                        </div>
                         <div>
                             <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-wider mb-2">Por reparto <span class="font-normal normal-case text-[#A3AED0]">&mdash; click en un reparto para ver sus establecimientos</span></h5>
                             <div class="overflow-x-auto"><table class="w-full text-sm">
@@ -4294,7 +4304,7 @@
             const titles = {
                 control: 'Torre de Control / En Vivo',
                 'drivers-status': 'Estado de Choferes',
-                crates: 'Cajones con seña',
+                crates: 'Cajones',
                 'crates-sim': 'Cajones en tránsito',
                 hdr: 'Historial de Rutas (HDR)',
                 fleets: 'Flotas — Datos de vehículos',
@@ -4319,7 +4329,7 @@
             const descs = {
                 control: 'Monitoreo en tiempo real de operaciones y estados de tránsito',
                 'drivers-status': 'Quién está reportando señal y quién no, entre los choferes con viaje asignado',
-                crates: 'Cajones con seña dejados y recuperados por reparto y por establecimiento',
+                crates: 'Cajones dejados y recuperados por proveedor del envase (Peco, Plásticos, Burzaco), por reparto y por establecimiento',
                 'crates-sim': 'Cajones dejados y recuperados por reparto y por establecimiento — reporte fijo',
                 hdr: 'Recorridos finalizados con paradas, horarios y trazado GPS de la flota',
                 fleets: 'Configuración de cada camión reutilizable en presupuestos (valor, consumo, mantenimiento, etc.)',
@@ -4553,6 +4563,32 @@
             renderCratesModule();
         }
 
+        // "PECO 5 · PLÁST. 4 · BURZ. 3": el saldo abierto de cada proveedor.
+        // Los que no tienen nada no se muestran, para no ensuciar la tabla.
+        const _CRATES_PROV_CORTO = { peco: 'PECO', plasticos: 'PLÁST.', burzaco: 'BURZ.' };
+        function _cratesProvLinea(pp) {
+            if (!pp) return '';
+            return Object.keys(_CRATES_PROV_CORTO)
+                .filter(k => pp[k] && (pp[k].dejados || pp[k].recuperados))
+                .map(k => `${_CRATES_PROV_CORTO[k]} ${pp[k].saldo}`)
+                .join(' · ');
+        }
+
+        function renderCratesProveedores() {
+            const d = _cratesData;
+            const tbody = document.getElementById('crates-by-proveedor');
+            if (!d || !tbody) return;
+            const pp = d.totales?.porProveedor || {};
+            const filas = (d.proveedores || []).map(p => ({ nombre: p.nombre, ...(pp[p.clave] || { dejados: 0, recuperados: 0, saldo: 0 }) }));
+            tbody.innerHTML = filas.length ? filas.map(f => `
+                <tr class="border-t border-[#F4F7FE]">
+                    <td class="py-2 px-2 font-black text-[#1B2559]">${_cratesEsc(f.nombre)}</td>
+                    <td class="py-2 px-2 text-right font-bold">${f.dejados}</td>
+                    <td class="py-2 px-2 text-right font-bold">${f.recuperados}</td>
+                    ${_cratesSaldoCell(f.saldo)}
+                </tr>`).join('') : '<tr><td colspan="4" class="py-3 px-2 text-[#A3AED0]">Todavía no hay cajones cargados en este periodo.</td></tr>';
+        }
+
         function renderCratesModule() {
             const d = _cratesData;
             if (!d) return;
@@ -4575,14 +4611,15 @@
             document.getElementById('crates-by-reparto').innerHTML = rows.length ? rows.map((r, idx) => {
                 const on = _cratesReparto === r.reparto;
                 return `<tr data-idx="${idx}" onclick="setCratesRepartoFilter(_cratesData.porReparto[${idx}].reparto)" class="cursor-pointer border-t border-[#F4F7FE] ${on ? 'bg-indigo-50' : 'hover:bg-[#F4F7FE]'}">
-                    <td class="py-2 px-2 font-black text-[#1B2559]">${_cratesEsc(r.reparto)}</td>
+                    <td class="py-2 px-2"><p class="font-black text-[#1B2559]">${_cratesEsc(r.reparto)}</p>${_cratesProvLinea(r.porProveedor) ? `<p class="text-[10px] text-[#A3AED0] font-bold">${_cratesProvLinea(r.porProveedor)}</p>` : ''}</td>
                     <td class="py-2 px-2 text-[#A3AED0] text-xs">${_cratesEsc((r.usuarios || []).join(', '))}</td>
                     <td class="py-2 px-2 text-right">${r.paradas}${r.tardias ? ` <span title="${r.tardias} carga(s) hecha(s) despues de cerrar la entrega">⏱</span>` : ''}</td>
                     <td class="py-2 px-2 text-right font-bold">${r.dejados}</td>
                     <td class="py-2 px-2 text-right font-bold">${r.recuperados}</td>
                     ${_cratesSaldoCell(r.saldo)}
                 </tr>`;
-            }).join('') : '<tr><td colspan="6" class="py-3 px-2 text-[#A3AED0]">Todavia no hay cajones con seña cargados en este periodo.</td></tr>';
+            }).join('') : '<tr><td colspan="6" class="py-3 px-2 text-[#A3AED0]">Todavia no hay cajones cargados en este periodo.</td></tr>';
+            renderCratesProveedores();
             renderCratesEstablishments();
         }
 
@@ -4601,7 +4638,7 @@
             const fmt = iso => iso ? new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '—';
             tbody.innerHTML = list.length ? list.map(e => `
                 <tr class="border-t border-[#F4F7FE]">
-                    <td class="py-2 px-2"><p class="font-bold text-[#1B2559]">${_cratesEsc(e.establecimiento)}</p>${e.direccion ? `<p class="text-[10px] text-[#A3AED0]">${_cratesEsc(e.direccion)}</p>` : ''}</td>
+                    <td class="py-2 px-2"><p class="font-bold text-[#1B2559]">${_cratesEsc(e.establecimiento)}</p>${e.direccion ? `<p class="text-[10px] text-[#A3AED0]">${_cratesEsc(e.direccion)}</p>` : ''}${_cratesProvLinea(e.porProveedor) ? `<p class="text-[10px] text-[#A3AED0] font-bold">${_cratesProvLinea(e.porProveedor)}</p>` : ''}</td>
                     <td class="py-2 px-2 text-xs">${_cratesEsc((e.repartos || []).join(', '))}</td>
                     <td class="py-2 px-2 text-right">${e.visitas}${e.tardias ? ` <span title="${e.tardias} carga(s) hecha(s) despues de cerrar la entrega">⏱</span>` : ''}</td>
                     <td class="py-2 px-2 text-right font-bold">${e.dejados}</td>

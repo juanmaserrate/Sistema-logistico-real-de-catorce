@@ -172,10 +172,32 @@ async function filasViajesDe(prisma: Prisma, where: any) {
     });
 }
 
+/** Los tres proveedores de envases, en un solo lugar para que la app, los
+ *  reportes y el TMS hablen del mismo dato. El orden es el que ve el chofer.
+ *  `dej` y `rec` son los nombres de las columnas de Stop. */
+export const PROVEEDORES_CAJONES = [
+    { clave: 'peco', nombre: 'PECO', dej: 'cratesDeliveredPeco', rec: 'cratesRecoveredPeco' },
+    { clave: 'plasticos', nombre: 'PLASTICOS', dej: 'cratesDeliveredPlasticos', rec: 'cratesRecoveredPlasticos' },
+    { clave: 'burzaco', nombre: 'BURZACO', dej: 'cratesDeliveredBurzaco', rec: 'cratesRecoveredBurzaco' }
+] as const;
+
+/** Suma de los tres proveedores. null si ninguno tiene dato cargado, para no
+ *  confundir "no lo cargo" con "cargo cero". */
+export function sumaProveedores(fila: any, cual: 'dej' | 'rec'): number | null {
+    let total: number | null = null;
+    for (const p of PROVEEDORES_CAJONES) {
+        const v = fila?.[p[cual]];
+        if (v == null) continue;
+        total = (total || 0) + Number(v);
+    }
+    return total;
+}
+
 /**
  * Una fila por movimiento de envases: "Salida" = lo que el chofer dejo,
- * "Entrada" = lo que retiro. Cada fila dice en QUE ESCUELA fue, que es el
- * dato que falta en la planilla que se carga a mano.
+ * "Entrada" = lo que retiro. Cada fila dice en QUE ESCUELA fue y de QUE
+ * PROVEEDOR era el envase, que es el dato que falta en la planilla que se
+ * carga a mano.
  */
 export async function filasCajones(prisma: Prisma, desde: Date, hasta: Date) {
     const paradas = await prisma.stop.findMany({
@@ -185,6 +207,9 @@ export async function filasCajones(prisma: Prisma, desde: Date, hasta: Date) {
         },
         select: {
             cratesDelivered: true, cratesRecovered: true, cratesUpdatedAt: true,
+            cratesDeliveredPeco: true, cratesRecoveredPeco: true,
+            cratesDeliveredPlasticos: true, cratesRecoveredPlasticos: true,
+            cratesDeliveredBurzaco: true, cratesRecoveredBurzaco: true,
             actualArrival: true, sequence: true,
             client: { select: { name: true, address: true, localidad: true, partido: true } },
             route: {
@@ -217,11 +242,24 @@ export async function filasCajones(prisma: Prisma, desde: Date, hasta: Date) {
             // entrega ya cerrada: esta columna delata ese retiro tardio.
             'Ultima carga de envases': hora(p.cratesUpdatedAt)
         };
-        if (p.cratesDelivered != null) {
-            filas.push({ ...base, 'Tipo de movimiento': 'Salida', 'Tipo de envase': 'Cajon con seña', 'Cantidad': p.cratesDelivered });
+        // Una fila por proveedor y por sentido. Las cantidades en cero no se
+        // exportan: ensucian la planilla y no son un movimiento.
+        let abierto = false;
+        for (const prov of PROVEEDORES_CAJONES) {
+            const dej = (p as any)[prov.dej];
+            const rec = (p as any)[prov.rec];
+            if (dej == null && rec == null) continue;
+            abierto = true;
+            const fila = { ...base, 'Tipo de envase': 'Cajon con seña', 'Proveedor del envase': prov.nombre };
+            if (Number(dej) > 0) filas.push({ ...fila, 'Tipo de movimiento': 'Salida', 'Cantidad': Number(dej) });
+            if (Number(rec) > 0) filas.push({ ...fila, 'Tipo de movimiento': 'Entrada', 'Cantidad': Number(rec) });
         }
-        if (p.cratesRecovered != null) {
-            filas.push({ ...base, 'Tipo de movimiento': 'Entrada', 'Tipo de envase': 'Cajon con seña', 'Cantidad': p.cratesRecovered });
+        // Paradas viejas, cargadas antes de que se separara por proveedor: se
+        // exportan igual, con el proveedor sin identificar.
+        if (!abierto) {
+            const sinProv = { ...base, 'Tipo de envase': 'Cajon con seña', 'Proveedor del envase': 'SIN IDENTIFICAR' };
+            if (p.cratesDelivered != null) filas.push({ ...sinProv, 'Tipo de movimiento': 'Salida', 'Cantidad': p.cratesDelivered });
+            if (p.cratesRecovered != null) filas.push({ ...sinProv, 'Tipo de movimiento': 'Entrada', 'Cantidad': p.cratesRecovered });
         }
     }
     return filas;
@@ -320,7 +358,7 @@ const COLUMNAS: Record<string, string[]> = {
         'Temperatura', 'Estado', 'Salida deposito', 'Llegada deposito', 'Duracion real', 'Duracion horas', 'Paradas planificadas',
         'Paradas entregadas', 'Paradas no entregadas', 'Km recorridos', 'Costo', 'Estado de pago', 'Fecha de pago'],
     cajones: ['Fecha', 'ID viaje', 'Reparto', 'Unidad de negocio', 'Chofer', 'Establecimiento', 'Direccion',
-        'Localidad', 'Partido', 'Orden de parada', 'Tipo de movimiento', 'Tipo de envase', 'Cantidad', 'Hora de la parada',
+        'Localidad', 'Partido', 'Orden de parada', 'Tipo de movimiento', 'Tipo de envase', 'Proveedor del envase', 'Cantidad', 'Hora de la parada',
         'Ultima carga de envases'],
     mantenimiento: ['Fecha', 'Patente', 'Categoria', 'Mes', 'Trabajo realizado', 'Taller o proveedor',
         'Kilometros', 'Costo', 'Notas'],

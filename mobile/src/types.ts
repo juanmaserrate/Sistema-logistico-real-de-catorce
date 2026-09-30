@@ -29,9 +29,17 @@ export interface Stop {
   observations?: string | null;
   proofPhotoUrl?: string | null;
   deliveryWithoutIssues?: boolean | null;
-  /** Cajones con seña dejados / recuperados en la parada (null = no se cargó) */
+  /** Cajones dejados / recuperados en la parada: el TOTAL de los tres
+   *  proveedores. Lo calcula el servidor (null = no se cargó). */
   cratesDelivered?: number | null;
   cratesRecovered?: number | null;
+  /** Cajones separados por proveedor del envase. Es lo que carga el chofer. */
+  cratesDeliveredPeco?: number | null;
+  cratesRecoveredPeco?: number | null;
+  cratesDeliveredPlasticos?: number | null;
+  cratesRecoveredPlasticos?: number | null;
+  cratesDeliveredBurzaco?: number | null;
+  cratesRecoveredBurzaco?: number | null;
   reasonCode?: string | null;
   /** true = vuelta al depósito (Real de Catorce). Al marcarla se cierra el viaje. */
   isReturnToBase?: boolean;

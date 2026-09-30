@@ -345,6 +345,12 @@ interface OfflineStopAction {
     deliveryWithoutIssues?: boolean | null;
     cratesDelivered?: number | null;
     cratesRecovered?: number | null;
+    cratesDeliveredPeco?: number | null;
+    cratesRecoveredPeco?: number | null;
+    cratesDeliveredPlasticos?: number | null;
+    cratesRecoveredPlasticos?: number | null;
+    cratesDeliveredBurzaco?: number | null;
+    cratesRecoveredBurzaco?: number | null;
     reasonCode?: string | null;
   };
   timestamp: string;
@@ -451,6 +457,12 @@ export async function patchStop(
     deliveryWithoutIssues?: boolean | null;
     cratesDelivered?: number | null;
     cratesRecovered?: number | null;
+    cratesDeliveredPeco?: number | null;
+    cratesRecoveredPeco?: number | null;
+    cratesDeliveredPlasticos?: number | null;
+    cratesRecoveredPlasticos?: number | null;
+    cratesDeliveredBurzaco?: number | null;
+    cratesRecoveredBurzaco?: number | null;
     reasonCode?: string | null;
   }
 ): Promise<unknown> {

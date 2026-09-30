@@ -1,7 +1,7 @@
 
 import express from 'express';
 import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail, limpiarTokenMail } from './mailer';
-import { armarReporte, filasViajesPorIds, mesDeFecha, esCuentaDePrueba } from './reporteTorre';
+import { armarReporte, filasViajesPorIds, mesDeFecha, esCuentaDePrueba, PROVEEDORES_CAJONES, sumaProveedores } from './reporteTorre';
 import { armarLibroViajes } from './libroViajes';
 import { metricasDelMes } from './metricasDashboard';
 import { subirArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnosticoSharepoint, limpiarTokenSharepoint } from './sharepoint';
@@ -4815,6 +4815,9 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
             },
             select: {
                 cratesDelivered: true, cratesRecovered: true, cratesUpdatedAt: true,
+                cratesDeliveredPeco: true, cratesRecoveredPeco: true,
+                cratesDeliveredPlasticos: true, cratesRecoveredPlasticos: true,
+                cratesDeliveredBurzaco: true, cratesRecoveredBurzaco: true,
                 actualArrival: true, actualDeparture: true,
                 client: { select: { id: true, name: true, address: true } },
                 route: {
@@ -4829,7 +4832,28 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
 
         const porReparto = new Map<string, any>();
         const porEstab = new Map<string, any>();
-        const tot = { dejados: 0, recuperados: 0, paradas: 0, tardias: 0 };
+        // Un contador por proveedor del envase, para saber de quien son los
+        // cajones que quedaron en la calle y no solo cuantos son.
+        const porProveedorVacio = () => {
+            const o: any = {};
+            for (const p of PROVEEDORES_CAJONES) o[p.clave] = { nombre: p.nombre, dejados: 0, recuperados: 0 };
+            return o;
+        };
+        const sumarProveedores = (acc: any, s: any) => {
+            for (const p of PROVEEDORES_CAJONES) {
+                acc[p.clave].dejados += Number(s[p.dej]) || 0;
+                acc[p.clave].recuperados += Number(s[p.rec]) || 0;
+            }
+        };
+        const cerrarProveedores = (acc: any) => {
+            const o: any = {};
+            for (const p of PROVEEDORES_CAJONES) {
+                const x = acc[p.clave];
+                o[p.clave] = { ...x, saldo: x.dejados - x.recuperados };
+            }
+            return o;
+        };
+        const tot = { dejados: 0, recuperados: 0, paradas: 0, tardias: 0, porProveedor: porProveedorVacio() };
         // "Tardía": los cajones se cargaron mas de 5 min despues de cerrar la entrega
         // (el chofer volvio mas tarde a buscarlos). No es un error, se marca aparte.
         const esTardia = (s: any) => {
@@ -4849,27 +4873,36 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
             const tardia = esTardia(s);
             tot.dejados += d; tot.recuperados += r; tot.paradas++;
             if (tardia) tot.tardias++;
+            sumarProveedores(tot.porProveedor, s);
 
             const kr = reparto.toUpperCase();
-            const rep = porReparto.get(kr) || { reparto, usuarios: new Set<string>(), dejados: 0, recuperados: 0, paradas: 0, tardias: 0 };
+            const rep = porReparto.get(kr) || { reparto, usuarios: new Set<string>(), dejados: 0, recuperados: 0, paradas: 0, tardias: 0, porProveedor: porProveedorVacio() };
             rep.usuarios.add(usuario); rep.dejados += d; rep.recuperados += r; rep.paradas++;
             if (tardia) rep.tardias++;
+            sumarProveedores(rep.porProveedor, s);
             porReparto.set(kr, rep);
 
             const ke = s.client?.id || 'sin-cliente';
             const est = porEstab.get(ke) || {
                 clientId: s.client?.id || null, establecimiento: s.client?.name || '-', direccion: s.client?.address || null,
-                repartos: new Set<string>(), dejados: 0, recuperados: 0, visitas: 0, ultimaVisita: null as any, tardias: 0
+                repartos: new Set<string>(), dejados: 0, recuperados: 0, visitas: 0, ultimaVisita: null as any, tardias: 0,
+                porProveedor: porProveedorVacio()
             };
             est.repartos.add(reparto); est.dejados += d; est.recuperados += r; est.visitas++;
             if (tardia) est.tardias++;
+            sumarProveedores(est.porProveedor, s);
             if (fecha && (!est.ultimaVisita || new Date(fecha) > new Date(est.ultimaVisita))) est.ultimaVisita = new Date(fecha).toISOString();
             porEstab.set(ke, est);
         }
 
-        const conSaldo = (x: any) => ({ ...x, saldo: x.dejados - x.recuperados });
+        const conSaldo = (x: any) => ({
+            ...x,
+            saldo: x.dejados - x.recuperados,
+            porProveedor: x.porProveedor ? cerrarProveedores(x.porProveedor) : undefined
+        });
         res.json({
             desde: from, hasta: to,
+            proveedores: PROVEEDORES_CAJONES.map((p) => ({ clave: p.clave, nombre: p.nombre })),
             totales: conSaldo(tot),
             porReparto: [...porReparto.values()]
                 .map((x) => conSaldo({ ...x, usuarios: [...x.usuarios] }))
@@ -7932,24 +7965,42 @@ app.post('/api/admin/reset-crates', async (req: any, res: any) => {
     const { key, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     try {
+        const camposProveedor = PROVEEDORES_CAJONES.flatMap((p) => [p.dej, p.rec]);
+        const sel: any = { id: true, cratesDelivered: true, cratesRecovered: true, route: { select: { date: true, trip: { select: { reparto: true } } } } };
+        for (const c of camposProveedor) sel[c] = true;
         const stops = await prisma.stop.findMany({
-            where: { OR: [{ cratesDelivered: { not: null } }, { cratesRecovered: { not: null } }] },
-            select: { id: true, cratesDelivered: true, cratesRecovered: true, route: { select: { date: true, trip: { select: { reparto: true } } } } }
+            where: {
+                OR: [
+                    { cratesDelivered: { not: null } },
+                    { cratesRecovered: { not: null } },
+                    ...camposProveedor.map((c) => ({ [c]: { not: null } }))
+                ]
+            },
+            select: sel
         });
-        const dejados = stops.reduce((a, s) => a + (s.cratesDelivered || 0), 0);
-        const recuperados = stops.reduce((a, s) => a + (s.cratesRecovered || 0), 0);
-        const resumen = { paradas: stops.length, dejados, recuperados };
-        if (dryRun || !stops.length) return res.json({ dryRun: !!dryRun, ...resumen, detalle: stops.slice(0, 50) });
+        const dejados = stops.reduce((a: number, s: any) => a + (s.cratesDelivered || 0), 0);
+        const recuperados = stops.reduce((a: number, s: any) => a + (s.cratesRecovered || 0), 0);
+        // La simulacion congelada de "Cajones en transito" tambien es historial.
+        const sim = await prisma.appSettings.findUnique({ where: { key: CLAVE_SIM_CAJONES } });
+        const resumen = { paradas: stops.length, dejados, recuperados, simulacionCongelada: !!sim };
+        if (dryRun || (!stops.length && !sim)) return res.json({ dryRun: !!dryRun, ...resumen, detalle: stops.slice(0, 50) });
 
         const backupKey = `crates_backup_${new Date().toISOString().replace(/[:.]/g, '-')}`;
         await prisma.appSettings.create({
-            data: { key: backupKey, value: JSON.stringify(stops.map(s => ({ id: s.id, d: s.cratesDelivered, r: s.cratesRecovered }))) }
+            data: { key: backupKey, value: JSON.stringify({ stops, simulacion: sim?.value ?? null }) }
         });
-        const upd = await prisma.stop.updateMany({
-            where: { id: { in: stops.map(s => s.id) } },
-            data: { cratesDelivered: null, cratesRecovered: null }
-        });
-        res.json({ dryRun: false, ...resumen, borradas: upd.count, backupKey });
+        let borradas = 0;
+        if (stops.length) {
+            const limpio: any = { cratesDelivered: null, cratesRecovered: null };
+            for (const c of camposProveedor) limpio[c] = null;
+            const upd = await prisma.stop.updateMany({
+                where: { id: { in: stops.map((s: any) => s.id) } },
+                data: limpio
+            });
+            borradas = upd.count;
+        }
+        if (sim) await prisma.appSettings.delete({ where: { key: CLAVE_SIM_CAJONES } });
+        res.json({ dryRun: false, ...resumen, borradas, simulacionBorrada: !!sim, backupKey });
     } catch (e: any) {
         console.error('reset-crates:', e);
         res.status(500).json({ error: e?.message || 'Error' });
@@ -8033,16 +8084,44 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
             }
             data[campo] = n;
         }
+        // Cajones separados por proveedor del envase (Peco, Plasticos, Burzaco).
+        // Es lo que carga el chofer en la app. Los dos totales de arriba los
+        // recalcula el servidor como la SUMA de los tres, asi ningun reporte
+        // viejo se queda sin dato y los dos numeros nunca se contradicen.
+        const camposProveedor = PROVEEDORES_CAJONES.flatMap((p) => [p.dej, p.rec]);
+        let tocoProveedores = false;
+        for (const campo of camposProveedor) {
+            if (body[campo] === undefined) continue;
+            tocoProveedores = true;
+            if (body[campo] === null || body[campo] === '') { data[campo] = null; continue; }
+            const n = Number(body[campo]);
+            if (!Number.isInteger(n) || n < 0 || n > 999) {
+                res.status(400).json({ error: `${campo} debe ser un entero entre 0 y 999` });
+                return;
+            }
+            data[campo] = n;
+        }
+        if (tocoProveedores) {
+            // Puede venir un solo proveedor: lo que falta se completa con lo
+            // que ya tenia la parada, para no borrar los otros dos sin querer.
+            const sel: any = {};
+            for (const c of camposProveedor) sel[c] = true;
+            const actual = await prisma.stop.findUnique({ where: { id: stopId }, select: sel });
+            const unido: any = { ...(actual || {}), ...data };
+            data.cratesDelivered = sumaProveedores(unido, 'dej');
+            data.cratesRecovered = sumaProveedores(unido, 'rec');
+        }
         // Retiro tardío: el chofer vuelve más tarde a buscar los cajones, con la
         // entrega (y a veces el viaje entero) ya cerrada. Guardamos cuándo se cargó.
-        if (data.cratesDelivered !== undefined || data.cratesRecovered !== undefined) {
+        if (data.cratesDelivered !== undefined || data.cratesRecovered !== undefined || tocoProveedores) {
             data.cratesUpdatedAt = new Date();
         }
         // Si el mensaje trae SOLO cajones, no toca estado ni horarios: no hay que
         // reintentar el cierre del viaje ni la auto-finalización.
         const soloCajones = Object.keys(data).every(
             (k) => k === 'cratesDelivered' || k === 'cratesRecovered' || k === 'cratesUpdatedAt'
-        ) && (data.cratesDelivered !== undefined || data.cratesRecovered !== undefined);
+                || (camposProveedor as string[]).includes(k)
+        ) && (data.cratesDelivered !== undefined || data.cratesRecovered !== undefined || tocoProveedores);
         // Snapshot previo SOLO si el cambio viene del operador desde la web
         // (la app del chofer no manda X-Actor-Name). Sin este filtro, cada marca
         // de cada chofer llenaria la auditoria de ruido y taparia lo que importa:
@@ -9332,7 +9411,13 @@ app.get('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
                 signatureUrl: s.signatureUrl ?? null,
                 cratesDelivered: s.cratesDelivered ?? null,
                 cratesRecovered: s.cratesRecovered ?? null,
-                cratesUpdatedAt: (s as any).cratesUpdatedAt?.toISOString() ?? null
+                cratesUpdatedAt: (s as any).cratesUpdatedAt?.toISOString() ?? null,
+                cratesDeliveredPeco: (s as any).cratesDeliveredPeco ?? null,
+                cratesRecoveredPeco: (s as any).cratesRecoveredPeco ?? null,
+                cratesDeliveredPlasticos: (s as any).cratesDeliveredPlasticos ?? null,
+                cratesRecoveredPlasticos: (s as any).cratesRecoveredPlasticos ?? null,
+                cratesDeliveredBurzaco: (s as any).cratesDeliveredBurzaco ?? null,
+                cratesRecoveredBurzaco: (s as any).cratesRecoveredBurzaco ?? null
             }))
         });
     } catch (e: any) {
