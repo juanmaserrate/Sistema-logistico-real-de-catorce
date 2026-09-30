@@ -1469,7 +1469,7 @@
                                 <input type="month" id="maintenance-filter-period" onchange="renderMaintenanceRecords()" oninput="renderMaintenanceRecords()" class="bg-transparent border-0 text-xs font-bold text-[#1B2559] outline-none min-w-[9.5rem]">
                             </label>
                             <button type="button" onclick="clearMaintenancePeriodFilter()" class="px-5 py-3 rounded-2xl text-xs font-bold bg-white border border-[#E3E8F4] text-[#A3AED0] hover:bg-[#F4F7FE] transition-all">Todos los meses</button>
-                            <button onclick="addRepairRow()" class="px-6 py-4 bg-indigo-600 text-white rounded-2xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center gap-2">
+                            <button onclick="openAddRepairModal()" class="px-6 py-4 bg-indigo-600 text-white rounded-2xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center gap-2">
                                 <i data-lucide="plus" class="w-4 h-4"></i> NUEVA REPARACIÓN
                             </button>
                         </div>
@@ -4945,7 +4945,7 @@
             try {
                 const res = await fetch(`${API_URL}/users/${userId}/block`, {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getActorHeaders(),
                     body: JSON.stringify({ blocked: !isBlocked, role: nextRole })
                 });
                 const data = await res.json().catch(() => ({}));
@@ -7792,7 +7792,7 @@
             try {
                 const res = await fetch(`${API_URL}/incidents`, {
                     method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getActorHeaders(),
                     body: JSON.stringify({ ids })
                 });
                 if (res.ok) {
@@ -11370,7 +11370,7 @@
             try {
                 const res = await fetch(`${API_URL}/incidents/${_closingIncidentId}`, {
                     method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getActorHeaders(),
                     body: JSON.stringify({ status: 'CLOSED', resolution: resolution || 'Resuelto' })
                 });
                 if (res.ok) {
@@ -17627,12 +17627,22 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         function getMaintenanceFilteredRows(allRows) {
             const plateQ = (document.getElementById('maintenance-filter-plate')?.value || '').toUpperCase().trim();
             const periodFilter = (document.getElementById('maintenance-filter-period')?.value || '').trim();
-            return (allRows || []).filter(r => {
+            const filtradas = (allRows || []).filter(r => {
                 const p = String(r.plate || '').toUpperCase();
                 const plateOk = !plateQ || p === plateQ;
                 if (!periodFilter) return plateOk;
                 const ym = getRepairYearMonthKey(r);
                 return plateOk && ym === periodFilter;
+            });
+            // De la mas reciente a la mas vieja. Las que todavia no tienen fecha
+            // van arriba de todo: son las que hay que terminar de cargar.
+            const cuando = (r) => String(r.date || '').split('T')[0];
+            return filtradas.sort((a, b) => {
+                const fa = cuando(a), fb = cuando(b);
+                if (!fa && !fb) return 0;
+                if (!fa) return -1;
+                if (!fb) return 1;
+                return fb.localeCompare(fa);
             });
         }
 
@@ -17933,6 +17943,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         function openAddRepairModal(editId) {
+            if (!editId && !(maintenanceVehicles || []).length) {
+                alert('Todavía no hay ninguna unidad en la lista, así que no hay a quién cargarle la reparación. Cargá la unidad en Datos > Flotas y volvé a entrar a Mantenimiento.');
+                return;
+            }
             document.getElementById('modal-repair').classList.remove('hidden');
             document.getElementById('modal-repair-title').innerText = editId ? 'Editar Reparación' : 'Nueva Reparación';
             document.getElementById('repair-id').value = editId || '';
@@ -17969,6 +17983,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 document.getElementById('repair-form').reset();
                 document.getElementById('repair-id').value = '';
                 if (selectedMaintenancePlate) plateSel.value = selectedMaintenancePlate;
+                // Arranca con la fecha de hoy: es lo que se carga el 99% de las veces
+                const hoy = new Date();
+                const iso = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
+                document.getElementById('repair-date').value = iso;
+                setTimeout(() => document.getElementById('repair-work')?.focus(), 80);
             }
             lucide.createIcons();
         }
@@ -18063,7 +18082,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             try {
                 const res = await fetch(url, {
                     method: method,
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getActorHeaders(),
                     body: JSON.stringify(payload)
                 });
                 
@@ -21329,7 +21348,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             try {
                 const res = await fetch(`${API_URL}/salaries`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getActorHeaders(),
                     body: JSON.stringify(payload)
                 });
                 
