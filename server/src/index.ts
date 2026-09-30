@@ -6828,6 +6828,73 @@ app.get('/api/admin/fichas-sin-identificar', async (req: any, res: any) => {
     }
 });
 
+/** Carga de una vez lo que falta en las fichas de personal: si el chofer es
+ *  propio o tercerizado, si el auxiliar cobra fijo o jornal.
+ *  POST /api/admin/fichas-identificar
+ *  { key, aplicar?, fichas: [{ usuario, valor }] }
+ *  valor: PROPIO | TERCERIZADO (choferes) | FIJO | JORNAL (auxiliares) */
+app.post('/api/admin/fichas-identificar', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const pedidos: any[] = Array.isArray(req.body?.fichas) ? req.body.fichas : [];
+    if (!pedidos.length) return res.status(400).json({ error: 'Falta "fichas" (lista de { usuario, valor })' });
+    const aplicar = req.body?.aplicar === true;
+
+    const DE_CHOFER = ['PROPIO', 'TERCERIZADO'];
+    const DE_AUXILIAR = ['FIJO', 'JORNAL'];
+
+    try {
+        const informe: any[] = [];
+        for (const p of pedidos) {
+            const usuario = String(p?.usuario || '').trim();
+            const valor = String(p?.valor || '').trim().toUpperCase();
+            if (!usuario || !valor) { informe.push({ usuario, estado: 'faltan datos' }); continue; }
+
+            const u = await prisma.user.findUnique({ where: { username: usuario } });
+            if (!u) { informe.push({ usuario, estado: 'no existe esa ficha' }); continue; }
+
+            const rol = String(u.role || '').toUpperCase();
+            const esChofer = rol === 'CHOFER';
+            const esAuxiliar = rol === 'AUXILIAR';
+            if (!esChofer && !esAuxiliar) {
+                informe.push({ usuario, fullName: u.fullName, estado: `no es ficha de personal (es ${rol})` });
+                continue;
+            }
+            const validos = esChofer ? DE_CHOFER : DE_AUXILIAR;
+            if (!validos.includes(valor)) {
+                informe.push({ usuario, fullName: u.fullName, estado: `"${valor}" no sirve para un ${esChofer ? 'chofer' : 'auxiliar'} (va ${validos.join(' o ')})` });
+                continue;
+            }
+
+            const campo = esChofer ? 'contractType' : 'payType';
+            const antes = esChofer ? u.contractType : u.payType;
+            if (antes === valor) {
+                informe.push({ usuario, fullName: u.fullName, estado: 'ya estaba', campo, valor });
+                continue;
+            }
+            if (aplicar) {
+                await prisma.user.update({ where: { id: u.id }, data: { [campo]: valor } });
+            }
+            informe.push({
+                usuario, fullName: u.fullName, tipo: esChofer ? 'Chofer' : 'Auxiliar',
+                campo, antes: antes || null, despues: valor,
+                estado: aplicar ? 'cargado' : 'listo para cargar'
+            });
+        }
+        const cuenta = (e: string) => informe.filter((x) => x.estado === e).length;
+        res.json({
+            aplicado: aplicar,
+            pedidas: pedidos.length,
+            cargadas: cuenta(aplicar ? 'cargado' : 'listo para cargar'),
+            yaEstaban: cuenta('ya estaba'),
+            conProblema: informe.filter((x) => !['cargado', 'listo para cargar', 'ya estaba'].includes(x.estado)),
+            fichas: informe
+        });
+    } catch (e: any) {
+        console.error('fichas-identificar:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 // ── CONTROL DE CARGA Y COSTEO ─────────────────────────────────────────────
 // Busca lo que esta mal cargado y hace que un viaje se cueste mal. La regla
 // de fondo: el costo de un viaje propio son las horas del vehiculo mas el
