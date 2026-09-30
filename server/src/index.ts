@@ -6006,17 +6006,19 @@ app.post('/api/admin/fix-trip-subzona', async (req: any, res: any) => {
     const { key, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     try {
-        const repartos = Object.keys(SUBZONA_POR_REPARTO);
+        // Se revisan todos: la subzona ya no depende solo del reparto.
         const viajes = await prisma.trip.findMany({
-            where: { reparto: { in: repartos } },
-            select: { id: true, reparto: true, subzona: true }
+            select: { id: true, reparto: true, locality: true, contractType: true, subzona: true }
         });
         const cambios = viajes
-            .map((t: any) => ({ tripId: t.id, reparto: t.reparto, antes: t.subzona, despues: subzonaPorReparto(t.reparto) }))
+            .map((t: any) => ({
+                tripId: t.id, reparto: t.reparto, localidad: t.locality, contrato: t.contractType,
+                antes: t.subzona, despues: subzonaDelViaje(t.reparto, t.locality, t.contractType)
+            }))
             .filter((c: any) => c.despues && c.antes !== c.despues);
         if (!dryRun) {
-            for (const [rep, sub] of Object.entries(SUBZONA_POR_REPARTO)) {
-                await prisma.trip.updateMany({ where: { reparto: rep }, data: { subzona: sub } });
+            for (const c of cambios) {
+                await prisma.trip.update({ where: { id: c.tripId }, data: { subzona: c.despues } });
             }
         }
         const resumen: Record<string, number> = {};
@@ -8264,6 +8266,29 @@ function subzonaPorReparto(reparto: any): string | null {
     return SUBZONA_POR_REPARTO[String(reparto || '').trim().toUpperCase()] || null;
 }
 
+/** Lomas de Zamora no se agrupa por numero de zona sino por quien hace el
+ *  viaje: los jardines que cubre la flota propia van juntos y los que cubre un
+ *  tercero van aparte. */
+const SUBZONA_LOMAS_PROPIO = 'JARDINES PROPIOS';
+const SUBZONA_LOMAS_TERCERIZADO = 'JARDINES TERCERIZADOS';
+
+function esLomas(localidad: any): boolean {
+    return String(localidad || '').trim().toUpperCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '').includes('LOMAS');
+}
+
+/** La subzona que le corresponde a un viaje. Manda la tabla por reparto; si el
+ *  reparto no esta en la tabla y el viaje es de Lomas, se agrupa por contrato. */
+function subzonaDelViaje(reparto: any, localidad: any, contrato: any): string | null {
+    const porReparto = subzonaPorReparto(reparto);
+    if (porReparto) return porReparto;
+    if (!esLomas(localidad)) return null;
+    const c = String(contrato || '').trim().toUpperCase();
+    if (c === 'PROPIO') return SUBZONA_LOMAS_PROPIO;
+    if (c === 'TERCERIZADO') return SUBZONA_LOMAS_TERCERIZADO;
+    return null;   // sin contrato no se puede decidir
+}
+
 /**
  * Reglas por reparto y por mes: quien lo hace, si es propio o tercerizado, con
  * que proveedor y a que tarifa. Se cargan desde la pantalla "Reglas por
@@ -8394,7 +8419,7 @@ app.post('/api/v1/trips', async (req, res) => {
         // Un viaje manual no se le manda a ningun celular.
         if (datos.isManual === true) datos.assignedMobileUser = null;
         // La subzona la pone el sistema, no el operador
-        datos.subzona = subzonaPorReparto(datos.reparto);
+        datos.subzona = subzonaDelViaje(datos.reparto, datos.locality, datos.contractType);
         const trip = await prisma.trip.create({ data: datos });
         await logAction(req, 'CREATE', 'trip', trip.id, trip.driver || String(trip.id), null, trip);
         io.emit('trip:created', { trip });
@@ -8413,10 +8438,18 @@ app.put('/api/v1/trips/:id', async (req, res) => {
     delete body.stops;
     // Un viaje manual no se le manda a ningun celular.
     if (body.isManual === true) body.assignedMobileUser = null;
-    // Si cambia el reparto, la subzona lo sigue
-    if ('reparto' in body) body.subzona = subzonaPorReparto(body.reparto);
     try {
         const before = await prisma.trip.findUnique({ where: { id: parseInt(id) } });
+        // La subzona sigue al reparto, a la localidad y al contrato. Se
+        // recalcula con lo que queda despues de la edicion, no solo con lo que
+        // vino en el body: cambiar el contrato tambien la mueve.
+        if ('reparto' in body || 'locality' in body || 'contractType' in body) {
+            body.subzona = subzonaDelViaje(
+                'reparto' in body ? body.reparto : before?.reparto,
+                'locality' in body ? body.locality : before?.locality,
+                'contractType' in body ? body.contractType : before?.contractType
+            );
+        }
         const trip = await prisma.trip.update({ where: { id: parseInt(id) }, data: body });
         await logAction(req, 'UPDATE', 'trip', trip.id, trip.driver || id, before, trip);
         io.emit('trip:updated', { trip });
