@@ -4640,6 +4640,203 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
     }
 });
 
+// ── CAJONES EN TRANSITO (SIMULACION CONGELADA) ──────────────────────
+// Copia del modulo "Cajones con seña", pero con los dias que el arqueo manual
+// del Excel no llego a cubrir completados hasta dejar el saldo en calle en el
+// numero que se pida. NO se actualiza con lo que cargan los choferes: se
+// genera una vez con el endpoint de admin y queda congelado en la base.
+
+const CLAVE_SIM_CAJONES = 'crates_simulacion';
+
+/** Reparte `total` cajones "recuperados" de mas entre las paradas, priorizando
+ *  las que tienen mas cajones sin volver. Devuelve cuanto le toca a cada una. */
+function repartirRecuperados(paradas: any[], total: number): number[] {
+    const dar = new Array(paradas.length).fill(0);
+    if (total <= 0 || !paradas.length) return dar;
+    const pesos = paradas.map((p) => Math.max(0, p.dejados - p.recuperados));
+    const capacidad = pesos.reduce((a, b) => a + b, 0);
+
+    // 1) Hasta donde da el saldo de cada parada: proporcional, sin pasarse.
+    const hastaElTope = Math.min(total, capacidad);
+    if (capacidad > 0 && hastaElTope > 0) {
+        for (let i = 0; i < paradas.length; i++) dar[i] = Math.floor(hastaElTope * pesos[i] / capacidad);
+        let resto = hastaElTope - dar.reduce((a, b) => a + b, 0);
+        const orden = pesos.map((_, i) => i).sort((a, b) => pesos[b] - pesos[a]);
+        for (const i of orden) {
+            if (resto <= 0) break;
+            if (dar[i] < pesos[i]) { dar[i]++; resto--; }
+        }
+    }
+
+    // 2) Si hace falta mas que eso, el resto se reparte sobre lo dejado. Deja
+    //    paradas con saldo negativo: el chofer levanto cajones de dias previos.
+    const sobra = total - hastaElTope;
+    if (sobra > 0) {
+        const base = paradas.map((p) => Math.max(1, p.dejados));
+        const suma = base.reduce((a, b) => a + b, 0);
+        const extra = base.map((b) => Math.floor(sobra * b / suma));
+        for (let i = 0; i < paradas.length; i++) dar[i] += extra[i];
+        let resto = sobra - extra.reduce((a, b) => a + b, 0);
+        const orden = base.map((_, i) => i).sort((a, b) => base[b] - base[a]);
+        for (const i of orden) {
+            if (resto <= 0) break;
+            dar[i]++; resto--;
+        }
+    }
+    return dar;
+}
+
+/** Arma la simulacion y la congela. POST /api/admin/crates-simulacion
+ *  { key, desde?, hasta?, corte?, objetivo? }
+ *  - corte: ultimo dia que cubre el arqueo manual. Hasta ahi no se toca nada.
+ *  - objetivo: cuantos cajones tienen que quedar en la calle al final. */
+app.post('/api/admin/crates-simulacion', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const ymd = (v: any, def: string) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : def;
+        const desde = ymd(req.body?.desde, '2026-09-19');
+        const hasta = ymd(req.body?.hasta, '2026-09-29');
+        const corte = ymd(req.body?.corte, '2026-09-18');
+        const objetivo = Number.isFinite(Number(req.body?.objetivo)) ? Math.round(Number(req.body.objetivo)) : 89;
+
+        const stops = await prisma.stop.findMany({
+            where: {
+                isReturnToBase: false,
+                route: { date: { gte: utcDayRange(desde).start, lte: utcDayRange(hasta).end } },
+                OR: [{ cratesDelivered: { not: null } }, { cratesRecovered: { not: null } }]
+            },
+            select: {
+                cratesDelivered: true, cratesRecovered: true, cratesUpdatedAt: true,
+                actualArrival: true, actualDeparture: true,
+                client: { select: { id: true, name: true, address: true } },
+                route: {
+                    select: {
+                        date: true,
+                        driver: { select: { fullName: true, username: true } },
+                        trip: { select: { reparto: true } }
+                    }
+                }
+            }
+        });
+
+        const esTardia = (x: any) => {
+            const cargado = x.cratesUpdatedAt ? new Date(x.cratesUpdatedAt).getTime() : null;
+            const cierre = x.actualDeparture ? new Date(x.actualDeparture).getTime() : null;
+            return !!(cargado && cierre && cargado - cierre > 5 * 60 * 1000);
+        };
+
+        const filas = (stops as any[]).map((x) => {
+            const fecha = x.actualDeparture || x.actualArrival || x.route?.date;
+            return {
+                dia: new Date(x.route?.date).toISOString().slice(0, 10),
+                reparto: String(x.route?.trip?.reparto || x.route?.driver?.fullName || 'SIN REPARTO').trim(),
+                usuario: x.route?.driver?.fullName || x.route?.driver?.username || '-',
+                clientId: x.client?.id || null,
+                establecimiento: x.client?.name || '-',
+                direccion: x.client?.address || null,
+                dejados: x.cratesDelivered || 0,
+                recuperados: x.cratesRecovered || 0,
+                tardia: esTardia(x),
+                fecha: fecha ? new Date(fecha).toISOString() : null
+            };
+        });
+
+        const real = filas.reduce(
+            (a, f) => ({ dejados: a.dejados + f.dejados, recuperados: a.recuperados + f.recuperados }),
+            { dejados: 0, recuperados: 0 }
+        );
+
+        // Los dias que el arqueo manual si cubre quedan intactos.
+        const ajustables = filas.filter((f) => f.dia > corte);
+        const saldoFijo = filas.filter((f) => f.dia <= corte).reduce((a, f) => a + f.dejados - f.recuperados, 0);
+        const saldoAjustable = ajustables.reduce((a, f) => a + f.dejados - f.recuperados, 0);
+        const aRecuperar = saldoAjustable - (objetivo - saldoFijo);
+
+        const dar = repartirRecuperados(ajustables, aRecuperar);
+        let paradasTocadas = 0;
+        for (let i = 0; i < ajustables.length; i++) {
+            if (dar[i]) { ajustables[i].recuperados += dar[i]; paradasTocadas++; }
+        }
+
+        // ── Se rearma el mismo resumen que devuelve /crates/summary ──────────
+        const porReparto = new Map<string, any>();
+        const porEstab = new Map<string, any>();
+        const tot = { dejados: 0, recuperados: 0, paradas: 0, tardias: 0 };
+        for (const f of filas) {
+            tot.dejados += f.dejados; tot.recuperados += f.recuperados; tot.paradas++;
+            if (f.tardia) tot.tardias++;
+
+            const kr = f.reparto.toUpperCase();
+            const rep = porReparto.get(kr) || { reparto: f.reparto, usuarios: new Set<string>(), dejados: 0, recuperados: 0, paradas: 0, tardias: 0 };
+            rep.usuarios.add(f.usuario); rep.dejados += f.dejados; rep.recuperados += f.recuperados; rep.paradas++;
+            if (f.tardia) rep.tardias++;
+            porReparto.set(kr, rep);
+
+            const ke = f.clientId || 'sin-cliente';
+            const est = porEstab.get(ke) || {
+                clientId: f.clientId, establecimiento: f.establecimiento, direccion: f.direccion,
+                repartos: new Set<string>(), dejados: 0, recuperados: 0, visitas: 0, ultimaVisita: null as any, tardias: 0
+            };
+            est.repartos.add(f.reparto); est.dejados += f.dejados; est.recuperados += f.recuperados; est.visitas++;
+            if (f.tardia) est.tardias++;
+            if (f.fecha && (!est.ultimaVisita || f.fecha > est.ultimaVisita)) est.ultimaVisita = f.fecha;
+            porEstab.set(ke, est);
+        }
+
+        const conSaldo = (x: any) => ({ ...x, saldo: x.dejados - x.recuperados });
+        const snapshot = {
+            simulacion: true,
+            generadoEl: new Date().toISOString(),
+            desde, hasta, corte, objetivo,
+            logrado: tot.dejados - tot.recuperados,
+            real: { ...real, saldo: real.dejados - real.recuperados },
+            ajuste: {
+                cajonesAgregados: aRecuperar,
+                paradasTocadas,
+                diasAjustados: [...new Set(ajustables.map((f) => f.dia))].sort()
+            },
+            totales: conSaldo(tot),
+            porReparto: [...porReparto.values()]
+                .map((x) => conSaldo({ ...x, usuarios: [...x.usuarios] }))
+                .sort((a, b) => a.reparto.localeCompare(b.reparto, 'es', { numeric: true })),
+            porEstablecimiento: [...porEstab.values()]
+                .map((x) => conSaldo({ ...x, repartos: [...x.repartos] }))
+                .sort((a, b) => b.saldo - a.saldo || a.establecimiento.localeCompare(b.establecimiento, 'es'))
+        };
+
+        await prisma.appSettings.upsert({
+            where: { key: CLAVE_SIM_CAJONES },
+            update: { value: JSON.stringify(snapshot) },
+            create: { key: CLAVE_SIM_CAJONES, value: JSON.stringify(snapshot) }
+        });
+
+        res.json({
+            ok: true, desde, hasta, corte, objetivo,
+            logrado: snapshot.logrado,
+            saldoReal: snapshot.real.saldo,
+            cajonesAgregados: aRecuperar,
+            paradasTocadas,
+            paradas: tot.paradas
+        });
+    } catch (e: any) {
+        console.error('crates-simulacion:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Devuelve la simulacion congelada tal cual quedo guardada.
+ *  GET /api/v1/crates/simulacion */
+app.get('/api/v1/crates/simulacion', async (_req: any, res: any) => {
+    try {
+        const fila = await prisma.appSettings.findUnique({ where: { key: CLAVE_SIM_CAJONES } });
+        if (!fila) return res.json({ vacio: true });
+        res.json(JSON.parse(fila.value));
+    } catch (e: any) {
+        console.error('GET /crates/simulacion:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Crea un viaje con las paradas de una ruta predefinida (R1, R7, ...) y se lo
  *  asigna a un usuario de la app. Es el mismo alta que hace el operador en la
  *  web, pero sin pasar por el navegador.

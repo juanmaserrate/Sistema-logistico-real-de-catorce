@@ -146,6 +146,7 @@
                         <div class="nav-menu-panel" role="menu">
                             <a href="#dashboard" id="btn-dashboard" class="nav-menu-item" role="menuitem"><i data-lucide="line-chart"></i> <span>Dashboard logístico</span></a>
                             <a href="#reports" id="btn-reports" class="nav-menu-item" role="menuitem"><i data-lucide="file-bar-chart"></i> <span>Reportes</span></a>
+                            <a href="#crates-sim" id="btn-crates-sim" class="nav-menu-item" role="menuitem"><i data-lucide="package-search"></i> <span>Cajones en tránsito (simulación)</span></a>
                             <a href="#incidents" id="btn-incidents" class="nav-menu-item" role="menuitem"><i data-lucide="alert-triangle"></i> <span>Incidencias</span><span id="incidents-badge" class="nav-menu-badge hidden">0</span></a>
                             <a href="#audit" id="btn-audit" class="nav-menu-item" role="menuitem"><i data-lucide="shield-check"></i> <span>Auditoría</span></a>
                             <a href="#historial" id="btn-historial" class="nav-menu-item" role="menuitem"><i data-lucide="history"></i> <span>Historial</span></a>
@@ -2126,6 +2127,52 @@
                 </div>
             </div>
 
+            <!-- VIEW: CAJONES EN TRANSITO (SIMULACION CONGELADA) -->
+            <div id="view-crates-sim" class="hidden view-animate space-y-6">
+                <div class="rounded-xl border-2 border-amber-300 bg-amber-50 p-4">
+                    <p class="text-xs font-black text-amber-800 uppercase tracking-widest">Reporte simulado</p>
+                    <p class="text-sm text-amber-900 mt-1" id="crates-sim-aviso">Los días que el arqueo manual del Excel no llegó a cubrir están completados por simulación para dejar el saldo en calle en el número fijado. No se actualiza con lo que cargan los choferes.</p>
+                </div>
+                <div class="card-dark overflow-hidden">
+                    <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+                        <div>
+                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Cajones en tránsito (simulación)</h4>
+                            <p class="text-xs text-[#A3AED0] mt-1" id="crates-sim-periodo">&mdash;</p>
+                        </div>
+                        <button onclick="loadCratesSimModule()" class="bg-[#451ebb] text-white rounded-lg px-4 py-2 text-sm font-bold self-start lg:self-auto">Actualizar</button>
+                    </div>
+                    <div class="p-6 bg-white space-y-6">
+                        <div id="crates-sim-kpis" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+                        <div>
+                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-wider mb-2">Por reparto <span class="font-normal normal-case text-[#A3AED0]">&mdash; click en un reparto para ver sus establecimientos</span></h5>
+                            <div class="overflow-x-auto"><table class="w-full text-sm">
+                                <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left">
+                                    <th class="py-2 px-2">Reparto</th><th class="py-2 px-2">Usuario</th><th class="py-2 px-2 text-right">Paradas</th>
+                                    <th class="py-2 px-2 text-right">Dejados</th><th class="py-2 px-2 text-right">Recuperados</th><th class="py-2 px-2 text-right">Saldo</th>
+                                </tr></thead>
+                                <tbody id="crates-sim-by-reparto"></tbody>
+                            </table></div>
+                        </div>
+                        <div>
+                            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
+                                <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-wider">Detalle por establecimiento <span id="crates-sim-est-filter-label" class="font-normal normal-case text-[#A3AED0]"></span></h5>
+                                <div class="flex items-center gap-2">
+                                    <input id="crates-sim-est-search" oninput="renderCratesSimEstablishments()" placeholder="Buscar establecimiento..." class="bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm text-[#1B2559] w-56">
+                                    <button id="crates-sim-clear-reparto" onclick="setCratesSimRepartoFilter(null)" class="hidden text-xs font-bold text-indigo-600 hover:underline">Ver todos</button>
+                                </div>
+                            </div>
+                            <div class="overflow-x-auto"><table class="w-full text-sm">
+                                <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left">
+                                    <th class="py-2 px-2">Establecimiento</th><th class="py-2 px-2">Reparto</th><th class="py-2 px-2 text-right">Visitas</th>
+                                    <th class="py-2 px-2 text-right">Dejados</th><th class="py-2 px-2 text-right">Recuperados</th><th class="py-2 px-2 text-right">Saldo</th><th class="py-2 px-2">&Uacute;ltima visita</th>
+                                </tr></thead>
+                                <tbody id="crates-sim-by-est"></tbody>
+                            </table></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- VIEW: ESTADO DE CHOFERES (¿quién reporta señal?) -->
             <div id="view-drivers-status" class="hidden view-animate space-y-6">
                 <div class="card-dark overflow-hidden">
@@ -3831,8 +3878,8 @@
 
         // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
         const ACCESS_PROFILES = {
-            SUPERADMIN: ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'],
-            TRAFICO: ['control','drivers-status','crates','hdr','weekly','payments','dashboard','budget','fleets','maintenance','routes','users','ajustes','employees','schools','reports','incidents','historial'],
+            SUPERADMIN: ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'],
+            TRAFICO: ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','budget','fleets','maintenance','routes','users','ajustes','employees','schools','reports','incidents','historial'],
             RRHH: ['salaries','employees'],
             ADMINISTRACION: ['weekly','payments','dashboard','budget','salaries','schools','reports']
         };
@@ -3868,7 +3915,7 @@
             }
 
             // Hide/show nav buttons based on access
-            const allSections = ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
+            const allSections = ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
             allSections.forEach(sec => {
                 const btn = document.getElementById('btn-' + sec);
                 if (btn) {
@@ -4073,7 +4120,7 @@
             return { ...stored, ...hardcoded };
         }
 
-        const ALL_MODULES = ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
+        const ALL_MODULES = ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
 
         function renderProfileAssignments() {
             const tbody = document.getElementById('profile-assignments-body');
@@ -4201,6 +4248,7 @@
                 control: 'Torre de Control / En Vivo',
                 'drivers-status': 'Estado de Choferes',
                 crates: 'Cajones con seña',
+                'crates-sim': 'Cajones en tránsito (simulación)',
                 hdr: 'Historial de Rutas (HDR)',
                 fleets: 'Flotas — Datos de vehículos',
                 weekly: 'Planificación Semanal',
@@ -4224,6 +4272,7 @@
                 control: 'Monitoreo en tiempo real de operaciones y estados de tránsito',
                 'drivers-status': 'Quién está reportando señal y quién no, entre los choferes con viaje asignado',
                 crates: 'Cajones con seña dejados y recuperados por reparto y por establecimiento',
+                'crates-sim': 'Reporte fijo: los días sin arqueo manual completados por simulación. No lo actualiza la app',
                 hdr: 'Recorridos finalizados con paradas, horarios y trazado GPS de la flota',
                 fleets: 'Configuración de cada camión reutilizable en presupuestos (valor, consumo, mantenimiento, etc.)',
                 weekly: 'Gestión centralizada de la operación logística de Real de Catorce',
@@ -4280,6 +4329,7 @@
             }
             // Estado de Choferes: refresco cada 15s solo mientras la vista esté abierta
             if (id === 'crates') loadCratesModule();
+            if (id === 'crates-sim') loadCratesSimModule();
             if (id === 'drivers-status') startDriverStatusPolling();
             else stopDriverStatusPolling();
             if(id === 'payments') { if (typeof loadPaymentsView === 'function') loadPaymentsView(); }
@@ -4504,6 +4554,108 @@
                     <td class="py-2 px-2"><p class="font-bold text-[#1B2559]">${_cratesEsc(e.establecimiento)}</p>${e.direccion ? `<p class="text-[10px] text-[#A3AED0]">${_cratesEsc(e.direccion)}</p>` : ''}</td>
                     <td class="py-2 px-2 text-xs">${_cratesEsc((e.repartos || []).join(', '))}</td>
                     <td class="py-2 px-2 text-right">${e.visitas}${e.tardias ? ` <span title="${e.tardias} carga(s) hecha(s) despues de cerrar la entrega">⏱</span>` : ''}</td>
+                    <td class="py-2 px-2 text-right font-bold">${e.dejados}</td>
+                    <td class="py-2 px-2 text-right font-bold">${e.recuperados}</td>
+                    ${_cratesSaldoCell(e.saldo)}
+                    <td class="py-2 px-2 text-xs text-[#A3AED0]">${fmt(e.ultimaVisita)}</td>
+                </tr>`).join('') : '<tr><td colspan="7" class="py-3 px-2 text-[#A3AED0]">Sin establecimientos para mostrar.</td></tr>';
+        }
+
+        // ─── CAJONES EN TRANSITO (SIMULACION CONGELADA) ─────────────────────
+        // Misma pantalla que Cajones con seña, pero leyendo el reporte fijo que
+        // dejo guardado el endpoint de admin. La app movil no lo toca.
+        let _cratesSimData = null;
+        let _cratesSimReparto = null;
+
+        async function loadCratesSimModule() {
+            const body = document.getElementById('crates-sim-by-reparto');
+            if (!body) return;
+            body.innerHTML = '<tr><td colspan="6" class="py-3 px-2 text-[#A3AED0]">Cargando...</td></tr>';
+            try {
+                const res = await fetch(`${API_URL}/crates/simulacion`, { headers: getActorHeaders() });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error del servidor');
+                if (data && data.vacio) {
+                    _cratesSimData = null;
+                    document.getElementById('crates-sim-kpis').innerHTML = '';
+                    body.innerHTML = '<tr><td colspan="6" class="py-3 px-2 text-[#A3AED0]">Todavía no se generó la simulación.</td></tr>';
+                    document.getElementById('crates-sim-by-est').innerHTML = '';
+                    return;
+                }
+                _cratesSimData = data;
+                renderCratesSimModule();
+            } catch (e) {
+                body.innerHTML = `<tr><td colspan="6" class="py-3 px-2 text-rose-600 font-bold">Error: ${_cratesEsc(e.message || e)}</td></tr>`;
+            }
+        }
+
+        function setCratesSimRepartoFilter(reparto) {
+            _cratesSimReparto = reparto;
+            renderCratesSimModule();
+        }
+
+        function renderCratesSimModule() {
+            const d = _cratesSimData;
+            if (!d) return;
+            const fdia = iso => iso ? iso.split('-').reverse().slice(0, 2).join('/') : '—';
+            const per = document.getElementById('crates-sim-periodo');
+            if (per) per.textContent = `Del ${fdia(d.desde)} al ${fdia(d.hasta)} — generado el ${new Date(d.generadoEl).toLocaleString('es-AR')}`;
+            const aviso = document.getElementById('crates-sim-aviso');
+            if (aviso) {
+                const dias = (d.ajuste?.diasAjustados || []).map(fdia).join(', ');
+                aviso.textContent = `Días completados por simulación: ${dias || '—'}. `
+                    + `Se sumaron ${d.ajuste?.cajonesAgregados ?? 0} cajones recuperados repartidos en ${d.ajuste?.paradasTocadas ?? 0} paradas `
+                    + `para dejar el saldo en calle en ${d.objetivo}. Lo que registró la app en ese período es un saldo de ${d.real?.saldo ?? '—'}. `
+                    + `Es un reporte fijo: no se actualiza con lo que cargan los choferes.`;
+            }
+
+            const t = d.totales;
+            const kpis = [
+                { label: 'Dejados', val: t.dejados, cls: 'text-[#451ebb]' },
+                { label: 'Recuperados', val: t.recuperados, cls: 'text-emerald-600' },
+                { label: 'Saldo en calle (simulado)', val: t.saldo, cls: t.saldo > 0 ? 'text-amber-600' : 'text-[#1B2559]' },
+                { label: 'Saldo real de la app', val: d.real?.saldo ?? '—', cls: 'text-[#A3AED0]' },
+                { label: 'Paradas registradas', val: t.paradas, cls: 'text-[#1B2559]' }
+            ];
+            document.getElementById('crates-sim-kpis').innerHTML = kpis.map(k => `
+                <div class="bg-[#F4F7FE] rounded-xl p-3">
+                    <p class="text-[10px] font-bold text-[#A3AED0] uppercase tracking-wider">${k.label}</p>
+                    <p class="text-2xl font-black ${k.cls} mt-1">${k.val}</p>
+                </div>`).join('');
+
+            const rows = d.porReparto || [];
+            document.getElementById('crates-sim-by-reparto').innerHTML = rows.length ? rows.map((r, idx) => {
+                const on = _cratesSimReparto === r.reparto;
+                return `<tr data-idx="${idx}" onclick="setCratesSimRepartoFilter(_cratesSimData.porReparto[${idx}].reparto)" class="cursor-pointer border-t border-[#F4F7FE] ${on ? 'bg-indigo-50' : 'hover:bg-[#F4F7FE]'}">
+                    <td class="py-2 px-2 font-black text-[#1B2559]">${_cratesEsc(r.reparto)}</td>
+                    <td class="py-2 px-2 text-[#A3AED0] text-xs">${_cratesEsc((r.usuarios || []).join(', '))}</td>
+                    <td class="py-2 px-2 text-right">${r.paradas}</td>
+                    <td class="py-2 px-2 text-right font-bold">${r.dejados}</td>
+                    <td class="py-2 px-2 text-right font-bold">${r.recuperados}</td>
+                    ${_cratesSaldoCell(r.saldo)}
+                </tr>`;
+            }).join('') : '<tr><td colspan="6" class="py-3 px-2 text-[#A3AED0]">Sin datos en la simulación.</td></tr>';
+            renderCratesSimEstablishments();
+        }
+
+        function renderCratesSimEstablishments() {
+            const d = _cratesSimData;
+            const tbody = document.getElementById('crates-sim-by-est');
+            if (!d || !tbody) return;
+            const q = (document.getElementById('crates-sim-est-search')?.value || '').trim().toLowerCase();
+            const list = (d.porEstablecimiento || []).filter(e =>
+                (!_cratesSimReparto || (e.repartos || []).includes(_cratesSimReparto)) &&
+                (!q || String(e.establecimiento).toLowerCase().includes(q))
+            );
+            const lbl = document.getElementById('crates-sim-est-filter-label');
+            if (lbl) lbl.textContent = _cratesSimReparto ? `— reparto ${_cratesSimReparto}` : '';
+            document.getElementById('crates-sim-clear-reparto')?.classList.toggle('hidden', !_cratesSimReparto);
+            const fmt = iso => iso ? new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '—';
+            tbody.innerHTML = list.length ? list.map(e => `
+                <tr class="border-t border-[#F4F7FE]">
+                    <td class="py-2 px-2"><p class="font-bold text-[#1B2559]">${_cratesEsc(e.establecimiento)}</p>${e.direccion ? `<p class="text-[10px] text-[#A3AED0]">${_cratesEsc(e.direccion)}</p>` : ''}</td>
+                    <td class="py-2 px-2 text-xs">${_cratesEsc((e.repartos || []).join(', '))}</td>
+                    <td class="py-2 px-2 text-right">${e.visitas}</td>
                     <td class="py-2 px-2 text-right font-bold">${e.dejados}</td>
                     <td class="py-2 px-2 text-right font-bold">${e.recuperados}</td>
                     ${_cratesSaldoCell(e.saldo)}
@@ -18819,6 +18971,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             control:         () => loadControlLiveData(),
             'drivers-status': () => loadDriverStatus(),
             crates:          () => loadCratesModule(),
+            'crates-sim':    () => loadCratesSimModule(),
             hdr:             () => loadHdrList(),
             payments:        () => loadPaymentsView(),
             dashboard:       () => refreshLogisticsDashboard(),
