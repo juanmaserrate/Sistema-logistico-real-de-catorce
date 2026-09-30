@@ -6834,6 +6834,96 @@ app.get('/api/admin/fichas-sin-identificar', async (req: any, res: any) => {
     }
 });
 
+/** Unifica dos nombres de proveedor. El proveedor viaja como texto en el viaje
+ *  y tambien en las reglas por reparto, asi que hay que cambiarlo en los tres
+ *  lados: los viajes, las reglas y la ficha de proveedor si existe.
+ *  POST /api/admin/renombrar-proveedor { key, de, a, aplicar? } */
+app.post('/api/admin/renombrar-proveedor', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const de = String(req.body?.de || '').trim();
+    const a = String(req.body?.a || '').trim();
+    if (!de || !a) return res.status(400).json({ error: 'Faltan "de" y "a"' });
+    const aplicar = req.body?.aplicar === true;
+
+    const norm = (v: any) => String(v || '').trim().toUpperCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ');
+    const objetivo = norm(de);
+
+    try {
+        // ── 1) Los viajes ────────────────────────────────────────────────────
+        const viajes = await prisma.trip.findMany({
+            where: { provider: { not: null } },
+            select: { id: true, date: true, reparto: true, driver: true, provider: true, value: true }
+        });
+        const aCambiar = viajes.filter((t: any) => norm(t.provider) === objetivo);
+        if (aplicar) {
+            for (const t of aCambiar) {
+                await prisma.trip.update({ where: { id: t.id }, data: { provider: a } });
+            }
+        }
+
+        // ── 2) Las reglas por reparto ────────────────────────────────────────
+        const fila = await prisma.appSettings.findUnique({ where: { key: 'reglas_repartos' } });
+        const reglasTocadas: any[] = [];
+        if (fila) {
+            const todo = JSON.parse(fila.value) || {};
+            for (const [mes, contenido] of Object.entries<any>(todo)) {
+                const repartos = contenido?.repartos || contenido || {};
+                for (const [nombre, r] of Object.entries<any>(repartos)) {
+                    if (r?.proveedor && norm(r.proveedor) === objetivo) {
+                        reglasTocadas.push({ mes, reparto: nombre, antes: r.proveedor, despues: a });
+                        if (aplicar) r.proveedor = a;
+                    }
+                }
+                for (const c of (contenido?.choferes || [])) {
+                    if (c?.proveedor && norm(c.proveedor) === objetivo) {
+                        reglasTocadas.push({ mes, chofer: c.chofer, antes: c.proveedor, despues: a });
+                        if (aplicar) c.proveedor = a;
+                    }
+                }
+            }
+            if (aplicar && reglasTocadas.length) {
+                await prisma.appSettings.update({ where: { key: 'reglas_repartos' }, data: { value: JSON.stringify(todo) } });
+            }
+        }
+
+        // ── 3) La ficha de proveedor, si el nombre viejo existe ──────────────
+        const provs = await prisma.provider.findMany({ select: { id: true, name: true } });
+        const viejo = provs.find((p) => norm(p.name) === objetivo);
+        const nuevo = provs.find((p) => norm(p.name) === norm(a));
+        let fichaProveedor = 'el nombre viejo no existe como proveedor';
+        if (viejo && nuevo && viejo.id !== nuevo.id) {
+            // Los dos existen: se pasan las personas del viejo al nuevo y el
+            // viejo se borra.
+            const personas = await prisma.user.count({ where: { providerId: viejo.id } });
+            if (aplicar) {
+                await prisma.user.updateMany({ where: { providerId: viejo.id }, data: { providerId: nuevo.id } });
+                await prisma.provider.delete({ where: { id: viejo.id } });
+            }
+            fichaProveedor = `se unifican los dos proveedores (${personas} persona(s) pasan a ${a}) y se borra "${viejo.name}"`;
+        } else if (viejo && !nuevo) {
+            if (aplicar) await prisma.provider.update({ where: { id: viejo.id }, data: { name: a } });
+            fichaProveedor = `se renombra el proveedor "${viejo.name}" a "${a}"`;
+        } else if (!viejo && nuevo) {
+            fichaProveedor = `"${a}" ya existe como proveedor; el nombre viejo solo estaba escrito en los viajes`;
+        }
+
+        res.json({
+            aplicado: aplicar, de, a,
+            viajes: aCambiar.length,
+            ejemplos: aCambiar.slice(0, 10).map((t: any) => ({
+                id: t.id, fecha: new Date(t.date).toISOString().slice(0, 10),
+                reparto: t.reparto, chofer: t.driver, valor: Number(t.value) || 0
+            })),
+            reglas: reglasTocadas,
+            fichaProveedor
+        });
+    } catch (e: any) {
+        console.error('renombrar-proveedor:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Como esta hoy el mapa chofer -> contrato y chofer -> proveedor. Sirve para
  *  ver si el formulario de viaje nuevo puede sugerir bien: la sugerencia de
  *  Tercerizado sale del PROVEEDOR de la ficha, no del contrato, asi que un
