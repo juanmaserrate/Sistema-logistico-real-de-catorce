@@ -6463,6 +6463,25 @@ app.post('/api/admin/cambiar-usuario', async (req: any, res: any) => {
     }
 });
 
+/** Cuantas cuentas hay de cada tipo. Para ver cuanto de la lista de Usuarios
+ *  son cuentas de acceso de verdad y cuanto son fichas de personal.
+ *  GET /api/admin/cuentas-por-tipo?key=... */
+app.get('/api/admin/cuentas-por-tipo', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const filas = await prisma.user.groupBy({ by: ['role'], _count: { _all: true } });
+        const conGuion = await prisma.user.count({ where: { username: { contains: '_' } } });
+        const total = filas.reduce((n, f: any) => n + f._count._all, 0);
+        res.json({
+            total,
+            porTipo: filas.map((f: any) => ({ tipo: f.role, cuentas: f._count._all })).sort((a, b) => b.cuentas - a.cuentas),
+            conGuionBajo: conGuion
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/admin/reset-crates', async (req: any, res: any) => {
     const { key, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
