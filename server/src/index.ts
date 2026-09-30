@@ -4648,6 +4648,20 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
 
 const CLAVE_SIM_CAJONES = 'crates_simulacion';
 
+// Nombres que en realidad son el mismo reparto. "LIBRE" y "Reparto 22" los
+// hace el mismo chofer que el R22 y paran en los mismos establecimientos, asi
+// que en este reporte van todos juntos. Solo aplica aca: el modulo de Cajones
+// con seña sigue mostrando el nombre tal como vino de la app.
+const ALIAS_REPARTO_SIM: Record<string, string> = {
+    'LIBRE': 'R22',
+    'REPARTO 22': 'R22'
+};
+
+function repartoDelReporteSim(nombre: any): string {
+    const limpio = String(nombre || '').trim().replace(/\s+/g, ' ');
+    return ALIAS_REPARTO_SIM[limpio.toUpperCase()] || limpio;
+}
+
 /** Reparte `total` cajones "recuperados" de mas entre las paradas, priorizando
  *  las que tienen mas cajones sin volver. Devuelve cuanto le toca a cada una. */
 function repartirRecuperados(paradas: any[], total: number): number[] {
@@ -4729,7 +4743,7 @@ app.post('/api/admin/crates-simulacion', async (req: any, res: any) => {
             const fecha = x.actualDeparture || x.actualArrival || x.route?.date;
             return {
                 dia: new Date(x.route?.date).toISOString().slice(0, 10),
-                reparto: String(x.route?.trip?.reparto || x.route?.driver?.fullName || 'SIN REPARTO').trim(),
+                reparto: repartoDelReporteSim(x.route?.trip?.reparto || x.route?.driver?.fullName || 'SIN REPARTO'),
                 usuario: x.route?.driver?.fullName || x.route?.driver?.username || '-',
                 clientId: x.client?.id || null,
                 establecimiento: x.client?.name || '-',
