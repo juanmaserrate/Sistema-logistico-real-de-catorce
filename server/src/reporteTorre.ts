@@ -37,11 +37,29 @@ function hora(f: Date | null | undefined): string {
     }).format(new Date(f));
 }
 
-/** Horas con dos decimales entre dos momentos. null si falta alguno. */
+/** Horas con dos decimales entre dos momentos. null si falta alguno.
+ *  Se deja para poder sumar y promediar en Excel; lo que se lee es la
+ *  columna en horas y minutos. */
 function duracionHoras(desde: Date | null | undefined, hasta: Date | null | undefined): number | null {
     if (!desde || !hasta) return null;
     const h = (new Date(hasta).getTime() - new Date(desde).getTime()) / 3600000;
-    return h > 0 && h < 48 ? Math.round(h * 100) / 100 : null;
+    return h > 0 ? Math.round(h * 100) / 100 : null;
+}
+
+/** La misma duracion escrita como se lee: "8 h 32 min". Menos de una hora
+ *  queda en minutos ("18 min"), que antes salia como 0,31. No se corta a las
+ *  48 h: un viaje que cruza la medianoche se muestra entero ("26 h 15 min")
+ *  en vez de quedar vacio. */
+function duracionHm(desde: Date | null | undefined, hasta: Date | null | undefined): string {
+    if (!desde || !hasta) return '';
+    const ms = new Date(hasta).getTime() - new Date(desde).getTime();
+    if (!(ms > 0)) return '';
+    const min = Math.round(ms / 60000);
+    const h = Math.floor(min / 60);
+    const m = min % 60;
+    if (!h) return `${m} min`;
+    if (!m) return `${h} h`;
+    return `${h} h ${m} min`;
 }
 
 function numero(v: any): number | null {
@@ -141,6 +159,7 @@ async function filasViajesDe(prisma: Prisma, where: any) {
             'Estado': estadoViaje(t.status, !!r?.actualEndTime),
             'Salida deposito': hora(r?.actualStartTime || t.startedAt),
             'Llegada deposito': hora(r?.actualEndTime || t.completedAt),
+            'Duracion real': duracionHm(r?.actualStartTime || t.startedAt, r?.actualEndTime || t.completedAt),
             'Duracion horas': duracionHoras(r?.actualStartTime || t.startedAt, r?.actualEndTime || t.completedAt),
             'Paradas planificadas': paradas.length,
             'Paradas entregadas': entregadas,
@@ -298,7 +317,7 @@ function aExcel(hoja: string, filas: any[], columnas: string[]): Buffer {
 const COLUMNAS: Record<string, string[]> = {
     viajes: ['ID viaje', 'Fecha', 'Reparto', 'Localidad', 'Subzona', 'Unidad de negocio', 'Contrato', 'Proveedor',
         'Chofer', 'Auxiliar 1', 'Auxiliar 2', 'Auxiliar 3', 'Patente', 'Tipo de vehiculo', 'Vuelta', 'Refrigerado',
-        'Temperatura', 'Estado', 'Salida deposito', 'Llegada deposito', 'Duracion horas', 'Paradas planificadas',
+        'Temperatura', 'Estado', 'Salida deposito', 'Llegada deposito', 'Duracion real', 'Duracion horas', 'Paradas planificadas',
         'Paradas entregadas', 'Paradas no entregadas', 'Km recorridos', 'Costo', 'Estado de pago', 'Fecha de pago'],
     cajones: ['Fecha', 'ID viaje', 'Reparto', 'Unidad de negocio', 'Chofer', 'Establecimiento', 'Direccion',
         'Localidad', 'Partido', 'Orden de parada', 'Tipo de movimiento', 'Tipo de envase', 'Cantidad', 'Hora de la parada',
