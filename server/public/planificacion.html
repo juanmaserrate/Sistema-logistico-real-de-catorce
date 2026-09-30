@@ -4711,12 +4711,14 @@
             const per = document.getElementById('crates-sim-periodo');
             if (per) {
                 const desdeEstimado = (d.ajuste?.diasAjustados || [])[0] || d.corte;
-                const partes = [`Del ${fdia(rango.desde)} al ${fdia(rango.hasta)}`];
-                partes.push('reporte fijo, no se actualiza con la app');
-                partes.push(`valores estimados del ${fdia(desdeEstimado)} en adelante`
-                    + (agg.real?.saldo != null ? ` (saldo registrado por la app en este tramo: ${agg.real.saldo})` : ''));
-                if (!rango.completo) partes.push(`el reporte cubre del ${fdia(d.desde)} al ${fdia(d.hasta)}`);
-                per.textContent = partes.join(' · ') + '.';
+                // Lo minimo que tiene que decir: que de tal dia en adelante los
+                // numeros son estimados, y cual es el saldo que registro la app
+                // en el tramo que se esta mirando. El resto va en el tooltip.
+                per.textContent = `Del ${fdia(rango.desde)} al ${fdia(rango.hasta)} · estimado del ${fdia(desdeEstimado)} en adelante`
+                    + (agg.real?.saldo != null ? ` · app: ${agg.real.saldo}` : '');
+                per.title = 'Reporte fijo: no se actualiza con lo que cargan los choferes. '
+                    + `Los valores del ${fdia(desdeEstimado)} en adelante son estimados; en el tramo que se está mirando la app registró un saldo de ${agg.real?.saldo ?? '—'}. `
+                    + `El reporte cubre del ${fdia(d.desde)} al ${fdia(d.hasta)}.`;
             }
 
             const t = agg.totales;
