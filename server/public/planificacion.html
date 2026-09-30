@@ -14002,8 +14002,10 @@
                     // Bug fix: antes si res.ok era false (400/500) el botón quedaba colgado en
                     // "PROCESANDO..." y deshabilitado indefinidamente. Ahora restauramos el
                     // botón y notificamos al usuario con el detalle del error.
-                    const errMsg = await res.json().catch(() => null).then(b => b?.error || `Error ${res.status}`);
-                    addNotification('error', 'No se pudo crear la ruta', errMsg);
+                    const cuerpo = await res.json().catch(() => null);
+                    const errMsg = cuerpo?.error || `Error ${res.status}`;
+                    if (res.status === 409 && cuerpo?.duplicado) addNotification('warning', 'Ese viaje ya está cargado', errMsg);
+                    else addNotification('error', 'No se pudo crear la ruta', errMsg);
                     btn.innerHTML = originalHTML;
                     btn.disabled = false;
                     lucide.createIcons();
@@ -22393,9 +22395,24 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     ));
                     const fulfilled = results.filter(r => r.status === 'fulfilled' && r.value.ok);
                     const ok = fulfilled.length;
+                    // Los que el servidor rechazo por estar ya cargados: no son
+                    // un error, son dias que ya tenian ese viaje.
+                    const yaEstaban = results.filter(r => r.status === 'fulfilled' && r.value.status === 409).length;
+                    if (ok === 0 && yaEstaban === payloads.length) {
+                        if (typeof addNotification === 'function') {
+                            addNotification('warning', 'Ya estaban cargados',
+                                `Los ${yaEstaban} viajes ya existían, así que no se creó ninguno de nuevo.`);
+                        }
+                        if (typeof closeNewTripModal === 'function') closeNewTripModal();
+                        return;
+                    }
                     if (ok === 0) throw new Error('No se pudo crear ningún viaje');
-                    if (ok < payloads.length) {
-                        if (typeof addNotification === 'function') addNotification('warning', 'Creación parcial', `Se crearon ${ok} de ${payloads.length} viajes.`);
+                    if (ok < payloads.length && typeof addNotification === 'function') {
+                        const otros = payloads.length - ok - yaEstaban;
+                        const partes = [`Se crearon ${ok} de ${payloads.length}`];
+                        if (yaEstaban) partes.push(`${yaEstaban} ya estaban cargados`);
+                        if (otros > 0) partes.push(`${otros} con error`);
+                        addNotification('warning', 'Creación parcial', partes.join(' · ') + '.');
                     }
                     // Auto-guardar paradas en cada viaje creado (evita paso extra con el chevron)
                     if (Array.isArray(tripDeliveryRows) && tripDeliveryRows.length > 0) {

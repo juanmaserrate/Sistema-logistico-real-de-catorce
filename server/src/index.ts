@@ -8532,6 +8532,34 @@ function contratoPorReparto(reparto: any): string | null {
     return m ? (CONTRATO_POR_REPARTO['R' + Number(m[1])] || null) : null;
 }
 
+/** Busca un viaje ya cargado que sea el mismo: mismo dia, mismo reparto,
+ *  mismo chofer y misma vuelta. Es la combinacion que no puede repetirse: la
+ *  segunda vuelta del mismo reparto lleva vuelta 2, asi que no choca.
+ *  Devuelve el viaje que ya estaba, o null. */
+async function viajeYaCargado(datos: any): Promise<any | null> {
+    if (!datos?.date) return null;
+    const dia = new Date(datos.date);
+    if (isNaN(dia.getTime())) return null;
+
+    const norm = (v: any) => String(v || '').trim().toUpperCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+    const reparto = norm(datos.reparto);
+    const chofer = norm(datos.driver);
+    // Sin reparto ni chofer no hay con que comparar: se deja pasar.
+    if (!reparto && !chofer) return null;
+    const vuelta = Number(datos.vuelta) || 1;
+
+    const { start, end } = utcDayRange(dia.toISOString().slice(0, 10));
+    const delDia = await prisma.trip.findMany({
+        where: { date: { gte: start, lte: end } },
+        select: { id: true, date: true, reparto: true, driver: true, vuelta: true, businessUnit: true }
+    });
+    return delDia.find((t: any) =>
+        norm(t.reparto) === reparto &&
+        norm(t.driver) === chofer &&
+        (Number(t.vuelta) || 1) === vuelta) || null;
+}
+
 app.post('/api/v1/trips', async (req, res) => {
     try {
         const datos = { ...req.body };
@@ -8546,6 +8574,24 @@ app.post('/api/v1/trips', async (req, res) => {
         }
         // Un viaje manual no se le manda a ningun celular.
         if (datos.isManual === true) datos.assignedMobileUser = null;
+
+        // No se carga dos veces el mismo viaje. Si de verdad hace falta (por
+        // ejemplo una segunda salida sin numero de vuelta), se manda
+        // permitirDuplicado: true.
+        if (req.body?.permitirDuplicado !== true) {
+            const repetido = await viajeYaCargado(datos);
+            if (repetido) {
+                const cuando = new Date(repetido.date).toISOString().slice(0, 10).split('-').reverse().join('/');
+                return res.status(409).json({
+                    error: `Ya hay un viaje cargado del ${repetido.reparto || 'reparto'} con ${repetido.driver || 'ese chofer'} el ${cuando}`
+                         + (repetido.vuelta && repetido.vuelta > 1 ? ` (vuelta ${repetido.vuelta})` : '') + '.',
+                    duplicado: true,
+                    viajeExistente: repetido
+                });
+            }
+        }
+        delete datos.permitirDuplicado;
+
         // La subzona la pone el sistema, no el operador
         datos.subzona = subzonaDelViaje(datos.reparto, datos.zone || datos.locality, datos.contractType);
         const trip = await prisma.trip.create({ data: datos });
@@ -10562,18 +10608,44 @@ app.post('/api/v1/trips/bulk', async (req, res) => {
     const rows: any[] = Array.isArray(req.body?.trips) ? req.body.trips : [];
     if (!rows.length) return res.status(400).json({ error: 'El array trips está vacío' });
 
-    let created = 0, errors: { row: number; error: string }[] = [];
+    let created = 0;
+    const errors: { row: number; error: string }[] = [];
+    const duplicados: any[] = [];
+    // Lo ya creado en esta misma tanda, para que la carga no se duplique a si
+    // misma si viene el mismo viaje repetido en el archivo.
+    const enEstaTanda = new Set<string>();
+    const normFila = (r: any) => {
+        const n = (v: any) => String(v || '').trim().toUpperCase()
+            .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+        const d = new Date(r.date);
+        return [isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10),
+                n(r.reparto), n(r.driver), Number(r.vuelta) || 1].join(' | ');
+    };
+
     for (let i = 0; i < rows.length; i++) {
         try {
             const row = rows[i];
             if (!row.date) { errors.push({ row: i + 1, error: 'Falta fecha' }); continue; }
+
+            const clave = normFila(row);
+            if (enEstaTanda.has(clave)) {
+                duplicados.push({ row: i + 1, viaje: clave, motivo: 'repetido dentro del mismo archivo' });
+                continue;
+            }
+            const repetido = await viajeYaCargado(row);
+            if (repetido) {
+                duplicados.push({ row: i + 1, viaje: clave, motivo: 'ya estaba cargado', tripId: repetido.id });
+                continue;
+            }
+
             await prisma.trip.create({ data: { ...row, createdAt: undefined, updatedAt: undefined } });
+            enEstaTanda.add(clave);
             created++;
         } catch (e: any) {
             errors.push({ row: i + 1, error: e?.message || 'Error desconocido' });
         }
     }
-    res.json({ created, errors, total: rows.length });
+    res.json({ created, errors, total: rows.length, salteadosPorDuplicado: duplicados.length, duplicados });
 });
 
 // ── WebSocket: rooms por chofer ───────────────────────────────────────────────
