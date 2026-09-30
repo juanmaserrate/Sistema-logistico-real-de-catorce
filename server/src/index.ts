@@ -6414,6 +6414,47 @@ app.get('/api/admin/buscar-chofer', async (req: any, res: any) => {
     }
 });
 
+/** Cambia el nombre de usuario con el que una persona entra a la app.
+ *  OJO: despues de esto tiene que entrar con el usuario nuevo. La contrasena
+ *  no se toca. Arrastra los viajes que lo tuvieran anotado como usuario de app.
+ *  POST /api/admin/cambiar-usuario { key, de, a, aplicar } */
+app.post('/api/admin/cambiar-usuario', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const de = String(req.body?.de || '').trim();
+    const a = String(req.body?.a || '').trim();
+    if (!de || !a) return res.status(400).json({ error: 'Faltan "de" y "a"' });
+    const aplicar = req.body?.aplicar === true;
+
+    try {
+        const user = await prisma.user.findUnique({ where: { username: de } });
+        if (!user) return res.status(404).json({ error: `No existe la cuenta "${de}"` });
+        if (de === a) return res.json({ sinCambios: true });
+
+        const ocupado = await prisma.user.findUnique({ where: { username: a } });
+        if (ocupado && ocupado.id !== user.id) {
+            return res.status(409).json({ error: `Ya hay otra cuenta con el usuario "${a}"`, esDe: ocupado.fullName });
+        }
+
+        // Los viajes guardan el usuario de la app por texto
+        const viajes = await prisma.trip.count({ where: { assignedMobileUser: de } });
+
+        if (aplicar) {
+            await prisma.user.update({ where: { id: user.id }, data: { username: a } });
+            if (viajes) await prisma.trip.updateMany({ where: { assignedMobileUser: de }, data: { assignedMobileUser: a } });
+        }
+        res.json({
+            aplicado: aplicar,
+            de, a,
+            persona: user.fullName,
+            rol: user.role,
+            viajesQueLoTenianAnotado: viajes,
+            aviso: 'La contrasena no cambia. A partir de ahora entra con el usuario nuevo.'
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/admin/reset-crates', async (req: any, res: any) => {
     const { key, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
