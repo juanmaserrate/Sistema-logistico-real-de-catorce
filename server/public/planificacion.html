@@ -4625,7 +4625,6 @@
                 { label: 'Dejados', val: t.dejados, cls: 'text-[#451ebb]' },
                 { label: 'Recuperados', val: t.recuperados, cls: 'text-emerald-600' },
                 { label: 'Saldo en calle', val: t.saldo, cls: t.saldo > 0 ? 'text-amber-600' : 'text-[#1B2559]' },
-                { label: 'Saldo real de la app', val: d.real?.saldo ?? '—', cls: 'text-[#A3AED0]' },
                 { label: 'Paradas registradas', val: t.paradas, cls: 'text-[#1B2559]' }
             ];
             document.getElementById('crates-sim-kpis').innerHTML = kpis.map(k => `
