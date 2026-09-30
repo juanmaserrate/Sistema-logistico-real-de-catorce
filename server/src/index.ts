@@ -6791,7 +6791,12 @@ app.get('/api/admin/contrato-vs-chofer', async (req: any, res: any) => {
         const fin = utcDayRange(String(req.query.hasta)).end;
         const viajes = await prisma.trip.findMany({
             where: { date: { gte: ini, lte: fin } },
-            select: { id: true, date: true, reparto: true, driver: true, contractType: true, provider: true, value: true },
+            select: {
+                id: true, date: true, reparto: true, driver: true, contractType: true,
+                provider: true, value: true, businessUnit: true, zone: true, locality: true,
+                auxiliar: true, status: true,
+                linkedRoute: { select: { actualStartTime: true, actualEndTime: true, stops: { select: { id: true } } } }
+            },
             orderBy: { date: 'asc' }
         });
         const cache = new Map<string, Map<string, string>>();
@@ -6817,10 +6822,28 @@ app.get('/api/admin/contrato-vs-chofer', async (req: any, res: any) => {
                 tripId: t.id, fecha: new Date(t.date).toISOString().slice(0, 10),
                 reparto: t.reparto, chofer: t.driver,
                 elChoferEs: suyo, elViajeDice: t.contractType,
-                proveedor: t.provider || '', valor: Number(t.value) || 0
+                proveedor: t.provider || '', valor: Number(t.value) || 0,
+                unidadNegocio: t.businessUnit || '', localidad: t.zone || '', partido: t.locality || '',
+                auxiliar: t.auxiliar || '', estado: t.status || '',
+                paradas: t.linkedRoute?.stops?.length || 0,
+                horaSalida: t.linkedRoute?.actualStartTime ? new Date(t.linkedRoute.actualStartTime).toISOString() : '',
+                horaLlegada: t.linkedRoute?.actualEndTime ? new Date(t.linkedRoute.actualEndTime).toISOString() : ''
             });
         }
-        res.json({ viajesRevisados: viajes.length, contradicciones: filas.length, filas });
+        // Todos los viajes de esos mismos choferes, para poder comparar contra
+        // como vienen trabajando el resto del mes.
+        const nombres = new Set(filas.map((f) => String(f.chofer || '').toUpperCase()));
+        const contexto = (viajes as any[])
+            .filter((t) => nombres.has(String(t.driver || '').toUpperCase()))
+            .map((t) => ({
+                tripId: t.id, fecha: new Date(t.date).toISOString().slice(0, 10),
+                reparto: t.reparto, chofer: t.driver, contrato: t.contractType,
+                proveedor: t.provider || '', valor: Number(t.value) || 0,
+                unidadNegocio: t.businessUnit || '', localidad: t.zone || '',
+                auxiliar: t.auxiliar || '', estado: t.status || '',
+                paradas: t.linkedRoute?.stops?.length || 0
+            }));
+        res.json({ viajesRevisados: viajes.length, contradicciones: filas.length, filas, contexto });
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error' });
     }
