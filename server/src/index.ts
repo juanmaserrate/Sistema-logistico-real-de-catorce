@@ -701,6 +701,14 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
             return res.status(403).json({ error: "Usuario bloqueado. Contactá al administrador." });
         }
 
+        // CHOFER y AUXILIAR son fichas de personal, NO cuentas de acceso: se crean
+        // solas desde los nombres que figuran en los viajes y quedan con la clave
+        // "-". Sin este corte, cualquiera que supiera el nombre de la ficha entraba
+        // al sistema escribiendo "-".
+        if (['CHOFER', 'AUXILIAR'].includes(String(user.role || '').toUpperCase())) {
+            return res.status(403).json({ error: "Esa ficha es de personal, no una cuenta para entrar al sistema." });
+        }
+
         // Verificación: soporte de contraseñas bcrypt (hash $2*) y plain-text legacy
         let isValid = false;
         const isBcrypt = user.password.startsWith('$2');
