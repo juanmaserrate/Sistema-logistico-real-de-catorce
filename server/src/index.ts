@@ -9241,9 +9241,10 @@ app.delete('/api/v1/trips/:id', async (req, res) => {
  *  Aca se hace por lotes con deleteMany, que es una consulta por tabla.
  *  POST /api/v1/trips/bulk-delete { ids: [1,2,3] } */
 app.post('/api/v1/trips/bulk-delete', async (req: any, res: any) => {
-    const ids: number[] = Array.isArray(req.body?.ids)
-        ? [...new Set(req.body.ids.map((x: any) => parseInt(x)).filter((n: number) => Number.isFinite(n)))]
+    const pedidos: number[] = Array.isArray(req.body?.ids)
+        ? req.body.ids.map((x: any) => parseInt(x)).filter((n: number) => Number.isFinite(n))
         : [];
+    const ids: number[] = [...new Set<number>(pedidos)];
     if (!ids.length) return res.status(400).json({ error: 'Falta "ids" (lista de numeros)' });
 
     try {
