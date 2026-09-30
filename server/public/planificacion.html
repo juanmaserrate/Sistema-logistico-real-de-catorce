@@ -129,6 +129,7 @@
                         <div class="nav-menu-panel" role="menu">
                             <a href="#payments" id="btn-payments" class="nav-menu-item" role="menuitem"><i data-lucide="wallet"></i> <span>Planilla de Pagos</span></a>
                             <a href="#costs" id="btn-costs" class="nav-menu-item" role="menuitem"><i data-lucide="bar-chart-3"></i> <span>Motor de Costos</span></a>
+                            <a href="#tarifas" id="btn-tarifas" class="nav-menu-item" role="menuitem"><i data-lucide="receipt"></i> <span>Tarifas por proveedor</span></a>
                         </div>
                     </div>
                     <div class="nav-menu" id="nav-menu-datos" data-menu="datos">
@@ -2127,6 +2128,38 @@
                 </div>
             </div>
 
+            <!-- VIEW: TARIFAS POR PROVEEDOR -->
+            <div id="view-tarifas" class="hidden view-animate space-y-6">
+                <div class="card-dark overflow-hidden">
+                    <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+                        <div>
+                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Tarifas por proveedor</h4>
+                            <p class="text-xs text-[#A3AED0] mt-1">Lo que se le paga a cada proveedor por viaje. Es el valor que toma un viaje tercerizado. Si un reparto tiene tarifa propia en <b>Reglas por reparto</b>, esa manda.</p>
+                        </div>
+                        <div class="flex flex-wrap items-end gap-2">
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase">Mes<input type="month" id="tarifas-mes" onchange="cargarTarifas()" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></label>
+                            <button onclick="copiarTarifasDelMesAnterior()" class="bg-[#F4F7FE] text-[#1B2559] rounded-lg px-4 py-2 text-sm font-bold">Copiar del mes anterior</button>
+                            <button onclick="guardarTarifas()" class="bg-[#451ebb] text-white rounded-lg px-4 py-2 text-sm font-bold">Guardar</button>
+                        </div>
+                    </div>
+                    <div class="p-6 bg-white space-y-4">
+                        <div class="overflow-x-auto"><table class="w-full text-sm">
+                            <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left">
+                                <th class="py-2 px-2">Proveedor</th>
+                                <th class="py-2 px-2 text-right">Tarifa por viaje</th>
+                                <th class="py-2 px-2 text-right">Viajes del mes</th>
+                                <th class="py-2 px-2">Lo que dicen esos viajes</th>
+                            </tr></thead>
+                            <tbody id="tarifas-body"></tbody>
+                        </table></div>
+                        <div class="flex flex-wrap items-center justify-between gap-2 border-t border-[#F4F7FE] pt-4">
+                            <p id="tarifas-aviso" class="text-[11px] text-[#A3AED0]"></p>
+                            <button onclick="aplicarTarifasAlMes()" class="bg-emerald-600 text-white rounded-lg px-4 py-2 text-sm font-bold">Aplicar a los viajes sin valor</button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- VIEW: CAJONES EN TRANSITO (SIMULACION CONGELADA) -->
             <div id="view-crates-sim" class="hidden view-animate space-y-6">
                 <div class="card-dark overflow-hidden">
@@ -3886,10 +3919,10 @@
 
         // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
         const ACCESS_PROFILES = {
-            SUPERADMIN: ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'],
-            TRAFICO: ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','budget','fleets','maintenance','routes','users','ajustes','employees','schools','reports','incidents','historial'],
+            SUPERADMIN: ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','tarifas','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'],
+            TRAFICO: ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','tarifas','budget','fleets','maintenance','routes','users','ajustes','employees','schools','reports','incidents','historial'],
             RRHH: ['salaries','employees'],
-            ADMINISTRACION: ['weekly','payments','dashboard','budget','salaries','schools','reports']
+            ADMINISTRACION: ['weekly','payments','dashboard','tarifas','budget','salaries','schools','reports']
         };
 
         const USER_PROFILES = {
@@ -3923,7 +3956,7 @@
             }
 
             // Hide/show nav buttons based on access
-            const allSections = ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
+            const allSections = ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','tarifas','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
             allSections.forEach(sec => {
                 const btn = document.getElementById('btn-' + sec);
                 if (btn) {
@@ -4144,7 +4177,7 @@
             return { ...stored, ...hardcoded };
         }
 
-        const ALL_MODULES = ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
+        const ALL_MODULES = ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','tarifas','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
 
         function renderProfileAssignments() {
             const tbody = document.getElementById('profile-assignments-body');
@@ -4279,6 +4312,7 @@
                 payments: 'Planilla de Pagos a Tercerizados',
                 dashboard: 'Dashboard logístico',
                 costs: 'Motor de Costos Operativos',
+                tarifas: 'Tarifas por proveedor',
                 maintenance: 'Mantenimiento de Flota',
                 employees: 'Gestión de Personal',
                 users: 'Gestión de Usuarios',
@@ -4303,6 +4337,7 @@
                 payments: 'Resumen de viajes tercerizados a pagar agrupados por proveedor, unidad y reparto',
                 dashboard: 'Costos propio vs tercerizado y distribución por unidad, zona y localidad',
                 costs: 'Motor financiero para el cálculo de rentabilidad y gastos fijos/variables',
+                tarifas: 'Lo que se le paga a cada proveedor por viaje, mes a mes. Define el valor de los viajes tercerizados',
                 maintenance: 'Seguimiento técnico preventivo y correctivo de la flota propia',
                 employees: 'Acceso unificado a legajos de choferes, auxiliares y liquidaciones',
                 users: 'Administración manual de credenciales para choferes y administradores',
@@ -4354,6 +4389,7 @@
             // Estado de Choferes: refresco cada 15s solo mientras la vista esté abierta
             if (id === 'crates') loadCratesModule();
             if (id === 'crates-sim') loadCratesSimModule();
+            if (id === 'tarifas') cargarTarifas();
             if (id === 'drivers-status') startDriverStatusPolling();
             else stopDriverStatusPolling();
             if(id === 'payments') { if (typeof loadPaymentsView === 'function') loadPaymentsView(); }
@@ -4583,6 +4619,145 @@
                     ${_cratesSaldoCell(e.saldo)}
                     <td class="py-2 px-2 text-xs text-[#A3AED0]">${fmt(e.ultimaVisita)}</td>
                 </tr>`).join('') : '<tr><td colspan="7" class="py-3 px-2 text-[#A3AED0]">Sin establecimientos para mostrar.</td></tr>';
+        }
+
+        // ─── TARIFAS POR PROVEEDOR ──────────────────────────────────────────
+        let _tarifasData = null;
+
+        function _mesActualTarifas() {
+            const el = document.getElementById('tarifas-mes');
+            if (el && el.value) return el.value;
+            const hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+            return hoy.slice(0, 7);
+        }
+
+        async function cargarTarifas() {
+            const body = document.getElementById('tarifas-body');
+            if (!body) return;
+            const mes = _mesActualTarifas();
+            const el = document.getElementById('tarifas-mes');
+            if (el && !el.value) el.value = mes;
+            body.innerHTML = '<tr><td colspan="4" class="py-3 px-2 text-[#A3AED0]">Cargando...</td></tr>';
+            try {
+                const res = await fetch(`${API_URL}/tarifas?mes=${mes}`, { headers: getActorHeaders() });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error del servidor');
+                _tarifasData = data;
+                pintarTarifas();
+            } catch (e) {
+                body.innerHTML = `<tr><td colspan="4" class="py-3 px-2 text-rose-600 font-bold">Error: ${escapeHtml(e.message || e)}</td></tr>`;
+            }
+        }
+
+        function pintarTarifas() {
+            const d = _tarifasData;
+            const body = document.getElementById('tarifas-body');
+            if (!d || !body) return;
+            const plata = (n) => '$ ' + Number(n || 0).toLocaleString('es-AR');
+            body.innerHTML = (d.filas || []).map((f, i) => {
+                const valores = (f.valoresEnLosViajes || []);
+                let dice = '<span class="text-[#A3AED0]">—</span>';
+                if (f.viajesDelMes) {
+                    const partes = valores.map(plata);
+                    if (f.viajesEnCero) partes.push(`<span class="text-rose-600 font-bold">${f.viajesEnCero} en cero</span>`);
+                    dice = partes.join(' · ') || '<span class="text-rose-600 font-bold">todos en cero</span>';
+                    // Si la tarifa cargada no coincide con lo que tienen los viajes, se marca
+                    if (f.tarifa && valores.length && !valores.includes(f.tarifa)) {
+                        dice += ' <span class="text-amber-600 font-bold">≠ tarifa</span>';
+                    }
+                }
+                return `<tr class="border-t border-[#F4F7FE]">
+                    <td class="py-2 px-2 font-black text-[#1B2559]">${escapeHtml(f.proveedor)}</td>
+                    <td class="py-2 px-2 text-right">
+                        <input type="number" min="0" step="1000" value="${f.tarifa ?? ''}" data-proveedor="${escapeHtml(f.proveedor)}"
+                               placeholder="sin cargar"
+                               class="tarifa-input w-36 bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-right text-[#1B2559]">
+                    </td>
+                    <td class="py-2 px-2 text-right font-bold ${f.viajesDelMes ? '' : 'text-[#A3AED0]'}">${f.viajesDelMes}</td>
+                    <td class="py-2 px-2 text-xs">${dice}</td>
+                </tr>`;
+            }).join('') || '<tr><td colspan="4" class="py-3 px-2 text-[#A3AED0]">No hay proveedores cargados.</td></tr>';
+
+            const aviso = document.getElementById('tarifas-aviso');
+            if (aviso) {
+                const conTarifa = (d.filas || []).filter(f => f.tarifa).length;
+                const enCero = (d.filas || []).reduce((n, f) => n + (f.viajesEnCero || 0), 0);
+                const meses = (d.meses || []).length;
+                aviso.innerHTML = `${conTarifa} de ${(d.filas || []).length} proveedores con tarifa cargada en ${d.mes}`
+                    + (meses ? ` · hay tarifas guardadas en ${meses} mes(es)` : '')
+                    + (enCero ? ` · <b class="text-rose-600">${enCero} viaje(s) tercerizados del mes están en cero</b>` : '');
+            }
+        }
+
+        function copiarTarifasDelMesAnterior() {
+            const d = _tarifasData;
+            if (!d) return;
+            const anteriores = (d.meses || []).filter(m => m < d.mes).sort();
+            const previo = anteriores[anteriores.length - 1];
+            if (!previo) {
+                alert('No hay ningún mes anterior con tarifas guardadas.');
+                return;
+            }
+            const tabla = (d.tabla || {})[previo] || {};
+            let puestas = 0;
+            document.querySelectorAll('.tarifa-input').forEach(inp => {
+                const v = Number(tabla[inp.dataset.proveedor]);
+                if (v > 0) { inp.value = v; puestas++; }
+            });
+            if (typeof addNotification === 'function') {
+                addNotification('info', 'Copiado de ' + previo, `${puestas} tarifa(s). Revisalas y apretá Guardar.`);
+            }
+        }
+
+        async function guardarTarifas() {
+            const mes = _mesActualTarifas();
+            const tarifas = {};
+            document.querySelectorAll('.tarifa-input').forEach(inp => {
+                const v = Number(inp.value);
+                if (v > 0) tarifas[inp.dataset.proveedor] = v;
+            });
+            try {
+                const res = await fetch(`${API_URL}/tarifas`, {
+                    method: 'POST', headers: getActorHeaders(),
+                    body: JSON.stringify({ mes, tarifas })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error del servidor');
+                if (typeof addNotification === 'function') {
+                    addNotification('success', 'Tarifas guardadas', `${data.proveedores} proveedor(es) para ${mes}.`);
+                }
+                await cargarTarifas();
+            } catch (e) {
+                if (typeof addNotification === 'function') addNotification('error', 'No se pudo guardar', String(e.message || e));
+            }
+        }
+
+        async function aplicarTarifasAlMes() {
+            const mes = _mesActualTarifas();
+            try {
+                const previo = await fetch(`${API_URL}/tarifas/aplicar`, {
+                    method: 'POST', headers: getActorHeaders(),
+                    body: JSON.stringify({ mes, aplicar: false })
+                }).then(r => r.json());
+                if (previo.error) throw new Error(previo.error);
+                if (!previo.cambios) {
+                    alert(`No hay viajes tercerizados sin valor en ${mes}.`);
+                    return;
+                }
+                if (!confirm(`Se le va a poner la tarifa a ${previo.cambios} viaje(s) de ${mes} que están sin valor. ¿Sigo?`)) return;
+                const res = await fetch(`${API_URL}/tarifas/aplicar`, {
+                    method: 'POST', headers: getActorHeaders(),
+                    body: JSON.stringify({ mes, aplicar: true })
+                });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error del servidor');
+                if (typeof addNotification === 'function') {
+                    addNotification('success', 'Tarifas aplicadas', `${data.cambios} viaje(s) de ${mes} quedaron con su valor.`);
+                }
+                await cargarTarifas();
+            } catch (e) {
+                if (typeof addNotification === 'function') addNotification('error', 'No se pudo aplicar', String(e.message || e));
+            }
         }
 
         // ─── CAJONES EN TRANSITO (SIMULACION CONGELADA) ─────────────────────
@@ -19110,6 +19285,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             'drivers-status': () => loadDriverStatus(),
             crates:          () => loadCratesModule(),
             'crates-sim':    () => loadCratesSimModule(),
+            tarifas:         () => cargarTarifas(),
             hdr:             () => loadHdrList(),
             payments:        () => loadPaymentsView(),
             dashboard:       () => refreshLogisticsDashboard(),

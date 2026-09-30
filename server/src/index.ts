@@ -192,6 +192,7 @@ const PROTECTED_PREFIXES = [
     '/api/v1/crates',
     '/api/v1/catalogos',
     '/api/v1/control-carga',
+    '/api/v1/tarifas',
 ];
 app.use((req: any, res: any, next: any) => {
     // Excepcion: el export de viajes tambien acepta la clave de servicio, como
@@ -1659,6 +1660,131 @@ app.get('/api/v1/dashboard/metricas', async (req: any, res: any) => {
         res.json(await metricasDelMes(prisma, desde, hasta));
     } catch (e: any) {
         console.error('GET dashboard/metricas:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+// ── TARIFAS POR PROVEEDOR ────────────────────────────────────────────────
+// Lo que se le paga a cada proveedor por viaje, mes a mes. Es lo que define el
+// valor de un viaje tercerizado cuando el reparto no tiene una tarifa propia.
+
+/** GET /api/v1/tarifas[?mes=2026-10] */
+app.get('/api/v1/tarifas', async (req: any, res: any) => {
+    try {
+        const tabla = await tablaDeTarifas();
+        const mes = /^\d{4}-\d{2}$/.test(String(req.query.mes || '')) ? String(req.query.mes) : mesDeLaFecha(null);
+
+        const proveedores = await prisma.provider.findMany({
+            where: { active: true }, select: { name: true }, orderBy: { name: 'asc' }
+        });
+
+        // Cuantos viajes tercerizados tiene cada proveedor ese mes y que valores
+        // tienen cargados: sirve para ver si la tarifa se esta aplicando.
+        const [anio, m] = mes.split('-').map(Number);
+        const desde = new Date(Date.UTC(anio, m - 1, 1));
+        const hasta = new Date(Date.UTC(anio, m, 0, 23, 59, 59));
+        const viajes = await prisma.trip.findMany({
+            where: { date: { gte: desde, lte: hasta }, contractType: { equals: 'Tercerizado', mode: 'insensitive' } },
+            select: { provider: true, value: true }
+        });
+        const uso = new Map<string, { viajes: number; valores: Set<number>; enCero: number }>();
+        for (const t of viajes as any[]) {
+            const k = String(t.provider || '').trim().toUpperCase();
+            if (!k) continue;
+            const x = uso.get(k) || { viajes: 0, valores: new Set<number>(), enCero: 0 };
+            x.viajes++;
+            if (Number(t.value) > 0) x.valores.add(Number(t.value));
+            else x.enCero++;
+            uso.set(k, x);
+        }
+
+        const delMes = tabla[mes] || {};
+        const filas = proveedores.map((p) => {
+            const u = uso.get(p.name.trim().toUpperCase());
+            return {
+                proveedor: p.name,
+                tarifa: Number(delMes[p.name]) || null,
+                viajesDelMes: u?.viajes || 0,
+                valoresEnLosViajes: u ? [...u.valores].sort((a, b) => a - b) : [],
+                viajesEnCero: u?.enCero || 0
+            };
+        });
+
+        res.json({ mes, meses: Object.keys(tabla).sort(), filas, tabla });
+    } catch (e: any) {
+        console.error('GET tarifas:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** POST /api/v1/tarifas { mes, tarifas: { "JAVIER GAREIS": 290000 } } */
+app.post('/api/v1/tarifas', async (req: any, res: any) => {
+    try {
+        const mes = String(req.body?.mes || '').trim();
+        if (!/^\d{4}-\d{2}$/.test(mes)) return res.status(400).json({ error: 'Falta "mes" (YYYY-MM)' });
+        const entrada = req.body?.tarifas;
+        if (!entrada || typeof entrada !== 'object') return res.status(400).json({ error: 'Falta "tarifas"' });
+
+        const limpias: Record<string, number> = {};
+        for (const [nombre, valor] of Object.entries<any>(entrada)) {
+            const n = String(nombre || '').trim();
+            const v = Number(valor);
+            if (n && Number.isFinite(v) && v > 0) limpias[n] = Math.round(v);
+        }
+
+        const tabla = await tablaDeTarifas();
+        const antes = tabla[mes] || {};
+        tabla[mes] = limpias;
+        await prisma.appSettings.upsert({
+            where: { key: CLAVE_TARIFAS },
+            update: { value: JSON.stringify(tabla) },
+            create: { key: CLAVE_TARIFAS, value: JSON.stringify(tabla) }
+        });
+        await logAction(req, 'UPDATE', 'settings', 0, `Tarifas de ${mes}`, antes, limpias);
+        res.json({ ok: true, mes, proveedores: Object.keys(limpias).length });
+    } catch (e: any) {
+        console.error('POST tarifas:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Aplica las tarifas cargadas a los viajes tercerizados de un mes que
+ *  quedaron sin valor. POST /api/v1/tarifas/aplicar { mes, pisar?, aplicar? } */
+app.post('/api/v1/tarifas/aplicar', async (req: any, res: any) => {
+    try {
+        const mes = String(req.body?.mes || '').trim();
+        if (!/^\d{4}-\d{2}$/.test(mes)) return res.status(400).json({ error: 'Falta "mes" (YYYY-MM)' });
+        const pisar = req.body?.pisar === true;
+        const aplicar = req.body?.aplicar === true;
+
+        const [anio, m] = mes.split('-').map(Number);
+        const desde = new Date(Date.UTC(anio, m - 1, 1));
+        const hasta = new Date(Date.UTC(anio, m, 0, 23, 59, 59));
+        const viajes = await prisma.trip.findMany({
+            where: { date: { gte: desde, lte: hasta }, contractType: { equals: 'Tercerizado', mode: 'insensitive' } },
+            select: { id: true, date: true, reparto: true, driver: true, provider: true, value: true }
+        });
+
+        const cambios: any[] = [];
+        for (const t of viajes as any[]) {
+            if (!pisar && Number(t.value) > 0) continue;
+            // El reparto manda si tiene tarifa propia; si no, la del proveedor.
+            const regla = await reglaDelReparto(t.reparto, t.date);
+            const tarifa = (regla?.tarifa && Number(regla.tarifa) > 0)
+                ? Number(regla.tarifa)
+                : (await tarifaDeLaTabla(t.provider, t.date))?.valor || null;
+            if (!tarifa || tarifa === Number(t.value)) continue;
+            cambios.push({
+                tripId: t.id, fecha: new Date(t.date).toISOString().slice(0, 10),
+                reparto: t.reparto, chofer: t.driver, proveedor: t.provider,
+                antes: Number(t.value) || 0, despues: tarifa,
+                segun: (regla?.tarifa && Number(regla.tarifa) > 0) ? 'reparto' : 'proveedor'
+            });
+            if (aplicar) await prisma.trip.update({ where: { id: t.id }, data: { value: tarifa } });
+        }
+        res.json({ aplicado: aplicar, mes, viajesRevisados: viajes.length, cambios: cambios.length, detalle: cambios.slice(0, 50) });
+    } catch (e: any) {
+        console.error('POST tarifas/aplicar:', e);
         res.status(500).json({ error: e?.message || 'Error' });
     }
 });
@@ -7097,8 +7223,11 @@ app.get('/api/admin/proveedores-en-viajes', async (req: any, res: any) => {
 app.post('/api/admin/renombrar-proveedor', async (req: any, res: any) => {
     if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     const de = String(req.body?.de || '').trim();
-    const a = String(req.body?.a || '').trim();
-    if (!de || !a) return res.status(400).json({ error: 'Faltan "de" y "a"' });
+    // a = "" vacia el proveedor: sirve para sacar basura como "#N/A", que no es
+    // un proveedor sino el resto de una formula de Excel.
+    const a = req.body?.a === '' ? '' : String(req.body?.a || '').trim();
+    if (!de || (a === null || a === undefined)) return res.status(400).json({ error: 'Falta "de"' });
+    if (a !== '' && !a) return res.status(400).json({ error: 'Falta "a"' });
     const aplicar = req.body?.aplicar === true;
 
     const norm = (v: any) => String(v || '').trim().toUpperCase()
@@ -7117,7 +7246,7 @@ app.post('/api/admin/renombrar-proveedor', async (req: any, res: any) => {
         const aCambiar = viajes.filter((t: any) => norm(t.provider) === objetivo && String(t.provider) !== a);
         if (aplicar) {
             for (const t of aCambiar) {
-                await prisma.trip.update({ where: { id: t.id }, data: { provider: a } });
+                await prisma.trip.update({ where: { id: t.id }, data: { provider: a === '' ? null : a } });
             }
         }
 
@@ -8491,9 +8620,44 @@ async function reglaDelReparto(reparto: any, fecha: any): Promise<ReglaReparto |
 /** La tarifa que cobra un proveedor en el mes, sacada de los repartos que
  *  ya tiene asignados. Sirve para los viajes cuyo reparto no tiene tarifa
  *  propia: la tarifa la pone el proveedor, no el reparto. */
+const CLAVE_TARIFAS = 'tarifas_proveedor';
+
+/** La tabla completa: { "2026-09": { "JAVIER GAREIS": 290000 }, ... } */
+async function tablaDeTarifas(): Promise<Record<string, Record<string, number>>> {
+    try {
+        const fila = await prisma.appSettings.findUnique({ where: { key: CLAVE_TARIFAS } });
+        return fila ? (JSON.parse(fila.value) || {}) : {};
+    } catch (_) {
+        return {};
+    }
+}
+
+/** La tarifa cargada a mano para ese proveedor en ese mes. Si el mes no tiene
+ *  nada, se usa el ultimo mes anterior que si tenga: una tarifa sigue valiendo
+ *  hasta que se cambie. */
+async function tarifaDeLaTabla(proveedor: any, fecha: any): Promise<{ valor: number; mes: string } | null> {
+    const buscado = String(proveedor || '').trim();
+    if (!buscado) return null;
+    const tabla = await tablaDeTarifas();
+    const mes = mesDeLaFecha(fecha);
+    const meses = Object.keys(tabla).filter((m) => m <= mes).sort().reverse();
+    for (const m of meses) {
+        for (const [nombre, valor] of Object.entries(tabla[m] || {})) {
+            if (Number(valor) > 0 && mismoNombrePersona(nombre, buscado)) {
+                return { valor: Number(valor), mes: m };
+            }
+        }
+    }
+    return null;
+}
+
 async function tarifaDelProveedor(proveedor: any, fecha: any): Promise<number | null> {
     const buscado = String(proveedor || '').trim();
     if (!buscado) return null;
+    // Primero la tabla de Tarifas, que es donde se carga a mano.
+    const deLaTabla = await tarifaDeLaTabla(buscado, fecha);
+    if (deLaTabla) return deLaTabla.valor;
+    // Si todavia no esta cargada, se deduce de los repartos que ya hace.
     const { repartos } = await reglasDelMes(fecha);
     const tarifas: number[] = [];
     for (const r of Object.values<any>(repartos || {})) {
@@ -8591,6 +8755,17 @@ app.post('/api/v1/trips', async (req, res) => {
             }
         }
         delete datos.permitirDuplicado;
+
+        // Un viaje tercerizado sin valor se costea en cero. Si hay tarifa
+        // cargada para ese proveedor, se usa. El reparto manda si tiene una
+        // tarifa propia en Reglas por reparto.
+        if (String(datos.contractType || '').toLowerCase() === 'tercerizado' && !(Number(datos.value) > 0)) {
+            const regla = await reglaDelReparto(datos.reparto, datos.date);
+            const tarifa = (regla?.tarifa && Number(regla.tarifa) > 0)
+                ? Number(regla.tarifa)
+                : (await tarifaDeLaTabla(datos.provider, datos.date))?.valor || null;
+            if (tarifa) datos.value = tarifa;
+        }
 
         // La subzona la pone el sistema, no el operador
         datos.subzona = subzonaDelViaje(datos.reparto, datos.zone || datos.locality, datos.contractType);
