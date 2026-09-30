@@ -6557,7 +6557,11 @@ app.get('/api/v1/control-carga', async (req: any, res: any) => {
                 select: {
                     id: true, date: true, reparto: true, driver: true, contractType: true,
                     provider: true, value: true, exitTime: true, returnTime: true,
-                    auxiliar: true, auxiliar2: true, auxiliar3: true
+                    auxiliar: true, auxiliar2: true, auxiliar3: true,
+                    // El costo por horas usa PRIMERO las horas reales de la ruta
+                    // (lo que marca el chofer desde la app) y recien despues las
+                    // horas cargadas a mano.
+                    linkedRoute: { select: { actualStartTime: true, actualEndTime: true } }
                 }
             }),
             prisma.user.findMany({
@@ -6607,7 +6611,9 @@ app.get('/api/v1/control-carga', async (req: any, res: any) => {
             const fecha = new Date(t.date).toISOString().slice(0, 10);
 
             if (propio) {
-                if (!t.exitTime || !t.returnTime) propiosSinHorario.push({ tripId: t.id, fecha, reparto: t.reparto, chofer: t.driver });
+                const horasReales = t.linkedRoute?.actualStartTime && t.linkedRoute?.actualEndTime;
+                const horasAMano = t.exitTime && t.returnTime;
+                if (!horasReales && !horasAMano) propiosSinHorario.push({ tripId: t.id, fecha, reparto: t.reparto, chofer: t.driver });
                 for (const nom of auxDelViaje(t)) {
                     const sueldo = sueldoDeLaPersona(nom, nomina);
                     if (!sueldo) {
@@ -6654,7 +6660,49 @@ app.get('/api/v1/control-carga', async (req: any, res: any) => {
             }
         }
 
-        // ── 6) Fichas sin identificar ───────────────────────────────────────
+        // ── 6) El contrato del viaje no coincide con lo que es el chofer ────
+        // Si el chofer es propio y el viaje figura tercerizado (o al reves), o
+        // se le esta pagando a un proveedor de mas, o el viaje esta mal marcado.
+        const contradicciones: any[] = [];
+        {
+            const porMes = new Map<string, Map<string, string>>();
+            const tipoDelChofer = async (nombre: string, fecha: any) => {
+                const mes = mesDeLaFecha(fecha);
+                if (!porMes.has(mes)) {
+                    const { repartos, choferes } = await reglasDelMes(fecha);
+                    const m = new Map<string, string>();
+                    for (const r of Object.values<any>(repartos || {})) {
+                        if (r?.chofer && r?.tipo) m.set(String(r.chofer).trim(), String(r.tipo));
+                    }
+                    for (const c of (choferes || [])) {
+                        if (c?.chofer && c?.tipo) m.set(String(c.chofer).trim(), String(c.tipo));
+                    }
+                    porMes.set(mes, m);
+                }
+                const mapa = porMes.get(mes)!;
+                for (const [n, tipo] of mapa.entries()) if (mismoNombrePersona(n, nombre)) return tipo;
+                return null;
+            };
+            for (const t of viajes as any[]) {
+                const delViaje = String(t.contractType || '').toLowerCase();
+                if (!delViaje) continue;
+                const suyo = await tipoDelChofer(String(t.driver || ''), t.date);
+                if (!suyo) continue;
+                if (suyo.toLowerCase() === delViaje) continue;
+                contradicciones.push({
+                    tripId: t.id,
+                    fecha: new Date(t.date).toISOString().slice(0, 10),
+                    reparto: t.reparto,
+                    chofer: t.driver,
+                    elChoferEs: suyo,
+                    elViajeDice: t.contractType,
+                    proveedor: t.provider || '',
+                    valor: Number(t.value) || 0
+                });
+            }
+        }
+
+        // ── 7) Fichas sin identificar ───────────────────────────────────────
         const fichasSinIdentificar = fichas
             .filter((f: any) => (f.role === 'CHOFER' && !f.contractType) || (f.role === 'AUXILIAR' && !f.payType))
             .map((f: any) => ({
@@ -6677,6 +6725,13 @@ app.get('/api/v1/control-carga', async (req: any, res: any) => {
                 porque: 'Lo que dice la ficha (Fijo o Jornal) no se corresponde con lo que tiene cargado en Liquidacion. El costo puede salir mal.',
                 gravedad: 'alta',
                 items: [...desajuste.values()].sort((a, b) => b.viajes - a.viajes)
+            },
+            {
+                clave: 'contrato_no_coincide',
+                titulo: 'El viaje no coincide con lo que es el chofer',
+                porque: 'El chofer es de un tipo y el viaje figura del otro. O se le esta pagando de mas a un proveedor, o el viaje quedo mal marcado.',
+                gravedad: 'alta',
+                items: contradicciones
             },
             {
                 clave: 'terc_sin_proveedor',
@@ -6723,6 +6778,50 @@ app.get('/api/v1/control-carga', async (req: any, res: any) => {
         });
     } catch (e: any) {
         console.error('control-carga:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Viajes donde el contrato del viaje no coincide con lo que es el chofer.
+ *  GET /api/admin/contrato-vs-chofer?key=...&desde=&hasta= */
+app.get('/api/admin/contrato-vs-chofer', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const ini = utcDayRange(String(req.query.desde)).start;
+        const fin = utcDayRange(String(req.query.hasta)).end;
+        const viajes = await prisma.trip.findMany({
+            where: { date: { gte: ini, lte: fin } },
+            select: { id: true, date: true, reparto: true, driver: true, contractType: true, provider: true, value: true },
+            orderBy: { date: 'asc' }
+        });
+        const cache = new Map<string, Map<string, string>>();
+        const tipoDelChofer = async (nombre: string, fecha: any) => {
+            const mes = mesDeLaFecha(fecha);
+            if (!cache.has(mes)) {
+                const { repartos, choferes } = await reglasDelMes(fecha);
+                const m = new Map<string, string>();
+                for (const r of Object.values<any>(repartos || {})) if (r?.chofer && r?.tipo) m.set(String(r.chofer).trim(), String(r.tipo));
+                for (const c of (choferes || [])) if (c?.chofer && c?.tipo) m.set(String(c.chofer).trim(), String(c.tipo));
+                cache.set(mes, m);
+            }
+            for (const [n, tipo] of cache.get(mes)!.entries()) if (mismoNombrePersona(n, nombre)) return tipo;
+            return null;
+        };
+        const filas: any[] = [];
+        for (const t of viajes as any[]) {
+            const delViaje = String(t.contractType || '').toLowerCase();
+            if (!delViaje) continue;
+            const suyo = await tipoDelChofer(String(t.driver || ''), t.date);
+            if (!suyo || suyo.toLowerCase() === delViaje) continue;
+            filas.push({
+                tripId: t.id, fecha: new Date(t.date).toISOString().slice(0, 10),
+                reparto: t.reparto, chofer: t.driver,
+                elChoferEs: suyo, elViajeDice: t.contractType,
+                proveedor: t.provider || '', valor: Number(t.value) || 0
+            });
+        }
+        res.json({ viajesRevisados: viajes.length, contradicciones: filas.length, filas });
+    } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error' });
     }
 });
