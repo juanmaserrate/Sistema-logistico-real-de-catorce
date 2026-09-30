@@ -6735,6 +6735,99 @@ app.get('/api/admin/cuentas-por-tipo', async (req: any, res: any) => {
     }
 });
 
+/** Las fichas de personal a las que todavia les falta el dato que define como
+ *  se costean: si el chofer es propio o tercerizado, si el auxiliar cobra fijo
+ *  o jornal. Es el mismo listado que muestra "Problemas de carga y costeo",
+ *  pero con la clave de servicio y con contexto para poder decidir: en cuantos
+ *  viajes aparece cada uno, cuando fue el ultimo y si tiene sueldo cargado.
+ *  GET /api/admin/fichas-sin-identificar?key=... */
+app.get('/api/admin/fichas-sin-identificar', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const [fichas, viajes, nomina, proveedores] = await Promise.all([
+            prisma.user.findMany({
+                where: { role: { in: ['CHOFER', 'AUXILIAR'] } },
+                select: {
+                    id: true, username: true, fullName: true, role: true,
+                    payType: true, contractType: true, providerId: true, createdAt: true
+                }
+            }),
+            prisma.trip.findMany({
+                select: {
+                    date: true, driver: true, auxiliar: true, auxiliar2: true, auxiliar3: true,
+                    reparto: true, contractType: true, provider: true
+                }
+            }),
+            prisma.employeeSalary.findMany(),
+            prisma.provider.findMany({ select: { id: true, name: true } })
+        ]);
+
+        const nombreProveedor = new Map(proveedores.map((p) => [p.id, p.name]));
+
+        // Los que todavia no tienen definido lo que hace falta para costear.
+        const sinIdentificar = fichas.filter((f: any) =>
+            (f.role === 'CHOFER' && !f.contractType) || (f.role === 'AUXILIAR' && !f.payType));
+
+        const apariciones = (nombre: string, comoChofer: boolean) => {
+            let veces = 0, ultimo: Date | null = null;
+            const repartos = new Set<string>();
+            const contratos = new Set<string>();
+            const proveedoresVistos = new Set<string>();
+            for (const t of viajes as any[]) {
+                const gente = comoChofer
+                    ? [t.driver]
+                    : [t.auxiliar, t.auxiliar2, t.auxiliar3]
+                        .filter(Boolean)
+                        .flatMap((a: any) => String(a).split(',').map((x: string) => x.trim()));
+                if (!gente.some((g: any) => g && mismoNombrePersona(g, nombre))) continue;
+                veces++;
+                if (t.reparto) repartos.add(String(t.reparto));
+                if (t.contractType) contratos.add(String(t.contractType));
+                if (t.provider) proveedoresVistos.add(String(t.provider));
+                if (t.date && (!ultimo || new Date(t.date) > ultimo)) ultimo = new Date(t.date);
+            }
+            return {
+                viajes: veces,
+                ultimoViaje: ultimo ? ultimo.toISOString().slice(0, 10) : null,
+                repartos: [...repartos].sort().join(', '),
+                contratosDeEsosViajes: [...contratos].sort().join(', '),
+                proveedoresDeEsosViajes: [...proveedoresVistos].sort().join(', ')
+            };
+        };
+
+        const filas = sinIdentificar.map((f: any) => {
+            const nombre = f.fullName || f.username;
+            const esChofer = f.role === 'CHOFER';
+            const sueldo = sueldoDeLaPersona(nombre, nomina as any[]);
+            return {
+                nombre,
+                usuario: f.username,
+                tipo: esChofer ? 'Chofer' : 'Auxiliar',
+                falta: esChofer ? 'Propio o Tercerizado' : 'Fijo o Jornal',
+                proveedorDeLaFicha: f.providerId ? (nombreProveedor.get(f.providerId) || '(proveedor borrado)') : '',
+                sueldoEnLiquidacion: sueldo
+                    ? [Number(sueldo.grossSalary) > 0 ? `bruto $${Number(sueldo.grossSalary).toLocaleString('es-AR')}` : '',
+                       Number(sueldo.dailyWage) > 0 ? `jornal $${Number(sueldo.dailyWage).toLocaleString('es-AR')}` : '']
+                        .filter(Boolean).join(' + ') || 'figura sin importe'
+                    : 'no figura',
+                fichaCreada: f.createdAt ? new Date(f.createdAt).toISOString().slice(0, 10) : null,
+                ...apariciones(nombre, esChofer)
+            };
+        }).sort((a: any, b: any) => b.viajes - a.viajes || a.nombre.localeCompare(b.nombre, 'es'));
+
+        res.json({
+            total: filas.length,
+            choferes: filas.filter((f: any) => f.tipo === 'Chofer').length,
+            auxiliares: filas.filter((f: any) => f.tipo === 'Auxiliar').length,
+            fichasRevisadas: fichas.length,
+            filas
+        });
+    } catch (e: any) {
+        console.error('fichas-sin-identificar:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 // ── CONTROL DE CARGA Y COSTEO ─────────────────────────────────────────────
 // Busca lo que esta mal cargado y hace que un viaje se cueste mal. La regla
 // de fondo: el costo de un viaje propio son las horas del vehiculo mas el
