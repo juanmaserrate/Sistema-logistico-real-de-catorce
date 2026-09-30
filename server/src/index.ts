@@ -6741,6 +6741,103 @@ app.get('/api/admin/cuentas-por-tipo', async (req: any, res: any) => {
     }
 });
 
+/** Viajes repetidos en un rango: mismo dia, mismo reparto, mismo chofer y
+ *  misma vuelta. Es lo que queda cuando una carga masiva se ejecuta de mas.
+ *  Por defecto solo informa. Con borrar:true deja el mas viejo de cada grupo
+ *  (el de id mas bajo, que es el que se cargo primero) y borra el resto, con
+ *  sus rutas y paradas.
+ *  POST /api/admin/viajes-duplicados { key, desde, hasta, borrar? } */
+app.post('/api/admin/viajes-duplicados', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const ymd = (v: any) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null;
+    const desde = ymd(req.body?.desde);
+    const hasta = ymd(req.body?.hasta);
+    if (!desde || !hasta) return res.status(400).json({ error: 'Faltan "desde" y "hasta" (YYYY-MM-DD)' });
+    const borrar = req.body?.borrar === true;
+
+    try {
+        const viajes = await prisma.trip.findMany({
+            where: { date: { gte: utcDayRange(desde).start, lte: utcDayRange(hasta).end } },
+            select: {
+                id: true, date: true, reparto: true, driver: true, vuelta: true, status: true,
+                businessUnit: true, contractType: true, value: true, assignedMobileUser: true,
+                linkedRoute: { select: { id: true, actualStartTime: true } }
+            },
+            orderBy: { id: 'asc' }
+        });
+
+        const grupos = new Map<string, any[]>();
+        for (const t of viajes as any[]) {
+            const dia = new Date(t.date).toISOString().slice(0, 10);
+            const clave = [dia, String(t.reparto || '').trim().toUpperCase(),
+                           String(t.driver || '').trim().toUpperCase(), t.vuelta ?? 1].join(' | ');
+            if (!grupos.has(clave)) grupos.set(clave, []);
+            grupos.get(clave)!.push(t);
+        }
+
+        const repetidos = [...grupos.entries()]
+            .filter(([, g]) => g.length > 1)
+            .map(([clave, g]) => {
+                // Se conserva el primero que se cargo; si alguno ya se empezo a
+                // recorrer, ese manda, porque tiene datos reales.
+                const conRecorrido = g.filter((t: any) => t.linkedRoute?.actualStartTime);
+                const queda = conRecorrido.length ? conRecorrido[0] : g[0];
+                return {
+                    clave, copias: g.length,
+                    queda: queda.id,
+                    empezados: conRecorrido.map((t: any) => t.id),
+                    sobran: g.filter((t: any) => t.id !== queda.id).map((t: any) => t.id)
+                };
+            })
+            .sort((a, b) => b.copias - a.copias);
+
+        const aBorrar = repetidos.flatMap((r) => r.sobran);
+        let borrados = 0;
+        if (borrar && aBorrar.length) {
+            const LOTE = 400;
+            for (let i = 0; i < aBorrar.length; i += LOTE) {
+                const lote = aBorrar.slice(i, i + LOTE);
+                const rutas = await prisma.route.findMany({ where: { tripId: { in: lote } }, select: { id: true } });
+                const rutaIds = rutas.map((r) => r.id);
+                if (rutaIds.length) {
+                    await prisma.deviceLocation.updateMany({ where: { routeId: { in: rutaIds }, isActive: true }, data: { isActive: false } });
+                    await prisma.stop.deleteMany({ where: { routeId: { in: rutaIds } } });
+                    await prisma.route.deleteMany({ where: { id: { in: rutaIds } } });
+                }
+                await prisma.tripLocation.deleteMany({ where: { tripId: { in: lote } } });
+                await (prisma as any).tripStop.deleteMany({ where: { tripId: { in: lote } } });
+                borrados += (await prisma.trip.deleteMany({ where: { id: { in: lote } } })).count;
+            }
+            await logAction(req, 'DELETE', 'trip', 0, `${borrados} viajes duplicados`, { ids: aBorrar }, { borrados });
+        }
+
+        // Cuantos quedarian por reparto, para poder controlar el numero
+        const porReparto = new Map<string, { antes: number; despues: number }>();
+        const sobranSet = new Set(aBorrar);
+        for (const t of viajes as any[]) {
+            const k = String(t.reparto || '(sin reparto)');
+            const x = porReparto.get(k) || { antes: 0, despues: 0 };
+            x.antes++;
+            if (!sobranSet.has(t.id)) x.despues++;
+            porReparto.set(k, x);
+        }
+
+        res.json({
+            borrado: borrar, desde, hasta,
+            viajesEnElRango: viajes.length,
+            gruposRepetidos: repetidos.length,
+            viajesDeMas: aBorrar.length,
+            borrados,
+            conRecorridoEmpezado: repetidos.filter((r) => r.empezados.length > 1).length,
+            porReparto: [...porReparto.entries()].map(([reparto, x]) => ({ reparto, ...x })).sort((a, b) => b.antes - a.antes),
+            grupos: repetidos.slice(0, 40)
+        });
+    } catch (e: any) {
+        console.error('viajes-duplicados:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Dar de baja (o reactivar) fichas de personal con la clave de servicio.
  *  POST /api/admin/dar-de-baja { key, usernames: [...], alta? } */
 app.post('/api/admin/dar-de-baja', async (req: any, res: any) => {
