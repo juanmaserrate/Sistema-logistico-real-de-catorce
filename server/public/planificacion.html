@@ -2134,7 +2134,7 @@
                     <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
                         <div>
                             <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Tarifas por proveedor</h4>
-                            <p class="text-xs text-[#A3AED0] mt-1">Lo que se le paga por viaje, mes a mes. Es el valor que toma un viaje tercerizado.</p>
+                            <p class="text-xs text-[#A3AED0] mt-1">Lo que se le paga por viaje, mes a mes. Al guardar se le aplica a los viajes tercerizados de ese mes, los ya cargados y los que se creen después.</p>
                         </div>
                         <div class="flex flex-wrap items-end gap-2">
                             <button onclick="agregarMesTarifas()" class="bg-[#F4F7FE] text-[#1B2559] rounded-lg px-4 py-2 text-sm font-bold">+ Mes</button>
@@ -4691,6 +4691,20 @@
         async function guardarTarifas() {
             const tabla = leerTarifasDeLaPantalla();
             try {
+                // Primero se pregunta cuantos viajes ya cargados cambiarian de
+                // valor: lo que se guarda aca tambien corrige el pasado.
+                const previo = await fetch(`${API_URL}/tarifas`, {
+                    method: 'POST', headers: getActorHeaders(),
+                    body: JSON.stringify({ tabla, previo: true })
+                }).then(r => r.json());
+                if (previo.error) throw new Error(previo.error);
+
+                if (previo.viajesQueCambian) {
+                    const ok = confirm(
+                        `Se van a guardar las tarifas y se le va a cambiar el valor a ${previo.viajesQueCambian} viaje(s) ya cargados. ¿Sigo?`);
+                    if (!ok) return;
+                }
+
                 const res = await fetch(`${API_URL}/tarifas`, {
                     method: 'POST', headers: getActorHeaders(),
                     body: JSON.stringify({ tabla })
@@ -4698,7 +4712,14 @@
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Error del servidor');
                 if (typeof addNotification === 'function') {
-                    addNotification('success', 'Tarifas guardadas', `${data.cargadas} tarifa(s) en ${data.meses} mes(es).`);
+                    const detalle = `${data.cargadas} tarifa(s) en ${data.meses} mes(es)`
+                        + (data.viajesActualizados ? ` · ${data.viajesActualizados} viaje(s) actualizados` : '');
+                    addNotification('success', 'Tarifas guardadas', detalle + '.');
+                    const sin = (data.sinTarifa || []).filter(x => x.proveedor !== 'R14 LOG');
+                    if (sin.length) {
+                        addNotification('warning', 'Sin tarifa cargada',
+                            sin.map(x => `${x.proveedor}: ${x.viajes} viaje(s)`).join(' · '));
+                    }
                 }
                 await cargarTarifas();
             } catch (e) {
