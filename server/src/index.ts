@@ -6834,6 +6834,66 @@ app.get('/api/admin/fichas-sin-identificar', async (req: any, res: any) => {
     }
 });
 
+/** Le pone el proveedor a los viajes de un chofer en un rango de fechas. Por
+ *  defecto solo toca los que quedaron sin proveedor real (vacio, EXTERNO,
+ *  R14 LOG, PROPIO, #N/A): no pisa uno ya cargado salvo que se pida.
+ *  POST /api/admin/set-proveedor-por-chofer
+ *  { key, desde, hasta, pares: [{ chofer, proveedor }], pisar?, aplicar? } */
+app.post('/api/admin/set-proveedor-por-chofer', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const ymd = (v: any) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null;
+    const desde = ymd(req.body?.desde);
+    const hasta = ymd(req.body?.hasta);
+    if (!desde || !hasta) return res.status(400).json({ error: 'Faltan "desde" y "hasta" (YYYY-MM-DD)' });
+    const pares: any[] = Array.isArray(req.body?.pares) ? req.body.pares : [];
+    if (!pares.length) return res.status(400).json({ error: 'Falta "pares" (lista de { chofer, proveedor })' });
+    const pisar = req.body?.pisar === true;
+    const aplicar = req.body?.aplicar === true;
+
+    const GENERICOS = ['', 'EXTERNO', 'R14 LOG', 'PROPIO', '#N/A'];
+    const norm = (v: any) => String(v || '').trim().toUpperCase()
+        .normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ');
+
+    try {
+        const viajes = await prisma.trip.findMany({
+            where: { date: { gte: utcDayRange(desde).start, lte: utcDayRange(hasta).end } },
+            select: { id: true, date: true, reparto: true, driver: true, contractType: true, provider: true }
+        });
+
+        const informe: any[] = [];
+        for (const p of pares) {
+            const chofer = String(p?.chofer || '').trim();
+            const proveedor = String(p?.proveedor || '').trim();
+            if (!chofer || !proveedor) { informe.push({ chofer, estado: 'faltan datos' }); continue; }
+
+            const suyos = viajes.filter((t: any) => norm(t.driver) === norm(chofer));
+            const aTocar = suyos.filter((t: any) => pisar || GENERICOS.includes(norm(t.provider)));
+            if (aplicar) {
+                for (const t of aTocar) {
+                    await prisma.trip.update({ where: { id: t.id }, data: { provider: proveedor } });
+                }
+            }
+            informe.push({
+                chofer, proveedor,
+                viajesDelChofer: suyos.length,
+                tocados: aTocar.length,
+                yaTenianProveedor: suyos.length - aTocar.length,
+                ids: aTocar.map((t: any) => t.id),
+                estado: aplicar ? 'cargado' : 'listo para cargar'
+            });
+        }
+        res.json({
+            aplicado: aplicar, desde, hasta,
+            viajesEnElRango: viajes.length,
+            totalTocados: informe.reduce((n, x) => n + (x.tocados || 0), 0),
+            pares: informe
+        });
+    } catch (e: any) {
+        console.error('set-proveedor-por-chofer:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Unifica dos nombres de proveedor. El proveedor viaja como texto en el viaje
  *  y tambien en las reglas por reparto, asi que hay que cambiarlo en los tres
  *  lados: los viajes, las reglas y la ficha de proveedor si existe.
