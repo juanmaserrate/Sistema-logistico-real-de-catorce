@@ -6834,6 +6834,53 @@ app.get('/api/admin/fichas-sin-identificar', async (req: any, res: any) => {
     }
 });
 
+/** Como esta hoy el mapa chofer -> contrato y chofer -> proveedor. Sirve para
+ *  ver si el formulario de viaje nuevo puede sugerir bien: la sugerencia de
+ *  Tercerizado sale del PROVEEDOR de la ficha, no del contrato, asi que un
+ *  chofer marcado tercerizado sin proveedor no se sugiere.
+ *  GET /api/admin/mapa-choferes?key=... */
+app.get('/api/admin/mapa-choferes', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const [fichas, proveedores] = await Promise.all([
+            prisma.user.findMany({
+                where: { role: 'CHOFER' },
+                select: { username: true, fullName: true, contractType: true, providerId: true }
+            }),
+            prisma.provider.findMany({ select: { id: true, name: true } })
+        ]);
+        const nombreProv = new Map(proveedores.map((p) => [p.id, p.name]));
+        const filas = fichas
+            .filter((f: any) => !esCuentaDePrueba(f.username) && !esCuentaDePrueba(f.fullName))
+            .map((f: any) => {
+                const contrato = f.contractType || null;
+                const proveedor = f.providerId ? (nombreProv.get(f.providerId) || '(proveedor borrado)') : null;
+                let sugerencia: string;
+                if (proveedor) sugerencia = 'Tercerizado + ' + proveedor;
+                else if (contrato === 'TERCERIZADO') sugerencia = 'NO SUGIERE (tercerizado sin proveedor)';
+                else if (contrato === 'PROPIO') sugerencia = 'Propio (por descarte, no porque lo diga la ficha)';
+                else sugerencia = 'NO SUGIERE (ficha sin identificar)';
+                return { nombre: f.fullName || f.username, usuario: f.username, contrato, proveedor, sugerencia };
+            })
+            .sort((a: any, b: any) => a.nombre.localeCompare(b.nombre, 'es'));
+
+        const cuenta = (p: (x: any) => boolean) => filas.filter(p).length;
+        res.json({
+            choferes: filas.length,
+            conContrato: cuenta((f) => !!f.contrato),
+            propios: cuenta((f) => f.contrato === 'PROPIO'),
+            tercerizados: cuenta((f) => f.contrato === 'TERCERIZADO'),
+            conProveedor: cuenta((f) => !!f.proveedor),
+            tercerizadosSinProveedor: filas.filter((f: any) => f.contrato === 'TERCERIZADO' && !f.proveedor).map((f: any) => f.nombre),
+            propiosConProveedor: filas.filter((f: any) => f.contrato === 'PROPIO' && f.proveedor).map((f: any) => ({ nombre: f.nombre, proveedor: f.proveedor })),
+            filas
+        });
+    } catch (e: any) {
+        console.error('mapa-choferes:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Carga de una vez lo que falta en las fichas de personal: si el chofer es
  *  propio o tercerizado, si el auxiliar cobra fijo o jornal.
  *  POST /api/admin/fichas-identificar
