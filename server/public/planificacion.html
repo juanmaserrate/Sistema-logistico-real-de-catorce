@@ -22386,13 +22386,31 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         applyVueltaFromModalToPayload(tripData);
                         return tripData;
                     });
-                    const results = await Promise.allSettled(payloads.map(p =>
+                    const mandar = (lista, permitirDuplicado) => Promise.allSettled(lista.map(p =>
                         fetch(`${API_URL}/trips`, {
                             method: 'POST',
                             headers: getActorHeaders(),
-                            body: JSON.stringify(p)
+                            body: JSON.stringify(permitirDuplicado ? { ...p, permitirDuplicado: true } : p)
                         })
                     ));
+                    let results = await mandar(payloads, false);
+
+                    // Los que el servidor rechazo por repetidos. Si de verdad hay
+                    // que cargarlos igual (una salida extra sin numero de vuelta),
+                    // se pregunta una sola vez y se reintentan solo esos.
+                    const repetidosIdx = results
+                        .map((r, i) => (r.status === 'fulfilled' && r.value.status === 409) ? i : -1)
+                        .filter(i => i >= 0);
+                    if (repetidosIdx.length) {
+                        const cuales = repetidosIdx.length === payloads.length
+                            ? `Los ${repetidosIdx.length} viajes ya están cargados`
+                            : `${repetidosIdx.length} de los ${payloads.length} ya están cargados`;
+                        if (confirm(`${cuales}. ¿Los cargo igual? (solo si es una salida extra del mismo reparto y chofer)`)) {
+                            const reintento = await mandar(repetidosIdx.map(i => payloads[i]), true);
+                            reintento.forEach((r, k) => { results[repetidosIdx[k]] = r; });
+                        }
+                    }
+
                     const fulfilled = results.filter(r => r.status === 'fulfilled' && r.value.ok);
                     const ok = fulfilled.length;
                     // Los que el servidor rechazo por estar ya cargados: no son
