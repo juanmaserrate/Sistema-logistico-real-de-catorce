@@ -6374,6 +6374,31 @@ app.post('/api/admin/asignar-proveedor', async (req: any, res: any) => {
     }
 });
 
+/** A que cuenta resuelve un nombre de chofer. Sirve para controlar que el
+ *  sistema NO vaya a fabricar una cuenta nueva por no encontrar la que existe.
+ *  GET /api/admin/buscar-chofer?key=...&nombre=FULANO */
+app.get('/api/admin/buscar-chofer', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const nombre = String(req.query.nombre || '').trim();
+    if (!nombre) return res.status(400).json({ error: 'Falta "nombre"' });
+    try {
+        const u = await findDriverUser(nombre);
+        const parecidas = await prisma.user.findMany({
+            where: { OR: [{ username: { contains: nombre.split(' ')[0], mode: 'insensitive' } },
+                          { fullName: { contains: nombre.split(' ')[0], mode: 'insensitive' } }] },
+            select: { username: true, fullName: true, role: true }
+        });
+        res.json({
+            nombre,
+            encontrada: u ? { username: u.username, fullName: u.fullName, role: u.role } : null,
+            crearia: u ? false : true,
+            cuentasParecidas: parecidas
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/admin/reset-crates', async (req: any, res: any) => {
     const { key, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
