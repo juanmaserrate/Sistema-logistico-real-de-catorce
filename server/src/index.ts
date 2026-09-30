@@ -191,6 +191,7 @@ const PROTECTED_PREFIXES = [
     '/api/upload-photo',
     '/api/v1/crates',
     '/api/v1/catalogos',
+    '/api/v1/control-carga',
 ];
 app.use((req: any, res: any, next: any) => {
     // Excepcion: el export de viajes tambien acepta la clave de servicio, como
@@ -6478,6 +6479,217 @@ app.get('/api/admin/cuentas-por-tipo', async (req: any, res: any) => {
             conGuionBajo: conGuion
         });
     } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+// ── CONTROL DE CARGA Y COSTEO ─────────────────────────────────────────────
+// Busca lo que esta mal cargado y hace que un viaje se cueste mal. La regla
+// de fondo: el costo de un viaje propio son las horas del vehiculo mas el
+// sueldo de sus auxiliares, y ese sueldo se busca POR NOMBRE en la
+// liquidacion. Si el nombre no aparece, el sistema costea en cero y no avisa.
+
+const MESES_ES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+/** Palabras utiles de un nombre, sin acentos ni signos. */
+function palabrasDeNombre(v: any): string[] {
+    return String(v || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toLowerCase().replace(/[^a-z0-9 ]/g, ' ').split(/\s+/).filter((w) => w.length > 1);
+}
+
+/** El mismo criterio que usa el calculo del costo para encontrar el sueldo:
+ *  todas las palabras del nombre buscado tienen que estar en el de la nomina. */
+function sueldoDeLaPersona(nombre: string, nomina: any[]) {
+    const buscadas = palabrasDeNombre(nombre);
+    if (!buscadas.length) return null;
+    return nomina.find((e: any) => {
+        const suyas = palabrasDeNombre(`${e.lastName || ''} ${e.firstName || ''}`);
+        return buscadas.every((b) => suyas.some((p) => p.includes(b) || b.includes(p)));
+    }) || null;
+}
+
+/** GET /api/v1/control-carga?desde=YYYY-MM-DD&hasta=YYYY-MM-DD */
+app.get('/api/v1/control-carga', async (req: any, res: any) => {
+    try {
+        const hoy = buenosAiresYmd();
+        const desde = String(req.query.desde || hoy.slice(0, 8) + '01');
+        const hasta = String(req.query.hasta || hoy);
+        const ini = utcDayRange(desde).start;
+        const fin = utcDayRange(hasta).end;
+
+        const [viajes, fichas, nominaToda] = await Promise.all([
+            prisma.trip.findMany({
+                where: { date: { gte: ini, lte: fin } },
+                select: {
+                    id: true, date: true, reparto: true, driver: true, contractType: true,
+                    provider: true, value: true, exitTime: true, returnTime: true,
+                    auxiliar: true, auxiliar2: true, auxiliar3: true
+                }
+            }),
+            prisma.user.findMany({
+                where: { role: { in: ['CHOFER', 'AUXILIAR', 'DRIVER'] } },
+                select: { id: true, fullName: true, username: true, role: true, payType: true, contractType: true, providerId: true }
+            }),
+            prisma.employeeSalary.findMany()
+        ]);
+
+        const nominaPorMes = new Map<string, any[]>();
+        for (const e of nominaToda) {
+            const k = String(e.month || '').toLowerCase();
+            if (!nominaPorMes.has(k)) nominaPorMes.set(k, []);
+            nominaPorMes.get(k)!.push(e);
+        }
+        const mesDe = (fecha: any) => MESES_ES[new Date(fecha).getMonth()] || '';
+
+        const auxDelViaje = (t: any) => [t.auxiliar, t.auxiliar2, t.auxiliar3]
+            .filter(Boolean)
+            .flatMap((a: any) => String(a).split(',').map((x) => x.trim()))
+            .filter((n) => n && !['--', '-', 'N/A', 'SIN AUXILIAR'].includes(n.toUpperCase()));
+
+        // ── 1) Auxiliares sin sueldo cargado: su costo entra en cero ──────────
+        const sinSueldo = new Map<string, { nombre: string; viajes: number; meses: Set<string> }>();
+        // ── 2) La ficha dice una cosa y la liquidacion otra ──────────────────
+        const desajuste = new Map<string, any>();
+        // ── 3) Viajes tercerizados mal cargados ─────────────────────────────
+        const tercSinProveedor: any[] = [];
+        const tercSinValor: any[] = [];
+        // ── 4) Propios sin horario: el costo sale de un valor por defecto ────
+        const propiosSinHorario: any[] = [];
+        // ── 5) Gente que aparece en viajes y no tiene ficha ─────────────────
+        const sinFicha = new Map<string, { nombre: string; viajes: number; tipo: string }>();
+
+        const nombreFicha = (n: string) => {
+            const b = palabrasDeNombre(n);
+            return fichas.find((f: any) => {
+                const suyas = palabrasDeNombre(f.fullName || f.username);
+                return b.length && suyas.length && b.every((x) => suyas.includes(x));
+            }) || null;
+        };
+
+        for (const t of viajes as any[]) {
+            const propio = String(t.contractType || '').toLowerCase() === 'propio';
+            const mes = mesDe(t.date);
+            const nomina = nominaPorMes.get(mes) || [];
+            const fecha = new Date(t.date).toISOString().slice(0, 10);
+
+            if (propio) {
+                if (!t.exitTime || !t.returnTime) propiosSinHorario.push({ tripId: t.id, fecha, reparto: t.reparto, chofer: t.driver });
+                for (const nom of auxDelViaje(t)) {
+                    const sueldo = sueldoDeLaPersona(nom, nomina);
+                    if (!sueldo) {
+                        const k = nom.toUpperCase();
+                        const prev = sinSueldo.get(k) || { nombre: nom, viajes: 0, meses: new Set<string>() };
+                        prev.viajes++; prev.meses.add(mes);
+                        sinSueldo.set(k, prev);
+                    } else {
+                        // La ficha dice Jornal pero la liquidacion no tiene jornal (o al reves)
+                        const ficha = nombreFicha(nom);
+                        const tieneJornal = Number(sueldo.dailyWage || 0) > 0;
+                        const tieneBruto = Number(sueldo.grossSalary || 0) > 0;
+                        const pt = String(ficha?.payType || '').toUpperCase();
+                        let problema: string | null = null;
+                        if (pt === 'JORNAL' && !tieneJornal) problema = 'La ficha dice Jornal pero en la liquidacion no tiene jornal cargado';
+                        else if (pt === 'FIJO' && !tieneBruto) problema = 'La ficha dice Fijo pero en la liquidacion no tiene sueldo bruto';
+                        else if (!pt && (tieneJornal || tieneBruto)) problema = 'Tiene sueldo cargado pero la ficha no dice si es Fijo o Jornal';
+                        if (problema) {
+                            const k = nom.toUpperCase() + '|' + mes;
+                            const prev = desajuste.get(k) || { nombre: nom, mes, problema, viajes: 0 };
+                            prev.viajes++;
+                            desajuste.set(k, prev);
+                        }
+                    }
+                }
+            } else if (String(t.contractType || '').toLowerCase() === 'tercerizado') {
+                const prov = String(t.provider || '').trim();
+                const generico = !prov || ['EXTERNO', 'R14 LOG', 'PROPIO'].includes(prov.toUpperCase());
+                if (generico) tercSinProveedor.push({ tripId: t.id, fecha, reparto: t.reparto, chofer: t.driver, dice: prov || '(vacio)' });
+                if (!(Number(t.value) > 0)) tercSinValor.push({ tripId: t.id, fecha, reparto: t.reparto, chofer: t.driver, proveedor: prov });
+            }
+
+            // Gente sin ficha
+            const gente: [string, string][] = [];
+            if (t.driver) gente.push([String(t.driver).trim(), 'chofer']);
+            for (const a of auxDelViaje(t)) gente.push([a, 'auxiliar']);
+            for (const [nom, tipo] of gente) {
+                if (!nom || nom.toUpperCase() === 'SIN CHOFER') continue;
+                if (nombreFicha(nom)) continue;
+                const k = nom.toUpperCase();
+                const prev = sinFicha.get(k) || { nombre: nom, viajes: 0, tipo };
+                prev.viajes++;
+                sinFicha.set(k, prev);
+            }
+        }
+
+        // ── 6) Fichas sin identificar ───────────────────────────────────────
+        const fichasSinIdentificar = fichas
+            .filter((f: any) => (f.role === 'CHOFER' && !f.contractType) || (f.role === 'AUXILIAR' && !f.payType))
+            .map((f: any) => ({
+                nombre: f.fullName || f.username,
+                tipo: f.role === 'CHOFER' ? 'Chofer' : 'Auxiliar',
+                falta: f.role === 'CHOFER' ? 'Propio o Tercerizado' : 'Fijo o Jornal'
+            }));
+
+        const bloques = [
+            {
+                clave: 'aux_sin_sueldo',
+                titulo: 'Auxiliares sin sueldo cargado',
+                porque: 'Trabajaron en viajes propios y no figuran en Liquidacion de Sueldos. El sistema les pone costo cero, asi que esos viajes salen mas baratos de lo que costaron.',
+                gravedad: 'alta',
+                items: [...sinSueldo.values()].map((x) => ({ ...x, meses: [...x.meses].join(', ') })).sort((a, b) => b.viajes - a.viajes)
+            },
+            {
+                clave: 'desajuste_ficha_sueldo',
+                titulo: 'La ficha no coincide con la liquidacion',
+                porque: 'Lo que dice la ficha (Fijo o Jornal) no se corresponde con lo que tiene cargado en Liquidacion. El costo puede salir mal.',
+                gravedad: 'alta',
+                items: [...desajuste.values()].sort((a, b) => b.viajes - a.viajes)
+            },
+            {
+                clave: 'terc_sin_proveedor',
+                titulo: 'Viajes tercerizados sin proveedor real',
+                porque: 'Dicen EXTERNO o estan vacios, asi que no se sabe a quien hay que pagarle.',
+                gravedad: 'media',
+                items: tercSinProveedor
+            },
+            {
+                clave: 'terc_sin_valor',
+                titulo: 'Viajes tercerizados sin valor',
+                porque: 'Un viaje tercerizado cuesta lo que dice su valor. Sin valor, cuesta cero.',
+                gravedad: 'alta',
+                items: tercSinValor
+            },
+            {
+                clave: 'fichas_sin_identificar',
+                titulo: 'Fichas sin identificar',
+                porque: 'Falta decir si el chofer es propio o tercerizado, o si el auxiliar cobra fijo o jornal.',
+                gravedad: 'media',
+                items: fichasSinIdentificar
+            },
+            {
+                clave: 'sin_ficha',
+                titulo: 'Gente en viajes que no tiene ficha',
+                porque: 'Aparecen en viajes pero no estan en Personal, asi que no se les puede asignar nada.',
+                gravedad: 'baja',
+                items: [...sinFicha.values()].sort((a, b) => b.viajes - a.viajes)
+            },
+            {
+                clave: 'propios_sin_horario',
+                titulo: 'Viajes propios sin horario',
+                porque: 'El costo propio se calcula por horas. Sin hora de salida y llegada se usa una duracion por defecto.',
+                gravedad: 'baja',
+                items: propiosSinHorario
+            }
+        ];
+
+        res.json({
+            desde, hasta,
+            viajesRevisados: viajes.length,
+            totalProblemas: bloques.reduce((n, b) => n + b.items.length, 0),
+            bloques
+        });
+    } catch (e: any) {
+        console.error('control-carga:', e);
         res.status(500).json({ error: e?.message || 'Error' });
     }
 });

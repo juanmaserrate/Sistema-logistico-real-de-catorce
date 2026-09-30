@@ -20,7 +20,7 @@
          Plan gratuito: 50k cargas de mapa/mes. -->
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="/css/planificacion.css?v=20260929b">
+    <link rel="stylesheet" href="/css/planificacion.css?v=20260929c">
     <script src="/js/r14-utils.js"></script>
     <script src="/js/r14-notifications.js"></script>
 </head>
@@ -157,6 +157,7 @@
                         <div class="nav-menu-panel" role="menu">
                             <a href="#users" id="btn-users" class="nav-menu-item" role="menuitem"><i data-lucide="key-round"></i> <span>Usuarios</span></a>
                             <a href="#ajustes" id="btn-ajustes" class="nav-menu-item" role="menuitem"><i data-lucide="settings-2"></i> <span>Ajustes</span></a>
+                            <a href="#control-carga" id="btn-control-carga" class="nav-menu-item" role="menuitem"><i data-lucide="clipboard-check"></i> <span>Problemas de carga y costeo</span><span id="control-carga-badge" class="nav-menu-badge hidden">0</span></a>
                         </div>
                     </div>
                 </nav>
@@ -549,6 +550,27 @@
                             <button id="historial-next-btn" onclick="historialNextPage()" class="px-4 py-2 bg-white border border-[#E0E5F2] rounded-xl text-xs font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all disabled:opacity-40">Siguiente →</button>
                         </div>
                     </div>
+                </div>
+            </div>
+
+            <!-- VIEW: PROBLEMAS DE CARGA Y COSTEO -->
+            <div id="view-control-carga" class="hidden view-animate space-y-6">
+                <div class="card-dark p-8 flex flex-col md:flex-row md:items-center justify-between gap-6 flex-wrap">
+                    <div>
+                        <h3 class="text-2xl font-bold text-[#1B2559]">Problemas de carga y costeo</h3>
+                        <p class="text-sm text-[#A3AED0] font-medium">Lo que est\u00e1 mal cargado y hace que un viaje se cueste mal</p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-wrap">
+                        <input type="date" id="cc-desde" class="bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm font-bold text-[#1B2559] outline-none">
+                        <input type="date" id="cc-hasta" class="bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-sm font-bold text-[#1B2559] outline-none">
+                        <button onclick="cargarControlDeCarga()" class="px-6 py-3 bg-indigo-600 text-white rounded-2xl font-bold text-xs hover:bg-indigo-700 transition-all flex items-center gap-2 uppercase tracking-widest">
+                            <i data-lucide="search" class="w-4 h-4"></i> Revisar
+                        </button>
+                    </div>
+                </div>
+                <div id="cc-resumen" class="grid grid-cols-2 md:grid-cols-4 gap-4"></div>
+                <div id="cc-bloques" class="space-y-5">
+                    <div class="card-dark p-10 text-center text-sm font-bold text-[#A3AED0]">Eleg\u00ed un per\u00edodo y tocá Revisar.</div>
                 </div>
             </div>
 
@@ -3809,7 +3831,7 @@
 
         // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
         const ACCESS_PROFILES = {
-            SUPERADMIN: ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','employees','salaries','schools','reports','incidents','audit','historial'],
+            SUPERADMIN: ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'],
             TRAFICO: ['control','drivers-status','crates','hdr','weekly','payments','dashboard','budget','fleets','maintenance','routes','users','ajustes','employees','schools','reports','incidents','historial'],
             RRHH: ['salaries','employees'],
             ADMINISTRACION: ['weekly','payments','dashboard','budget','salaries','schools','reports']
@@ -3846,7 +3868,7 @@
             }
 
             // Hide/show nav buttons based on access
-            const allSections = ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','employees','salaries','schools','reports','incidents','audit','historial'];
+            const allSections = ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
             allSections.forEach(sec => {
                 const btn = document.getElementById('btn-' + sec);
                 if (btn) {
@@ -3859,6 +3881,17 @@
                 const visibles = Array.from(items).some(a => a.style.display !== 'none');
                 menu.style.display = visibles ? '' : 'none';
             });
+
+            // "Problemas de carga y costeo" es un tablero de control interno: queda
+            // para juan, aunque despues se le pueda dar a otro desde Usuarios.
+            const DUENOS_CONTROL_CARGA = ['juan', 'juanma'];
+            const quienEs = (localStorage.getItem('r14.loggedUser') || '').toLowerCase().trim();
+            const puedeVerControl = DUENOS_CONTROL_CARGA.includes(quienEs)
+                || (Array.isArray(profile) && profile.includes('control-carga'));
+            const btnControl = document.getElementById('btn-control-carga');
+            if (btnControl) btnControl.style.display = puedeVerControl ? '' : 'none';
+            if (!puedeVerControl) currentUserModules = currentUserModules.filter(m => m !== 'control-carga');
+            else if (!currentUserModules.includes('control-carga')) currentUserModules = [...currentUserModules, 'control-carga'];
 
             // Aplicar permisos de columnas guardados para este usuario
             if (typeof applyUserColumnPermissions === 'function') {
@@ -4018,7 +4051,7 @@
             return { ...stored, ...hardcoded };
         }
 
-        const ALL_MODULES = ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','employees','salaries','schools','reports','incidents','audit','historial'];
+        const ALL_MODULES = ['control','drivers-status','crates','hdr','weekly','payments','dashboard','costs','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
 
         function renderProfileAssignments() {
             const tbody = document.getElementById('profile-assignments-body');
@@ -4156,6 +4189,7 @@
                 employees: 'Gestión de Personal',
                 users: 'Gestión de Usuarios',
                 ajustes: 'Ajustes del sistema',
+                'control-carga': 'Problemas de carga y costeo',
                 salaries: 'Liquidación de Sueldos',
                 schools: 'Clientes',
                 routes: 'Editor de Rutas',
@@ -4178,6 +4212,7 @@
                 employees: 'Acceso unificado a legajos de choferes, auxiliares y liquidaciones',
                 users: 'Administración manual de credenciales para choferes y administradores',
                 ajustes: 'Cómo se comporta el sistema: reglas por reparto y campos del formulario de viaje',
+                'control-carga': 'Lo que está mal cargado y hace que un viaje se cueste mal',
                 salaries: 'Nómina detallada con cálculo de adicionales, jornales y brutos',
                 schools: 'Directorio Maestro de Clientes, ubicaciones y zonas',
                 routes: 'Diseño y estructuración de recorridos predefinidos',
@@ -4234,6 +4269,7 @@
             if(id === 'fleets') { if (typeof fleetsLoadList === 'function') fleetsLoadList(); }
             if(id === 'incidents') loadIncidents();
             if(id === 'ajustes') cargarVistaAjustes();
+            if(id === 'control-carga') { prepararFechasControlDeCarga(); cargarControlDeCarga(); }
             if(id === 'audit') loadAuditLog();
             if(id === 'historial') loadHistorial();
             // Mostrar/ocultar la barra flotante de resultado de Presupuestar
@@ -18868,6 +18904,102 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape') cerrarMenusNav();
         });
+
+        // \u2550\u2550\u2550 PROBLEMAS DE CARGA Y COSTEO \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
+        // Junta en un solo lugar lo que hace que un viaje se cueste mal. El
+        // calculo lo hace el servidor, que es el que tiene los viajes, las
+        // fichas y la liquidacion.
+
+        function prepararFechasControlDeCarga() {
+            const desde = document.getElementById('cc-desde');
+            const hasta = document.getElementById('cc-hasta');
+            if (!desde || !hasta || desde.value) return;
+            const hoy = new Date();
+            const primero = new Date(hoy.getFullYear(), hoy.getMonth(), 1);
+            const iso = (d) => d.toISOString().slice(0, 10);
+            desde.value = iso(primero);
+            hasta.value = iso(hoy);
+        }
+
+        const COLOR_GRAVEDAD = {
+            alta: { caja: 'bg-rose-50 border-rose-200', texto: 'text-rose-700', chip: 'bg-rose-100 text-rose-700' },
+            media: { caja: 'bg-amber-50 border-amber-200', texto: 'text-amber-700', chip: 'bg-amber-100 text-amber-700' },
+            baja: { caja: 'bg-slate-50 border-slate-200', texto: 'text-slate-600', chip: 'bg-slate-100 text-slate-600' }
+        };
+
+        async function cargarControlDeCarga() {
+            const cont = document.getElementById('cc-bloques');
+            const resumen = document.getElementById('cc-resumen');
+            if (!cont) return;
+            const desde = document.getElementById('cc-desde')?.value || '';
+            const hasta = document.getElementById('cc-hasta')?.value || '';
+            cont.innerHTML = '<div class="card-dark p-10 text-center text-sm font-bold text-[#A3AED0]">Revisando\u2026</div>';
+            try {
+                const res = await fetch(`${API_URL}/control-carga?desde=${desde}&hasta=${hasta}`, { headers: getActorHeaders() });
+                if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'HTTP ' + res.status);
+                const d = await res.json();
+                pintarControlDeCarga(d);
+            } catch (e) {
+                cont.innerHTML = `<div class="card-dark p-10 text-center text-sm font-bold text-rose-600">No se pudo revisar: ${escapeHtml(e.message)}</div>`;
+                if (resumen) resumen.innerHTML = '';
+            }
+        }
+
+        function pintarControlDeCarga(d) {
+            const resumen = document.getElementById('cc-resumen');
+            const cont = document.getElementById('cc-bloques');
+            const conProblemas = (d.bloques || []).filter(b => b.items.length);
+            const graves = conProblemas.filter(b => b.gravedad === 'alta').reduce((n, b) => n + b.items.length, 0);
+
+            resumen.innerHTML = `
+                <div class="card-dark p-5"><p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">Viajes revisados</p><p class="text-2xl font-black text-[#1B2559]">${d.viajesRevisados}</p></div>
+                <div class="card-dark p-5"><p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">Problemas</p><p class="text-2xl font-black ${d.totalProblemas ? 'text-rose-600' : 'text-emerald-600'}">${d.totalProblemas}</p></div>
+                <div class="card-dark p-5"><p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">Afectan el costo</p><p class="text-2xl font-black ${graves ? 'text-rose-600' : 'text-emerald-600'}">${graves}</p></div>
+                <div class="card-dark p-5"><p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">Per\u00edodo</p><p class="text-xs font-bold text-[#1B2559] mt-2">${d.desde} al ${d.hasta}</p></div>`;
+
+            const badge = document.getElementById('control-carga-badge');
+            if (badge) {
+                badge.textContent = String(graves);
+                badge.classList.toggle('hidden', !graves);
+            }
+
+            if (!conProblemas.length) {
+                cont.innerHTML = '<div class="card-dark p-10 text-center"><p class="text-lg font-black text-emerald-600">Sin problemas en este per\u00edodo</p><p class="text-xs text-[#A3AED0] font-medium mt-1">Todos los viajes tienen con qu\u00e9 costearse.</p></div>';
+                return;
+            }
+
+            cont.innerHTML = conProblemas.map(b => {
+                const c = COLOR_GRAVEDAD[b.gravedad] || COLOR_GRAVEDAD.baja;
+                const columnas = Object.keys(b.items[0] || {});
+                const encabezados = columnas.map(k => `<th class="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#A3AED0]">${escapeHtml(etiquetaColumna(k))}</th>`).join('');
+                const filas = b.items.slice(0, 60).map(it => `<tr class="hover:bg-white/60">${columnas.map(k => `<td class="px-3 py-2 text-[11px] font-bold text-[#1B2559]">${escapeHtml(String(it[k] ?? ''))}</td>`).join('')}</tr>`).join('');
+                const hayMas = b.items.length > 60 ? `<p class="px-3 py-2 text-[10px] font-bold text-[#A3AED0]">y ${b.items.length - 60} m\u00e1s\u2026</p>` : '';
+                return `<div class="card-dark overflow-hidden">
+                    <div class="p-5 border-b border-[#F4F7FE] ${c.caja} border-l-4">
+                        <div class="flex items-center justify-between gap-3 flex-wrap">
+                            <h4 class="text-sm font-black ${c.texto} uppercase tracking-widest">${escapeHtml(b.titulo)}</h4>
+                            <span class="px-3 py-1 rounded-xl text-[11px] font-black ${c.chip}">${b.items.length}</span>
+                        </div>
+                        <p class="text-[11px] text-[#1B2559] font-medium mt-1.5 leading-relaxed opacity-80">${escapeHtml(b.porque)}</p>
+                    </div>
+                    <div class="overflow-x-auto custom-scrollbar">
+                        <table class="w-full text-left"><thead class="bg-[#FAFBFF]"><tr>${encabezados}</tr></thead>
+                        <tbody class="divide-y divide-[#F4F7FE]">${filas}</tbody></table>
+                        ${hayMas}
+                    </div>
+                </div>`;
+            }).join('');
+            if (window.lucide) lucide.createIcons();
+        }
+
+        function etiquetaColumna(k) {
+            const m = {
+                nombre: 'Nombre', viajes: 'Viajes', meses: 'Meses', mes: 'Mes', problema: 'Qu\u00e9 pasa',
+                tripId: 'Viaje', fecha: 'Fecha', reparto: 'Reparto', chofer: 'Chofer',
+                proveedor: 'Proveedor', dice: 'Dice', tipo: 'Tipo', falta: 'Falta definir'
+            };
+            return m[k] || k;
+        }
         // ═══ AJUSTES ═══════════════════════════════════════════
         // La vista junta los modulos de configuracion y muestra, de un vistazo,
         // que hay cargado en cada uno.
