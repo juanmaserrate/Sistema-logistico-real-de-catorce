@@ -1733,6 +1733,63 @@ app.post('/api/v1/tarifas', async (req: any, res: any) => {
     }
 });
 
+/** Le pone a los viajes tercerizados de un mes el valor que corresponde segun
+ *  la tabla de Tarifas. Sin pisar solo toca los que estan en cero; con
+ *  pisar:true normaliza tambien los que tienen otro valor.
+ *  POST /api/admin/aplicar-tarifas { key, mes, pisar?, aplicar? } */
+app.post('/api/admin/aplicar-tarifas', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const mes = String(req.body?.mes || '').trim();
+    if (!/^\d{4}-\d{2}$/.test(mes)) return res.status(400).json({ error: 'Falta "mes" (YYYY-MM)' });
+    const pisar = req.body?.pisar === true;
+    const aplicar = req.body?.aplicar === true;
+    try {
+        const [anio, m] = mes.split('-').map(Number);
+        const desde = new Date(Date.UTC(anio, m - 1, 1));
+        const hasta = new Date(Date.UTC(anio, m, 0, 23, 59, 59));
+        const viajes = await prisma.trip.findMany({
+            where: { date: { gte: desde, lte: hasta }, contractType: { equals: 'Tercerizado', mode: 'insensitive' } },
+            select: { id: true, date: true, reparto: true, driver: true, provider: true, value: true }
+        });
+
+        const cambios: any[] = [];
+        const sinTarifa = new Map<string, number>();
+        for (const t of viajes as any[]) {
+            if (!pisar && Number(t.value) > 0) continue;
+            const regla = await reglaDelReparto(t.reparto, t.date);
+            const delReparto = regla?.tarifa && Number(regla.tarifa) > 0 ? Number(regla.tarifa) : null;
+            const delProveedor = (await tarifaDeLaTabla(t.provider, t.date))?.valor || null;
+            const tarifa = delReparto || delProveedor;
+            if (!tarifa) {
+                const k = String(t.provider || '(sin proveedor)');
+                sinTarifa.set(k, (sinTarifa.get(k) || 0) + 1);
+                continue;
+            }
+            if (tarifa === Number(t.value)) continue;
+            cambios.push({
+                tripId: t.id, fecha: new Date(t.date).toISOString().slice(0, 10),
+                reparto: t.reparto, chofer: t.driver, proveedor: t.provider,
+                antes: Number(t.value) || 0, despues: tarifa,
+                segun: delReparto ? 'reparto' : 'proveedor'
+            });
+            if (aplicar) await prisma.trip.update({ where: { id: t.id }, data: { value: tarifa } });
+        }
+        if (aplicar && cambios.length) {
+            await logAction(req, 'UPDATE', 'trip', 0, `${cambios.length} viajes con tarifa de ${mes}`, null, { mes, cambios: cambios.length });
+        }
+        res.json({
+            aplicado: aplicar, mes, pisar,
+            viajesTercerizados: viajes.length,
+            cambios: cambios.length,
+            sinTarifa: [...sinTarifa.entries()].map(([proveedor, viajes]) => ({ proveedor, viajes })),
+            detalle: cambios
+        });
+    } catch (e: any) {
+        console.error('aplicar-tarifas:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Arma la tabla de tarifas a partir de lo que ya dicen los viajes: para cada
  *  proveedor y cada mes, el valor que mas se repite en sus viajes tercerizados.
  *  POST /api/admin/tarifas-desde-viajes { key, aplicar? } */
