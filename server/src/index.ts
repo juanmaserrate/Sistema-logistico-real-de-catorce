@@ -4736,6 +4736,10 @@ app.post('/api/admin/crates-simulacion', async (req: any, res: any) => {
                 direccion: x.client?.address || null,
                 dejados: x.cratesDelivered || 0,
                 recuperados: x.cratesRecovered || 0,
+                // Lo que registro la app, antes de la simulacion. Se guarda para
+                // que el filtro por fecha pueda mostrar el saldo real del tramo
+                // que se este mirando, no solo el del periodo completo.
+                recuperadosReales: x.cratesRecovered || 0,
                 tardia: esTardia(x),
                 fecha: fecha ? new Date(fecha).toISOString() : null
             };
@@ -4801,7 +4805,11 @@ app.post('/api/admin/crates-simulacion', async (req: any, res: any) => {
                 .sort((a, b) => a.reparto.localeCompare(b.reparto, 'es', { numeric: true })),
             porEstablecimiento: [...porEstab.values()]
                 .map((x) => conSaldo({ ...x, repartos: [...x.repartos] }))
-                .sort((a, b) => b.saldo - a.saldo || a.establecimiento.localeCompare(b.establecimiento, 'es'))
+                .sort((a, b) => b.saldo - a.saldo || a.establecimiento.localeCompare(b.establecimiento, 'es')),
+            // El detalle parada por parada, ya con la simulacion aplicada. Es lo
+            // que le permite a la pantalla filtrar por fecha sin volver a
+            // preguntarle nada al sistema: el reporte sigue siendo fijo.
+            filas
         };
 
         await prisma.appSettings.upsert({

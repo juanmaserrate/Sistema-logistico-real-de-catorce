@@ -2135,7 +2135,12 @@
                             <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Cajones en tránsito</h4>
                             <p class="text-xs text-[#A3AED0] mt-1" id="crates-sim-periodo">&mdash;</p>
                         </div>
-                        <button onclick="loadCratesSimModule()" class="bg-[#451ebb] text-white rounded-lg px-4 py-2 text-sm font-bold self-start lg:self-auto">Actualizar</button>
+                        <div class="flex flex-wrap items-end gap-2">
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase">Desde<input type="date" id="crates-sim-from" onchange="renderCratesSimModule()" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></label>
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase">Hasta<input type="date" id="crates-sim-to" onchange="renderCratesSimModule()" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></label>
+                            <button id="crates-sim-todo" onclick="resetCratesSimFechas()" class="hidden text-xs font-bold text-indigo-600 hover:underline pb-2">Todo el período</button>
+                            <button onclick="loadCratesSimModule()" class="bg-[#451ebb] text-white rounded-lg px-4 py-2 text-sm font-bold">Actualizar</button>
+                        </div>
                     </div>
                     <div class="p-6 bg-white space-y-6">
                         <div id="crates-sim-kpis" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
@@ -4585,6 +4590,7 @@
         let _cratesSimData = null;
         let _cratesSimReparto = null;
         let _cratesSimEstAbierto = false;   // el detalle arranca plegado
+        let _cratesSimAgg = null;           // lo ultimo que se pinto, ya filtrado
 
         function toggleCratesSimEst(abrir) {
             _cratesSimEstAbierto = (abrir === undefined) ? !_cratesSimEstAbierto : !!abrir;
@@ -4611,10 +4617,79 @@
                 _cratesSimData = data;
                 _cratesSimReparto = null;
                 toggleCratesSimEst(false);
-                renderCratesSimModule();
+                resetCratesSimFechas();   // deja las fechas en todo el periodo y pinta
             } catch (e) {
                 body.innerHTML = `<tr><td colspan="6" class="py-3 px-2 text-rose-600 font-bold">Error: ${_cratesEsc(e.message || e)}</td></tr>`;
             }
+        }
+
+        /** Las fechas elegidas, acotadas a lo que cubre el reporte. */
+        function cratesSimRango() {
+            const d = _cratesSimData || {};
+            const desde = document.getElementById('crates-sim-from')?.value || d.desde || '';
+            const hasta = document.getElementById('crates-sim-to')?.value || d.hasta || '';
+            return { desde, hasta, completo: desde === d.desde && hasta === d.hasta };
+        }
+
+        function resetCratesSimFechas() {
+            const d = _cratesSimData;
+            if (!d) return;
+            const from = document.getElementById('crates-sim-from');
+            const to = document.getElementById('crates-sim-to');
+            if (from) { from.value = d.desde; from.min = d.desde; from.max = d.hasta; }
+            if (to) { to.value = d.hasta; to.min = d.desde; to.max = d.hasta; }
+            renderCratesSimModule();
+        }
+
+        /** Rearma totales, por reparto y por establecimiento desde el detalle
+         *  parada por parada que trae el reporte. No consulta nada: el reporte
+         *  sigue siendo fijo, el filtro solo recorta el tramo que se mira. */
+        function cratesSimAgregado() {
+            const d = _cratesSimData;
+            if (!d) return null;
+            // Reporte viejo, sin detalle por dia: se muestra lo que tenga y listo.
+            if (!Array.isArray(d.filas)) {
+                return { totales: d.totales, real: d.real, porReparto: d.porReparto, porEstablecimiento: d.porEstablecimiento };
+            }
+            const { desde, hasta } = cratesSimRango();
+            const filas = d.filas.filter(f => (!desde || f.dia >= desde) && (!hasta || f.dia <= hasta));
+
+            const tot = { dejados: 0, recuperados: 0, paradas: 0, tardias: 0 };
+            const real = { dejados: 0, recuperados: 0 };
+            const porReparto = new Map();
+            const porEstab = new Map();
+            for (const f of filas) {
+                tot.dejados += f.dejados; tot.recuperados += f.recuperados; tot.paradas++;
+                if (f.tardia) tot.tardias++;
+                real.dejados += f.dejados; real.recuperados += (f.recuperadosReales ?? f.recuperados);
+
+                const kr = String(f.reparto || '').toUpperCase();
+                const rep = porReparto.get(kr) || { reparto: f.reparto, usuarios: new Set(), dejados: 0, recuperados: 0, paradas: 0, tardias: 0 };
+                rep.usuarios.add(f.usuario); rep.dejados += f.dejados; rep.recuperados += f.recuperados; rep.paradas++;
+                if (f.tardia) rep.tardias++;
+                porReparto.set(kr, rep);
+
+                const ke = f.clientId ?? 'sin-cliente';
+                const est = porEstab.get(ke) || {
+                    clientId: f.clientId, establecimiento: f.establecimiento, direccion: f.direccion,
+                    repartos: new Set(), dejados: 0, recuperados: 0, visitas: 0, ultimaVisita: null, tardias: 0
+                };
+                est.repartos.add(f.reparto); est.dejados += f.dejados; est.recuperados += f.recuperados; est.visitas++;
+                if (f.tardia) est.tardias++;
+                if (f.fecha && (!est.ultimaVisita || f.fecha > est.ultimaVisita)) est.ultimaVisita = f.fecha;
+                porEstab.set(ke, est);
+            }
+            const conSaldo = x => ({ ...x, saldo: x.dejados - x.recuperados });
+            return {
+                totales: conSaldo(tot),
+                real: conSaldo(real),
+                porReparto: [...porReparto.values()]
+                    .map(x => conSaldo({ ...x, usuarios: [...x.usuarios] }))
+                    .sort((a, b) => a.reparto.localeCompare(b.reparto, 'es', { numeric: true })),
+                porEstablecimiento: [...porEstab.values()]
+                    .map(x => conSaldo({ ...x, repartos: [...x.repartos] }))
+                    .sort((a, b) => b.saldo - a.saldo || a.establecimiento.localeCompare(b.establecimiento, 'es'))
+            };
         }
 
         function setCratesSimRepartoFilter(reparto) {
@@ -4627,16 +4702,24 @@
         function renderCratesSimModule() {
             const d = _cratesSimData;
             if (!d) return;
+            const agg = cratesSimAgregado();
+            if (!agg) return;
+            _cratesSimAgg = agg;
             const fdia = iso => iso ? iso.split('-').reverse().slice(0, 2).join('/') : '—';
+            const rango = cratesSimRango();
+            document.getElementById('crates-sim-todo')?.classList.toggle('hidden', rango.completo);
             const per = document.getElementById('crates-sim-periodo');
             if (per) {
-                const desdeEstimado = (d.ajuste?.diasAjustados || [])[0];
-                per.textContent = `Del ${fdia(d.desde)} al ${fdia(d.hasta)} — reporte fijo, no se actualiza con la app. `
-                    + `Del ${fdia(desdeEstimado || d.corte)} en adelante los valores son estimados`
-                    + (d.real?.saldo != null ? ` (saldo registrado por la app en el período: ${d.real.saldo})` : '') + '.';
+                const desdeEstimado = (d.ajuste?.diasAjustados || [])[0] || d.corte;
+                const partes = [`Del ${fdia(rango.desde)} al ${fdia(rango.hasta)}`];
+                partes.push('reporte fijo, no se actualiza con la app');
+                partes.push(`valores estimados del ${fdia(desdeEstimado)} en adelante`
+                    + (agg.real?.saldo != null ? ` (saldo registrado por la app en este tramo: ${agg.real.saldo})` : ''));
+                if (!rango.completo) partes.push(`el reporte cubre del ${fdia(d.desde)} al ${fdia(d.hasta)}`);
+                per.textContent = partes.join(' · ') + '.';
             }
 
-            const t = d.totales;
+            const t = agg.totales;
             const kpis = [
                 { label: 'Dejados', val: t.dejados, cls: 'text-[#451ebb]' },
                 { label: 'Recuperados', val: t.recuperados, cls: 'text-emerald-600' },
@@ -4649,10 +4732,10 @@
                     <p class="text-2xl font-black ${k.cls} mt-1">${k.val}</p>
                 </div>`).join('');
 
-            const rows = d.porReparto || [];
+            const rows = agg.porReparto || [];
             document.getElementById('crates-sim-by-reparto').innerHTML = rows.length ? rows.map((r, idx) => {
                 const on = _cratesSimReparto === r.reparto;
-                return `<tr data-idx="${idx}" onclick="setCratesSimRepartoFilter(_cratesSimData.porReparto[${idx}].reparto)" class="cursor-pointer border-t border-[#F4F7FE] ${on ? 'bg-indigo-50' : 'hover:bg-[#F4F7FE]'}">
+                return `<tr data-idx="${idx}" onclick="setCratesSimRepartoFilter(_cratesSimAgg.porReparto[${idx}].reparto)" class="cursor-pointer border-t border-[#F4F7FE] ${on ? 'bg-indigo-50' : 'hover:bg-[#F4F7FE]'}">
                     <td class="py-2 px-2 font-black text-[#1B2559]">${_cratesEsc(r.reparto)}</td>
                     <td class="py-2 px-2 text-[#A3AED0] text-xs">${_cratesEsc((r.usuarios || []).join(', '))}</td>
                     <td class="py-2 px-2 text-right">${r.paradas}</td>
@@ -4660,16 +4743,17 @@
                     <td class="py-2 px-2 text-right font-bold">${r.recuperados}</td>
                     ${_cratesSaldoCell(r.saldo)}
                 </tr>`;
-            }).join('') : '<tr><td colspan="6" class="py-3 px-2 text-[#A3AED0]">Sin datos en la simulación.</td></tr>';
-            renderCratesSimEstablishments();
+            }).join('') : '<tr><td colspan="6" class="py-3 px-2 text-[#A3AED0]">Sin datos en el tramo elegido.</td></tr>';
+            renderCratesSimEstablishments(agg);
         }
 
-        function renderCratesSimEstablishments() {
-            const d = _cratesSimData;
+        function renderCratesSimEstablishments(agg) {
             const tbody = document.getElementById('crates-sim-by-est');
-            if (!d || !tbody) return;
+            if (!_cratesSimData || !tbody) return;
+            const datos = agg || cratesSimAgregado();
+            if (!datos) return;
             const q = (document.getElementById('crates-sim-est-search')?.value || '').trim().toLowerCase();
-            const list = (d.porEstablecimiento || []).filter(e =>
+            const list = (datos.porEstablecimiento || []).filter(e =>
                 (!_cratesSimReparto || (e.repartos || []).includes(_cratesSimReparto)) &&
                 (!q || String(e.establecimiento).toLowerCase().includes(q))
             );
