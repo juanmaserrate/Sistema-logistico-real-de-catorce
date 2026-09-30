@@ -6826,6 +6826,59 @@ app.get('/api/admin/contrato-vs-chofer', async (req: any, res: any) => {
     }
 });
 
+/** Corrige un grupo de viajes puntuales: contrato, proveedor y/o valor.
+ *  El valor solo se pone en los que estan en cero, para no pisar lo cargado.
+ *  POST /api/admin/set-viajes { key, ids, contractType?, provider?, valorSiEstaEnCero?, aplicar } */
+app.post('/api/admin/set-viajes', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const ids: number[] = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
+    if (!ids.length) return res.status(400).json({ error: 'Falta "ids"' });
+    const aplicar = req.body?.aplicar === true;
+    const contractType = req.body?.contractType ? String(req.body.contractType).trim() : null;
+    const provider = req.body?.provider !== undefined ? String(req.body.provider || '').trim() : null;
+    const valorSiCero = Number(req.body?.valorSiEstaEnCero) > 0 ? Number(req.body.valorSiEstaEnCero) : null;
+
+    try {
+        const viajes = await prisma.trip.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, date: true, reparto: true, driver: true, contractType: true, provider: true, value: true }
+        });
+        const cambios: any[] = [];
+        for (const t of viajes) {
+            const data: any = {};
+            const detalle: any = {};
+            if (contractType && t.contractType !== contractType) {
+                data.contractType = contractType;
+                detalle.contrato = { antes: t.contractType, despues: contractType };
+            }
+            if (provider !== null && String(t.provider || '') !== provider) {
+                data.provider = provider;
+                detalle.proveedor = { antes: t.provider, despues: provider };
+            }
+            if (valorSiCero && !(Number(t.value) > 0)) {
+                data.value = valorSiCero;
+                detalle.valor = { antes: Number(t.value) || 0, despues: valorSiCero };
+            }
+            if (Object.keys(data).length) {
+                cambios.push({ tripId: t.id, fecha: new Date(t.date).toISOString().slice(0, 10), reparto: t.reparto, chofer: t.driver, data, detalle });
+            }
+        }
+        if (aplicar) {
+            for (const c of cambios) await prisma.trip.update({ where: { id: c.tripId }, data: c.data });
+        }
+        res.json({
+            aplicado: aplicar,
+            pedidos: ids.length,
+            encontrados: viajes.length,
+            cambiados: cambios.length,
+            noEncontrados: ids.filter((i) => !viajes.some((v) => v.id === i)),
+            detalle: cambios
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/admin/reset-crates', async (req: any, res: any) => {
     const { key, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
