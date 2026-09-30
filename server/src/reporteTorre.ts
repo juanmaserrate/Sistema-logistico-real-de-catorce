@@ -64,6 +64,22 @@ function estadoViaje(status: string | null | undefined, cerrado: boolean): strin
 
 // ─────────────────────────── Las cinco hojas ───────────────────────────
 
+/** Cuentas que existen solo para probar la app. Lo que hagan no se le imputa
+ *  a nadie: queda afuera de los reportes, las estadisticas y los costos.
+ *  Se compara sin distinguir mayusculas, asi que "juan" tapa tambien a "JUAN". */
+export const CUENTAS_DE_PRUEBA = ['juan'];
+
+/** true si esa cuenta de la app es de prueba. */
+export function esCuentaDePrueba(usuario: any): boolean {
+    const u = String(usuario || '').trim().toLowerCase();
+    return !!u && CUENTAS_DE_PRUEBA.includes(u);
+}
+
+/** Saca de una lista de viajes los que son de una cuenta de prueba. */
+export function sinViajesDePrueba(viajes: any[]): any[] {
+    return viajes.filter((t) => !esCuentaDePrueba(t?.assignedMobileUser) && !esCuentaDePrueba(t?.driver));
+}
+
 export async function filasViajes(prisma: Prisma, desde: Date, hasta: Date) {
     return filasViajesDe(prisma, { date: { gte: desde, lte: hasta } });
 }
@@ -97,7 +113,7 @@ async function filasViajesDe(prisma: Prisma, where: any) {
         },
         orderBy: { date: 'asc' }
     });
-    return viajes.map((t: any) => {
+    return sinViajesDePrueba(viajes as any[]).map((t: any) => {
         const r = t.linkedRoute;
         const paradas = (r?.stops || []).filter((s: any) => !s.isReturnToBase);
         const entregadas = paradas.filter((s: any) => String(s.status).toUpperCase() === 'COMPLETED').length;
@@ -164,6 +180,8 @@ export async function filasCajones(prisma: Prisma, desde: Date, hasta: Date) {
     });
     const filas: any[] = [];
     for (const p of paradas) {
+        // Las paradas de la cuenta de prueba no cuentan.
+        if (esCuentaDePrueba(p.route?.driver?.username) || esCuentaDePrueba(p.route?.trip?.driver)) continue;
         const base = {
             'Fecha': soloFecha(p.route?.date),
             'ID viaje': p.route?.tripId ?? null,
@@ -232,11 +250,12 @@ export async function filasFlota(prisma: Prisma) {
 }
 
 export async function filasIncidencias(prisma: Prisma, desde: Date, hasta: Date) {
-    const incs = await prisma.incident.findMany({
+    const todas = await prisma.incident.findMany({
         where: { createdAt: { gte: desde, lte: hasta } },
         include: { driver: { select: { fullName: true, username: true } } },
         orderBy: { createdAt: 'asc' }
     });
+    const incs = todas.filter((i: any) => !esCuentaDePrueba(i.driver?.username));
     const ids = [...new Set(incs.map((i: any) => i.tripId).filter((x: any) => x != null))] as number[];
     const viajes = ids.length
         ? await prisma.trip.findMany({ where: { id: { in: ids } }, select: { id: true, reparto: true, businessUnit: true } })

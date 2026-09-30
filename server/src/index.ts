@@ -1,7 +1,7 @@
 
 import express from 'express';
 import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail, limpiarTokenMail } from './mailer';
-import { armarReporte, filasViajesPorIds, mesDeFecha } from './reporteTorre';
+import { armarReporte, filasViajesPorIds, mesDeFecha, esCuentaDePrueba } from './reporteTorre';
 import { armarLibroViajes } from './libroViajes';
 import { metricasDelMes } from './metricasDashboard';
 import { subirArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnosticoSharepoint, limpiarTokenSharepoint } from './sharepoint';
@@ -4597,6 +4597,8 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
         };
 
         for (const s of stops as any[]) {
+            // La cuenta de prueba no se le imputa a nadie.
+            if (esCuentaDePrueba(s.route?.driver?.username) || esCuentaDePrueba(s.route?.trip?.driver)) continue;
             const reparto = String(s.route?.trip?.reparto || s.route?.driver?.fullName || 'SIN REPARTO').trim();
             if (repartoFiltro && reparto.toUpperCase() !== repartoFiltro) continue;
             const usuario = s.route?.driver?.fullName || s.route?.driver?.username || '-';
@@ -4739,7 +4741,9 @@ app.post('/api/admin/crates-simulacion', async (req: any, res: any) => {
             return !!(cargado && cierre && cargado - cierre > 5 * 60 * 1000);
         };
 
-        const filas = (stops as any[]).map((x) => {
+        const filas = (stops as any[]).filter((x) =>
+            !esCuentaDePrueba(x.route?.driver?.username) && !esCuentaDePrueba(x.route?.trip?.driver)
+        ).map((x) => {
             const fecha = x.actualDeparture || x.actualArrival || x.route?.date;
             return {
                 dia: new Date(x.route?.date).toISOString().slice(0, 10),
@@ -6765,8 +6769,10 @@ app.get('/api/admin/fichas-sin-identificar', async (req: any, res: any) => {
         const nombreProveedor = new Map(proveedores.map((p) => [p.id, p.name]));
 
         // Los que todavia no tienen definido lo que hace falta para costear.
+        // Las cuentas de prueba no son personal: no se identifican ni se cuentan.
         const sinIdentificar = fichas.filter((f: any) =>
-            (f.role === 'CHOFER' && !f.contractType) || (f.role === 'AUXILIAR' && !f.payType));
+            !esCuentaDePrueba(f.username) && !esCuentaDePrueba(f.fullName) &&
+            ((f.role === 'CHOFER' && !f.contractType) || (f.role === 'AUXILIAR' && !f.payType)));
 
         const apariciones = (nombre: string, comoChofer: boolean) => {
             let veces = 0, ultimo: Date | null = null;
