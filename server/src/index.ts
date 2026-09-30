@@ -6388,11 +6388,26 @@ app.get('/api/admin/buscar-chofer', async (req: any, res: any) => {
                           { fullName: { contains: nombre.split(' ')[0], mode: 'insensitive' } }] },
             select: { username: true, fullName: true, role: true }
         });
+        // Los viajes de esa persona y a que cuenta apunta la ruta de cada uno:
+        // si alguna quedo en otra cuenta, sus paradas no le llegan al celular.
+        const viajes = await prisma.trip.findMany({
+            where: { driver: { equals: nombre, mode: 'insensitive' } },
+            select: { id: true, date: true, driver: true, linkedRoute: { select: { id: true, driverId: true, driver: { select: { username: true } } } } }
+        });
+        const conRuta = viajes.filter((t: any) => t.linkedRoute);
+        const enOtraCuenta = conRuta.filter((t: any) => !u || t.linkedRoute.driverId !== u.id);
         res.json({
             nombre,
             encontrada: u ? { username: u.username, fullName: u.fullName, role: u.role } : null,
             crearia: u ? false : true,
-            cuentasParecidas: parecidas
+            cuentasParecidas: parecidas,
+            viajes: viajes.length,
+            viajesConRuta: conRuta.length,
+            rutasEnOtraCuenta: enOtraCuenta.map((t: any) => ({
+                tripId: t.id,
+                fecha: new Date(t.date).toISOString().slice(0, 10),
+                rutaDe: t.linkedRoute.driver?.username || '(sin cuenta)'
+            }))
         });
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error' });
