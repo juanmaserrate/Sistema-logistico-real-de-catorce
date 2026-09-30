@@ -6315,6 +6315,51 @@ app.post('/api/admin/borrar-viajes', async (req: any, res: any) => {
     }
 });
 
+/** Marca para que proveedor trabaja un chofer (lo mismo que el desplegable de
+ *  Personal). Con proveedor vacio o null queda como Propio.
+ *  POST /api/admin/asignar-proveedor { key, chofer, proveedor, aplicar } */
+app.post('/api/admin/asignar-proveedor', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const chofer = String(req.body?.chofer || '').trim();
+    if (!chofer) return res.status(400).json({ error: 'Falta "chofer"' });
+    const proveedor = req.body?.proveedor == null ? null : String(req.body.proveedor).trim();
+    const aplicar = req.body?.aplicar === true;
+
+    try {
+        const users = await prisma.user.findMany({ select: { id: true, username: true, fullName: true, role: true, providerId: true } });
+        const candidatos = users.filter((u) =>
+            u.username.trim().toUpperCase() === chofer.toUpperCase() ||
+            mismoNombrePersona(u.fullName, chofer));
+        if (!candidatos.length) return res.status(404).json({ error: `No encontre a "${chofer}"` });
+
+        let prov: any = null;
+        if (proveedor) {
+            const provs = await prisma.provider.findMany({ select: { id: true, name: true, active: true } });
+            prov = provs.find((p) => p.name.trim().toUpperCase() === proveedor.toUpperCase())
+                || provs.find((p) => mismoNombrePersona(p.name, proveedor));
+            if (!prov) {
+                return res.status(404).json({
+                    error: `No existe el proveedor "${proveedor}"`,
+                    proveedoresCargados: provs.map((p) => p.name)
+                });
+            }
+        }
+
+        if (aplicar) {
+            for (const u of candidatos) {
+                await prisma.user.update({ where: { id: u.id }, data: { providerId: prov ? prov.id : null } });
+            }
+        }
+        res.json({
+            aplicado: aplicar,
+            proveedor: prov ? prov.name : '(Propio)',
+            cuentas: candidatos.map((u) => ({ username: u.username, fullName: u.fullName, role: u.role, teniaProveedor: u.providerId || null }))
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/admin/reset-crates', async (req: any, res: any) => {
     const { key, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
