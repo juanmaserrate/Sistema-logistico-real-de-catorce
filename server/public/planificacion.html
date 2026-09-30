@@ -21789,17 +21789,15 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 .map(u => (u.username || u.fullName || '').trim().toUpperCase())
                 .filter(Boolean);
 
-            // Combinar catálogo de usuarios con los nombres que aparecen en viajes
-            // históricos (para no perder nombres "legacy" que no estén en User).
-            const driversFromTrips = planningData.map(t => t.driver).filter(Boolean);
-            const auxFromTrips = [
-                ...planningData.map(t => t.auxiliar),
-                ...planningData.map(t => t.auxiliar2),
-                ...planningData.map(t => t.auxiliar3)
-            ].filter(Boolean);
-
-            const uniqueDrivers = [...new Set([...driverNamesFromDb, ...driversFromTrips])].sort();
-            const uniqueAux = [...new Set([...auxNamesFromDb, ...auxFromTrips])].sort();
+            // SOLO el catálogo de personal. Antes se le sumaban los nombres que
+            // aparecían escritos en los viejos viajes, y por eso seguían
+            // ofreciéndose personas que ya se habían dado de baja: la operadora
+            // las elegía y la ficha volvía a crearse. Los nombres del histórico
+            // se siguen viendo en los viajes; lo que no se puede es elegirlos
+            // para un viaje nuevo. Para alguien que no esté en el catálogo hay
+            // un botón que lo agrega.
+            const uniqueDrivers = [...new Set(driverNamesFromDb)].sort();
+            const uniqueAux = [...new Set(auxNamesFromDb)].sort();
 
             // Zonas del desplegable: NO dependen solo de los viajes visibles en la
             // vista actual (por defecto "hoy", que puede estar vacío y dejaba el
@@ -21844,6 +21842,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             document.getElementById('new-trip-aux1').innerHTML = auxOptions;
             document.getElementById('new-trip-aux2').innerHTML = auxOptions;
             document.getElementById('new-trip-aux3').innerHTML = auxOptions;
+            _auxiliaresConocidos = uniqueAux.map(a => String(a).trim().toUpperCase()).filter(Boolean);
 
             const zoneDl = document.getElementById('new-trip-zone-list');
             if (zoneDl) zoneDl.innerHTML = uniqueZones.map(z => `<option value="${escapeHtml(z)}">${escapeHtml(z)}</option>`).join('');
@@ -21995,6 +21994,72 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
         }
 
+        let _auxiliaresConocidos = [];
+
+        /** Da de alta una persona en el catálogo de personal desde el viaje.
+         *  Devuelve el nombre si quedó guardada, o null. */
+        async function altaPersonalDesdeViaje(nombre, rol) {
+            const limpio = String(nombre || '').trim().toUpperCase();
+            if (!limpio) return null;
+            const username = (rol === 'AUXILIAR' ? 'AUX_' : '') + limpio.replace(/\s+/g, '_');
+            const pedir = (reactivar) => fetch(`${API_URL}/users`, {
+                method: 'POST',
+                headers: getActorHeaders(),
+                body: JSON.stringify({ fullName: limpio, username, role: rol, password: '-', reactivar })
+            });
+            try {
+                let res = await pedir(false);
+                if (res.status === 409) {
+                    const data = await res.json().catch(() => ({}));
+                    // Puede ser que ya exista con otro usuario (no pasa nada) o
+                    // que esté dado de baja (ahí hay que preguntar).
+                    if (data.dadoDeBaja) {
+                        if (!confirm(`${limpio} está dado de baja. ¿Volvió a trabajar y lo reactivo?`)) return null;
+                        res = await pedir(true);
+                        if (!res.ok) throw new Error('No se pudo reactivar');
+                    }
+                } else if (!res.ok) {
+                    throw new Error('HTTP ' + res.status);
+                }
+                return limpio;
+            } catch (e) {
+                if (typeof addNotification === 'function') {
+                    addNotification('error', 'No se pudo guardar', `${limpio} se usa en este viaje, pero no quedó en el catálogo.`);
+                }
+                return null;
+            }
+        }
+
+        /** Agrega un auxiliar al catálogo y lo deja elegido en el primer lugar
+         *  que esté libre. Los auxiliares van cambiando, así que se carga desde
+         *  el viaje y no hay que ir a Personal. */
+        async function agregarAuxiliarNuevo() {
+            const nombre = prompt('Nombre del auxiliar nuevo (apellido y nombre):');
+            if (nombre === null) return;
+            const limpio = String(nombre).trim().toUpperCase();
+            if (!limpio) return;
+            if (_auxiliaresConocidos.includes(limpio)) {
+                if (typeof addNotification === 'function') addNotification('info', 'Ya estaba', `${limpio} ya está en el catálogo.`);
+                return;
+            }
+            const guardado = await altaPersonalDesdeViaje(limpio, 'AUXILIAR');
+            if (!guardado) return;
+            _auxiliaresConocidos.push(guardado);
+            // Se agrega a los tres desplegables y se elige en el primero libre.
+            for (const id of ['new-trip-aux1', 'new-trip-aux2', 'new-trip-aux3']) {
+                const sel = document.getElementById(id);
+                if (!sel) continue;
+                sel.innerHTML += `<option value="${escapeHtml(guardado)}">${escapeHtml(guardado)}</option>`;
+            }
+            const libre = ['new-trip-aux1', 'new-trip-aux2', 'new-trip-aux3']
+                .map(id => document.getElementById(id))
+                .find(sel => sel && !sel.value);
+            if (libre) libre.value = guardado;
+            if (typeof addNotification === 'function') {
+                addNotification('success', 'Auxiliar guardado', `${guardado} ya queda en el catálogo. Cargale Fijo o Jornal en Personal.`);
+            }
+        }
+
         /** Guarda el chofer tipeado en el catálogo, para que la próxima ya esté. */
         async function guardarChoferNuevo() {
             const inp = document.getElementById('new-trip-driver');
@@ -22004,30 +22069,14 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 refrescarAvisoChoferNuevo(nombre);
                 return;
             }
-            try {
-                const res = await fetch(`${API_URL}/users`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
-                    body: JSON.stringify({
-                        fullName: nombre,
-                        username: nombre.replace(/\s+/g, '_'),
-                        role: 'CHOFER',
-                        password: '-'
-                    })
-                });
-                if (!res.ok && res.status !== 409) throw new Error('HTTP ' + res.status);
-                // 409 = ya existía con otro nombre de usuario: igual queda disponible.
-                _choferesConocidos.push(nombre);
-                const dl = document.getElementById('new-trip-driver-list');
-                if (dl) dl.innerHTML += `<option value="${escapeHtml(nombre)}"></option>`;
-                refrescarAvisoChoferNuevo(nombre);
-                if (typeof addNotification === 'function') {
-                    addNotification('success', 'Chofer guardado', `${nombre} ya queda en el catálogo.`);
-                }
-            } catch (e) {
-                if (typeof addNotification === 'function') {
-                    addNotification('error', 'No se pudo guardar', `${nombre} se usa en este viaje, pero no quedó en el catálogo.`);
-                }
+            const guardado = await altaPersonalDesdeViaje(nombre, 'CHOFER');
+            if (!guardado) return;
+            _choferesConocidos.push(guardado);
+            const dl = document.getElementById('new-trip-driver-list');
+            if (dl) dl.innerHTML += `<option value="${escapeHtml(guardado)}"></option>`;
+            refrescarAvisoChoferNuevo(guardado);
+            if (typeof addNotification === 'function') {
+                addNotification('success', 'Chofer guardado', `${guardado} ya queda en el catálogo. Cargale Propio o Tercerizado en Personal.`);
             }
         }
 
@@ -22485,10 +22534,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     </td>
                     <td class="px-6 py-3 text-[10px] text-[#A3AED0] font-bold uppercase">${u._origin || 'Catálogo'}</td>
                     <td class="px-6 py-3 text-right whitespace-nowrap">
-                        ${isBlocked
+                        ${u._sinFicha
+                            ? `<button onclick="crearFichaDePendiente('${safeName}','${type}')" class="px-3 py-1.5 rounded-lg bg-indigo-50 text-indigo-700 text-[10px] font-bold hover:bg-indigo-100 transition-all">Crear ficha</button>`
+                            : isBlocked
                             ? `<button onclick="toggleEmployeeStatus('${u.id}','${safeName}',false,'${type}')" class="px-3 py-1.5 rounded-lg bg-emerald-50 text-emerald-700 text-[10px] font-bold hover:bg-emerald-100 transition-all">Reactivar</button>`
                             : `<button onclick="toggleEmployeeStatus('${u.id}','${safeName}',true,'${type}')" class="px-3 py-1.5 rounded-lg bg-amber-50 text-amber-700 text-[10px] font-bold hover:bg-amber-100 transition-all">Desactivar</button>`}
-                        <button onclick="deleteEmployee('${u.id}','${safeName}','${type}')" class="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 text-[10px] font-bold hover:bg-rose-100 transition-all ml-1">Eliminar</button>
+                        ${u._sinFicha ? '' : `<button onclick="deleteEmployee('${u.id}','${safeName}','${type}')" class="px-3 py-1.5 rounded-lg bg-rose-50 text-rose-700 text-[10px] font-bold hover:bg-rose-100 transition-all ml-1">Eliminar</button>`}
                     </td>
                 </tr>`;
             }).join('');
@@ -22713,8 +22764,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     });
                 }
 
-                // Sync: add employees from trip history that aren't in the catalog
-                await syncEmployeesFromTrips(empChoferData, empAuxData);
+                // Los nombres que aparecen en viajes y no tienen ficha se
+                // muestran como PENDIENTES, sin crear nada. Antes esta misma
+                // llamada les daba de alta la ficha sola, y por eso volvian a
+                // aparecer los que se habian dado de baja.
+                await marcarPendientesDeFicha(empChoferData, empAuxData);
 
                 renderEmpTable('chofer');
                 renderEmpTable('aux');
@@ -22724,11 +22778,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
         }
 
-        let _empSyncDone = false;
-        async function syncEmployeesFromTrips(choferList, auxList) {
-            // Solo sincronizar una vez por sesión — evita POST 409 repetidos
-            if (_empSyncDone) return;
-            _empSyncDone = true;
+        /** Busca los nombres que aparecen en los viajes y no tienen ficha, y los
+         *  agrega a la tabla como PENDIENTES. No crea ninguna cuenta: la ficha
+         *  la crea el operador con el boton, cuando sabe que es esa persona.
+         *  Los dados de baja no se listan: ya se decidio que no trabajan mas. */
+        async function marcarPendientesDeFicha(choferList, auxList) {
 
             // TODAS las cuentas que ya existen, del tipo que sean. Antes solo se
             // miraban las de tipo CHOFER: como la cuenta del chofer que usa la
@@ -22768,39 +22822,53 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             );
             const tripAux = [...new Set(tripAuxRaw)];
 
+            // Las personas dadas de baja no vuelven a la lista ni como pendientes.
+            let deBaja = new Set();
+            try {
+                const bajas = await fetch(`${API_URL}/users?incluirBajas=1`, { headers: getActorHeaders() })
+                    .then(r => r.ok ? r.json() : []);
+                if (Array.isArray(bajas)) {
+                    deBaja = new Set(bajas.filter(u => u.active === false).flatMap(u => [
+                        (u.fullName || '').toLowerCase(),
+                        (u.username || '').toLowerCase(),
+                        (u.username || '').replace(/_/g, ' ').replace(/^aux /, '').toLowerCase()
+                    ]).filter(Boolean));
+                }
+            } catch (_) { /* sin la lista, se listan todos los pendientes */ }
+
+            const esPendiente = (name, existentes) => {
+                const n = name.toLowerCase();
+                if (existentes.has(n)) return false;
+                if (deBaja.has(n)) return false;
+                return true;
+            };
+
             for (const name of tripDrivers) {
                 const username = name.toUpperCase().replace(/\s+/g, '_');
-                if (existingChoferes.has(name.toLowerCase()) || existingChoferes.has(username.toLowerCase())) continue;
-                try {
-                    const res = await fetch(`${API_URL}/users`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
-                        body: JSON.stringify({ fullName: name, username, role: 'CHOFER', password: '-' })
-                    });
-                    if (res.ok) {
-                        const u = await res.json();
-                        empChoferData.push({ ...u, _origin: 'Sync viajes' });
-                        existingChoferes.add(name.toLowerCase());
-                    }
-                } catch {}
+                if (existingChoferes.has(username.toLowerCase())) continue;
+                if (!esPendiente(name, existingChoferes)) continue;
+                empChoferData.push({ id: null, fullName: name, username, role: 'CHOFER', _sinFicha: true, _origin: 'En viajes, sin ficha' });
+                existingChoferes.add(name.toLowerCase());
             }
 
             for (const name of tripAux) {
                 const username = 'AUX_' + name.toUpperCase().replace(/\s+/g, '_');
-                if (existingAux.has(name.toLowerCase()) || existingAux.has(username.toLowerCase())) continue;
-                try {
-                    const res = await fetch(`${API_URL}/users`, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
-                        body: JSON.stringify({ fullName: name, username, role: 'AUXILIAR', password: '-' })
-                    });
-                    if (res.ok) {
-                        const u = await res.json();
-                        empAuxData.push({ ...u, _origin: 'Sync viajes' });
-                        existingAux.add(name.toLowerCase());
-                    }
-                } catch {}
+                if (existingAux.has(username.toLowerCase())) continue;
+                if (!esPendiente(name, existingAux)) continue;
+                empAuxData.push({ id: null, fullName: name, username, role: 'AUXILIAR', _sinFicha: true, _origin: 'En viajes, sin ficha' });
+                existingAux.add(name.toLowerCase());
             }
+        }
+
+        /** Crea la ficha de una persona que venia apareciendo en los viajes. */
+        async function crearFichaDePendiente(nombre, type) {
+            const rol = type === 'chofer' ? 'CHOFER' : 'AUXILIAR';
+            const guardado = await altaPersonalDesdeViaje(nombre, rol);
+            if (!guardado) return;
+            if (typeof addNotification === 'function') {
+                addNotification('success', 'Ficha creada', `${guardado} ya está en el catálogo. Cargale ${rol === 'CHOFER' ? 'Propio o Tercerizado' : 'Fijo o Jornal'}.`);
+            }
+            await loadEmployeesSection();
         }
 
         async function addEmployeeInline(role) {
@@ -22835,6 +22903,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     body: JSON.stringify({ blocked: block, role: originalRole })
                 });
                 if (!res.ok) throw new Error('Error');
+                // Y queda dado de baja: asi deja de ofrecerse en los viajes y
+                // no vuelve a aparecer solo en Personal.
+                await fetch(`${API_URL}/users/${userId}/${block ? 'baja' : 'alta'}`, {
+                    method: 'POST', headers: getActorHeaders()
+                }).catch(() => {});
                 await loadEmployeesSection();
             } catch (e) {
                 alert('Error al ' + action);
@@ -23708,7 +23781,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     </div>
                 </div>
 
-                <div class="grid grid-cols-3 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
+                <div class="flex items-center justify-between border-t border-[#F4F7FE] mt-4 pt-4 mb-1">
+                    <span class="text-[10px] font-bold text-[#A3AED0] uppercase">Auxiliares</span>
+                    <button type="button" onclick="agregarAuxiliarNuevo()"
+                            class="px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-600 text-[10px] font-bold hover:bg-indigo-100 transition-all uppercase whitespace-nowrap">+ Auxiliar nuevo</button>
+                </div>
+                <div class="grid grid-cols-3 gap-4">
                     <div>
                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Auxiliar 1</label>
                         <select id="new-trip-aux1" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">

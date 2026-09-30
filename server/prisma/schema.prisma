@@ -29,6 +29,10 @@ model User {
   /// identificar. Hace falta un campo propio porque providerId vacio no alcanza:
   /// no distingue "es de la casa" de "nadie lo definio todavia".
   contractType String?
+  /// Baja: la persona ya no trabaja. No se borra para no perder el historial
+  /// ni lo que se hubiera identificado de ella; deja de ofrecerse en los
+  /// desplegables y en Personal, y no se puede volver a crear con ese nombre.
+  active       Boolean    @default(true)
   pushToken    String? // Token Expo para notificaciones push
   /// Si tiene un proveedor asignado, sus viajes se consideran Tercerizados.
   /// Si es null, sus viajes son Propios.

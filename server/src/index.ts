@@ -6752,7 +6752,7 @@ app.get('/api/admin/fichas-sin-identificar', async (req: any, res: any) => {
     try {
         const [fichas, viajes, nomina, proveedores] = await Promise.all([
             prisma.user.findMany({
-                where: { role: { in: ['CHOFER', 'AUXILIAR'] } },
+                where: { role: { in: ['CHOFER', 'AUXILIAR'] }, active: { not: false } },
                 select: {
                     id: true, username: true, fullName: true, role: true,
                     payType: true, contractType: true, providerId: true, createdAt: true
@@ -7070,7 +7070,7 @@ app.get('/api/admin/mapa-choferes', async (req: any, res: any) => {
     try {
         const [fichas, proveedores] = await Promise.all([
             prisma.user.findMany({
-                where: { role: 'CHOFER' },
+                where: { role: 'CHOFER', active: { not: false } },
                 select: { username: true, fullName: true, contractType: true, providerId: true }
             }),
             prisma.provider.findMany({ select: { id: true, name: true } })
@@ -9573,6 +9573,9 @@ app.get('/api/v1/users', async (req, res) => {
             tenantId: 'default-tenant'
         };
         if (roleRaw) where.role = roleRaw;
+        // Las personas dadas de baja no se devuelven salvo que se pidan: es lo
+        // que hace que dejen de aparecer en los desplegables y en Personal.
+        if (req.query.incluirBajas !== '1') where.active = { not: false };
         if (q) {
             where.OR = [
                 { username: { contains: q } },
@@ -9585,7 +9588,7 @@ app.get('/api/v1/users', async (req, res) => {
             select: {
                 id: true, username: true, fullName: true, role: true,
                 payType: true, contractType: true, tenantId: true, createdAt: true,
-                providerId: true,
+                providerId: true, active: true,
                 provider: { select: { id: true, name: true } }
             }
         });
@@ -9682,6 +9685,38 @@ app.delete('/api/v1/providers/:id', async (req, res) => {
     }
 });
 
+/** Da de baja a una persona del catalogo: deja de ofrecerse y no se puede
+ *  volver a crear con ese nombre, pero no se borra nada. Los viajes donde
+ *  estuvo cargada quedan intactos, y si vuelve se la reactiva con lo que ya
+ *  tenia identificado.
+ *  POST /api/v1/users/:id/baja  y  POST /api/v1/users/:id/alta */
+app.post('/api/v1/users/:id/baja', async (req: any, res: any) => {
+    try {
+        const u = await prisma.user.findUnique({ where: { id: String(req.params.id) } });
+        if (!u) return res.status(404).json({ error: 'No existe esa persona' });
+        if (!['CHOFER', 'AUXILIAR', 'DRIVER'].includes(String(u.role || '').toUpperCase())) {
+            return res.status(400).json({ error: 'Solo se dan de baja fichas de personal' });
+        }
+        const despues = await prisma.user.update({ where: { id: u.id }, data: { active: false } });
+        await logAction(req, 'UPDATE', 'user', 0, `${u.fullName || u.username} (baja)`, u, despues);
+        res.json({ ok: true, nombre: u.fullName || u.username, activo: false });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+app.post('/api/v1/users/:id/alta', async (req: any, res: any) => {
+    try {
+        const u = await prisma.user.findUnique({ where: { id: String(req.params.id) } });
+        if (!u) return res.status(404).json({ error: 'No existe esa persona' });
+        const despues = await prisma.user.update({ where: { id: u.id }, data: { active: true } });
+        await logAction(req, 'UPDATE', 'user', 0, `${u.fullName || u.username} (alta)`, u, despues);
+        res.json({ ok: true, nombre: u.fullName || u.username, activo: true });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/v1/users', async (req, res) => {
     try {
         const username = String(req.body?.username || '').trim();
@@ -9698,6 +9733,28 @@ app.post('/api/v1/users', async (req, res) => {
         const requiresPassword = role === 'DRIVER' || role === 'ADMIN';
         if (requiresPassword && !password) {
             return res.status(400).json({ error: 'password es obligatorio para DRIVER/ADMIN' });
+        }
+
+        // Si esa persona esta dada de baja, no se crea de nuevo ni se revive
+        // sin querer: se avisa, y quien corresponda la reactiva desde Personal.
+        const yaEstaba = await prisma.user.findFirst({
+            where: {
+                active: false,
+                OR: [{ username: { equals: username, mode: 'insensitive' } },
+                     { fullName: { equals: fullName, mode: 'insensitive' } }]
+            },
+            select: { id: true, username: true, fullName: true, role: true }
+        });
+        if (yaEstaba && req.body?.reactivar !== true) {
+            return res.status(409).json({
+                error: `${yaEstaba.fullName || yaEstaba.username} está dado de baja. Si volvió, reactivalo desde Personal.`,
+                dadoDeBaja: yaEstaba
+            });
+        }
+        if (yaEstaba && req.body?.reactivar === true) {
+            const revivido = await prisma.user.update({ where: { id: yaEstaba.id }, data: { active: true } });
+            await logAction(req, 'UPDATE', 'user', 0, `${revivido.fullName} (alta)`, yaEstaba, revivido);
+            return res.json(revivido);
         }
 
         await prisma.tenant.upsert({
