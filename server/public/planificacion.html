@@ -21260,6 +21260,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (aviso) {
                 const mes = mesDeFecha(fecha);
                 aviso.textContent = `Según la regla de ${String(reparto).toUpperCase()}${mes ? ' (' + nombreDeMes(mes) + ')' : ''}: ${partes.join(' · ')} — podés cambiarlo`;
+                aviso.dataset.origen = 'reparto';
                 aviso.classList.remove('hidden');
             }
             avisarChoferDistinto(reparto);
@@ -22005,7 +22006,17 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const decirPorLaFicha = (texto) => {
                 if (!avisoFicha) return;
                 avisoFicha.textContent = texto;
+                avisoFicha.dataset.origen = 'ficha';
                 avisoFicha.classList.remove('hidden');
+            };
+            // Si el aviso que hay en pantalla es de otro chofer, se limpia. El
+            // que escribio la regla del reparto no se toca.
+            const borrarAvisoDeFicha = () => {
+                if (avisoFicha && avisoFicha.dataset.origen === 'ficha') {
+                    avisoFicha.textContent = '';
+                    delete avisoFicha.dataset.origen;
+                    avisoFicha.classList.add('hidden');
+                }
             };
             if (info && info.providerId) {
                 // El chofer tiene proveedor asignado → es Tercerizado, sin dudas
@@ -22022,8 +22033,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 if (provInp) provInp.value = '';
                 decirPorLaFicha(`Ficha de ${driverName}: Propio — podés cambiarlo`);
             } else if (driverName) {
-                // Sin proveedor: no se pisa la sugerencia del reparto. Solo se marca
-                // Propio si no hay ninguna sugerencia previa.
+                borrarAvisoDeFicha();
+                // Sin proveedor ni ficha: no se pisa la sugerencia del reparto.
+                // Solo se marca Propio si no hay ninguna sugerencia previa.
                 const sugerido = typeof contratoSugeridoPorReparto === 'function'
                     ? contratoSugeridoPorReparto(document.getElementById('new-trip-reparto')?.value || '')
                     : null;
