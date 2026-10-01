@@ -3981,15 +3981,6 @@
             if (!puedeVerControl) currentUserModules = currentUserModules.filter(m => m !== 'control-carga');
             else if (!currentUserModules.includes('control-carga')) currentUserModules = [...currentUserModules, 'control-carga'];
 
-            // "Cajones con seña" (lo que cargan los choferes en la app) queda solo
-            // para juan. No se puede habilitar desde Usuarios: la lista manda.
-            const DUENOS_CAJONES = ['juan', 'juanma'];
-            const puedeVerCajones = DUENOS_CAJONES.includes(quienEs);
-            const btnCajones = document.getElementById('btn-crates');
-            if (btnCajones) btnCajones.style.display = puedeVerCajones ? '' : 'none';
-            if (!puedeVerCajones) currentUserModules = currentUserModules.filter(m => m !== 'crates');
-            else if (!currentUserModules.includes('crates')) currentUserModules = [...currentUserModules, 'crates'];
-
             // El menu de Operacion puede haber quedado sin items visibles.
             document.querySelectorAll('.nav-menu').forEach(menu => {
                 const items = menu.querySelectorAll('.nav-menu-item');
