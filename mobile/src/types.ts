@@ -33,13 +33,15 @@ export interface Stop {
    *  proveedores. Lo calcula el servidor (null = no se cargó). */
   cratesDelivered?: number | null;
   cratesRecovered?: number | null;
-  /** Cajones separados por proveedor del envase. Es lo que carga el chofer. */
+  /** Cajones separados por tipo de envase. Es lo que carga el chofer. */
   cratesDeliveredPeco?: number | null;
   cratesRecoveredPeco?: number | null;
   cratesDeliveredPlasticos?: number | null;
   cratesRecoveredPlasticos?: number | null;
   cratesDeliveredBurzaco?: number | null;
   cratesRecoveredBurzaco?: number | null;
+  cratesDeliveredJaula?: number | null;
+  cratesRecoveredJaula?: number | null;
   reasonCode?: string | null;
   /** true = vuelta al depósito (Real de Catorce). Al marcarla se cierra el viaje. */
   isReturnToBase?: boolean;

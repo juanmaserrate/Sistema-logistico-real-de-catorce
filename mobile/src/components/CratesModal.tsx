@@ -3,13 +3,13 @@ import { Modal, View, Text, Pressable, StyleSheet, ActivityIndicator, ScrollView
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { Stop } from '../types';
 import { patchStop } from '../api';
-import CajonesPorProveedor, {
+import CajonesPorTipo, {
   CAJONES_VACIO,
   cajonesDeLaParada,
   cajonesParaGuardar,
   totalCajones,
-  type CajonesProveedor,
-} from './CajonesPorProveedor';
+  type EnvasesPorTipo,
+} from './CajonesPorTipo';
 
 type Props = {
   visible: boolean;
@@ -27,7 +27,7 @@ type Props = {
  *  horas, ni reabre el viaje. Si no hay senial, queda en la cola offline. */
 export default function CratesModal({ visible, stop, onClose, onSaved }: Props) {
   const insets = useSafeAreaInsets();
-  const [cajones, setCajones] = useState<CajonesProveedor>(CAJONES_VACIO);
+  const [cajones, setCajones] = useState<EnvasesPorTipo>(CAJONES_VACIO);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -70,7 +70,7 @@ export default function CratesModal({ visible, stop, onClose, onSaved }: Props) 
             estén cerrados: no cambia nada más.
           </Text>
           <ScrollView style={styles.body} keyboardShouldPersistTaps="handled">
-            <CajonesPorProveedor valor={cajones} onChange={setCajones} />
+            <CajonesPorTipo valor={cajones} onChange={setCajones} />
           </ScrollView>
           <View style={styles.actions}>
             <Pressable style={styles.cancel} onPress={onClose} disabled={saving}>

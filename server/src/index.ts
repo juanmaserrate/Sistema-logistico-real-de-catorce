@@ -1,7 +1,7 @@
 
 import express from 'express';
 import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail, limpiarTokenMail } from './mailer';
-import { armarReporte, filasViajesPorIds, mesDeFecha, esCuentaDePrueba, PROVEEDORES_CAJONES, sumaProveedores } from './reporteTorre';
+import { armarReporte, filasViajesPorIds, mesDeFecha, esCuentaDePrueba, TIPOS_DE_ENVASE, sumaDeLosTipos } from './reporteTorre';
 import { armarLibroViajes } from './libroViajes';
 import { metricasDelMes } from './metricasDashboard';
 import { subirArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnosticoSharepoint, limpiarTokenSharepoint } from './sharepoint';
@@ -4818,6 +4818,7 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
                 cratesDeliveredPeco: true, cratesRecoveredPeco: true,
                 cratesDeliveredPlasticos: true, cratesRecoveredPlasticos: true,
                 cratesDeliveredBurzaco: true, cratesRecoveredBurzaco: true,
+                cratesDeliveredJaula: true, cratesRecoveredJaula: true,
                 actualArrival: true, actualDeparture: true,
                 client: { select: { id: true, name: true, address: true } },
                 route: {
@@ -4832,28 +4833,28 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
 
         const porReparto = new Map<string, any>();
         const porEstab = new Map<string, any>();
-        // Un contador por proveedor del envase, para saber de quien son los
-        // cajones que quedaron en la calle y no solo cuantos son.
-        const porProveedorVacio = () => {
+        // Un contador por tipo de envase, para saber que quedo en la calle y no
+        // solo cuanto.
+        const porTipoVacio = () => {
             const o: any = {};
-            for (const p of PROVEEDORES_CAJONES) o[p.clave] = { nombre: p.nombre, dejados: 0, recuperados: 0 };
+            for (const p of TIPOS_DE_ENVASE) o[p.clave] = { nombre: p.nombre, dejados: 0, recuperados: 0 };
             return o;
         };
-        const sumarProveedores = (acc: any, s: any) => {
-            for (const p of PROVEEDORES_CAJONES) {
+        const sumarTipos = (acc: any, s: any) => {
+            for (const p of TIPOS_DE_ENVASE) {
                 acc[p.clave].dejados += Number(s[p.dej]) || 0;
                 acc[p.clave].recuperados += Number(s[p.rec]) || 0;
             }
         };
-        const cerrarProveedores = (acc: any) => {
+        const cerrarTipos = (acc: any) => {
             const o: any = {};
-            for (const p of PROVEEDORES_CAJONES) {
+            for (const p of TIPOS_DE_ENVASE) {
                 const x = acc[p.clave];
                 o[p.clave] = { ...x, saldo: x.dejados - x.recuperados };
             }
             return o;
         };
-        const tot = { dejados: 0, recuperados: 0, paradas: 0, tardias: 0, porProveedor: porProveedorVacio() };
+        const tot = { dejados: 0, recuperados: 0, paradas: 0, tardias: 0, porTipoDeEnvase: porTipoVacio() };
         // "Tardía": los cajones se cargaron mas de 5 min despues de cerrar la entrega
         // (el chofer volvio mas tarde a buscarlos). No es un error, se marca aparte.
         const esTardia = (s: any) => {
@@ -4873,24 +4874,24 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
             const tardia = esTardia(s);
             tot.dejados += d; tot.recuperados += r; tot.paradas++;
             if (tardia) tot.tardias++;
-            sumarProveedores(tot.porProveedor, s);
+            sumarTipos(tot.porTipoDeEnvase, s);
 
             const kr = reparto.toUpperCase();
-            const rep = porReparto.get(kr) || { reparto, usuarios: new Set<string>(), dejados: 0, recuperados: 0, paradas: 0, tardias: 0, porProveedor: porProveedorVacio() };
+            const rep = porReparto.get(kr) || { reparto, usuarios: new Set<string>(), dejados: 0, recuperados: 0, paradas: 0, tardias: 0, porTipoDeEnvase: porTipoVacio() };
             rep.usuarios.add(usuario); rep.dejados += d; rep.recuperados += r; rep.paradas++;
             if (tardia) rep.tardias++;
-            sumarProveedores(rep.porProveedor, s);
+            sumarTipos(rep.porTipoDeEnvase, s);
             porReparto.set(kr, rep);
 
             const ke = s.client?.id || 'sin-cliente';
             const est = porEstab.get(ke) || {
                 clientId: s.client?.id || null, establecimiento: s.client?.name || '-', direccion: s.client?.address || null,
                 repartos: new Set<string>(), dejados: 0, recuperados: 0, visitas: 0, ultimaVisita: null as any, tardias: 0,
-                porProveedor: porProveedorVacio()
+                porTipoDeEnvase: porTipoVacio()
             };
             est.repartos.add(reparto); est.dejados += d; est.recuperados += r; est.visitas++;
             if (tardia) est.tardias++;
-            sumarProveedores(est.porProveedor, s);
+            sumarTipos(est.porTipoDeEnvase, s);
             if (fecha && (!est.ultimaVisita || new Date(fecha) > new Date(est.ultimaVisita))) est.ultimaVisita = new Date(fecha).toISOString();
             porEstab.set(ke, est);
         }
@@ -4898,11 +4899,11 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
         const conSaldo = (x: any) => ({
             ...x,
             saldo: x.dejados - x.recuperados,
-            porProveedor: x.porProveedor ? cerrarProveedores(x.porProveedor) : undefined
+            porTipoDeEnvase: x.porTipoDeEnvase ? cerrarTipos(x.porTipoDeEnvase) : undefined
         });
         res.json({
             desde: from, hasta: to,
-            proveedores: PROVEEDORES_CAJONES.map((p) => ({ clave: p.clave, nombre: p.nombre })),
+            tiposDeEnvase: TIPOS_DE_ENVASE.map((p) => ({ clave: p.clave, nombre: p.nombre })),
             totales: conSaldo(tot),
             porReparto: [...porReparto.values()]
                 .map((x) => conSaldo({ ...x, usuarios: [...x.usuarios] }))
@@ -6755,7 +6756,7 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
             revisados: viajes.length,
             cambiados: cambios.length,
             porContrato: cambios.filter((c) => c.detalle.contrato).length,
-            porProveedor: cambios.filter((c) => c.detalle.proveedor).length,
+            porTipoDeEnvase: cambios.filter((c) => c.detalle.proveedor).length,
             porValor: cambios.filter((c) => c.detalle.valor).length,
             repartosSinTarifa: [...sinTarifa.entries()].sort((a, b) => b[1] - a[1]).map(([nombre, viajes]) => ({ nombre, viajes })),
             ejemplos: cambios.slice(0, 15),
@@ -7965,7 +7966,7 @@ app.post('/api/admin/reset-crates', async (req: any, res: any) => {
     const { key, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     try {
-        const camposProveedor = PROVEEDORES_CAJONES.flatMap((p) => [p.dej, p.rec]);
+        const camposProveedor = TIPOS_DE_ENVASE.flatMap((p) => [p.dej, p.rec]);
         const sel: any = { id: true, cratesDelivered: true, cratesRecovered: true, route: { select: { date: true, trip: { select: { reparto: true } } } } };
         for (const c of camposProveedor) sel[c] = true;
         const stops = await prisma.stop.findMany({
@@ -8088,7 +8089,7 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
         // Es lo que carga el chofer en la app. Los dos totales de arriba los
         // recalcula el servidor como la SUMA de los tres, asi ningun reporte
         // viejo se queda sin dato y los dos numeros nunca se contradicen.
-        const camposProveedor = PROVEEDORES_CAJONES.flatMap((p) => [p.dej, p.rec]);
+        const camposProveedor = TIPOS_DE_ENVASE.flatMap((p) => [p.dej, p.rec]);
         let tocoProveedores = false;
         for (const campo of camposProveedor) {
             if (body[campo] === undefined) continue;
@@ -8108,8 +8109,8 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
             for (const c of camposProveedor) sel[c] = true;
             const actual = await prisma.stop.findUnique({ where: { id: stopId }, select: sel });
             const unido: any = { ...(actual || {}), ...data };
-            data.cratesDelivered = sumaProveedores(unido, 'dej');
-            data.cratesRecovered = sumaProveedores(unido, 'rec');
+            data.cratesDelivered = sumaDeLosTipos(unido, 'dej');
+            data.cratesRecovered = sumaDeLosTipos(unido, 'rec');
         }
         // Retiro tardío: el chofer vuelve más tarde a buscar los cajones, con la
         // entrega (y a veces el viaje entero) ya cerrada. Guardamos cuándo se cargó.
@@ -9417,7 +9418,9 @@ app.get('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
                 cratesDeliveredPlasticos: (s as any).cratesDeliveredPlasticos ?? null,
                 cratesRecoveredPlasticos: (s as any).cratesRecoveredPlasticos ?? null,
                 cratesDeliveredBurzaco: (s as any).cratesDeliveredBurzaco ?? null,
-                cratesRecoveredBurzaco: (s as any).cratesRecoveredBurzaco ?? null
+                cratesRecoveredBurzaco: (s as any).cratesRecoveredBurzaco ?? null,
+                cratesDeliveredJaula: (s as any).cratesDeliveredJaula ?? null,
+                cratesRecoveredJaula: (s as any).cratesRecoveredJaula ?? null
             }))
         });
     } catch (e: any) {

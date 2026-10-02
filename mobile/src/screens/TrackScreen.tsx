@@ -41,7 +41,7 @@ import {
 } from '../api';
 import StopDeliveryModal from '../components/StopDeliveryModal';
 import CratesModal from '../components/CratesModal';
-import { resumenPorProveedor } from '../components/CajonesPorProveedor';
+import { resumenPorTipo } from '../components/CajonesPorTipo';
 import IncidentModal from '../components/IncidentModal';
 import ReorderModal from '../components/ReorderModal';
 import {
@@ -1050,7 +1050,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                           <Text style={styles.tlCrates}>
                             📦 {[st.cratesDelivered != null ? `Bajó ${st.cratesDelivered}` : null,
                               st.cratesRecovered != null ? `Recuperó ${st.cratesRecovered}` : null].filter(Boolean).join(' · ')}
-                            {resumenPorProveedor(st) ? `\n${resumenPorProveedor(st)}` : ''}
+                            {resumenPorTipo(st) ? `\n${resumenPorTipo(st)}` : ''}
                           </Text>
                         ) : null}
                         {st.observations ? (

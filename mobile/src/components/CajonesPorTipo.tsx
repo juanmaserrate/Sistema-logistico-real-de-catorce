@@ -1,61 +1,67 @@
 import React from 'react';
 import { View, Text, Pressable, TextInput, StyleSheet } from 'react-native';
 
-/** Los tres proveedores de envases. El orden es el que ve el chofer.
- *  Tiene que coincidir con PROVEEDORES_CAJONES del servidor. */
-export const PROVEEDORES = [
+/** Los tipos de envase. Tres llevan el nombre del proveedor del envase y la
+ *  jaula es un envase propio. El orden es el que ve el chofer.
+ *  Tiene que coincidir con TIPOS_DE_ENVASE del servidor. */
+export const TIPOS = [
   { nombre: 'PECO', dej: 'cratesDeliveredPeco', rec: 'cratesRecoveredPeco' },
   { nombre: 'PLÁSTICOS', dej: 'cratesDeliveredPlasticos', rec: 'cratesRecoveredPlasticos' },
   { nombre: 'BURZACO', dej: 'cratesDeliveredBurzaco', rec: 'cratesRecoveredBurzaco' },
+  { nombre: 'JAULA', dej: 'cratesDeliveredJaula', rec: 'cratesRecoveredJaula' },
 ] as const;
 
-export type CajonesProveedor = {
+export type EnvasesPorTipo = {
   cratesDeliveredPeco: number | null;
   cratesRecoveredPeco: number | null;
   cratesDeliveredPlasticos: number | null;
   cratesRecoveredPlasticos: number | null;
   cratesDeliveredBurzaco: number | null;
   cratesRecoveredBurzaco: number | null;
+  cratesDeliveredJaula: number | null;
+  cratesRecoveredJaula: number | null;
 };
 
-export const CAJONES_VACIO: CajonesProveedor = {
+export const CAJONES_VACIO: EnvasesPorTipo = {
   cratesDeliveredPeco: null,
   cratesRecoveredPeco: null,
   cratesDeliveredPlasticos: null,
   cratesRecoveredPlasticos: null,
   cratesDeliveredBurzaco: null,
   cratesRecoveredBurzaco: null,
+  cratesDeliveredJaula: null,
+  cratesRecoveredJaula: null,
 };
 
 /** Lo que ya tiene cargado la parada. */
-export function cajonesDeLaParada(stop: any): CajonesProveedor {
+export function cajonesDeLaParada(stop: any): EnvasesPorTipo {
   const v: any = {};
   for (const k of Object.keys(CAJONES_VACIO)) v[k] = stop?.[k] ?? null;
-  return v as CajonesProveedor;
+  return v as EnvasesPorTipo;
 }
 
-export function totalCajones(v: CajonesProveedor, cual: 'dej' | 'rec'): number {
-  return PROVEEDORES.reduce((n, p) => n + (Number((v as any)[p[cual]]) || 0), 0);
+export function totalCajones(v: EnvasesPorTipo, cual: 'dej' | 'rec'): number {
+  return TIPOS.reduce((n, p) => n + (Number((v as any)[p[cual]]) || 0), 0);
 }
 
 /** true si el chofer toco algo. Sirve para no pisar la parada cuando abrio la
  *  ventana y la cerro sin cambiar nada. */
-export function cambiaronLosCajones(antes: CajonesProveedor, ahora: CajonesProveedor): boolean {
+export function cambiaronLosCajones(antes: EnvasesPorTipo, ahora: EnvasesPorTipo): boolean {
   return Object.keys(CAJONES_VACIO).some((k) => (antes as any)[k] !== (ahora as any)[k]);
 }
 
 /** Los seis numeros listos para mandar al servidor: lo que estaba en blanco
  *  se manda como 0, porque en pantalla el chofer vio un 0. */
-export function cajonesParaGuardar(v: CajonesProveedor): CajonesProveedor {
+export function cajonesParaGuardar(v: EnvasesPorTipo): EnvasesPorTipo {
   const o: any = {};
   for (const k of Object.keys(CAJONES_VACIO)) o[k] = Number((v as any)[k]) || 0;
-  return o as CajonesProveedor;
+  return o as EnvasesPorTipo;
 }
 
-/** Resumen corto para el listado de paradas: "PECO 5/3 · BURZACO 3/1"
- *  (dejó/recuperó). Los proveedores sin cajones no se muestran. */
-export function resumenPorProveedor(stop: any): string {
-  return PROVEEDORES
+/** Resumen corto para el listado de paradas: "PECO 5/3 · JAULA 3/1"
+ *  (dejó/recuperó). Los tipos sin envases no se muestran. */
+export function resumenPorTipo(stop: any): string {
+  return TIPOS
     .map((p) => {
       const d = Number(stop?.[p.dej]) || 0;
       const r = Number(stop?.[p.rec]) || 0;
@@ -109,23 +115,23 @@ function Contador({ label, valor, onChange }: {
   );
 }
 
-/** Cajones separados por proveedor del envase.
- *  Una tarjeta por proveedor, con los dos numeros que importan: cuantos dejo y
+/** Cajones separados por tipo de envase.
+ *  Una tarjeta por tipo, con los dos numeros que importan: cuantos dejo y
  *  cuantos recupero. Se puede escribir el numero o corregirlo con − y +, y
  *  abajo siempre esta el total, para que el chofer vea lo que va a guardar. */
-export default function CajonesPorProveedor({ valor, onChange, soloRecuperados }: {
-  valor: CajonesProveedor;
-  onChange: (v: CajonesProveedor) => void;
+export default function CajonesPorTipo({ valor, onChange, soloRecuperados }: {
+  valor: EnvasesPorTipo;
+  onChange: (v: EnvasesPorTipo) => void;
   /** Entrega no realizada: no dejo nada, solo pudo retirar envases vacios. */
   soloRecuperados?: boolean;
 }) {
-  const set = (campo: string, n: number) => onChange({ ...valor, [campo]: n } as CajonesProveedor);
+  const set = (campo: string, n: number) => onChange({ ...valor, [campo]: n } as EnvasesPorTipo);
   const totalDej = totalCajones(valor, 'dej');
   const totalRec = totalCajones(valor, 'rec');
 
   return (
     <View>
-      {PROVEEDORES.map((p) => {
+      {TIPOS.map((p) => {
         const dej = Number((valor as any)[p.dej]) || 0;
         const rec = Number((valor as any)[p.rec]) || 0;
         const activo = dej > 0 || rec > 0;

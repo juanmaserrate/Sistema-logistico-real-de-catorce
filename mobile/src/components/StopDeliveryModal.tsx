@@ -17,14 +17,14 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as ImagePicker from 'expo-image-picker';
 import type { Stop } from '../types';
 import { patchStop, uploadProofPhoto, enqueueOfflinePhoto, postponeStop } from '../api';
-import CajonesPorProveedor, {
+import CajonesPorTipo, {
   CAJONES_VACIO,
   cajonesDeLaParada,
   cajonesParaGuardar,
   cambiaronLosCajones,
   totalCajones,
-  type CajonesProveedor,
-} from './CajonesPorProveedor';
+  type EnvasesPorTipo,
+} from './CajonesPorTipo';
 import { assertApiConfigured } from '../config';
 import { compressPhoto, getLiteMode } from '../utils/photoUtils';
 
@@ -73,8 +73,8 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
   const [retryAfterStopId, setRetryAfterStopId] = useState<number | null>(null);
   // Cajones por proveedor del envase. No es obligatorio cargarlos: si el
   // chofer no toca nada, la parada se guarda sin tocar los cajones.
-  const [cajones, setCajones] = useState<CajonesProveedor>(CAJONES_VACIO);
-  const [cajonesIniciales, setCajonesIniciales] = useState<CajonesProveedor>(CAJONES_VACIO);
+  const [cajones, setCajones] = useState<EnvasesPorTipo>(CAJONES_VACIO);
+  const [cajonesIniciales, setCajonesIniciales] = useState<EnvasesPorTipo>(CAJONES_VACIO);
   const cajonesTocados = cambiaronLosCajones(cajonesIniciales, cajones);
 
   useEffect(() => { getLiteMode().then(setLiteModeState); }, []);
@@ -246,7 +246,11 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
         // No entregó: no bajó cajones, pero pudo recuperar vacíos. Los
         // "dejé" se fuerzan en cero para que el saldo no quede mal.
         ...(cajonesTocados
-          ? { ...cajonesParaGuardar(cajones), cratesDeliveredPeco: 0, cratesDeliveredPlasticos: 0, cratesDeliveredBurzaco: 0 }
+          ? {
+              ...cajonesParaGuardar(cajones),
+              cratesDeliveredPeco: 0, cratesDeliveredPlasticos: 0,
+              cratesDeliveredBurzaco: 0, cratesDeliveredJaula: 0,
+            }
           : {}),
       });
       if (photoUri) uploadPhotoInBackground(stop.id, photoUri, liteMode);
@@ -372,7 +376,7 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
                 {!isBase ? (
                   <View style={styles.cratesBox}>
                     <Text style={styles.cratesTitle}>📦 Cajones <Text style={styles.cratesOptional}>(opcional)</Text></Text>
-                    <CajonesPorProveedor valor={cajones} onChange={setCajones} />
+                    <CajonesPorTipo valor={cajones} onChange={setCajones} />
                   </View>
                 ) : null}
                 <Pressable style={styles.photoBtn} onPress={() => void pickPhoto()}>
@@ -479,7 +483,7 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
                 ))}
                 <View style={styles.cratesBox}>
                   <Text style={styles.cratesTitle}>📦 Cajones que retiré <Text style={styles.cratesOptional}>(opcional)</Text></Text>
-                  <CajonesPorProveedor valor={cajones} onChange={setCajones} soloRecuperados />
+                  <CajonesPorTipo valor={cajones} onChange={setCajones} soloRecuperados />
                 </View>
                 <TextInput
                   style={[styles.input, { marginTop: 10 }]}

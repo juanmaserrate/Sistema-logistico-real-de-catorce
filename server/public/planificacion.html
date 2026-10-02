@@ -2088,7 +2088,7 @@
                     <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
                         <div>
                             <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Cajones</h4>
-                            <p class="text-xs text-[#A3AED0] mt-1">Lo que cargan los choferes en la app al finalizar cada parada, separado por proveedor del envase: <b>Peco</b>, <b>Plásticos</b> y <b>Burzaco</b>. <b>Saldo</b> = dejados &minus; recuperados = cajones que quedaron en el establecimiento.</p>
+                            <p class="text-xs text-[#A3AED0] mt-1">Lo que cargan los choferes en la app al finalizar cada parada, separado por tipo de envase: <b>Peco</b>, <b>Plásticos</b>, <b>Burzaco</b> y <b>Jaula</b>. <b>Saldo</b> = dejados &minus; recuperados = envases que quedaron en el establecimiento.</p>
                         </div>
                         <div class="flex flex-wrap items-end gap-2">
                             <label class="text-[10px] font-bold text-[#A3AED0] uppercase">Desde<input type="date" id="crates-from" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></label>
@@ -2099,10 +2099,10 @@
                     <div class="p-6 bg-white space-y-6">
                         <div id="crates-kpis" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
                         <div>
-                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-wider mb-2">Por proveedor del envase</h5>
+                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-wider mb-2">Por tipo de envase</h5>
                             <div class="overflow-x-auto"><table class="w-full text-sm">
                                 <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left">
-                                    <th class="py-2 px-2">Proveedor</th><th class="py-2 px-2 text-right">Dejados</th>
+                                    <th class="py-2 px-2">Tipo de envase</th><th class="py-2 px-2 text-right">Dejados</th>
                                     <th class="py-2 px-2 text-right">Recuperados</th><th class="py-2 px-2 text-right">Saldo en la calle</th>
                                 </tr></thead>
                                 <tbody id="crates-by-proveedor"></tbody>
@@ -4320,7 +4320,7 @@
             const descs = {
                 control: 'Monitoreo en tiempo real de operaciones y estados de tránsito',
                 'drivers-status': 'Quién está reportando señal y quién no, entre los choferes con viaje asignado',
-                crates: 'Cajones dejados y recuperados por proveedor del envase (Peco, Plásticos, Burzaco), por reparto y por establecimiento',
+                crates: 'Cajones dejados y recuperados por tipo de envase (Peco, Plásticos, Burzaco, Jaula), por reparto y por establecimiento',
                 'crates-sim': 'Cajones dejados y recuperados por reparto y por establecimiento — reporte fijo',
                 hdr: 'Recorridos finalizados con paradas, horarios y trazado GPS de la flota',
                 fleets: 'Configuración de cada camión reutilizable en presupuestos (valor, consumo, mantenimiento, etc.)',
@@ -4554,23 +4554,23 @@
             renderCratesModule();
         }
 
-        // "PECO 5 · PLÁST. 4 · BURZ. 3": el saldo abierto de cada proveedor.
-        // Los que no tienen nada no se muestran, para no ensuciar la tabla.
-        const _CRATES_PROV_CORTO = { peco: 'PECO', plasticos: 'PLÁST.', burzaco: 'BURZ.' };
-        function _cratesProvLinea(pp) {
+        // "PECO 5 · PLÁST. 4 · JAULA 3": el saldo abierto de cada tipo de
+        // envase. Los que no tienen nada no se muestran, para no ensuciar la tabla.
+        const _CRATES_TIPO_CORTO = { peco: 'PECO', plasticos: 'PLÁST.', burzaco: 'BURZ.', jaula: 'JAULA' };
+        function _cratesTipoLinea(pp) {
             if (!pp) return '';
-            return Object.keys(_CRATES_PROV_CORTO)
+            return Object.keys(_CRATES_TIPO_CORTO)
                 .filter(k => pp[k] && (pp[k].dejados || pp[k].recuperados))
-                .map(k => `${_CRATES_PROV_CORTO[k]} ${pp[k].saldo}`)
+                .map(k => `${_CRATES_TIPO_CORTO[k]} ${pp[k].saldo}`)
                 .join(' · ');
         }
 
-        function renderCratesProveedores() {
+        function renderCratesTipos() {
             const d = _cratesData;
             const tbody = document.getElementById('crates-by-proveedor');
             if (!d || !tbody) return;
-            const pp = d.totales?.porProveedor || {};
-            const filas = (d.proveedores || []).map(p => ({ nombre: p.nombre, ...(pp[p.clave] || { dejados: 0, recuperados: 0, saldo: 0 }) }));
+            const pp = d.totales?.porTipoDeEnvase || {};
+            const filas = (d.tiposDeEnvase || []).map(p => ({ nombre: p.nombre, ...(pp[p.clave] || { dejados: 0, recuperados: 0, saldo: 0 }) }));
             tbody.innerHTML = filas.length ? filas.map(f => `
                 <tr class="border-t border-[#F4F7FE]">
                     <td class="py-2 px-2 font-black text-[#1B2559]">${_cratesEsc(f.nombre)}</td>
@@ -4602,7 +4602,7 @@
             document.getElementById('crates-by-reparto').innerHTML = rows.length ? rows.map((r, idx) => {
                 const on = _cratesReparto === r.reparto;
                 return `<tr data-idx="${idx}" onclick="setCratesRepartoFilter(_cratesData.porReparto[${idx}].reparto)" class="cursor-pointer border-t border-[#F4F7FE] ${on ? 'bg-indigo-50' : 'hover:bg-[#F4F7FE]'}">
-                    <td class="py-2 px-2"><p class="font-black text-[#1B2559]">${_cratesEsc(r.reparto)}</p>${_cratesProvLinea(r.porProveedor) ? `<p class="text-[10px] text-[#A3AED0] font-bold">${_cratesProvLinea(r.porProveedor)}</p>` : ''}</td>
+                    <td class="py-2 px-2"><p class="font-black text-[#1B2559]">${_cratesEsc(r.reparto)}</p>${_cratesTipoLinea(r.porTipoDeEnvase) ? `<p class="text-[10px] text-[#A3AED0] font-bold">${_cratesTipoLinea(r.porTipoDeEnvase)}</p>` : ''}</td>
                     <td class="py-2 px-2 text-[#A3AED0] text-xs">${_cratesEsc((r.usuarios || []).join(', '))}</td>
                     <td class="py-2 px-2 text-right">${r.paradas}${r.tardias ? ` <span title="${r.tardias} carga(s) hecha(s) despues de cerrar la entrega">⏱</span>` : ''}</td>
                     <td class="py-2 px-2 text-right font-bold">${r.dejados}</td>
@@ -4610,7 +4610,7 @@
                     ${_cratesSaldoCell(r.saldo)}
                 </tr>`;
             }).join('') : '<tr><td colspan="6" class="py-3 px-2 text-[#A3AED0]">Todavia no hay cajones cargados en este periodo.</td></tr>';
-            renderCratesProveedores();
+            renderCratesTipos();
             renderCratesEstablishments();
         }
 
@@ -4629,7 +4629,7 @@
             const fmt = iso => iso ? new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '—';
             tbody.innerHTML = list.length ? list.map(e => `
                 <tr class="border-t border-[#F4F7FE]">
-                    <td class="py-2 px-2"><p class="font-bold text-[#1B2559]">${_cratesEsc(e.establecimiento)}</p>${e.direccion ? `<p class="text-[10px] text-[#A3AED0]">${_cratesEsc(e.direccion)}</p>` : ''}${_cratesProvLinea(e.porProveedor) ? `<p class="text-[10px] text-[#A3AED0] font-bold">${_cratesProvLinea(e.porProveedor)}</p>` : ''}</td>
+                    <td class="py-2 px-2"><p class="font-bold text-[#1B2559]">${_cratesEsc(e.establecimiento)}</p>${e.direccion ? `<p class="text-[10px] text-[#A3AED0]">${_cratesEsc(e.direccion)}</p>` : ''}${_cratesTipoLinea(e.porTipoDeEnvase) ? `<p class="text-[10px] text-[#A3AED0] font-bold">${_cratesTipoLinea(e.porTipoDeEnvase)}</p>` : ''}</td>
                     <td class="py-2 px-2 text-xs">${_cratesEsc((e.repartos || []).join(', '))}</td>
                     <td class="py-2 px-2 text-right">${e.visitas}${e.tardias ? ` <span title="${e.tardias} carga(s) hecha(s) despues de cerrar la entrega">⏱</span>` : ''}</td>
                     <td class="py-2 px-2 text-right font-bold">${e.dejados}</td>
