@@ -174,16 +174,18 @@ async function filasViajesDe(prisma: Prisma, where: any) {
 
 /** Los tipos de envase, en un solo lugar para que la app, los reportes y el
  *  TMS hablen del mismo dato. Tres llevan el nombre del proveedor del envase
- *  y la jaula es un envase propio. El orden es el que ve el chofer.
+ *  (Peco, Plasticos, Burzaco) y dos son envases propios (la jaula y los
+ *  cajones del deposito). El orden es el que ve el chofer.
  *  `dej` y `rec` son los nombres de las columnas de Stop. */
 export const TIPOS_DE_ENVASE = [
     { clave: 'peco', nombre: 'PECO', dej: 'cratesDeliveredPeco', rec: 'cratesRecoveredPeco' },
     { clave: 'plasticos', nombre: 'PLASTICOS', dej: 'cratesDeliveredPlasticos', rec: 'cratesRecoveredPlasticos' },
     { clave: 'burzaco', nombre: 'BURZACO', dej: 'cratesDeliveredBurzaco', rec: 'cratesRecoveredBurzaco' },
-    { clave: 'jaula', nombre: 'JAULA', dej: 'cratesDeliveredJaula', rec: 'cratesRecoveredJaula' }
+    { clave: 'jaula', nombre: 'JAULA', dej: 'cratesDeliveredJaula', rec: 'cratesRecoveredJaula' },
+    { clave: 'deposito', nombre: 'CAJONES DEL DEPOSITO', dej: 'cratesDeliveredDeposito', rec: 'cratesRecoveredDeposito' }
 ] as const;
 
-/** Suma de los cuatro tipos. null si ninguno tiene dato cargado, para no
+/** Suma de todos los tipos. null si ninguno tiene dato cargado, para no
  *  confundir "no lo cargo" con "cargo cero". */
 export function sumaDeLosTipos(fila: any, cual: 'dej' | 'rec'): number | null {
     let total: number | null = null;
@@ -212,6 +214,7 @@ export async function filasCajones(prisma: Prisma, desde: Date, hasta: Date) {
             cratesDeliveredPlasticos: true, cratesRecoveredPlasticos: true,
             cratesDeliveredBurzaco: true, cratesRecoveredBurzaco: true,
             cratesDeliveredJaula: true, cratesRecoveredJaula: true,
+            cratesDeliveredDeposito: true, cratesRecoveredDeposito: true,
             actualArrival: true, sequence: true,
             client: { select: { name: true, address: true, localidad: true, partido: true } },
             route: {

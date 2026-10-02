@@ -2088,7 +2088,7 @@
                     <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
                         <div>
                             <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Cajones</h4>
-                            <p class="text-xs text-[#A3AED0] mt-1">Lo que cargan los choferes en la app al finalizar cada parada, separado por tipo de envase: <b>Peco</b>, <b>Plásticos</b>, <b>Burzaco</b> y <b>Jaula</b>. <b>Saldo</b> = dejados &minus; recuperados = envases que quedaron en el establecimiento.</p>
+                            <p class="text-xs text-[#A3AED0] mt-1">Lo que cargan los choferes en la app al finalizar cada parada, separado por tipo de envase: <b>Peco</b>, <b>Plásticos</b>, <b>Burzaco</b>, <b>Jaula</b> y <b>Cajones del depósito</b>. <b>Saldo</b> = dejados &minus; recuperados = envases que quedaron en el establecimiento.</p>
                         </div>
                         <div class="flex flex-wrap items-end gap-2">
                             <label class="text-[10px] font-bold text-[#A3AED0] uppercase">Desde<input type="date" id="crates-from" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></label>
@@ -4320,7 +4320,7 @@
             const descs = {
                 control: 'Monitoreo en tiempo real de operaciones y estados de tránsito',
                 'drivers-status': 'Quién está reportando señal y quién no, entre los choferes con viaje asignado',
-                crates: 'Cajones dejados y recuperados por tipo de envase (Peco, Plásticos, Burzaco, Jaula), por reparto y por establecimiento',
+                crates: 'Cajones dejados y recuperados por tipo de envase (Peco, Plásticos, Burzaco, Jaula, Cajones del depósito), por reparto y por establecimiento',
                 'crates-sim': 'Cajones dejados y recuperados por reparto y por establecimiento — reporte fijo',
                 hdr: 'Recorridos finalizados con paradas, horarios y trazado GPS de la flota',
                 fleets: 'Configuración de cada camión reutilizable en presupuestos (valor, consumo, mantenimiento, etc.)',
@@ -4556,7 +4556,7 @@
 
         // "PECO 5 · PLÁST. 4 · JAULA 3": el saldo abierto de cada tipo de
         // envase. Los que no tienen nada no se muestran, para no ensuciar la tabla.
-        const _CRATES_TIPO_CORTO = { peco: 'PECO', plasticos: 'PLÁST.', burzaco: 'BURZ.', jaula: 'JAULA' };
+        const _CRATES_TIPO_CORTO = { peco: 'PECO', plasticos: 'PLÁST.', burzaco: 'BURZ.', jaula: 'JAULA', deposito: 'DEPÓSITO' };
         function _cratesTipoLinea(pp) {
             if (!pp) return '';
             return Object.keys(_CRATES_TIPO_CORTO)

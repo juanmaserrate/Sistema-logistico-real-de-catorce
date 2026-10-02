@@ -250,6 +250,7 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
               ...cajonesParaGuardar(cajones),
               cratesDeliveredPeco: 0, cratesDeliveredPlasticos: 0,
               cratesDeliveredBurzaco: 0, cratesDeliveredJaula: 0,
+              cratesDeliveredDeposito: 0,
             }
           : {}),
       });

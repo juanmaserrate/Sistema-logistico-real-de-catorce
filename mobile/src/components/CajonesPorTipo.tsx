@@ -1,14 +1,16 @@
 import React from 'react';
 import { View, Text, Pressable, TextInput, StyleSheet } from 'react-native';
 
-/** Los tipos de envase. Tres llevan el nombre del proveedor del envase y la
- *  jaula es un envase propio. El orden es el que ve el chofer.
+/** Los tipos de envase. Tres llevan el nombre del proveedor del envase y dos
+ *  son envases propios (la jaula y los cajones del deposito). El orden es el
+ *  que ve el chofer.
  *  Tiene que coincidir con TIPOS_DE_ENVASE del servidor. */
 export const TIPOS = [
   { nombre: 'PECO', dej: 'cratesDeliveredPeco', rec: 'cratesRecoveredPeco' },
   { nombre: 'PLÁSTICOS', dej: 'cratesDeliveredPlasticos', rec: 'cratesRecoveredPlasticos' },
   { nombre: 'BURZACO', dej: 'cratesDeliveredBurzaco', rec: 'cratesRecoveredBurzaco' },
   { nombre: 'JAULA', dej: 'cratesDeliveredJaula', rec: 'cratesRecoveredJaula' },
+  { nombre: 'CAJONES DEL DEPÓSITO', dej: 'cratesDeliveredDeposito', rec: 'cratesRecoveredDeposito' },
 ] as const;
 
 export type EnvasesPorTipo = {
@@ -20,6 +22,8 @@ export type EnvasesPorTipo = {
   cratesRecoveredBurzaco: number | null;
   cratesDeliveredJaula: number | null;
   cratesRecoveredJaula: number | null;
+  cratesDeliveredDeposito: number | null;
+  cratesRecoveredDeposito: number | null;
 };
 
 export const CAJONES_VACIO: EnvasesPorTipo = {
@@ -31,6 +35,8 @@ export const CAJONES_VACIO: EnvasesPorTipo = {
   cratesRecoveredBurzaco: null,
   cratesDeliveredJaula: null,
   cratesRecoveredJaula: null,
+  cratesDeliveredDeposito: null,
+  cratesRecoveredDeposito: null,
 };
 
 /** Lo que ya tiene cargado la parada. */
@@ -182,10 +188,10 @@ export default function CajonesPorTipo({ valor, onChange, soloRecuperados }: {
 const styles = StyleSheet.create({
   tarjeta: { marginTop: 10, padding: 12, borderRadius: 16, backgroundColor: '#f2f3f6', borderWidth: 2, borderColor: 'transparent' },
   tarjetaOn: { backgroundColor: '#f4f1ff', borderColor: '#cabeff' },
-  cabeza: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between' },
-  nombre: { fontSize: 17, fontWeight: '900', color: '#191c1e', letterSpacing: 0.5 },
-  resumen: { fontSize: 12, fontWeight: '800', color: '#451ebb' },
-  resumenOff: { fontSize: 12, fontWeight: '700', color: '#9a9da1' },
+  cabeza: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8 },
+  nombre: { flex: 1, fontSize: 17, fontWeight: '900', color: '#191c1e', letterSpacing: 0.5 },
+  resumen: { fontSize: 12, fontWeight: '800', color: '#451ebb', textAlign: 'right' },
+  resumenOff: { fontSize: 12, fontWeight: '700', color: '#9a9da1', textAlign: 'right' },
   fila: { flexDirection: 'row', alignItems: 'center', marginTop: 10 },
   filaLabel: { flex: 1, fontSize: 15, fontWeight: '800', color: '#44474a' },
   boton: { width: 46, height: 46, borderRadius: 23, backgroundColor: '#451ebb', alignItems: 'center', justifyContent: 'center' },

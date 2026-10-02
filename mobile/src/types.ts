@@ -42,6 +42,8 @@ export interface Stop {
   cratesRecoveredBurzaco?: number | null;
   cratesDeliveredJaula?: number | null;
   cratesRecoveredJaula?: number | null;
+  cratesDeliveredDeposito?: number | null;
+  cratesRecoveredDeposito?: number | null;
   reasonCode?: string | null;
   /** true = vuelta al depósito (Real de Catorce). Al marcarla se cierra el viaje. */
   isReturnToBase?: boolean;

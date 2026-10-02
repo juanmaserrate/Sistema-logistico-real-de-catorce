@@ -4819,6 +4819,7 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
                 cratesDeliveredPlasticos: true, cratesRecoveredPlasticos: true,
                 cratesDeliveredBurzaco: true, cratesRecoveredBurzaco: true,
                 cratesDeliveredJaula: true, cratesRecoveredJaula: true,
+                cratesDeliveredDeposito: true, cratesRecoveredDeposito: true,
                 actualArrival: true, actualDeparture: true,
                 client: { select: { id: true, name: true, address: true } },
                 route: {
@@ -9420,7 +9421,9 @@ app.get('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
                 cratesDeliveredBurzaco: (s as any).cratesDeliveredBurzaco ?? null,
                 cratesRecoveredBurzaco: (s as any).cratesRecoveredBurzaco ?? null,
                 cratesDeliveredJaula: (s as any).cratesDeliveredJaula ?? null,
-                cratesRecoveredJaula: (s as any).cratesRecoveredJaula ?? null
+                cratesRecoveredJaula: (s as any).cratesRecoveredJaula ?? null,
+                cratesDeliveredDeposito: (s as any).cratesDeliveredDeposito ?? null,
+                cratesRecoveredDeposito: (s as any).cratesRecoveredDeposito ?? null
             }))
         });
     } catch (e: any) {
