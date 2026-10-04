@@ -3723,10 +3723,12 @@
                 .sort((a, b) => a.localeCompare(b, 'es'));
             _buCache = clean;
             localStorage.setItem(BUSINESS_UNIT_STORAGE_KEY, JSON.stringify(clean));
-            // Persiste en la DB en background (no bloqueante)
+            // Persiste en la DB en background (no bloqueante). Va con las
+            // credenciales de la sesion: guardar un ajuste ahora pide estar
+            // logueado.
             fetch(`${API_URL}/settings`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getActorHeaders(),
                 body: JSON.stringify({ key: 'business_units', value: clean })
             }).catch(() => {});
             return clean;
@@ -4496,7 +4498,7 @@
             const profiles = getStoredProfiles();
             fetch(`${API_URL}/settings`, {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: getActorHeaders(),
                 body: JSON.stringify({ key: 'user_profiles', value: profiles })
             }).then(() => {
                 if (typeof addNotification === 'function') addNotification('success', 'Perfiles guardados', 'La configuración de perfiles se guardó en el servidor.');

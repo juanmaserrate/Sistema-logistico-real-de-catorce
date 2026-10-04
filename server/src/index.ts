@@ -2169,7 +2169,18 @@ app.get('/api/v1/settings/:key', async (req, res) => {
     }
 });
 
-app.post('/api/v1/settings', async (req, res) => {
+/** Guardar un ajuste PIDE SESION.
+ *
+ *  Estaba abierto: cualquiera con la direccion podia escribir cualquier ajuste
+ *  (tarifas, reglas por reparto, catalogos) sin estar logueado. Y de hecho
+ *  pasaba sin mala intencion: una pestana vieja le devolvia al servidor su
+ *  copia del catalogo de unidades de negocio y resucitaba lo que alguien
+ *  acababa de borrar. Esas escrituras automaticas iban sin credenciales, asi
+ *  que pedirlas las corta de raiz, incluso en pestanas que todavia no se
+ *  recargaron con el codigo nuevo.
+ *
+ *  LEER sigue abierto: la pantalla pide varios ajustes antes de iniciar sesion. */
+app.post('/api/v1/settings', requireAuth, async (req: any, res: any) => {
     try {
         const { key, value } = req.body;
         const setting = await prisma.appSettings.upsert({
