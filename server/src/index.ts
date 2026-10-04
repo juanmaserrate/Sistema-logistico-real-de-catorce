@@ -1753,7 +1753,9 @@ app.get('/api/v1/panel-choferes', async (req: any, res: any) => {
             return Math.floor(total / 12) + '-' + String((total % 12) + 1).padStart(2, '0');
         };
         const mesActual = mesDeLaFecha(null);
-        const conTarifa = Object.keys(tabla).filter((k) => /^\d{4}-\d{2}$/.test(k)).sort();
+        const conTarifa = Object.keys(tabla)
+            .filter((k) => /^\d{4}-\d{2}$/.test(k) && Object.keys(tabla[k] || {}).length)
+            .sort();
         const candidatosIni = [mesActual, mes];
         if (rangoViajes._min.date) candidatosIni.push(mesDeLaFecha(rangoViajes._min.date));
         if (conTarifa.length) candidatosIni.push(conTarifa[0]);
@@ -1922,7 +1924,10 @@ app.post('/api/v1/tarifas', async (req: any, res: any) => {
                 const v = Number(valor);
                 if (n && Number.isFinite(v) && v > 0) delMes[n] = Math.round(v);
             }
-            limpia[mes] = delMes;
+            // Un mes sin ninguna tarifa no se guarda: mirar un mes en el panel
+            // le agrega su columna a la matriz, y si no se escribe nada ahi el
+            // mes quedaba cargado vacio y figuraba como si tuviera algo.
+            if (Object.keys(delMes).length) limpia[mes] = delMes;
         }
 
         const antes = await tablaDeTarifas();
