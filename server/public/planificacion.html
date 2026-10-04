@@ -4918,7 +4918,7 @@
                 // Todos los meses, no solo los que ya tienen tarifa: asi se
                 // puede mirar un mes viejo o dejar cargado el que viene.
                 selMes.innerHTML = (d.meses || []).map(m =>
-                    `<option value="${m}">${_nombreMes(m)}${(d.mesesConTarifa || []).includes(m) ? '' : ' · sin cargar'}</option>`).join('');
+                    `<option value="${m}">${_nombreMes(m)}</option>`).join('');
                 selMes.value = d.mes;
             }
 
