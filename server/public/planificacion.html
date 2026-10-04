@@ -3886,7 +3886,7 @@
                 const sel = _ntFechas.has(iso);
                 const repetido = !!_ntViajeIgual(iso);
                 const finde = [0, 6].includes(new Date(_ntCalY, _ntCalM, d).getDay());
-                let cls = 'relative w-full aspect-square rounded-full text-[11px] font-black flex items-center justify-center transition-all ';
+                let cls = 'relative w-full h-7 rounded-full text-[11px] font-black flex items-center justify-center transition-all ';
                 if (sel && repetido) cls += 'bg-amber-500 text-white';
                 else if (sel) cls += 'bg-indigo-600 text-white';
                 else if (finde) cls += 'text-[#C4CBDC] hover:bg-[#E8ECF8]';
@@ -24060,9 +24060,22 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                             <span class="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center">1</span>
                             <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest">Qué viaje es</h4>
                         </div>
-                        <div>
-                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Reparto / Ruta</label>
-                            <select id="new-trip-reparto" onchange="onNewTripRepartoChange()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Reparto / Ruta</label>
+                                <select id="new-trip-reparto" onchange="onNewTripRepartoChange()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Vuelta del día</label>
+                                <select id="new-trip-vuelta" onchange="ntCalRender()"
+                                        title="La 2ª y la 3ª no reprorratean el jornal del auxiliar. Solo aplica a contrato Propio."
+                                        class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                    <option value="1">1ª vuelta</option>
+                                    <option value="2">2ª vuelta</option>
+                                    <option value="3">3ª o más</option>
+                                    <option value="auto">Automática</option>
+                                </select>
+                            </div>
                         </div>
                         <div>
                             <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Días <span class="normal-case font-medium text-[#A3AED0]">— tocá uno o varios</span></label>
@@ -24093,16 +24106,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                 </div>
                             </div>
                             <p id="nt-cal-aviso" class="hidden mt-1.5 text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 leading-snug"></p>
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Vuelta del día</label>
-                            <select id="new-trip-vuelta" onchange="ntCalRender()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                                <option value="1">1ª vuelta</option>
-                                <option value="2">2ª vuelta</option>
-                                <option value="3">3ª vuelta o más</option>
-                                <option value="auto">Automático (hora de salida y patente)</option>
-                            </select>
-                            <p class="text-[10px] text-[#A3AED0] mt-1 leading-snug">La 2ª y la 3ª no reprorratean el jornal del auxiliar.</p>
                         </div>
                     </div>
 
