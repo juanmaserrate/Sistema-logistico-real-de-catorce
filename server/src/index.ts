@@ -9494,17 +9494,31 @@ app.get('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
 });
 
 /** Reemplaza el orden de paradas del Route ligado al viaje (crea la ruta si no existe). */
-app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
+/** El resultado de guardar las paradas de UN viaje. Se devuelve en vez de
+ *  contestar HTTP, para que lo puedan usar tanto el PUT de un viaje como la
+ *  carga en tanda. */
+type ResultadoParadas =
+    | { ok: true; tripId: number; routeId: number; stopCount: number }
+    | { ok: false; tripId: number; status: number; body: any };
+
+/** Guarda las paradas de un viaje.
+ *
+ *  Es LA unica implementacion: la de un viaje y la de una tanda llaman aca.
+ *  Adentro esta lo que protege el progreso del chofer (horas, fotos, entregas
+ *  marcadas), asi que tener dos copias era pedir que se separen con el tiempo.
+ *
+ *  forzar = el operador ya confirmo que quiere tocar un viaje en curso. */
+async function guardarParadasDelViaje(
+    tripId: number,
+    clientIdsEntrada: string[],
+    opts: { forzar: boolean }
+): Promise<ResultadoParadas> {
     try {
-        const tripId = parseInt(req.params.tripId, 10);
-        if (!Number.isFinite(tripId)) return res.status(400).json({ error: 'ID inválido' });
-        const clientIds: string[] = Array.isArray(req.body?.clientIds)
-            ? req.body.clientIds.map((x: unknown) => String(x)).filter(Boolean)
-            : [];
+        const clientIds: string[] = clientIdsEntrada.map((x: unknown) => String(x)).filter(Boolean);
         const tenantId = 'default-tenant';
 
         const trip = await prisma.trip.findUnique({ where: { id: tripId } });
-        if (!trip) return res.status(404).json({ error: 'Viaje no encontrado' });
+        if (!trip) return { ok: false, tripId, status: 404, body: { error: 'Viaje no encontrado' } };
 
         if (clientIds.length > 0) {
             // Validar por IDs únicos: el mismo cliente puede repetirse en el orden (dos entregas al mismo lugar).
@@ -9516,10 +9530,13 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
             if (found.length !== uniqueIds.length) {
                 const foundSet = new Set(found.map((f) => f.id));
                 const missing = uniqueIds.filter((id) => !foundSet.has(id));
-                return res.status(400).json({
-                    error: 'Hay clientes inexistentes o dados de baja en la lista',
-                    missingClientIds: missing.slice(0, 20)
-                });
+                return {
+                    ok: false, tripId, status: 400,
+                    body: {
+                        error: 'Hay clientes inexistentes o dados de baja en la lista',
+                        missingClientIds: missing.slice(0, 20)
+                    }
+                };
             }
         }
 
@@ -9545,17 +9562,20 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
                     ]
                 }
             });
-            const force = String(req.headers['x-force-replace'] || '').toLowerCase() === 'true';
+            const force = opts.forzar;
             if ((tripStarted || stopsWithProgress > 0) && !force) {
-                return res.status(409).json({
-                    error: 'El viaje ya empezó o tiene paradas marcadas por el chofer. ' +
-                           'No se pueden reemplazar las paradas para no perder el progreso. ' +
-                           'Si realmente necesitás modificar, usá el modal de "Editar viaje" o ' +
-                           'envía el header X-Force-Replace: true (preserva paradas con progreso de todos modos).',
-                    code: 'ROUTE_STARTED_PROTECTED',
-                    routeStarted: tripStarted,
-                    stopsWithProgress
-                });
+                return {
+                    ok: false, tripId, status: 409,
+                    body: {
+                        error: 'El viaje ya empezó o tiene paradas marcadas por el chofer. ' +
+                               'No se pueden reemplazar las paradas para no perder el progreso. ' +
+                               'Si realmente necesitás modificar, usá el modal de "Editar viaje" o ' +
+                               'envía el header X-Force-Replace: true (preserva paradas con progreso de todos modos).',
+                        code: 'ROUTE_STARTED_PROTECTED',
+                        routeStarted: tripStarted,
+                        stopsWithProgress
+                    }
+                };
             }
         }
 
@@ -9748,15 +9768,60 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
             console.warn('emit route:updated failed', emitErr);
         }
 
-        res.json({ routeId: route.id, stopCount: clientIds.length });
+        return { ok: true, tripId, routeId: route.id, stopCount: clientIds.length };
     } catch (e: any) {
-        console.error('PUT trips delivery-stops:', e);
+        console.error('guardarParadasDelViaje:', e);
         const msg = e?.message || 'Error al guardar paradas';
-        if (msg.includes('chofer') || msg.includes('Chofer')) {
-            return res.status(400).json({ error: msg });
-        }
-        res.status(500).json({ error: msg });
+        const status = (msg.includes('chofer') || msg.includes('Chofer')) ? 400 : 500;
+        return { ok: false, tripId, status, body: { error: msg } };
     }
+}
+
+/** PUT /api/v1/trips/:tripId/delivery-stops — las paradas de UN viaje.
+ *  Es el camino que usa el operador al editar, incluso con el viaje en curso. */
+app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
+    const tripId = parseInt(req.params.tripId, 10);
+    if (!Number.isFinite(tripId)) return res.status(400).json({ error: 'ID invalido' });
+    const clientIds = Array.isArray(req.body?.clientIds) ? req.body.clientIds : [];
+    const forzar = String(req.headers['x-force-replace'] || '').toLowerCase() === 'true';
+    const r = await guardarParadasDelViaje(tripId, clientIds, { forzar });
+    if (!r.ok) return res.status(r.status).json(r.body);
+    res.json({ routeId: r.routeId, stopCount: r.stopCount });
+});
+
+/** POST /api/v1/trips/stops-bulk { paradas: [{ tripId, clientIds }] }
+ *
+ *  Las paradas de VARIOS viajes en un solo pedido. Se usa al CREAR: cargar 31
+ *  dias mandaba 31 pedidos y tardaba casi 6 segundos, cuando cada ida y vuelta
+ *  al servidor cuesta un cuarto de segundo por si sola.
+ *
+ *  A proposito NO acepta forzar: aca los viajes son recien creados y no hay
+ *  progreso de ningun chofer que proteger. Un viaje en curso devuelve su 409
+ *  como siempre y el operador lo resuelve de a uno, con su confirmacion. */
+app.post('/api/v1/trips/stops-bulk', async (req, res) => {
+    const items: any[] = Array.isArray(req.body?.paradas) ? req.body.paradas : [];
+    if (!items.length) return res.status(400).json({ error: 'Falta "paradas"' });
+    if (items.length > 500) return res.status(400).json({ error: 'Maximo 500 viajes por tanda' });
+
+    const ok: any[] = [];
+    const fallaron: any[] = [];
+    // De a uno por adentro, cada uno con su propia transaccion: si un viaje
+    // falla, los demas quedan guardados igual que cuando iban por separado.
+    for (const it of items) {
+        const tripId = parseInt(it?.tripId, 10);
+        if (!Number.isFinite(tripId)) {
+            fallaron.push({ tripId: it?.tripId ?? null, status: 400, error: 'ID invalido' });
+            continue;
+        }
+        const r = await guardarParadasDelViaje(
+            tripId,
+            Array.isArray(it?.clientIds) ? it.clientIds : [],
+            { forzar: false }
+        );
+        if (r.ok) ok.push({ tripId: r.tripId, routeId: r.routeId, stopCount: r.stopCount });
+        else fallaron.push({ tripId: r.tripId, status: r.status, ...r.body });
+    }
+    res.json({ total: items.length, guardados: ok.length, ok, fallaron });
 });
 
 /** Inicio / fin de recorrido desde torre de control (operador), sin validar chofer. */

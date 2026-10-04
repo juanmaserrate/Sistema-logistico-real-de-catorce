@@ -22742,12 +22742,46 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         async function _guardarParadasDeFondo(viajes, paradas) {
             if (!paradas.length || !viajes.length) return;
-            const r = await Promise.allSettled(viajes.map(t => putTripDeliveryStops(t.id, paradas)));
-            const fallaron = r.filter(x => x.status === 'rejected').length;
-            if (fallaron && typeof addNotification === 'function') {
-                addNotification('warning', 'Paradas sin guardar',
-                    `${fallaron} viaje(s) quedaron creados pero sin sus paradas. Abrilos y volvé a cargarlas.`);
+
+            // Un viaje solo va por el camino de siempre, que sabe preguntar si
+            // el viaje ya está en curso y cuidar lo que el chofer marcó.
+            if (viajes.length === 1) {
+                try { await putTripDeliveryStops(viajes[0].id, paradas); }
+                catch (e) { _avisarParadasQueFaltan(1, e?.message, [viajes[0].id]); }
+                return;
             }
+
+            // Varios: UNA sola llamada. Son viajes recién creados, así que no
+            // hay progreso de ningún chofer que proteger. Mandarlos de a uno
+            // costaba casi 6 segundos para 31 días.
+            try {
+                const res = await fetch(`${API_URL}/trips/stops-bulk`, {
+                    method: 'POST', headers: getActorHeaders(),
+                    body: JSON.stringify({ paradas: viajes.map(t => ({ tripId: t.id, clientIds: paradas })) })
+                });
+                const d = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(d.error || ('El servidor rechazó las paradas (' + res.status + ')'));
+                const fallaron = Array.isArray(d.fallaron) ? d.fallaron : [];
+                if (fallaron.length) {
+                    _avisarParadasQueFaltan(fallaron.length, fallaron[0]?.error, fallaron.map(f => f.tripId));
+                }
+            } catch (e) {
+                _avisarParadasQueFaltan(viajes.length, e?.message, viajes.map(t => t.id));
+            }
+        }
+
+        /** Un viaje sin paradas existe en la web pero NO le llega al celular del
+         *  chofer: lo que él ve es la ruta con sus paradas, y esa ruta la crea
+         *  justamente este guardado. Por eso cuando falla hay que decirlo claro
+         *  y no solo "no se guardaron las paradas". */
+        function _avisarParadasQueFaltan(cuantos, motivo, ids) {
+            if (typeof addNotification !== 'function') return;
+            const cuales = Array.isArray(ids) && ids.length
+                ? ' (#' + ids.slice(0, 8).join(', #') + (ids.length > 8 ? ' y más' : '') + ')'
+                : '';
+            addNotification('warning', 'Paradas sin guardar',
+                `${cuantos} viaje(s) quedaron creados pero sin paradas${cuales}: el chofer todavía no los ve en la app. `
+                + 'Abrilos y volvé a cargarlas.' + (motivo ? ' — ' + motivo : ''));
         }
 
         /** Crea los viajes contra el servidor con la ventana ya cerrada.
