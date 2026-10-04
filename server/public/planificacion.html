@@ -634,13 +634,13 @@
                             </div>
                             <div class="min-w-0">
                                 <h4 class="text-base font-bold text-[#1B2559]">Listas de los desplegables</h4>
-                                <p class="text-xs text-[#A3AED0] font-medium mt-1 leading-relaxed">Las opciones que ofrece cada desplegable al crear un viaje: unidades de negocio y tipos de vehículo. Podés renombrarlas y borrarlas.</p>
+                                <p class="text-xs text-[#A3AED0] font-medium mt-1 leading-relaxed">Las opciones que ofrece cada desplegable al crear un viaje: unidades de negocio y tipos de vehículo. Podés renombrarlas y borrarlas, y ver cuántos viajes y clientes usa cada una.</p>
                             </div>
                         </div>
                         <div class="mt-5">
                             <span id="ajustes-listas-resumen" class="inline-block px-3 py-1.5 rounded-xl bg-[#F4F7FE] text-[10px] font-bold text-[#A3AED0] uppercase tracking-widest">Cargando...</span>
                         </div>
-                        <p class="text-[11px] text-[#A3AED0] font-medium mt-4 leading-relaxed">Al renombrar, se cambia también en los viajes ya cargados. Antes de borrar te aviso cuántos viajes la usan.</p>
+                        <p class="text-[11px] text-[#A3AED0] font-medium mt-4 leading-relaxed">Al renombrar se cambia también en los viajes y en la ficha de los clientes. Antes de borrar te pregunto a cuál pasarlos.</p>
                         <div class="flex-1"></div>
                         <button onclick="abrirListasFormulario()" class="mt-6 w-full px-6 py-3.5 rounded-2xl bg-amber-500 text-white text-[11px] font-bold hover:bg-amber-600 transition-all shadow-lg shadow-amber-200 flex items-center justify-center gap-2 uppercase tracking-widest">
                             <i data-lucide="pencil" class="w-4 h-4"></i> Editar listas
@@ -19600,6 +19600,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         let _listaActiva = 'businessUnit';
         let _listaOpciones = [];   // las opciones del catalogo
         let _listaUso = {};        // cuantos viajes usa cada una
+        let _listaUsoClientes = {};// cuantos clientes la tienen en su ficha
 
         async function abrirListasFormulario() {
             document.getElementById('listas-formulario-modal').classList.remove('hidden');
@@ -19607,6 +19608,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         function cerrarListasFormulario() {
+            cerrarBorrarOpcion();   // que no quede abierto para la proxima vez
             document.getElementById('listas-formulario-modal').classList.add('hidden');
             // Los desplegables del formulario se rearman con lo que quedo
             if (typeof populateBusinessUnitSelect === 'function') {
@@ -19644,15 +19646,19 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
             // Cuantos viajes usa cada valor (y valores que estan en viajes pero no en el catalogo)
             _listaUso = {};
+            _listaUsoClientes = {};
             try {
                 const res = await fetch(`${API_URL}/catalogos/uso?campo=${_listaActiva}`, { headers: getActorHeaders() });
                 if (res.ok) {
                     const d = await res.json();
-                    for (const u of (d.uso || [])) _listaUso[u.valor] = u.viajes;
+                    for (const u of (d.uso || [])) {
+                        _listaUso[u.valor] = u.viajes || 0;
+                        _listaUsoClientes[u.valor] = u.clientes || 0;
+                    }
                 }
             } catch (_) { /* sin conteo, igual se puede editar */ }
             // Lo que aparece en viajes tambien es una opcion real
-            const juntas = new Set([..._listaOpciones, ...Object.keys(_listaUso)]);
+            const juntas = new Set([..._listaOpciones, ...Object.keys(_listaUso), ...Object.keys(_listaUsoClientes)]);
             _listaOpciones = [...juntas].filter(Boolean).sort((a, b) => a.localeCompare(b, 'es'));
         }
 
@@ -19661,14 +19667,21 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             document.getElementById('listas-tabla').classList.remove('hidden');
             const body = document.getElementById('listas-tbody');
             const def = LISTAS_DEL_FORMULARIO[_listaActiva];
+            const esBU = _listaActiva === 'businessUnit';
+            const thCli = document.getElementById('listas-th-clientes');
+            if (thCli) thCli.classList.toggle('hidden', !esBU);
             if (!_listaOpciones.length) {
-                body.innerHTML = `<tr><td colspan="3" class="px-3 py-6 text-[11px] text-[#A3AED0] font-medium">Todav\u00eda no hay ninguna ${def.singular} cargada.</td></tr>`;
+                body.innerHTML = `<tr><td colspan="4" class="px-3 py-6 text-[11px] text-[#A3AED0] font-medium">Todav\u00eda no hay ninguna ${def.singular} cargada.</td></tr>`;
             } else {
                 body.innerHTML = _listaOpciones.map((op) => {
                     const n = _listaUso[op] || 0;
-                    return `<tr class="hover:bg-[#FAFBFF]">
-                        <td class="px-3 py-2.5 text-xs font-black text-[#1B2559]">${escapeHtml(op)}</td>
+                    const c = _listaUsoClientes[op] || 0;
+                    const sinUsar = !n && !c;
+                    return `<tr class="hover:bg-[#FAFBFF] ${sinUsar ? 'opacity-60' : ''}">
+                        <td class="px-3 py-2.5 text-xs font-black text-[#1B2559]">${escapeHtml(op)}
+                            ${sinUsar ? '<span class="ml-2 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider">no la usa nadie</span>' : ''}</td>
                         <td class="px-3 py-2.5 text-right text-[11px] font-bold ${n ? 'text-[#1B2559]' : 'text-[#A3AED0]'}">${n ? n : '\u2014'}</td>
+                        <td class="px-3 py-2.5 text-right text-[11px] font-bold ${c ? 'text-[#1B2559]' : 'text-[#A3AED0]'} ${esBU ? '' : 'hidden'}">${c ? c : '\u2014'}</td>
                         <td class="px-3 py-2.5 text-right whitespace-nowrap">
                             <button onclick="renombrarOpcionLista('${escapeHtml(op).replace(/'/g, "\\'")}')" class="text-indigo-500 hover:text-indigo-700 mr-2" title="Renombrar"><i data-lucide="pencil" class="w-4 h-4"></i></button>
                             <button onclick="borrarOpcionLista('${escapeHtml(op).replace(/'/g, "\\'")}')" class="text-rose-500 hover:text-rose-700" title="Borrar"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
@@ -19676,9 +19689,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     </tr>`;
                 }).join('');
             }
-            const usadas = _listaOpciones.filter(o => _listaUso[o]).length;
+            const usadas = _listaOpciones.filter(o => (_listaUso[o] || 0) || (_listaUsoClientes[o] || 0)).length;
+            const sobran = _listaOpciones.length - usadas;
             document.getElementById('listas-aviso').textContent =
-                `${_listaOpciones.length} opciones \u00b7 ${usadas} en uso`;
+                `${_listaOpciones.length} opciones \u00b7 ${usadas} en uso`
+                + (sobran ? ` \u00b7 ${sobran} que no usa nadie` : '');
             if (window.lucide) lucide.createIcons();
         }
 
@@ -19700,15 +19715,17 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             return limpia;
         }
 
-        /** Cambia el valor en los viajes ya cargados. */
-        async function reemplazarEnViajes(de, a) {
+        /** Cambia el valor en los viajes ya cargados y en la ficha de los
+         *  clientes. Con vaciar=true lo saca y no pone nada en su lugar. */
+        async function reemplazarEnViajes(de, a, vaciar) {
             const res = await fetch(`${API_URL}/catalogos/reemplazar`, {
                 method: 'POST',
                 headers: getActorHeaders(),
-                body: JSON.stringify({ campo: _listaActiva, de, a })
+                body: JSON.stringify({ campo: _listaActiva, de, a: a || '', vaciar: !!vaciar })
             });
             if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'HTTP ' + res.status);
-            return (await res.json()).viajes || 0;
+            const d = await res.json();
+            return { viajes: d.viajes || 0, clientes: d.clientes || 0 };
         }
 
         async function agregarOpcionLista() {
@@ -19732,50 +19749,106 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 if (!confirm(`"${v}" ya existe. \u00bfJuntar las dos en una sola?`)) return;
             }
             try {
-                if (n) await reemplazarEnViajes(op, v);
+                const r = await reemplazarEnViajes(op, v, false);
                 _listaOpciones = await guardarCatalogoLista([..._listaOpciones.filter(o => o !== op), v]);
                 await cargarListaFormulario();
                 renderListaFormulario();
                 if (typeof addNotification === 'function') {
-                    addNotification('success', def.titulo, n
-                        ? `"${op}" pas\u00f3 a "${v}" en ${n} viaje${n === 1 ? '' : 's'}.`
-                        : `"${op}" pas\u00f3 a "${v}".`);
+                    const d = [];
+                    if (r.viajes) d.push(`${r.viajes} viaje${r.viajes === 1 ? '' : 's'}`);
+                    if (r.clientes) d.push(`${r.clientes} cliente${r.clientes === 1 ? '' : 's'}`);
+                    addNotification('success', def.titulo,
+                        `"${op}" pas\u00f3 a "${v}"` + (d.length ? ` en ${d.join(' y ')}.` : '.'));
                 }
             } catch (e) {
                 alert('No se pudo renombrar: ' + e.message);
             }
         }
 
+        // ── Borrar una opcion ──────────────────────────────────────────
+        // Antes habia que ESCRIBIR a mano el nombre de la unidad destino en un
+        // prompt. Si le errabas una letra no borraba nada y no quedaba claro
+        // por que. Ahora se elige de una lista, y ademas se puede borrar
+        // dejando los viajes sin unidad.
+        let _opABorrar = null;
+
         async function borrarOpcionLista(op) {
             const def = LISTAS_DEL_FORMULARIO[_listaActiva];
             const n = _listaUso[op] || 0;
-            if (!n) {
-                if (!confirm(`\u00bfBorrar "${op}" de la lista? No la usa ning\u00fan viaje.`)) return;
+            const c = _listaUsoClientes[op] || 0;
+
+            // No la usa nadie: se borra y listo
+            if (!n && !c) {
+                if (!confirm(`\u00bfBorrar "${op}" de la lista? No la usa ning\u00fan viaje ni ning\u00fan cliente.`)) return;
                 _listaOpciones = await guardarCatalogoLista(_listaOpciones.filter(o => o !== op));
+                await cargarListaFormulario();
                 renderListaFormulario();
                 return;
             }
-            // Hay viajes usandola: primero hay que decir a cual pasan
+
+            _opABorrar = op;
+            const partes = [];
+            if (n) partes.push(`${n} viaje${n === 1 ? '' : 's'}`);
+            if (c) partes.push(`${c} cliente${c === 1 ? '' : 's'}`);
+
+            document.getElementById('borrar-opcion-titulo').textContent = 'Borrar \u201c' + op + '\u201d';
+            document.getElementById('borrar-opcion-detalle').textContent =
+                `La usan ${partes.join(' y ')}. \u00bfQu\u00e9 hago con eso?`;
+
+            const sel = document.getElementById('borrar-opcion-destino');
             const otras = _listaOpciones.filter(o => o !== op);
-            if (!otras.length) return alert(`No se puede borrar "${op}": la usan ${n} viajes y no hay otra opci\u00f3n a la que pasarlos.`);
-            const destino = prompt(
-                `"${op}" la usan ${n} viaje${n === 1 ? '' : 's'}.\n\n` +
-                `Para borrarla hay que pasar esos viajes a otra ${def.singular}.\n` +
-                `Escrib\u00ed a cu\u00e1l:\n\n${otras.join('\n')}`,
-                otras[0]
-            );
-            if (destino === null) return;
-            const v = String(destino).trim().toUpperCase();
-            const elegida = otras.find(o => o.toUpperCase() === v);
-            if (!elegida) return alert(`"${destino}" no est\u00e1 en la lista. No se borr\u00f3 nada.`);
-            if (!confirm(`Se van a pasar ${n} viaje${n === 1 ? '' : 's'} de "${op}" a "${elegida}" y despu\u00e9s se borra "${op}". \u00bfSeguir?`)) return;
+            sel.innerHTML = otras.map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
+            // Sin otra opcion no se puede mover: queda solo vaciar
+            const hayDestino = otras.length > 0;
+            document.querySelector('input[name="borrar-opcion-que"][value="mover"]').disabled = !hayDestino;
+            document.querySelector('input[name="borrar-opcion-que"][value="' + (hayDestino ? 'mover' : 'vaciar') + '"]').checked = true;
+            pintarDestinoBorrado();
+
+            document.getElementById('borrar-opcion-dialogo').classList.remove('hidden');
+        }
+
+        function pintarDestinoBorrado() {
+            const mover = document.querySelector('input[name="borrar-opcion-que"]:checked')?.value === 'mover';
+            const sel = document.getElementById('borrar-opcion-destino');
+            sel.disabled = !mover;
+            sel.classList.toggle('opacity-40', !mover);
+        }
+
+        function cerrarBorrarOpcion() {
+            document.getElementById('borrar-opcion-dialogo').classList.add('hidden');
+            _opABorrar = null;
+        }
+
+        async function confirmarBorrarOpcion() {
+            const op = _opABorrar;
+            if (!op) return;
+            const def = LISTAS_DEL_FORMULARIO[_listaActiva];
+            const mover = document.querySelector('input[name="borrar-opcion-que"]:checked')?.value === 'mover';
+            const destino = mover ? document.getElementById('borrar-opcion-destino').value : '';
+            if (mover && !destino) return;
+
+            const n = _listaUso[op] || 0;
+            const c = _listaUsoClientes[op] || 0;
+            const queQueda = mover
+                ? `pasan a "${destino}"`
+                : 'quedan sin unidad de negocio';
+            const partes = [];
+            if (n) partes.push(`${n} viaje${n === 1 ? '' : 's'}`);
+            if (c) partes.push(`${c} cliente${c === 1 ? '' : 's'}`);
+            if (!confirm(`${partes.join(' y ')} ${queQueda}, y despu\u00e9s se borra "${op}". \u00bfSeguir?`)) return;
+
+            cerrarBorrarOpcion();
             try {
-                const movidos = await reemplazarEnViajes(op, elegida);
+                const r = await reemplazarEnViajes(op, destino, !mover);
                 _listaOpciones = await guardarCatalogoLista(_listaOpciones.filter(o => o !== op));
                 await cargarListaFormulario();
                 renderListaFormulario();
                 if (typeof addNotification === 'function') {
-                    addNotification('success', def.titulo, `${movidos} viaje${movidos === 1 ? '' : 's'} pasaron a "${elegida}". Se borr\u00f3 "${op}".`);
+                    const hechos = [];
+                    if (r.viajes) hechos.push(`${r.viajes} viaje${r.viajes === 1 ? '' : 's'}`);
+                    if (r.clientes) hechos.push(`${r.clientes} cliente${r.clientes === 1 ? '' : 's'}`);
+                    addNotification('success', def.titulo,
+                        (hechos.length ? hechos.join(' y ') + ' ' + queQueda + '. ' : '') + `Se borr\u00f3 "${op}".`);
                 }
                 if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
             } catch (e) {
@@ -24263,7 +24336,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     <thead class="bg-[#FAFBFF]">
                         <tr class="text-[9px] font-black uppercase tracking-widest text-[#A3AED0]">
                             <th class="px-3 py-2">Opción</th>
-                            <th class="px-3 py-2 text-right">Viajes que la usan</th>
+                            <th class="px-3 py-2 text-right">Viajes</th>
+                            <th id="listas-th-clientes" class="px-3 py-2 text-right">Clientes</th>
                             <th class="px-3 py-2 text-right w-24"></th>
                         </tr>
                     </thead>
@@ -24288,6 +24362,35 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             <div class="p-5 border-t border-[#F4F7FE] bg-[#F8FAFF] flex justify-between items-center gap-3">
                 <span id="listas-aviso" class="text-[11px] font-bold text-[#A3AED0]"></span>
                 <button onclick="cerrarListasFormulario()" class="px-6 py-3 rounded-xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200">LISTO</button>
+            </div>
+        </div>
+
+        <!-- Que hacer con lo que la usa, antes de borrarla -->
+        <div id="borrar-opcion-dialogo" class="hidden absolute inset-0 flex items-center justify-center p-3" style="background: rgba(15, 23, 42, 0.55);">
+            <div class="bg-white rounded-3xl w-[96vw] max-w-lg shadow-2xl overflow-hidden">
+                <div class="p-6 border-b border-[#F4F7FE] bg-[#F8FAFF]">
+                    <h3 id="borrar-opcion-titulo" class="font-black text-[#1B2559] uppercase tracking-widest text-sm"></h3>
+                    <p id="borrar-opcion-detalle" class="text-xs text-[#A3AED0] font-medium mt-1"></p>
+                </div>
+                <div class="p-6 space-y-4">
+                    <label class="flex items-start gap-3 cursor-pointer">
+                        <input type="radio" name="borrar-opcion-que" value="mover" checked class="mt-1" onchange="pintarDestinoBorrado()">
+                        <span class="text-xs font-bold text-[#1B2559]">Pasarlos a otra
+                            <span class="block text-[11px] text-[#A3AED0] font-medium mt-0.5">Se reasigna todo y después se borra.</span>
+                        </span>
+                    </label>
+                    <select id="borrar-opcion-destino" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold outline-none"></select>
+                    <label class="flex items-start gap-3 cursor-pointer pt-1">
+                        <input type="radio" name="borrar-opcion-que" value="vaciar" class="mt-1" onchange="pintarDestinoBorrado()">
+                        <span class="text-xs font-bold text-[#1B2559]">Dejarlos sin unidad
+                            <span class="block text-[11px] text-[#A3AED0] font-medium mt-0.5">El campo queda vacío y hay que completarlo después a mano.</span>
+                        </span>
+                    </label>
+                </div>
+                <div class="p-5 border-t border-[#F4F7FE] bg-[#F8FAFF] flex justify-end gap-2">
+                    <button onclick="cerrarBorrarOpcion()" class="px-5 py-2.5 rounded-xl bg-white border border-[#E0E5F2] text-[#1B2559] text-[11px] font-bold">Cancelar</button>
+                    <button onclick="confirmarBorrarOpcion()" class="px-5 py-2.5 rounded-xl bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-700">Borrar</button>
+                </div>
             </div>
         </div>
     </div>

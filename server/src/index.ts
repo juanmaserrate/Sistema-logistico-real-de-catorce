@@ -11064,6 +11064,19 @@ const CAMPOS_DE_CATALOGO: Record<string, string> = {
     vehicleType: 'Tipo de vehiculo'
 };
 
+/** Client.businessUnits es un JSON con [{unidad, reparto}]. Viene de carga a
+ *  mano, asi que puede estar vacio, mal formado o no ser una lista: nunca
+ *  tiene que tirar abajo el pedido. */
+function leerUnidadesDelCliente(valor: any): any[] {
+    if (!valor) return [];
+    try {
+        const v = typeof valor === 'string' ? JSON.parse(valor) : valor;
+        return Array.isArray(v) ? v.filter((x) => x && typeof x === 'object') : [];
+    } catch (_) {
+        return [];
+    }
+}
+
 /** Cuantos viajes usa cada valor. Con desde/hasta se acota al periodo.
  *  GET /api/v1/catalogos/uso?campo=businessUnit */
 app.get('/api/v1/catalogos/uso', async (req: any, res: any) => {
@@ -11089,9 +11102,34 @@ app.get('/api/v1/catalogos/uso', async (req: any, res: any) => {
                 : [bruto.trim()].filter(Boolean);
             for (const p of partes) porValor.set(p, (porValor.get(p) || 0) + f._count._all);
         }
-        const uso = [...porValor.entries()]
-            .map(([valor, viajes]) => ({ valor, viajes }))
-            .sort((a, b) => b.viajes - a.viajes);
+        // La unidad de negocio tambien vive en la ficha de cada cliente
+        // (Client.businessUnits). Si solo se contaran los viajes, borrar una
+        // unidad la dejaria viva en los clientes y volveria a aparecer sola en
+        // el proximo viaje que se arme desde ahi.
+        const porCliente = new Map<string, number>();
+        if (campo === 'businessUnit') {
+            const clientes = await prisma.client.findMany({
+                where: { businessUnits: { not: null } },
+                select: { businessUnits: true }
+            });
+            for (const c of clientes) {
+                const vistas = new Set<string>();
+                for (const b of leerUnidadesDelCliente(c.businessUnits)) {
+                    const u = String(b?.unidad || '').trim();
+                    if (u) vistas.add(u.toUpperCase());
+                }
+                for (const u of vistas) porCliente.set(u, (porCliente.get(u) || 0) + 1);
+            }
+        }
+
+        const nombres = new Set<string>([...porValor.keys(), ...porCliente.keys()]);
+        const uso = [...nombres]
+            .map((valor) => ({
+                valor,
+                viajes: porValor.get(valor) || porValor.get(valor.toUpperCase()) || 0,
+                clientes: porCliente.get(valor.toUpperCase()) || 0
+            }))
+            .sort((a, b) => (b.viajes + b.clientes) - (a.viajes + a.clientes));
         res.json({ campo, uso, total: uso.reduce((n: number, x: any) => n + x.viajes, 0) });
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error' });
@@ -11106,9 +11144,12 @@ app.post('/api/v1/catalogos/reemplazar', async (req: any, res: any) => {
     if (!CAMPOS_DE_CATALOGO[campo]) return res.status(400).json({ error: 'Campo no editable' });
     const de = String(req.body?.de || '').trim();
     const a = String(req.body?.a || '').trim();
+    // a vacio = sacarla y dejar el campo sin nada. Hay que pedirlo a proposito
+    // con vaciar:true, para que un "a" olvidado no borre media base.
+    const vaciar = req.body?.vaciar === true;
     if (!de) return res.status(400).json({ error: 'Falta "de"' });
-    if (!a) return res.status(400).json({ error: 'Falta "a"' });
-    if (de === a) return res.json({ viajes: 0, sinCambios: true });
+    if (!a && !vaciar) return res.status(400).json({ error: 'Falta "a"' });
+    if (a && de === a) return res.json({ viajes: 0, clientes: 0, sinCambios: true });
     try {
         if (campo !== 'businessUnit') {
             const r = await prisma.trip.updateMany({
@@ -11117,26 +11158,61 @@ app.post('/api/v1/catalogos/reemplazar', async (req: any, res: any) => {
             });
             return res.json({ campo, de, a, viajes: r.count });
         }
+        const igual = (x: any, y: any) => String(x || '').trim().toUpperCase() === String(y || '').trim().toUpperCase();
+
         // La unidad puede ser una de varias en el mismo viaje ("DMC, SAE"):
         // hay que cambiar solo esa parte y dejar las otras como estaban.
         const candidatos = await prisma.trip.findMany({
             where: { businessUnit: { contains: de, mode: 'insensitive' } },
             select: { id: true, businessUnit: true }
         });
-        const igual = (x: string, y: string) => x.trim().toUpperCase() === y.trim().toUpperCase();
         let tocados = 0;
         for (const t of candidatos) {
             const partes = String(t.businessUnit || '').split(',').map((x) => x.trim()).filter(Boolean);
             if (!partes.some((p) => igual(p, de))) continue;   // "DMC" no debe pisar "DMC + SAM"
             const nuevas: string[] = [];
             for (const p of partes) {
-                const v = igual(p, de) ? a : p;
-                if (!nuevas.some((x) => igual(x, v))) nuevas.push(v);   // sin repetir
+                if (igual(p, de)) {
+                    if (!a) continue;                                   // se saca y no se pone nada
+                    if (!nuevas.some((x) => igual(x, a))) nuevas.push(a);
+                } else if (!nuevas.some((x) => igual(x, p))) {
+                    nuevas.push(p);
+                }
             }
-            await prisma.trip.update({ where: { id: t.id }, data: { businessUnit: nuevas.join(', ') } });
+            await prisma.trip.update({
+                where: { id: t.id },
+                data: { businessUnit: nuevas.length ? nuevas.join(', ') : null }
+            });
             tocados++;
         }
-        res.json({ campo, de, a, viajes: tocados });
+
+        // Y lo mismo en la ficha de los clientes, que es de donde se arman los
+        // viajes nuevos. Si no, la unidad borrada vuelve sola manana.
+        let clientesTocados = 0;
+        const clientes = await prisma.client.findMany({
+            where: { businessUnits: { not: null } },
+            select: { id: true, businessUnits: true }
+        });
+        for (const c of clientes) {
+            const filas = leerUnidadesDelCliente(c.businessUnits);
+            if (!filas.some((f: any) => igual(f?.unidad, de))) continue;
+            const quedan: any[] = [];
+            for (const f of filas) {
+                if (!igual(f?.unidad, de)) { quedan.push(f); continue; }
+                if (!a) continue;                                        // se saca la fila entera
+                const nueva = { ...f, unidad: a };
+                // Si ya tenia esa misma unidad con el mismo reparto, no se duplica
+                if (quedan.some((x: any) => igual(x?.unidad, a) && String(x?.reparto || '') === String(nueva.reparto || ''))) continue;
+                quedan.push(nueva);
+            }
+            await prisma.client.update({
+                where: { id: c.id },
+                data: { businessUnits: quedan.length ? JSON.stringify(quedan) : null }
+            });
+            clientesTocados++;
+        }
+
+        res.json({ campo, de, a: a || null, vaciada: !a, viajes: tocados, clientes: clientesTocados });
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error' });
     }
