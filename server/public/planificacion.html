@@ -2157,6 +2157,8 @@
                                 <select id="pc-mes" onchange="cargarPanelChoferes(this.value)"
                                         class="bg-[#F4F7FE] border-0 rounded-lg px-3 py-2 text-sm font-bold text-[#1B2559] outline-none cursor-pointer"></select>
                             </div>
+                            <button id="pc-traer" onclick="pcTraerDelMesAnterior()"
+                                    class="hidden bg-[#F4F7FE] text-[#1B2559] rounded-lg px-4 py-2 text-sm font-bold"></button>
                             <button onclick="agregarMesTarifas()" class="bg-[#F4F7FE] text-[#1B2559] rounded-lg px-4 py-2 text-sm font-bold">+ Mes</button>
                             <button id="pc-guardar" onclick="guardarTarifas()"
                                     class="bg-[#451ebb] text-white rounded-lg px-4 py-2 text-sm font-bold">Guardar tarifas</button>
@@ -4938,8 +4940,7 @@
                         ? `<input type="number" min="0" step="1000" value="${c.tarifa || ''}"
                                   data-prov="${escapeHtml(c.proveedor)}" data-mes="${d.mes}"
                                   oninput="pcTarifaEscrita(this)"
-                                  class="tarifa-chofer w-32 bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-right text-[#1B2559] ${c.tarifa ? '' : 'ring-2 ring-amber-400'}">
-                           ${c.tarifaArrastradaDe ? `<p class="text-[9px] text-[#A3AED0] mt-1">viene de ${_nombreMes(c.tarifaArrastradaDe)}</p>` : ''}`
+                                  class="tarifa-chofer w-32 bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-right text-[#1B2559] ${c.tarifa ? '' : 'ring-2 ring-amber-400'}">`
                         : `<span class="text-[11px] text-amber-700 font-bold">elegí el proveedor</span>`)
                     : `<span class="text-[11px] text-[#A3AED0]">\u2014</span>`;
 
@@ -4966,6 +4967,7 @@
             }).join('') || '<tr><td colspan="6" class="py-4 px-2 text-[#A3AED0] font-bold">No hay choferes cargados.</td></tr>';
 
             pintarProveedoresSinChofer();
+            pcPintarBotonTraer();
         }
 
         /** Proveedores con tarifa cargada a los que no les quedo ningun chofer.
@@ -4995,20 +4997,65 @@
                                    data-prov="${escapeHtml(p.nombre)}" data-mes="${d.mes}"
                                    oninput="pcTarifaEscrita(this)"
                                    class="tarifa-chofer w-32 bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-right text-[#1B2559]">
-                            ${p.tarifaArrastradaDe ? `<p class="text-[9px] text-[#A3AED0] mt-1">viene de ${_nombreMes(p.tarifaArrastradaDe)}</p>` : ''}
                         </td>
                     </tr>`).join('')}
                 </tbody></table>`;
             caja.classList.remove('hidden');
         }
 
-        /** La tarifa es del proveedor: se escribe una vez y se replica en todas
-         *  las filas de ese proveedor y en la matriz de abajo, para que no haya
-         *  dos numeros distintos en pantalla. */
-        function pcTarifaEscrita(inp) {
-            const prov = inp.dataset.prov, mes = inp.dataset.mes, v = inp.value;
+        /** El ultimo mes anterior al que se esta mirando que tenga tarifas. */
+        function pcMesConTarifasAnterior() {
+            const tabla = _panelChoferes?.tabla || {};
+            return Object.keys(tabla)
+                .filter(m => m < _pcMes && Object.keys(tabla[m] || {}).length)
+                .sort().pop() || null;
+        }
+
+        function pcPintarBotonTraer() {
+            const b = document.getElementById('pc-traer');
+            if (!b) return;
+            const origen = pcMesConTarifasAnterior();
+            if (!origen) { b.classList.add('hidden'); return; }
+            b.textContent = 'Traer las de ' + _nombreMes(origen);
+            b.dataset.origen = origen;
+            b.classList.remove('hidden');
+        }
+
+        /** Copia las tarifas del mes anterior al mes que se esta mirando.
+         *  NO guarda: las deja escritas para que se puedan revisar y recien
+         *  despues se aprieta Guardar. */
+        function pcTraerDelMesAnterior() {
+            const origen = pcMesConTarifasAnterior();
+            if (!origen) return;
+            const tabla = _panelChoferes?.tabla || {};
+            const deOrigen = tabla[origen] || {};
+            const yaHay = [...document.querySelectorAll(`.tarifa-matriz[data-mes="${_pcMes}"]`)]
+                .filter(i => Number(i.value) > 0).length;
+            if (yaHay && !confirm(
+                `${_nombreMes(_pcMes)} ya tiene ${yaHay} tarifa(s) cargada(s). ` +
+                `Traer las de ${_nombreMes(origen)} las va a pisar. \u00bfSigo?`)) return;
+
+            let copiadas = 0;
+            for (const [prov, valor] of Object.entries(deOrigen)) {
+                if (!(Number(valor) > 0)) continue;
+                pcPonerTarifa(prov, _pcMes, String(valor));
+                copiadas++;
+            }
+            if (copiadas) pcMarcarSinGuardar();
+            if (typeof addNotification === 'function') {
+                addNotification('info', 'Tarifas tra\u00eddas',
+                    `${copiadas} tarifa(s) de ${_nombreMes(origen)}. Revisalas y apret\u00e1 Guardar.`);
+            }
+        }
+
+        /** Deja una tarifa en los tres lugares donde se ve: las filas de chofer
+         *  de ese proveedor, el campo oculto de la matriz y el texto que se lee. */
+        function pcPonerTarifa(prov, mes, v) {
             document.querySelectorAll(`.tarifa-chofer[data-mes="${mes}"]`).forEach(otro => {
-                if (otro !== inp && otro.dataset.prov === prov) otro.value = v;
+                if (otro.dataset.prov === prov) {
+                    otro.value = v;
+                    if (Number(v) > 0) otro.classList.remove('ring-2', 'ring-amber-400');
+                }
             });
             document.querySelectorAll(`.tarifa-matriz[data-mes="${mes}"]`).forEach(celda => {
                 if (celda.dataset.proveedor === prov) celda.value = v;
@@ -5019,6 +5066,13 @@
                 txt.textContent = n > 0 ? '$' + n.toLocaleString('es-AR') : '\u2014';
                 txt.className = 'pc-matriz-texto text-sm font-bold ' + (n > 0 ? 'text-[#1B2559]' : 'text-[#A3AED0]');
             });
+        }
+
+        /** La tarifa es del proveedor: se escribe una vez y se replica en todas
+         *  las filas de ese proveedor y en la matriz de abajo, para que no haya
+         *  dos numeros distintos en pantalla. */
+        function pcTarifaEscrita(inp) {
+            pcPonerTarifa(inp.dataset.prov, inp.dataset.mes, inp.value);
             pcMarcarSinGuardar();
         }
 

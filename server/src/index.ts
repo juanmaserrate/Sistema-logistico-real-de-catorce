@@ -1837,9 +1837,6 @@ app.get('/api/v1/panel-choferes', async (req: any, res: any) => {
                 ? buscarEnLaTablaDeTarifas(tabla, f.proveedor, medioDelMes)
                 : null;
             f.tarifa = tar ? tar.valor : null;
-            // Si la tarifa viene arrastrada de un mes anterior, se dice: el
-            // operador tiene que saber que ese mes no se cargo.
-            f.tarifaArrastradaDe = tar && tar.mes !== mes ? tar.mes : null;
 
             if (!f.contrato) f.problema = 'Sin identificar: no se sabe si es propio o tercerizado';
             else if (f.contrato === 'TERCERIZADO' && !f.proveedor) f.problema = 'Tercerizado sin proveedor';
@@ -1888,10 +1885,6 @@ app.get('/api/v1/panel-choferes', async (req: any, res: any) => {
             .map((p) => ({
                 nombre: p,
                 tarifa: buscarEnLaTablaDeTarifas(tabla, p, medioDelMes)?.valor ?? null,
-                tarifaArrastradaDe: (() => {
-                    const t = buscarEnLaTablaDeTarifas(tabla, p, medioDelMes);
-                    return t && t.mes !== mes ? t.mes : null;
-                })(),
                 viajes: viajes.filter((v: any) => mismoNombrePersona(v.provider, p)).length
             }))
             .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
@@ -9110,9 +9103,14 @@ async function tablaDeTarifas(): Promise<Record<string, Record<string, number>>>
     }
 }
 
-/** La tarifa cargada a mano para ese proveedor en ese mes. Si el mes no tiene
- *  nada, se usa el ultimo mes anterior que si tenga: una tarifa sigue valiendo
- *  hasta que se cambie. */
+/** La tarifa cargada a mano para ese proveedor EN ESE MES.
+ *
+ *  Antes, si el mes no tenia nada, se usaba el ultimo mes anterior que si:
+ *  la tarifa se arrastraba sola. Eso hacia que un mes sin cargar pareciera
+ *  cargado y que los viajes salieran al precio viejo sin que nadie lo
+ *  decidiera. Ahora el mes que no tiene tarifa no tiene tarifa, y el viaje
+ *  queda en cero hasta que alguien la cargue. En el panel hay un boton para
+ *  traer las del mes anterior de una vez, pero hay que apretarlo y guardar. */
 function buscarEnLaTablaDeTarifas(
     tabla: Record<string, Record<string, number>>,
     proveedor: any,
@@ -9121,12 +9119,9 @@ function buscarEnLaTablaDeTarifas(
     const buscado = String(proveedor || '').trim();
     if (!buscado) return null;
     const mes = mesDeLaFecha(fecha);
-    const meses = Object.keys(tabla).filter((m) => m <= mes).sort().reverse();
-    for (const m of meses) {
-        for (const [nombre, valor] of Object.entries(tabla[m] || {})) {
-            if (Number(valor) > 0 && mismoNombrePersona(nombre, buscado)) {
-                return { valor: Number(valor), mes: m };
-            }
+    for (const [nombre, valor] of Object.entries(tabla[mes] || {})) {
+        if (Number(valor) > 0 && mismoNombrePersona(nombre, buscado)) {
+            return { valor: Number(valor), mes };
         }
     }
     return null;
