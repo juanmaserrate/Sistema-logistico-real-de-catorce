@@ -3781,102 +3781,254 @@
 
         // getMonthMeta(), toISODate() → js/r14-utils.js
 
-        function populateNewTripMultiDayOptions() {
-            const monthInput = document.getElementById('new-trip-multi-month');
-            const listWrap = document.getElementById('new-trip-days-list');
-            if (!monthInput || !listWrap) return;
-            const _ba = nowBuenosAires();
-            let y = _ba.year;
-            let m = _ba.month;
-            if (monthInput.value && /^\d{4}-\d{2}$/.test(monthInput.value)) {
-                const [yy, mm] = monthInput.value.split('-');
-                y = parseInt(yy, 10);
-                m = parseInt(mm, 10) - 1;
+        // ═══ NUEVO VIAJE — pestañas, calendario y resumen en vivo ═════════
+        // El calendario reemplaza a los tres "modos de fecha" (un día / rango /
+        // múltiples días). Ahora es UN solo control: se tocan los días que se
+        // quieran y cada uno queda con un círculo. Con shift se toma un tramo
+        // entero. No hay modo que elegir ni desplegable que se tape, y un día
+        // no puede quedar elegido en un modo que no se está mirando — que era
+        // de donde salían los días fantasma al guardar.
+
+        let _ntFechas = new Set();      // 'YYYY-MM-DD' de los días elegidos
+        let _ntCalY = 0;                // año del mes que se muestra
+        let _ntCalM = 0;                // mes 0-11 que se muestra
+        let _ntUltimoDia = null;        // ancla para el tramo con shift
+        let _ntMesTarifa = '';          // mes con el que se calculó la tarifa
+
+        const _NT_MESES = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
+                           'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+
+        const _ntISO = (y, m, d) =>
+            `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+
+        function _ntLindo(iso) {
+            const [y, m, d] = String(iso).split('-').map(Number);
+            if (!y) return iso;
+            const dias = ['domingo', 'lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado'];
+            const f = new Date(y, m - 1, d);
+            return `${dias[f.getDay()]} ${String(d).padStart(2, '0')}/${String(m).padStart(2, '0')}`;
+        }
+
+        function ntFechasSeleccionadas() {
+            return [..._ntFechas].sort();
+        }
+
+        /** Las dos pestañas del modal. Los datos del viaje y las paradas ya no
+         *  compiten por el alto de la pantalla. */
+        function ntTab(cual) {
+            const esDatos = cual !== 'paradas';
+            document.getElementById('nt-panel-datos')?.classList.toggle('hidden', !esDatos);
+            document.getElementById('nt-panel-paradas')?.classList.toggle('hidden', esDatos);
+            const base = 'px-4 py-2.5 rounded-t-xl text-[11px] font-black uppercase tracking-widest border-b-2 transition-all ';
+            const on = 'border-indigo-600 text-indigo-700 bg-white';
+            const off = 'border-transparent text-[#A3AED0] hover:text-[#2B3674]';
+            const bd = document.getElementById('nt-tab-datos-btn');
+            const bp = document.getElementById('nt-tab-paradas-btn');
+            if (bd) bd.className = base + (esDatos ? on : off);
+            if (bp) bp.className = base + (esDatos ? off : on);
+        }
+
+        function ntActualizarTabParadas() {
+            const el = document.getElementById('nt-tab-paradas-count');
+            if (el) el.textContent = '· ' + (Array.isArray(tripDeliveryRows) ? tripDeliveryRows.length : 0);
+        }
+
+        /** Un viaje está repetido cuando coinciden día + reparto + chofer +
+         *  vuelta: es la MISMA clave con la que el sistema detecta duplicados.
+         *  Marcarlo en el calendario avisa antes de crear, que es cuando sirve.
+         *  Solo mira los viajes que la pantalla ya tiene cargados: si encuentra
+         *  uno, es seguro; no encontrarlo no prueba que no exista. */
+        function _ntViajeIgual(iso) {
+            if (!Array.isArray(planningData) || planningData.length === 0) return null;
+            const rep = (document.getElementById('new-trip-reparto')?.value || '').trim().toUpperCase();
+            const cho = (document.getElementById('new-trip-driver')?.value || '').trim().toUpperCase();
+            const vu = document.getElementById('new-trip-vuelta')?.value || '1';
+            if (!rep && !cho) return null;
+            const editando = (document.getElementById('new-trip-id')?.value || '').trim();
+            return planningData.find(t => {
+                if (!t || !t.date) return false;
+                if (editando && String(t.id) === editando) return false;
+                if (String(t.date).slice(0, 10) !== iso) return false;
+                if (rep && String(t.reparto || '').trim().toUpperCase() !== rep) return false;
+                if (cho && String(t.driver || '').trim().toUpperCase() !== cho) return false;
+                if (vu !== 'auto' && String(t.vuelta ?? 1) !== String(vu)) return false;
+                return true;
+            }) || null;
+        }
+
+        function ntCalRender() {
+            const cont = document.getElementById('nt-cal-dias');
+            if (!cont) return;
+            const tit = document.getElementById('nt-cal-titulo');
+            if (tit) tit.textContent = `${_NT_MESES[_ntCalM]} ${_ntCalY}`;
+
+            // Lunes primero: getDay() devuelve 0 para domingo.
+            const corrimiento = (new Date(_ntCalY, _ntCalM, 1).getDay() + 6) % 7;
+            const cuantos = new Date(_ntCalY, _ntCalM + 1, 0).getDate();
+            const ba = nowBuenosAires();
+            const hoy = _ntISO(ba.year, ba.month, ba.day);
+
+            const celdas = [];
+            for (let i = 0; i < corrimiento; i++) celdas.push('<span></span>');
+            for (let d = 1; d <= cuantos; d++) {
+                const iso = _ntISO(_ntCalY, _ntCalM, d);
+                const sel = _ntFechas.has(iso);
+                const repetido = !!_ntViajeIgual(iso);
+                const finde = [0, 6].includes(new Date(_ntCalY, _ntCalM, d).getDay());
+                let cls = 'relative w-full aspect-square rounded-full text-[11px] font-black flex items-center justify-center transition-all ';
+                if (sel && repetido) cls += 'bg-amber-500 text-white';
+                else if (sel) cls += 'bg-indigo-600 text-white';
+                else if (finde) cls += 'text-[#C4CBDC] hover:bg-[#E8ECF8]';
+                else cls += 'text-[#2B3674] hover:bg-[#E8ECF8]';
+                if (!sel && iso === hoy) cls += ' ring-1 ring-indigo-400';
+                const punto = (repetido && !sel)
+                    ? '<span class="absolute bottom-[2px] w-1 h-1 rounded-full bg-amber-500"></span>' : '';
+                const tip = repetido ? 'Ya hay un viaje igual este día' : '';
+                celdas.push(`<button type="button" class="${cls}" title="${tip}" `
+                    + `onclick="ntCalClick('${iso}', event.shiftKey)">${d}${punto}</button>`);
+            }
+            cont.innerHTML = celdas.join('');
+            ntRecalcular();
+        }
+
+        function ntCalMes(delta) {
+            _ntCalM += delta;
+            if (_ntCalM < 0) { _ntCalM = 11; _ntCalY--; }
+            else if (_ntCalM > 11) { _ntCalM = 0; _ntCalY++; }
+            ntCalRender();
+        }
+
+        function ntCalClick(iso, conShift) {
+            const editando = (document.getElementById('new-trip-id')?.value || '').trim();
+            if (editando) {
+                // Editando un viaje existente la fecha es una sola.
+                _ntFechas = new Set([iso]);
+            } else if (conShift && _ntUltimoDia && _ntUltimoDia !== iso) {
+                const [a, b] = [_ntUltimoDia, iso].sort();
+                const tope = new Date(b + 'T00:00:00');
+                for (let d = new Date(a + 'T00:00:00'); d <= tope; d.setDate(d.getDate() + 1)) {
+                    _ntFechas.add(_ntISO(d.getFullYear(), d.getMonth(), d.getDate()));
+                }
+            } else if (_ntFechas.has(iso)) {
+                _ntFechas.delete(iso);
             } else {
-                monthInput.value = `${y}-${String(m + 1).padStart(2, '0')}`;
+                _ntFechas.add(iso);
             }
-            const daysInMonth = new Date(y, m + 1, 0).getDate();
-            const prevSelected = new Set(
-                [...document.querySelectorAll('#new-trip-days-list input[type="checkbox"]:checked')]
-                    .map(el => el.value)
-            );
-            listWrap.innerHTML = Array.from({ length: daysInMonth }, (_, i) => {
-                const d = new Date(y, m, i + 1);
-                const val = String(i + 1);
-                const checked = prevSelected.has(val) ? 'checked' : '';
-                return `
-                    <label class="flex items-center gap-2 px-2 py-1.5 hover:bg-[#F4F7FE] rounded-lg cursor-pointer">
-                        <input type="checkbox" value="${val}" ${checked} onchange="updateNewTripMultiDaysSummary()">
-                        <span>${formatDateWithWeekdayEs(d)}</span>
-                    </label>
-                `;
-            }).join('');
-            updateNewTripMultiDaysSummary();
+            _ntUltimoDia = iso;
+            _ntSyncFechas();
+            ntCalRender();
         }
 
-        function formatDateWithWeekdayEs(d) {
-            const weekday = d.toLocaleDateString('es-AR', { weekday: 'long' });
-            const prettyWeekday = weekday.charAt(0).toUpperCase() + weekday.slice(1);
-            const dd = String(d.getDate()).padStart(2, '0');
-            const mm = String(d.getMonth() + 1).padStart(2, '0');
-            const yyyy = d.getFullYear();
-            return `${prettyWeekday} ${dd}/${mm}/${yyyy}`;
-        }
-
-        function renderNewTripRangePreview() {
-            const wrap = document.getElementById('new-trip-range-preview');
-            const startVal = document.getElementById('new-trip-date-start')?.value || '';
-            const endVal = document.getElementById('new-trip-date-end')?.value || '';
-            if (!wrap) return;
-            if (!startVal || !endVal) {
-                wrap.innerHTML = '<span class="text-[#A3AED0]">Seleccioná fecha inicio y fin.</span>';
-                return;
+        /** Los días hábiles del mes que se está mirando. */
+        function ntCalLunAVie() {
+            const cuantos = new Date(_ntCalY, _ntCalM + 1, 0).getDate();
+            for (let d = 1; d <= cuantos; d++) {
+                const dia = new Date(_ntCalY, _ntCalM, d).getDay();
+                if (dia >= 1 && dia <= 5) _ntFechas.add(_ntISO(_ntCalY, _ntCalM, d));
             }
-            const start = new Date(`${startVal}T00:00:00`);
-            const end = new Date(`${endVal}T00:00:00`);
-            if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) {
-                wrap.innerHTML = '<span class="text-rose-500">Rango inválido.</span>';
-                return;
+            _ntSyncFechas();
+            ntCalRender();
+        }
+
+        function ntCalLimpiar() {
+            _ntFechas.clear();
+            _ntUltimoDia = null;
+            _ntSyncFechas();
+            ntCalRender();
+        }
+
+        /** Arranca el calendario con los días que se le pasen y lo posiciona en
+         *  el mes del primero. */
+        function ntCalInit(fechas) {
+            _ntFechas = new Set((fechas || []).filter(Boolean));
+            _ntUltimoDia = null;
+            const prim = ntFechasSeleccionadas()[0];
+            if (prim) {
+                const [y, m] = prim.split('-').map(Number);
+                _ntCalY = y; _ntCalM = m - 1;
+            } else {
+                const ba = nowBuenosAires();
+                _ntCalY = ba.year; _ntCalM = ba.month;
             }
-            const maxDays = 45;
-            const lines = [];
-            let idx = 0;
-            for (let d = new Date(start); d <= end && idx < maxDays; d.setDate(d.getDate() + 1), idx++) {
-                lines.push(`<span class="px-2 py-1 bg-[#F4F7FE] rounded-lg">${formatDateWithWeekdayEs(new Date(d))}</span>`);
+            _ntMesTarifa = prim ? prim.slice(0, 7) : '';
+            _ntSyncFechas({ sinTarifa: true });
+            ntCalRender();
+        }
+
+        /** La lógica de contrato, proveedor y tarifa lee new-trip-date. Se la
+         *  deja siempre apuntando al primer día elegido, así el mes de la
+         *  tarifa es el correcto sin tocar nada de esa lógica. */
+        function _ntSyncFechas(opts) {
+            const f = ntFechasSeleccionadas();
+            const prim = f[0] || '';
+            const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+            set('new-trip-date', prim);
+            set('new-trip-date-start', prim);
+            set('new-trip-date-end', f[f.length - 1] || '');
+            set('new-trip-multi-month', prim ? prim.slice(0, 7) : '');
+            set('new-trip-date-mode', f.length > 1 ? 'MULTI' : 'SINGLE');
+
+            // La tarifa depende del MES. Se recalcula solo cuando el mes cambia,
+            // para no pisar un contrato o un valor que el operador haya puesto
+            // a mano mientras elige días del mismo mes.
+            const mes = prim ? prim.slice(0, 7) : '';
+            if (!(opts && opts.sinTarifa) && mes && mes !== _ntMesTarifa) {
+                _ntMesTarifa = mes;
+                if (typeof aplicarContratoSugerido === 'function') aplicarContratoSugerido(null);
             }
-            if (idx >= maxDays) lines.push('<span class="px-2 py-1 bg-amber-100 text-amber-700 rounded-lg">...más días</span>');
-            wrap.innerHTML = lines.join('');
         }
 
-        function updateNewTripDateModeUI() {
-            const mode = document.getElementById('new-trip-date-mode')?.value || 'SINGLE';
-            const singleWrap = document.getElementById('new-trip-date-single-wrap');
-            const rangeWrap = document.getElementById('new-trip-date-range-wrap');
-            const multiWrap = document.getElementById('new-trip-date-multi-wrap');
-            if (singleWrap) singleWrap.classList.toggle('hidden', mode !== 'SINGLE');
-            if (rangeWrap) rangeWrap.classList.toggle('hidden', mode !== 'RANGE');
-            if (multiWrap) multiWrap.classList.toggle('hidden', mode !== 'MULTI');
-            if (mode === 'MULTI') populateNewTripMultiDayOptions();
-            if (mode === 'RANGE') renderNewTripRangePreview();
-        }
+        /** El resumen del pie y el aviso de días repetidos. */
+        function ntRecalcular() {
+            const f = ntFechasSeleccionadas();
+            const editando = (document.getElementById('new-trip-id')?.value || '').trim();
 
-        function toggleNewTripMultiDaysDropdown() {
-            const panel = document.getElementById('new-trip-days-panel');
-            if (!panel) return;
-            panel.classList.toggle('hidden');
-        }
+            const res = document.getElementById('nt-cal-resumen');
+            if (res) {
+                res.textContent = f.length === 0 ? 'Ningún día elegido'
+                    : f.length === 1 ? _ntLindo(f[0])
+                    : `${f.length} días elegidos`;
+            }
 
-        function getSelectedNewTripMultiDays() {
-            return [...document.querySelectorAll('#new-trip-days-list input[type="checkbox"]:checked')]
-                .map(el => parseInt(el.value, 10))
-                .filter(Number.isFinite);
-        }
+            const repes = f.filter(iso => _ntViajeIgual(iso));
+            const av = document.getElementById('nt-cal-aviso');
+            if (av) {
+                if (repes.length) {
+                    av.textContent = repes.length === 1
+                        ? `El ${_ntLindo(repes[0])} ya tiene este viaje cargado (mismo reparto, chofer y vuelta).`
+                        : `${repes.length} de los días elegidos ya tienen este viaje cargado.`;
+                    av.classList.remove('hidden');
+                } else {
+                    av.classList.add('hidden');
+                }
+            }
 
-        function updateNewTripMultiDaysSummary() {
-            const btn = document.getElementById('new-trip-days-toggle');
-            if (!btn) return;
-            const count = getSelectedNewTripMultiDays().length;
-            btn.innerText = count > 0 ? `${count} día(s) seleccionado(s)` : 'Seleccionar días';
+            const val = (id) => (document.getElementById(id)?.value || '').trim();
+            const partes = [];
+            if (val('new-trip-reparto')) partes.push(val('new-trip-reparto'));
+            if (f.length) partes.push(f.length === 1 ? _ntLindo(f[0]) : `${f.length} días`);
+            if (val('new-trip-driver')) partes.push(val('new-trip-driver'));
+            const contrato = val('new-trip-contract');
+            if (contrato === 'Tercerizado') {
+                const prov = val('new-trip-provider');
+                const v = Number(val('new-trip-value'));
+                partes.push('Tercerizado' + (prov ? ' · ' + prov : '')
+                    + (v > 0 ? ' · $' + v.toLocaleString('es-AR') : ''));
+            } else if (contrato) {
+                partes.push('Propio');
+            }
+            const resumen = document.getElementById('nt-resumen');
+            if (resumen) {
+                resumen.textContent = partes.length
+                    ? partes.join('  ·  ')
+                    : 'Elegí el reparto, los días y el chofer.';
+            }
+
+            const btn = document.getElementById('new-trip-save-btn');
+            if (btn && !editando) {
+                btn.textContent = f.length > 1 ? `CREAR ${f.length} VIAJES` : 'CREAR VIAJE';
+            }
+            ntActualizarTabParadas();
         }
 
         function resolveTripPlate(t) {
@@ -14415,7 +14567,12 @@
             return Array.isArray(data) ? data.length : 0;
         }
 
-        async function loadWeeklyData() {
+        /** opts.silencioso = no muestra el cartel de "Cargando viajes...".
+         *  Se usa despues de crear o editar: ya hay datos correctos en pantalla
+         *  y taparlos con el spinner es lo que hacia parecer que el sistema
+         *  tardaba en mostrar el viaje nuevo. */
+        async function loadWeeklyData(opts) {
+            const silencioso = !!(opts && opts.silencioso);
             const token = localStorage.getItem('r14.authToken') || '';
             if (!token) {
                 planningData = [];
@@ -14448,7 +14605,7 @@
 
             // Solo las cargas que REALMENTE hacen fetch compiten en el anti-carrera.
             const mySeq = ++__weeklyLoadSeq;
-            _weeklyShowLoading();
+            if (!silencioso) _weeklyShowLoading();
             missing.forEach(k => __weeklyMonthsLoading.add(k));
             const t0 = performance.now();
             let lastErr = null;
@@ -21007,6 +21164,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         function renderTripDeliveryList() {
+            if (typeof ntActualizarTabParadas === 'function') ntActualizarTabParadas();
             const ul = document.getElementById('trip-delivery-list');
             if (!ul) return;
             ul.innerHTML = tripDeliveryRows
@@ -21498,6 +21656,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         async function onNewTripRepartoChange() {
             const reparto = (document.getElementById('new-trip-reparto')?.value || '').trim();
             aplicarContratoSugerido(reparto);
+            // Cambia el reparto -> cambian los dias que ya tienen este viaje.
+            if (typeof ntCalRender === 'function') ntCalRender();
             if (!reparto || /^libre$/i.test(reparto) || reparto === '') {
                 tripDeliveryRows = [];
                 renderTripDeliveryList();
@@ -21507,9 +21667,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             await fillTripDeliveryFromTemplate(reparto, { silentSuccess: true });
             renderTripDeliveryList();
             populateTripDeliveryAddSelect();
-            // Open the details panel so the user sees the stops
-            const det = document.getElementById('trip-delivery-details');
-            if (det && tripDeliveryRows.length > 0) det.open = true;
+            // Las paradas viven en su propia pestana: se actualiza el contador
+            // para que se vea cuantas quedaron cargadas sin tener que ir a mirar.
+            if (typeof ntActualizarTabParadas === 'function') ntActualizarTabParadas();
         }
 
         /**
@@ -22055,17 +22215,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 mobileUserSelect.innerHTML = mobilePlaceholder + mobileOptions;
             }
 
-            // Reset fields
-            const today = new Date().toISOString().split('T')[0];
-            document.getElementById('new-trip-date-mode').value = 'SINGLE';
-            document.getElementById('new-trip-date').value = today;
-            document.getElementById('new-trip-date-start').value = today;
-            document.getElementById('new-trip-date-end').value = today;
-            document.getElementById('new-trip-multi-month').value = today.slice(0, 7);
-            updateNewTripDateModeUI();
-            populateNewTripMultiDayOptions();
-            const daysPanel = document.getElementById('new-trip-days-panel');
-            if (daysPanel) daysPanel.classList.add('hidden');
+            // Reset fields.
+            // El dia de hoy en hora de Buenos Aires: con toISOString() se tomaba
+            // el dia UTC y despues de las 21 el modal abria en el dia siguiente.
+            const _baHoy = nowBuenosAires();
+            const today = `${_baHoy.year}-${String(_baHoy.month + 1).padStart(2, '0')}-${String(_baHoy.day).padStart(2, '0')}`;
+            ntTab('datos');
+            ntCalInit([today]);
             document.getElementById('new-trip-contract').value = 'Propio';
             // Reset campos tercerizado (ocultos por default cuando es Propio)
             const valInp = document.getElementById('new-trip-value');
@@ -22257,6 +22413,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const inp = document.getElementById('new-trip-driver');
             const driverName = (inp?.value || '').trim().toUpperCase();
             if (inp && inp.value !== driverName) inp.value = driverName;
+            // Cambia el chofer -> cambian los dias que ya tienen este viaje.
+            if (typeof ntCalRender === 'function') ntCalRender();
             refrescarAvisoChoferNuevo(driverName);
             avisarChoferDistinto(null);
             const contractSel = document.getElementById('new-trip-contract');
@@ -22333,14 +22491,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (trip.date) {
                 const d = new Date(trip.date);
                 const iso = d.toISOString().split('T')[0];
-                document.getElementById('new-trip-date-mode').value = 'SINGLE';
-                document.getElementById('new-trip-date').value = iso;
-                document.getElementById('new-trip-date-start').value = iso;
-                document.getElementById('new-trip-date-end').value = iso;
-                document.getElementById('new-trip-multi-month').value = iso.slice(0, 7);
-                updateNewTripDateModeUI();
-                const daysPanel = document.getElementById('new-trip-days-panel');
-                if (daysPanel) daysPanel.classList.add('hidden');
+                ntCalInit([iso]);
             }
             document.getElementById('new-trip-contract').value = trip.contractType || 'Propio';
             toggleVehicleTypeField();
@@ -22430,34 +22581,16 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         async function saveNewTrip() {
+            let viajesTocados = [];
             const id = document.getElementById('new-trip-id').value;
-            const mode = document.getElementById('new-trip-date-mode').value || 'SINGLE';
-            const dateVal = document.getElementById('new-trip-date').value;
-            const startVal = document.getElementById('new-trip-date-start').value;
-            const endVal = document.getElementById('new-trip-date-end').value;
-            const multiMonth = document.getElementById('new-trip-multi-month').value;
-            const multiDays = getSelectedNewTripMultiDays();
-
-            let targetDates = [];
-            if (mode === 'SINGLE') {
-                if (!dateVal) return alert('Debe seleccionar una fecha');
-                targetDates = [dateVal];
-            } else if (mode === 'RANGE') {
-                if (!startVal || !endVal) return alert('Debe seleccionar fecha inicio y fin');
-                const start = new Date(`${startVal}T00:00:00`);
-                const end = new Date(`${endVal}T00:00:00`);
-                if (isNaN(start.getTime()) || isNaN(end.getTime()) || end < start) return alert('Rango de fechas inválido');
-                for (let d = new Date(start); d <= end; d.setDate(d.getDate() + 1)) targetDates.push(toISODate(d));
-            } else {
-                if (!multiMonth || multiDays.length === 0) return alert('Seleccioná mes y al menos un día');
-                const [yy, mm] = multiMonth.split('-').map(n => parseInt(n, 10));
-                const daysInMonth = new Date(yy, mm, 0).getDate();
-                targetDates = [...new Set(multiDays)].filter(d => d >= 1 && d <= daysInMonth)
-                    .sort((a, b) => a - b)
-                    .map(d => `${yy}-${String(mm).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
-                if (targetDates.length === 0) return alert('No hay días válidos seleccionados');
+            // Una sola fuente de verdad: los dias que estan tocados en el
+            // calendario. Antes habia tres modos y el que no se miraba podia
+            // quedar con dias viejos elegidos.
+            const targetDates = ntFechasSeleccionadas();
+            if (targetDates.length === 0) {
+                ntTab('datos');
+                return alert('Tocá al menos un día en el calendario.');
             }
-
             if (id && targetDates.length !== 1) {
                 return alert('Para editar un viaje existente solo se permite una fecha.');
             }
@@ -22535,6 +22668,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     body: JSON.stringify(tripData)
                 });
                     if (!res.ok) throw new Error('Error al actualizar el viaje');
+                    const actualizado = await res.json().catch(() => null);
+                    if (actualizado && actualizado.id != null) viajesTocados = [actualizado];
                     const paradasGuardadas = await saveTripDeliveryStops(parseInt(id, 10));
                     if (paradasGuardadas === false && typeof addNotification === 'function') {
                         addNotification('info', 'Paradas sin cambios', 'Se guardaron los datos del viaje, pero no las paradas.');
@@ -22603,21 +22738,37 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         if (otros > 0) partes.push(`${otros} con error`);
                         addNotification('warning', 'Creación parcial', partes.join(' · ') + '.');
                     }
+                    // El cuerpo de cada respuesta se lee UNA sola vez y se usa
+                    // para dos cosas: guardar las paradas y meter el viaje en la
+                    // tabla sin esperar a que se recargue el mes.
+                    const creados = await Promise.all(fulfilled.map(r => r.value.json().catch(() => null)));
+                    viajesTocados = creados.filter(t => t && t.id != null);
+
                     // Auto-guardar paradas en cada viaje creado (evita paso extra con el chevron)
                     if (Array.isArray(tripDeliveryRows) && tripDeliveryRows.length > 0) {
-                        const newTrips = await Promise.all(fulfilled.map(r => r.value.json().catch(() => null)));
-                        const savePromises = newTrips
-                            .filter(t => t && t.id != null)
-                            .map(t => saveTripDeliveryStops(t.id).catch(e => console.warn('saveTripDeliveryStops', t.id, e.message)));
-                        await Promise.allSettled(savePromises);
+                        await Promise.allSettled(viajesTocados.map(t =>
+                            saveTripDeliveryStops(t.id).catch(e => console.warn('saveTripDeliveryStops', t.id, e.message))));
                     }
                 }
 
                 const msg = id ? 'Viaje Actualizado' : `Viajes creados (${targetDates.length})`;
                 if (typeof addNotification === 'function') addNotification('success', msg, 'La operación fue exitosa.');
                 closeNewTripModal();
+
+                // El viaje tiene que verse YA. El POST devuelve el viaje tal como
+                // quedo guardado, asi que se mete en el store y se repinta en el
+                // acto. Antes se invalidaba todo el mes y se esperaba el refetch
+                // con la tabla tapada por el cartel de "Cargando viajes...": de
+                // ahi venia la demora para ver el viaje recien creado.
+                if (viajesTocados.length && typeof __weeklyTripsById !== 'undefined') {
+                    viajesTocados.forEach(t => __weeklyTripsById.set(t.id, t));
+                    if (typeof _weeklyRebuildPlanningData === 'function') _weeklyRebuildPlanningData();
+                    if (typeof filterWeeklyData === 'function') filterWeeklyData();
+                }
+                // Y recien despues se refresca contra el servidor, en silencio:
+                // sin borrar la tabla, porque ya hay algo correcto en pantalla.
                 if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
-                loadWeeklyData();
+                loadWeeklyData({ silencioso: viajesTocados.length > 0 });
             } catch (err) {
                 console.error(err);
                 alert('Error guardando viaje: ' + err.message);
@@ -23856,241 +24007,229 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
     </div>
 
     <div id="new-trip-modal" class="modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center p-3" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
-        <div class="bg-white rounded-3xl w-[96vw] max-w-6xl max-h-[92vh] shadow-2xl overflow-hidden flex flex-col">
+        <div class="bg-white rounded-3xl w-[97vw] max-w-[1500px] max-h-[94vh] shadow-2xl overflow-hidden flex flex-col">
             <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center bg-[#F8FAFF]">
                 <h3 id="new-trip-modal-title" class="font-black text-[#1B2559] uppercase tracking-widest text-sm">Nuevo Viaje</h3>
                 <button onclick="closeNewTripModal()" class="text-[#A3AED0] hover:text-[#1B2559] transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
-            <div class="p-8 space-y-6 overflow-y-auto custom-scrollbar flex-1">
+            <!-- Pestanas: los datos del viaje y las paradas no compiten por lugar -->
+            <div class="px-6 pt-3 bg-[#F8FAFF] border-b border-[#F4F7FE] flex items-center gap-1">
+                <button type="button" id="nt-tab-datos-btn" onclick="ntTab('datos')"
+                        class="px-4 py-2.5 rounded-t-xl text-[11px] font-black uppercase tracking-widest border-b-2 transition-all">Datos del viaje</button>
+                <button type="button" id="nt-tab-paradas-btn" onclick="ntTab('paradas')"
+                        class="px-4 py-2.5 rounded-t-xl text-[11px] font-black uppercase tracking-widest border-b-2 transition-all">
+                    Paradas <span id="nt-tab-paradas-count" class="font-bold">· 0</span>
+                </button>
+            </div>
+
+            <div class="px-6 py-5 overflow-y-auto custom-scrollbar flex-1">
                 <input type="hidden" id="new-trip-id">
-                
-                <div class="grid grid-cols-3 gap-4">
-                    <div>
-                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Modo de Fecha</label>
-                        <select id="new-trip-date-mode" onchange="updateNewTripDateModeUI()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                            <option value="SINGLE">Un día</option>
-                            <option value="RANGE">Rango de días</option>
-                            <option value="MULTI">Múltiples días</option>
-                        </select>
-                    </div>
-                    <div>
-                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Contrato</label>
-                        <select id="new-trip-contract" onchange="toggleVehicleTypeField()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                            <option value="Propio">Propio</option>
-                            <option value="Tercerizado">Tercerizado</option>
-                        </select>
-                        <p id="new-trip-contract-hint" class="hidden mt-1 text-[10px] font-bold text-indigo-500"></p>
-                    </div>
-                    <div id="new-trip-provider-container" class="hidden">
-                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Proveedor tercerizado</label>
-                        <input type="text" id="new-trip-provider" placeholder="Ej. JAVIER GAREIS, MARIANO ANTICH..." autocomplete="off"
-                               class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold uppercase shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                        <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Nombre del transportista externo que realiza este viaje.</p>
-                    </div>
-                    <div id="new-trip-value-container" class="hidden">
-                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Valor tercerizado ($)</label>
-                        <input type="number" id="new-trip-value" placeholder="Ej. 251500" min="0" step="1"
-                               class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                        <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Costo que cobra el transportista externo por este viaje. Editable después.</p>
-                    </div>
-                    <div>
-                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Unidad de Negocio</label>
-                        <div id="new-trip-bu-chips" class="w-full min-h-[46px] bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2 flex flex-wrap gap-1.5 items-center shadow-sm"></div>
-                        <input type="hidden" id="new-trip-bu">
-                        <select id="new-trip-bu-agregar" onchange="agregarUnidadAlViaje(this.value)" class="mt-2 w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
-                        <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Podés elegir más de una: el viaje cuenta 1 en cada unidad.</p>
-                        <div class="mt-2 flex gap-2">
-                            <input type="text" id="new-trip-bu-new" placeholder="Crear una unidad que no está..." class="flex-1 bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl px-3 py-2 text-xs font-bold uppercase shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                            <button type="button" onclick="addBusinessUnitOption()" class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-[10px] font-bold hover:bg-indigo-700 transition-all uppercase">Crear</button>
+                <!-- Compatibilidad: la logica de contrato, tarifa y edicion lee
+                     estas fechas. Las escribe el calendario. -->
+                <input type="hidden" id="new-trip-date-mode" value="SINGLE">
+                <input type="hidden" id="new-trip-date">
+                <input type="hidden" id="new-trip-date-start">
+                <input type="hidden" id="new-trip-date-end">
+                <input type="hidden" id="new-trip-multi-month">
+
+                <div id="nt-panel-datos" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
+
+                    <!-- 1 ─ QUE VIAJE ES: lo que lo identifica y lo que no puede repetirse -->
+                    <div class="rounded-2xl border border-[#E0E5F2] bg-white p-4 space-y-3">
+                        <div class="flex items-center gap-2">
+                            <span class="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center">1</span>
+                            <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest">Qué viaje es</h4>
                         </div>
-                    </div>
-                </div>
-
-                <div class="border-t border-[#F4F7FE] pt-4 mt-2">
-                    <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Vuelta del día (costo logístico propio)</label>
-                    <select id="new-trip-vuelta" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                        <option value="1">1ª vuelta</option>
-                        <option value="2">2ª vuelta</option>
-                        <option value="3">3ª vuelta o más</option>
-                        <option value="auto">Automático (hora de salida y patente)</option>
-                        </select>
-                    <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">2ª y 3ª+ comparten la misma regla: no se vuelve a prorratear el auxiliar con jornal. Solo contrato Propio.</p>
-                    </div>
-
-                <div id="new-trip-date-single-wrap">
-                    <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Fecha</label>
-                    <input type="date" id="new-trip-date" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                </div>
-
-                <div id="new-trip-date-range-wrap" class="hidden grid grid-cols-2 gap-4">
-                    <div>
-                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Fecha Inicio</label>
-                        <input type="date" id="new-trip-date-start" onchange="renderNewTripRangePreview()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                    </div>
-                    <div>
-                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Fecha Fin</label>
-                        <input type="date" id="new-trip-date-end" onchange="renderNewTripRangePreview()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                    </div>
-                    <div class="col-span-2">
-                        <div id="new-trip-range-preview" class="flex flex-wrap gap-2 text-[11px] font-bold text-[#2B3674] bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3"></div>
-                    </div>
-                </div>
-
-                <div id="new-trip-date-multi-wrap" class="hidden space-y-2">
-                    <div class="grid grid-cols-2 gap-4">
                         <div>
-                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Mes</label>
-                            <input type="month" id="new-trip-multi-month" onchange="populateNewTripMultiDayOptions()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Reparto / Ruta</label>
+                            <select id="new-trip-reparto" onchange="onNewTripRepartoChange()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
                         </div>
-                        <div class="relative">
-                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Días</label>
-                            <button type="button" id="new-trip-days-toggle" onclick="toggleNewTripMultiDaysDropdown()" class="w-full text-left bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none hover:bg-[#E8ECF8] transition-all">
-                                Seleccionar días
-                            </button>
-                            <div id="new-trip-days-panel" class="hidden absolute z-20 mt-2 w-full max-h-[220px] overflow-y-auto bg-white border border-[#E0E5F2] rounded-xl shadow-lg p-2 text-sm font-bold">
-                                <div id="new-trip-days-list" class="space-y-1"></div>
+                        <div>
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Días <span class="normal-case font-medium text-[#A3AED0]">— tocá uno o varios</span></label>
+                            <div class="rounded-xl border border-[#E0E5F2] bg-[#F8FAFF] p-2.5">
+                                <div class="flex items-center justify-between mb-1.5">
+                                    <button type="button" onclick="ntCalMes(-1)" aria-label="Mes anterior"
+                                            class="w-7 h-7 rounded-lg hover:bg-[#E8ECF8] text-[#2B3674] font-black">‹</button>
+                                    <span id="nt-cal-titulo" class="text-[11px] font-black text-[#1B2559] uppercase tracking-wider"></span>
+                                    <button type="button" onclick="ntCalMes(1)" aria-label="Mes siguiente"
+                                            class="w-7 h-7 rounded-lg hover:bg-[#E8ECF8] text-[#2B3674] font-black">›</button>
+                                </div>
+                                <div class="grid grid-cols-7 gap-0.5 mb-1">
+                                    <span class="text-center text-[9px] font-black text-[#A3AED0]">L</span>
+                                    <span class="text-center text-[9px] font-black text-[#A3AED0]">M</span>
+                                    <span class="text-center text-[9px] font-black text-[#A3AED0]">M</span>
+                                    <span class="text-center text-[9px] font-black text-[#A3AED0]">J</span>
+                                    <span class="text-center text-[9px] font-black text-[#A3AED0]">V</span>
+                                    <span class="text-center text-[9px] font-black text-[#A3AED0]">S</span>
+                                    <span class="text-center text-[9px] font-black text-[#A3AED0]">D</span>
+                                </div>
+                                <div id="nt-cal-dias" class="grid grid-cols-7 gap-0.5"></div>
+                            </div>
+                            <div class="flex items-center justify-between gap-2 mt-1.5">
+                                <p id="nt-cal-resumen" class="text-[10px] font-bold text-[#2B3674]"></p>
+                                <div class="flex gap-1 shrink-0">
+                                    <button type="button" onclick="ntCalLunAVie()" class="px-2 py-1 rounded-lg bg-[#F4F7FE] text-[9px] font-black text-[#2B3674] uppercase hover:bg-[#E8ECF8]">Lun a vie</button>
+                                    <button type="button" onclick="ntCalLimpiar()" class="px-2 py-1 rounded-lg bg-[#F4F7FE] text-[9px] font-black text-[#2B3674] uppercase hover:bg-[#E8ECF8]">Limpiar</button>
+                                </div>
+                            </div>
+                            <p id="nt-cal-aviso" class="hidden mt-1.5 text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 leading-snug"></p>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Vuelta del día</label>
+                            <select id="new-trip-vuelta" onchange="ntCalRender()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="1">1ª vuelta</option>
+                                <option value="2">2ª vuelta</option>
+                                <option value="3">3ª vuelta o más</option>
+                                <option value="auto">Automático (hora de salida y patente)</option>
+                            </select>
+                            <p class="text-[10px] text-[#A3AED0] mt-1 leading-snug">La 2ª y la 3ª no vuelven a prorratear el auxiliar con jornal. Solo contrato Propio.</p>
+                        </div>
+                    </div>
+
+                    <!-- 2 ─ QUIEN LO HACE: el chofer dictamina el contrato, el proveedor y la tarifa -->
+                    <div class="rounded-2xl border border-[#E0E5F2] bg-white p-4 space-y-3">
+                        <div class="flex items-center gap-2">
+                            <span class="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center">2</span>
+                            <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest">Quién lo hace</h4>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Chofer</label>
+                            <div class="relative">
+                                <input type="text" id="new-trip-driver" list="new-trip-driver-list" autocomplete="off"
+                                       oninput="onTripDriverChange()" onchange="onTripDriverChange()"
+                                       placeholder="Seleccionar Chofer"
+                                       class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 pr-9 text-sm font-bold uppercase shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                <svg class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3AED0]"
+                                     viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                                     stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
+                            </div>
+                            <datalist id="new-trip-driver-list"></datalist>
+                            <p id="new-trip-chofer-regla" class="hidden mt-1 text-[10px] font-bold text-amber-600"></p>
+                            <div id="new-trip-driver-new" class="hidden mt-2 flex items-center gap-2">
+                                <span class="text-[10px] font-bold text-amber-700 flex-1">«<span id="new-trip-driver-new-name"></span>» no está en la lista. ¿Lo guardo?</span>
+                                <button type="button" onclick="guardarChoferNuevo()"
+                                        class="px-3 py-1.5 rounded-xl bg-indigo-600 text-white text-[10px] font-bold hover:bg-indigo-700 transition-all uppercase whitespace-nowrap">Guardar</button>
+                            </div>
+                        </div>
+
+                        <!-- Lo que el sistema deduce del chofer. Se puede cambiar. -->
+                        <div class="rounded-xl bg-[#F8FAFF] border border-dashed border-[#C9D2EA] p-3 space-y-2.5">
+                            <p class="text-[9px] font-black text-[#A3AED0] uppercase tracking-widest">Sale del chofer — se puede cambiar</p>
+                            <div>
+                                <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Contrato</label>
+                                <select id="new-trip-contract" onchange="toggleVehicleTypeField(); ntRecalcular();" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                    <option value="Propio">Propio</option>
+                                    <option value="Tercerizado">Tercerizado</option>
+                                </select>
+                                <p id="new-trip-contract-hint" class="hidden mt-1 text-[10px] font-bold text-indigo-500 leading-snug"></p>
+                            </div>
+                            <div id="new-trip-provider-container" class="hidden">
+                                <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Proveedor tercerizado</label>
+                                <input type="text" id="new-trip-provider" placeholder="Ej. JAVIER GAREIS" autocomplete="off"
+                                       oninput="ntRecalcular()"
+                                       class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold uppercase shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                            </div>
+                            <div id="new-trip-value-container" class="hidden">
+                                <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Valor tercerizado ($)</label>
+                                <input type="number" id="new-trip-value" placeholder="Ej. 290000" min="0" step="1"
+                                       oninput="ntRecalcular()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                <p class="text-[10px] text-[#A3AED0] mt-1 leading-snug">Sale de la tarifa del proveedor para ese mes. Editable.</p>
+                            </div>
+                        </div>
+
+                        <div id="new-trip-vehicle-container">
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Coche / Vehículo</label>
+                            <select id="new-trip-vehicle" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                        </div>
+                        <div>
+                            <div class="flex items-center justify-between mb-1">
+                                <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1 !mb-0">Auxiliares</label>
+                                <button type="button" onclick="agregarAuxiliarNuevo()"
+                                        class="px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600 text-[9px] font-black hover:bg-indigo-100 uppercase whitespace-nowrap">+ Nuevo</button>
+                            </div>
+                            <div class="space-y-1.5">
+                                <select id="new-trip-aux1" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                                <select id="new-trip-aux2" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                                <select id="new-trip-aux3" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
                             </div>
                         </div>
                     </div>
-                    <p class="text-[10px] text-[#A3AED0] font-medium">Seleccioná los días desde el desplegable.</p>
-                </div>
 
-                <div class="grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
-                    <div>
-                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Chofer</label>
-                        <div class="relative">
-                            <input type="text" id="new-trip-driver" list="new-trip-driver-list" autocomplete="off"
-                                   oninput="onTripDriverChange()" onchange="onTripDriverChange()"
-                                   placeholder="Seleccionar Chofer"
-                                   class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 pr-9 text-sm font-bold uppercase shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                            <svg class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3AED0]"
-                                 viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
-                                 stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                <path d="m6 9 6 6 6-6"></path>
-                            </svg>
+                    <!-- 3 ─ DONDE Y COMO -->
+                    <div class="rounded-2xl border border-[#E0E5F2] bg-white p-4 space-y-3">
+                        <div class="flex items-center gap-2">
+                            <span class="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center">3</span>
+                            <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest">Dónde y cómo</h4>
                         </div>
-                        <datalist id="new-trip-driver-list"><!-- Injected by JS --></datalist>
-                        <p id="new-trip-chofer-regla" class="hidden mt-1 text-[10px] font-bold text-amber-600"></p>
-                        <div id="new-trip-driver-new" class="hidden mt-2 flex items-center gap-2">
-                            <span class="text-[10px] font-bold text-amber-700 flex-1">
-                                «<span id="new-trip-driver-new-name"></span>» no está en la lista. ¿Lo guardo?
-                            </span>
-                            <button type="button" onclick="guardarChoferNuevo()"
-                                    class="px-3 py-2 rounded-xl bg-indigo-600 text-white text-[10px] font-bold hover:bg-indigo-700 transition-all uppercase whitespace-nowrap">Guardar chofer</button>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Localidad</label>
+                                <input type="text" id="new-trip-zone" list="new-trip-zone-list" placeholder="Localidad…" autocomplete="off"
+                                       oninput="autoFillLocalidad()" onchange="autoFillLocalidad()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                <datalist id="new-trip-zone-list"></datalist>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Partido (auto)</label>
+                                <input type="text" id="new-trip-loc" readonly
+                                       class="w-full bg-[#EEF1F8] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold text-[#A3AED0] shadow-sm outline-none">
+                            </div>
                         </div>
-                    </div>
-                    <div id="new-trip-vehicle-container">
-                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Coche / Vehículo</label>
-                        <select id="new-trip-vehicle" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                             <!-- Injected by JS -->
-                        </select>
+                        <div>
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Unidad de negocio</label>
+                            <div id="new-trip-bu-chips" class="w-full min-h-[40px] bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2 flex flex-wrap gap-1.5 items-center shadow-sm"></div>
+                            <input type="hidden" id="new-trip-bu">
+                            <select id="new-trip-bu-agregar" onchange="agregarUnidadAlViaje(this.value)" class="mt-1.5 w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2 text-xs font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                            <div class="mt-1.5 flex gap-1.5">
+                                <input type="text" id="new-trip-bu-new" placeholder="Crear una unidad…"
+                                       class="flex-1 bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl px-2.5 py-1.5 text-xs font-bold uppercase shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                <button type="button" onclick="addBusinessUnitOption()"
+                                        class="px-2.5 py-1.5 rounded-xl bg-indigo-600 text-white text-[9px] font-black hover:bg-indigo-700 uppercase">Crear</button>
+                            </div>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Tipo de viaje</label>
+                            <select id="new-trip-modo" onchange="onNewTripModoChange(); ntRecalcular();" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                <option value="APP">Con app — el chofer marca cada parada</option>
+                                <option value="MANUAL">Manual — solo salida y llegada</option>
+                            </select>
+                            <p id="new-trip-modo-hint" class="text-[10px] text-[#A3AED0] mt-1 leading-snug">El chofer va marcando la llegada a cada parada desde el celular.</p>
+                        </div>
+                        <div>
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Usuario App</label>
+                            <select id="new-trip-mobile-user" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                            <p id="new-trip-mobile-user-hint" class="text-[10px] text-[#A3AED0] mt-1 leading-snug">Quién verá este viaje en la app móvil.</p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Hora salida</label>
+                                <input type="time" id="new-trip-exit" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Hora llegada</label>
+                                <input type="time" id="new-trip-return" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                            </div>
+                        </div>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div>
+                                <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Refrigerado</label>
+                                <select id="new-trip-refrigerated" onchange="onNewTripRefrigeratedChange()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                    <option value="no" selected>No</option>
+                                    <option value="si">Sí</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Temperatura (°C)</label>
+                                <input type="number" step="0.1" id="new-trip-temperature" disabled placeholder="Ej: 4"
+                                       class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                            </div>
+                        </div>
+                        <div id="new-trip-extra" class="hidden grid grid-cols-2 gap-2 border-t border-[#F4F7FE] pt-3"></div>
                     </div>
                 </div>
 
-                <div class="flex items-center justify-between border-t border-[#F4F7FE] mt-4 pt-4 mb-1">
-                    <span class="text-[10px] font-bold text-[#A3AED0] uppercase">Auxiliares</span>
-                    <button type="button" onclick="agregarAuxiliarNuevo()"
-                            class="px-3 py-1.5 rounded-xl bg-indigo-50 text-indigo-600 text-[10px] font-bold hover:bg-indigo-100 transition-all uppercase whitespace-nowrap">+ Auxiliar nuevo</button>
-                </div>
-                <div class="grid grid-cols-3 gap-4">
-                    <div>
-                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Auxiliar 1</label>
-                        <select id="new-trip-aux1" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                             <!-- Injected by JS -->
-                        </select>
-                    </div>
-                    <div>
-                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Auxiliar 2</label>
-                        <select id="new-trip-aux2" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                             <!-- Injected by JS -->
-                        </select>
-                    </div>
-                    <div>
-                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Auxiliar 3</label>
-                        <select id="new-trip-aux3" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                             <!-- Injected by JS -->
-                        </select>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
-                    <div>
-                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Localidad</label>
-                        <input type="text" id="new-trip-zone" list="new-trip-zone-list" placeholder="Escribí o seleccioná una localidad…" autocomplete="off" oninput="autoFillLocalidad()" onchange="autoFillLocalidad()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                        <datalist id="new-trip-zone-list"></datalist>
-                    </div>
-                    <div>
-                        <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Partido (Auto)</label>
-                        <input type="text" id="new-trip-loc" readonly class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#A3AED0] shadow-sm outline-none">
-                    </div>
-                </div>
-                
-                 <div class="grid grid-cols-2 gap-4">
-                     <div>
-                          <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Reparto / Ruta</label>
-                          <select id="new-trip-reparto" onchange="onNewTripRepartoChange()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                               <!-- Injected by JS -->
-                          </select>
-                          <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Elige la ruta para cargar paradas predefinidas.</p>
-                     </div>
-                     <div>
-                          <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Usuario App</label>
-                          <select id="new-trip-mobile-user" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                               <!-- Injected by JS -->
-                          </select>
-                          <p id="new-trip-mobile-user-hint" class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Quién verá este viaje en la app móvil.</p>
-                     </div>
-                 </div>
-
-                 <div id="new-trip-extra" class="hidden grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
-                     <!-- Campos que agrego el operador -->
-                 </div>
-
-                 <div class="grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
-                     <div>
-                          <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Tipo de viaje</label>
-                          <select id="new-trip-modo" onchange="onNewTripModoChange()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                               <option value="APP">Con app — el chofer marca cada parada</option>
-                               <option value="MANUAL">Manual — solo salida y llegada</option>
-                          </select>
-                          <p id="new-trip-modo-hint" class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">El chofer va marcando la llegada a cada parada desde el celular.</p>
-                     </div>
-                 </div>
-
-                 <div class="grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
-                     <div>
-                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Hora Salida</label>
-                         <input type="time" id="new-trip-exit" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                     </div>
-                     <div>
-                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Hora Llegada</label>
-                         <input type="time" id="new-trip-return" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                     </div>
-                 </div>
-
-                 <div class="grid grid-cols-2 gap-4 border-t border-[#F4F7FE] mt-4 pt-4">
-                     <div>
-                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Refrigerado</label>
-                         <select id="new-trip-refrigerated" onchange="onNewTripRefrigeratedChange()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                             <option value="no" selected>No</option>
-                             <option value="si">Sí</option>
-                         </select>
-                         <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Activá para registrar temperatura de cadena de frío.</p>
-                     </div>
-                     <div>
-                         <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Temperatura (°C)</label>
-                         <input type="number" step="0.1" id="new-trip-temperature" disabled placeholder="Ej: 4" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed">
-                         <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Solo editable si el viaje es refrigerado.</p>
-                     </div>
-                 </div>
-
-                <details id="trip-delivery-details" open class="border border-[#F4F7FE] rounded-2xl mt-2 group">
-                    <summary class="cursor-pointer list-none flex items-center justify-between gap-2 p-4 text-[11px] font-black text-[#2B3674] uppercase tracking-widest hover:bg-[#F4F7FE]/80 rounded-2xl">
-                        <span>Puntos de entrega (orden)</span>
-                        <i data-lucide="chevron-down" class="w-4 h-4 text-[#A3AED0] transition-transform group-open:rotate-180"></i>
-                    </summary>
-                    <div class="px-4 pb-4 space-y-3 border-t border-[#F4F7FE] pt-3">
-                        <p id="trip-delivery-hint" class="text-[10px] text-[#A3AED0] font-medium leading-relaxed"></p>
+                <!-- Pestana de paradas: el mismo editor de siempre, con su propio espacio -->
+                <div id="nt-panel-paradas" class="hidden space-y-3">
+                    <p id="trip-delivery-hint" class="text-[10px] text-[#A3AED0] font-medium leading-relaxed"></p>
                         <div id="trip-delivery-editor" class="hidden space-y-3">
                             <p class="text-[10px] text-[#A3AED0]">
                                 Si elegís un reparto (R8, etc.), las paradas se toman de la plantilla en «Rutas predefinidas» y se cruzan con el directorio de escuelas por nombre.
@@ -24117,12 +24256,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                 <p id="td-results-count" class="text-[10px] text-[#A3AED0]"></p>
                             </div>
                         </div>
-                    </div>
-                </details>
-
+                </div>
             </div>
-            <div class="p-6 bg-[#F8FAFF] border-t border-[#F4F7FE] flex gap-4">
-                <button id="new-trip-save-btn" onclick="saveNewTrip()" class="flex-1 bg-indigo-600 text-white py-3.5 rounded-2xl font-bold text-xs tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 uppercase">
+            <div class="px-6 py-4 bg-[#F8FAFF] border-t border-[#F4F7FE] flex items-center gap-4">
+                <p id="nt-resumen" class="flex-1 text-[11px] font-bold text-[#2B3674] leading-snug min-w-0"></p>
+                <button id="new-trip-save-btn" onclick="saveNewTrip()" class="bg-indigo-600 text-white px-8 py-3.5 rounded-2xl font-bold text-xs tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 uppercase whitespace-nowrap">
                     CREAR VIAJE
                 </button>
                 <button onclick="closeNewTripModal()" class="px-6 border border-[#E0E5F2] rounded-2xl font-bold text-[#1B2559] text-xs hover:bg-[#F4F7FE] transition-all">Cancelar</button>
