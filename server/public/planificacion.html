@@ -22537,8 +22537,141 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
         }
 
+        // ═══ DESPLEGABLE DE LOS CAMPOS QUE SE ESCRIBEN ══════════════════
+        // Chofer y Localidad usaban <datalist>, que es el desplegable nativo
+        // del navegador: en Windows sale negro, con otra tipografia y otro
+        // tamano, y no hay CSS que lo pueda tocar. Este lo reemplaza con uno
+        // dibujado por nosotros, igual al resto de la pantalla.
+        //
+        // Las opciones se siguen leyendo del mismo <datalist>, asi que todo lo
+        // que ya las carga (y el alta de un chofer nuevo) sigue funcionando sin
+        // cambios: solo se le saca al input el atributo "list" para que el
+        // navegador no muestre el suyo encima.
+
+        let _acAbierto = null;   // { input, lista, caja, opciones, marcado }
+
+        function acActivar(input) {
+            if (!input || input.dataset.acListo === '1') return;
+            const idLista = input.getAttribute('list');
+            if (!idLista) return;
+            input.dataset.acLista = idLista;
+            input.removeAttribute('list');          // adios al desplegable negro
+            input.setAttribute('autocomplete', 'off');
+            input.dataset.acListo = '1';
+
+            input.addEventListener('focus', () => acAbrir(input));
+            input.addEventListener('click', () => acAbrir(input));
+            input.addEventListener('input', () => acAbrir(input));
+            input.addEventListener('keydown', acTecla);
+            input.addEventListener('blur', () => setTimeout(() => {
+                // Con un click en una opcion el blur llega primero: se espera a
+                // que el click haga lo suyo antes de cerrar.
+                if (_acAbierto && _acAbierto.input === input) acCerrar();
+            }, 150));
+        }
+
+        function _acOpciones(input) {
+            const dl = document.getElementById(input.dataset.acLista || '');
+            if (!dl) return [];
+            return [...dl.options].map(o => o.value).filter(Boolean);
+        }
+
+        function acAbrir(input) {
+            if (input.disabled || input.readOnly) return;
+            const todas = _acOpciones(input);
+            const escrito = String(input.value || '').trim().toUpperCase();
+            // Si lo escrito coincide exacto con una opcion, se muestran todas:
+            // asi se puede cambiar de idea sin tener que borrar lo que hay.
+            const exacto = todas.some(o => o.toUpperCase() === escrito);
+            const lista = (!escrito || exacto)
+                ? todas
+                : todas.filter(o => o.toUpperCase().includes(escrito));
+
+            if (!lista.length) return acCerrar();
+
+            let caja = document.getElementById('ac-caja');
+            if (!caja) {
+                caja = document.createElement('div');
+                caja.id = 'ac-caja';
+                // Va pegado al body y en posicion fija: dentro del modal
+                // quedaba cortado por los paneles que tienen scroll.
+                caja.className = 'fixed z-[200] bg-white border border-[#E0E5F2] rounded-xl shadow-2xl overflow-y-auto custom-scrollbar';
+                caja.style.maxHeight = '240px';
+                document.body.appendChild(caja);
+            }
+            _acAbierto = { input, lista, caja, marcado: 0 };
+            acPintar();
+            acUbicar();
+        }
+
+        function acUbicar() {
+            if (!_acAbierto) return;
+            const r = _acAbierto.input.getBoundingClientRect();
+            const caja = _acAbierto.caja;
+            caja.style.left = r.left + 'px';
+            caja.style.width = r.width + 'px';
+            // Si abajo no entra, se abre para arriba
+            const abajo = window.innerHeight - r.bottom;
+            if (abajo < 160 && r.top > abajo) {
+                caja.style.top = '';
+                caja.style.bottom = (window.innerHeight - r.top + 4) + 'px';
+                caja.style.maxHeight = Math.min(240, r.top - 12) + 'px';
+            } else {
+                caja.style.bottom = '';
+                caja.style.top = (r.bottom + 4) + 'px';
+                caja.style.maxHeight = Math.min(240, abajo - 12) + 'px';
+            }
+        }
+
+        function acPintar() {
+            if (!_acAbierto) return;
+            const { lista, caja, marcado } = _acAbierto;
+            caja.innerHTML = lista.map((op, i) => `
+                <div data-ac-i="${i}" onmousedown="acElegir(${i})"
+                     class="px-3 py-2.5 text-sm font-bold text-[#1B2559] cursor-pointer ${i === marcado ? 'bg-indigo-50' : 'hover:bg-[#F4F7FE]'}">
+                    ${escapeHtml(op)}
+                </div>`).join('');
+            const act = caja.querySelector(`[data-ac-i="${marcado}"]`);
+            if (act) act.scrollIntoView({ block: 'nearest' });
+        }
+
+        function acElegir(i) {
+            if (!_acAbierto) return;
+            const { input, lista } = _acAbierto;
+            input.value = lista[i];
+            acCerrar();
+            // Se avisa igual que si lo hubiera tipeado: los campos ya tienen su
+            // propio oninput/onchange y de ahi salen los autocompletados.
+            input.dispatchEvent(new Event('input', { bubbles: true }));
+            input.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+
+        function acTecla(e) {
+            if (!_acAbierto || _acAbierto.input !== e.target) {
+                if (e.key === 'ArrowDown') acAbrir(e.target);
+                return;
+            }
+            const n = _acAbierto.lista.length;
+            if (e.key === 'ArrowDown') { e.preventDefault(); _acAbierto.marcado = (_acAbierto.marcado + 1) % n; acPintar(); }
+            else if (e.key === 'ArrowUp') { e.preventDefault(); _acAbierto.marcado = (_acAbierto.marcado - 1 + n) % n; acPintar(); }
+            else if (e.key === 'Enter') { e.preventDefault(); acElegir(_acAbierto.marcado); }
+            else if (e.key === 'Escape') { acCerrar(); }
+        }
+
+        function acCerrar() {
+            const caja = document.getElementById('ac-caja');
+            if (caja) caja.remove();
+            _acAbierto = null;
+        }
+
+        window.addEventListener('scroll', () => { if (_acAbierto) acUbicar(); }, true);
+        window.addEventListener('resize', () => { if (_acAbierto) acUbicar(); });
+
         async function openNewTripModal() {
             document.getElementById('new-trip-modal').classList.remove('hidden');
+            // Chofer y Localidad con desplegable propio, no el negro del navegador
+            acActivar(document.getElementById('new-trip-driver'));
+            acActivar(document.getElementById('new-trip-zone'));
             document.getElementById('new-trip-id').value = '';
             document.getElementById('new-trip-modal-title').innerText = 'Nuevo Viaje';
             document.getElementById('new-trip-save-btn').innerText = 'CREAR VIAJE';
@@ -23027,6 +23160,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         function closeNewTripModal() {
+            acCerrar();   // que no quede el desplegable flotando sobre la tabla
             document.getElementById('new-trip-modal').classList.add('hidden');
         }
 
