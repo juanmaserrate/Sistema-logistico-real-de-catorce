@@ -129,7 +129,7 @@
                         <div class="nav-menu-panel" role="menu">
                             <a href="#payments" id="btn-payments" class="nav-menu-item" role="menuitem"><i data-lucide="wallet"></i> <span>Planilla de Pagos</span></a>
                             <a href="#costs" id="btn-costs" class="nav-menu-item" role="menuitem"><i data-lucide="bar-chart-3"></i> <span>Motor de Costos</span></a>
-                            <a href="#tarifas" id="btn-tarifas" class="nav-menu-item" role="menuitem"><i data-lucide="receipt"></i> <span>Tarifas por proveedor</span></a>
+                            <a href="#tarifas" id="btn-tarifas" class="nav-menu-item" role="menuitem"><i data-lucide="receipt"></i> <span>Choferes y tarifas</span></a>
                         </div>
                     </div>
                     <div class="nav-menu" id="nav-menu-datos" data-menu="datos">
@@ -2140,16 +2140,56 @@
 
             <!-- VIEW: TARIFAS POR PROVEEDOR -->
             <div id="view-tarifas" class="hidden view-animate space-y-6">
+
+                <!-- QUIEN ES CADA CHOFER Y CUANTO CUESTA -->
                 <div class="card-dark overflow-hidden">
                     <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
                         <div>
-                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Tarifas por proveedor</h4>
-                            <p class="text-xs text-[#A3AED0] mt-1">Lo que se le paga por viaje, mes a mes. Al guardar se le aplica a los viajes tercerizados de ese mes, los ya cargados y los que se creen después.</p>
+                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Choferes y tarifas</h4>
+                            <p class="text-xs text-[#A3AED0] mt-1">
+                                El chofer dice si el viaje es <b>propio o tercerizado</b>. Su <b>proveedor</b> pone la <b>tarifa</b>.
+                                Se corrige todo acá mismo.
+                            </p>
                         </div>
                         <div class="flex flex-wrap items-end gap-2">
+                            <div>
+                                <label class="block text-[10px] font-black text-[#A3AED0] uppercase tracking-wider mb-1">Mes</label>
+                                <select id="pc-mes" onchange="cargarPanelChoferes(this.value)"
+                                        class="bg-[#F4F7FE] border-0 rounded-lg px-3 py-2 text-sm font-bold text-[#1B2559] outline-none cursor-pointer"></select>
+                            </div>
                             <button onclick="agregarMesTarifas()" class="bg-[#F4F7FE] text-[#1B2559] rounded-lg px-4 py-2 text-sm font-bold">+ Mes</button>
-                            <button onclick="guardarTarifas()" class="bg-[#451ebb] text-white rounded-lg px-4 py-2 text-sm font-bold">Guardar</button>
+                            <button id="pc-guardar" onclick="guardarTarifas()"
+                                    class="bg-[#451ebb] text-white rounded-lg px-4 py-2 text-sm font-bold">Guardar tarifas</button>
                         </div>
+                    </div>
+
+                    <div id="pc-resumen" class="px-6 py-3 bg-[#FAFCFF] border-b border-[#F4F7FE] flex flex-wrap gap-2"></div>
+                    <div id="pc-alertas" class="hidden px-6 py-4 bg-amber-50 border-b border-amber-100 space-y-3"></div>
+
+                    <div class="p-6 bg-white">
+                        <div class="overflow-x-auto"><table class="w-full text-sm">
+                            <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left border-b border-[#F4F7FE]">
+                                <th class="py-2 px-2">Chofer</th>
+                                <th class="py-2 px-2 text-center">Viajes<br><span class="font-bold normal-case">del mes</span></th>
+                                <th class="py-2 px-2">¿Propio o tercerizado?</th>
+                                <th class="py-2 px-2">Proveedor</th>
+                                <th class="py-2 px-2 text-right">Tarifa por viaje</th>
+                                <th class="py-2 px-2">Estado</th>
+                            </tr></thead>
+                            <tbody id="pc-body"></tbody>
+                        </table></div>
+                        <p class="text-[10px] text-[#A3AED0] mt-3">
+                            La tarifa es <b>del proveedor</b>, no de cada chofer: si la cambiás, cambia para todos los choferes de ese proveedor.
+                            Abajo está la tabla completa, mes a mes.
+                        </p>
+                    </div>
+                </div>
+
+                <!-- LA TABLA DE TARIFAS, MES A MES -->
+                <div class="card-dark overflow-hidden">
+                    <div class="p-6 border-b border-[#F4F7FE] bg-white">
+                        <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Tarifas por proveedor, mes a mes</h4>
+                        <p class="text-xs text-[#A3AED0] mt-1">Al guardar se le aplica a los viajes tercerizados de esos meses: los ya cargados y los que se creen después.</p>
                     </div>
                     <div class="p-6 bg-white">
                         <div class="overflow-x-auto"><table class="w-full text-sm">
@@ -4470,7 +4510,7 @@
                 payments: 'Planilla de Pagos a Tercerizados',
                 dashboard: 'Dashboard logístico',
                 costs: 'Motor de Costos Operativos',
-                tarifas: 'Tarifas por proveedor',
+                tarifas: 'Choferes y tarifas',
                 maintenance: 'Mantenimiento de Flota',
                 employees: 'Gestión de Personal',
                 users: 'Gestión de Usuarios',
@@ -4495,7 +4535,7 @@
                 payments: 'Resumen de viajes tercerizados a pagar agrupados por proveedor, unidad y reparto',
                 dashboard: 'Costos propio vs tercerizado y distribución por unidad, zona y localidad',
                 costs: 'Motor financiero para el cálculo de rentabilidad y gastos fijos/variables',
-                tarifas: 'Lo que se le paga a cada proveedor por viaje, mes a mes. Define el valor de los viajes tercerizados',
+                tarifas: 'Quién es propio y quién tercerizado, con qué proveedor y a qué tarifa. Define el valor de los viajes tercerizados',
                 maintenance: 'Seguimiento técnico preventivo y correctivo de la flota propia',
                 employees: 'Acceso unificado a legajos de choferes, auxiliares y liquidaciones',
                 users: 'Administración manual de credenciales para choferes y administradores',
@@ -4816,18 +4856,200 @@
             return (nombres[Number(n) - 1] || m) + ' ' + a;
         };
 
-        async function cargarTarifas() {
-            const body = document.getElementById('tarifas-body');
+        async function cargarTarifas() { return cargarPanelChoferes(); }
+
+        /** Trae de UN pedido la cadena completa: cada chofer con su contrato, su
+         *  proveedor, la tarifa de ese mes y los viajes que hizo, mas la tabla
+         *  de tarifas entera. Todo se corrige en la misma pantalla. */
+        let _panelChoferes = null;
+        let _pcMes = '';
+        let _pcSinGuardar = false;
+
+        async function cargarPanelChoferes(mes) {
+            const body = document.getElementById('pc-body');
+            const matriz = document.getElementById('tarifas-body');
             if (!body) return;
-            body.innerHTML = '<tr><td class="py-3 px-2 text-[#A3AED0]">Cargando...</td></tr>';
+            if (mes && _pcSinGuardar) {
+                if (!confirm('Hay tarifas escritas sin guardar. Si cambi\u00e1s de mes se pierden. \u00bfSigo?')) {
+                    const sel = document.getElementById('pc-mes');
+                    if (sel) sel.value = _pcMes;
+                    return;
+                }
+            }
+            body.innerHTML = '<tr><td colspan="6" class="py-4 px-2 text-[#A3AED0] font-bold">Cargando...</td></tr>';
             try {
-                const res = await fetch(`${API_URL}/tarifas`, { headers: getActorHeaders() });
+                const q = mes ? `?mes=${encodeURIComponent(mes)}` : '';
+                const res = await fetch(`${API_URL}/panel-choferes${q}`, { headers: getActorHeaders() });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Error del servidor');
-                _tarifasData = data;
+                _panelChoferes = data;
+                _pcMes = data.mes;
+                _pcSinGuardar = false;
+                // La matriz de abajo y el panel comparten la misma tabla: lo que
+                // se escribe en un lado se ve en el otro y se guarda junto.
+                _tarifasData = { meses: data.meses, proveedores: (data.proveedores || []).map(p => p.name), tabla: data.tabla };
+                pintarPanelChoferes();
                 pintarTarifas();
             } catch (e) {
-                body.innerHTML = `<tr><td class="py-3 px-2 text-rose-600 font-bold">Error: ${escapeHtml(e.message || e)}</td></tr>`;
+                body.innerHTML = `<tr><td colspan="6" class="py-4 px-2 text-rose-600 font-bold">Error: ${escapeHtml(e.message || e)}</td></tr>`;
+                if (matriz) matriz.innerHTML = '';
+            }
+        }
+
+        function _pcChip(texto, clase) {
+            return `<span class="px-3 py-1 rounded-lg text-[11px] font-black ${clase}">${texto}</span>`;
+        }
+
+        function pintarPanelChoferes() {
+            const d = _panelChoferes;
+            const body = document.getElementById('pc-body');
+            if (!d || !body) return;
+
+            // El selector de mes
+            const selMes = document.getElementById('pc-mes');
+            if (selMes) {
+                selMes.innerHTML = (d.meses || []).map(m => `<option value="${m}">${_nombreMes(m)}</option>`).join('');
+                selMes.value = d.mes;
+            }
+
+            // El resumen de arriba
+            const r = d.resumen || {};
+            const res = document.getElementById('pc-resumen');
+            if (res) {
+                res.innerHTML = [
+                    _pcChip(`${r.choferes || 0} choferes`, 'bg-[#F4F7FE] text-[#1B2559]'),
+                    _pcChip(`${r.propios || 0} propios`, 'bg-indigo-50 text-indigo-700'),
+                    _pcChip(`${r.tercerizados || 0} tercerizados`, 'bg-amber-50 text-amber-700'),
+                    r.sinIdentificar ? _pcChip(`${r.sinIdentificar} sin identificar`, 'bg-rose-100 text-rose-700') : '',
+                    r.conProblema ? _pcChip(`${r.conProblema} con algo para revisar`, 'bg-rose-50 text-rose-700') : '',
+                    (!r.sinIdentificar && !r.conProblema) ? _pcChip('Todo en orden', 'bg-emerald-100 text-emerald-700') : ''
+                ].filter(Boolean).join('');
+            }
+
+            // Los agujeros: choferes sin ficha y proveedores sin tarifa
+            const al = document.getElementById('pc-alertas');
+            if (al) {
+                const partes = [];
+                if ((d.sinFicha || []).length) {
+                    partes.push(`
+                        <div>
+                            <p class="text-[11px] font-black text-amber-800 uppercase tracking-wider">Manejan y no tienen ficha</p>
+                            <p class="text-[11px] text-amber-700 mb-2">Sus viajes no saben si son propios o tercerizados. Cre\u00e1les la ficha en <b>Personal</b>.</p>
+                            <div class="flex flex-wrap gap-2">
+                                ${d.sinFicha.map(x => `<span class="px-3 py-1 rounded-lg text-[11px] font-black bg-white text-amber-800 border border-amber-200">
+                                    ${escapeHtml(x.nombre)} \u00b7 ${x.viajes} viaje(s)${x.proveedoresEnLosViajes.length ? ' \u00b7 ' + escapeHtml(x.proveedoresEnLosViajes.join(', ')) : ''}</span>`).join('')}
+                            </div>
+                        </div>`);
+                }
+                if ((d.proveedoresSinTarifa || []).length) {
+                    partes.push(`
+                        <div>
+                            <p class="text-[11px] font-black text-amber-800 uppercase tracking-wider">Proveedores en uso sin tarifa cargada</p>
+                            <p class="text-[11px] text-amber-700 mb-2">Los viajes de sus choferes quedan en $0. Cargales el precio en la columna Tarifa.</p>
+                            <div class="flex flex-wrap gap-2">
+                                ${d.proveedoresSinTarifa.map(p => `<span class="px-3 py-1 rounded-lg text-[11px] font-black bg-white text-amber-800 border border-amber-200">${escapeHtml(p)}</span>`).join('')}
+                            </div>
+                        </div>`);
+                }
+                al.innerHTML = partes.join('');
+                al.classList.toggle('hidden', !partes.length);
+            }
+
+            // Las filas
+            const provOpts = (cur) => ['<option value="">\u2014 sin proveedor \u2014</option>']
+                .concat((d.proveedores || []).map(p =>
+                    `<option value="${p.id}" ${String(cur || '') === String(p.id) ? 'selected' : ''}>${escapeHtml(p.name)}</option>`))
+                .join('');
+            const selCls = 'bg-[#F4F7FE] border-0 rounded-lg px-3 py-1.5 text-[11px] font-bold text-[#1B2559] outline-none cursor-pointer';
+
+            body.innerHTML = (d.choferes || []).map(c => {
+                const terc = c.contrato === 'TERCERIZADO';
+                const anillo = c.problema ? 'ring-2 ring-amber-400' : '';
+                const estado = c.problema
+                    ? `<span class="status-badge bg-amber-100 text-amber-800 text-[10px]">${escapeHtml(c.problema)}</span>`
+                    : `<span class="status-badge bg-emerald-100 text-emerald-700 text-[10px]">Listo</span>`;
+                const celdaTarifa = terc
+                    ? (c.proveedor
+                        ? `<input type="number" min="0" step="1000" value="${c.tarifa || ''}"
+                                  data-prov="${escapeHtml(c.proveedor)}" data-mes="${d.mes}"
+                                  oninput="pcTarifaEscrita(this)"
+                                  class="tarifa-chofer w-32 bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-right text-[#1B2559] ${c.tarifa ? '' : 'ring-2 ring-amber-400'}">
+                           ${c.tarifaArrastradaDe ? `<p class="text-[9px] text-[#A3AED0] mt-1">viene de ${_nombreMes(c.tarifaArrastradaDe)}</p>` : ''}`
+                        : `<span class="text-[11px] text-amber-700 font-bold">elegí el proveedor</span>`)
+                    : `<span class="text-[11px] text-[#A3AED0]">\u2014</span>`;
+
+                return `
+                <tr class="border-t border-[#F4F7FE] ${c.activo ? '' : 'opacity-50'} hover:bg-[#FAFCFF]">
+                    <td class="py-2 px-2 font-black text-[#1B2559] whitespace-nowrap">${escapeHtml(c.nombre)}
+                        ${c.activo ? '' : '<span class="ml-2 status-badge bg-rose-100 text-rose-700 text-[9px]">de baja</span>'}</td>
+                    <td class="py-2 px-2 text-center font-bold ${c.viajes ? 'text-[#1B2559]' : 'text-[#A3AED0]'}">${c.viajes || 0}</td>
+                    <td class="py-2 px-2">
+                        <select onchange="pcSetContrato('${c.id}', this.value)" class="${selCls} ${c.contrato ? '' : anillo}">
+                            <option value="" ${!c.contrato ? 'selected' : ''}>\u2014 sin identificar \u2014</option>
+                            <option value="PROPIO" ${c.contrato === 'PROPIO' ? 'selected' : ''}>Propio</option>
+                            <option value="TERCERIZADO" ${c.contrato === 'TERCERIZADO' ? 'selected' : ''}>Tercerizado</option>
+                        </select>
+                    </td>
+                    <td class="py-2 px-2">
+                        ${terc
+                            ? `<select onchange="pcSetProveedor('${c.id}', this.value)" class="${selCls} ${c.proveedor ? '' : 'ring-2 ring-amber-400'}">${provOpts(c.proveedorId)}</select>`
+                            : `<span class="text-[11px] text-[#A3AED0]">\u2014</span>`}
+                    </td>
+                    <td class="py-2 px-2 text-right">${celdaTarifa}</td>
+                    <td class="py-2 px-2">${estado}</td>
+                </tr>`;
+            }).join('') || '<tr><td colspan="6" class="py-4 px-2 text-[#A3AED0] font-bold">No hay choferes cargados.</td></tr>';
+        }
+
+        /** La tarifa es del proveedor: se escribe una vez y se replica en todas
+         *  las filas de ese proveedor y en la matriz de abajo, para que no haya
+         *  dos numeros distintos en pantalla. */
+        function pcTarifaEscrita(inp) {
+            const prov = inp.dataset.prov, mes = inp.dataset.mes, v = inp.value;
+            document.querySelectorAll(`.tarifa-chofer[data-mes="${mes}"]`).forEach(otro => {
+                if (otro !== inp && otro.dataset.prov === prov) otro.value = v;
+            });
+            document.querySelectorAll(`.tarifa-matriz[data-mes="${mes}"]`).forEach(celda => {
+                if (celda.dataset.proveedor === prov) celda.value = v;
+            });
+            pcMarcarSinGuardar();
+        }
+
+        function pcMarcarSinGuardar() {
+            _pcSinGuardar = true;
+            const b = document.getElementById('pc-guardar');
+            if (b) { b.textContent = 'Guardar tarifas \u2022'; b.classList.add('ring-2', 'ring-amber-300'); }
+        }
+
+        /** Propio o tercerizado. Se guarda en la ficha del chofer, que es la que
+         *  decide el tipo de todos sus viajes. */
+        async function pcSetContrato(userId, valor) {
+            await pcGuardarFicha(userId, { contractType: valor || null },
+                valor === 'PROPIO' ? 'Queda Propio'
+                    : valor === 'TERCERIZADO' ? 'Queda Tercerizado \u2014 eleg\u00ed el proveedor al lado'
+                    : 'Queda sin identificar');
+        }
+
+        async function pcSetProveedor(userId, providerId) {
+            await pcGuardarFicha(userId, { providerId: providerId || null },
+                providerId ? 'Proveedor guardado' : 'Sin proveedor');
+        }
+
+        async function pcGuardarFicha(userId, cambio, aviso) {
+            try {
+                const res = await fetch(`${API_URL}/users/${userId}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
+                    body: JSON.stringify(cambio)
+                });
+                if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Error del servidor');
+                if (typeof addNotification === 'function') addNotification('success', 'Ficha actualizada', aviso + '.');
+                // Se vuelve a traer el panel: cambiar el contrato cambia la
+                // tarifa y el estado de la fila, y eso lo calcula el servidor.
+                await cargarPanelChoferes(_pcMes);
+            } catch (e) {
+                if (typeof addNotification === 'function') addNotification('error', 'No se pudo guardar', String(e.message || e));
+                await cargarPanelChoferes(_pcMes);
             }
         }
 
@@ -4841,7 +5063,15 @@
             head.innerHTML = '<th class="py-2 px-2">Proveedor</th>'
                 + meses.map(m => `<th class="py-2 px-2 text-right whitespace-nowrap">${_nombreMes(m)}</th>`).join('');
 
-            body.innerHTML = (d.proveedores || []).map(prov => `
+            // Tambien los proveedores que estan en la tabla y ya no figuran en
+            // la lista (dados de baja): si no se pintaran, la fila no viajaria
+            // al guardar y esa tarifa se perderia sin que nadie la toque.
+            const enLaTabla = new Set();
+            meses.forEach(m => Object.keys(d.tabla?.[m] || {}).forEach(p => enLaTabla.add(p)));
+            const filas = [...new Set([...(d.proveedores || []), ...enLaTabla])]
+                .sort((a, b) => String(a).localeCompare(String(b), 'es'));
+
+            body.innerHTML = filas.map(prov => `
                 <tr class="border-t border-[#F4F7FE]">
                     <td class="py-2 px-2 font-black text-[#1B2559] whitespace-nowrap">${escapeHtml(prov)}</td>
                     ${meses.map(m => {
@@ -4849,7 +5079,8 @@
                         return `<td class="py-2 px-2 text-right">
                             <input type="number" min="0" step="1000" value="${v}"
                                    data-proveedor="${escapeHtml(prov)}" data-mes="${m}"
-                                   class="tarifa-input w-32 bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-right text-[#1B2559]">
+                                   oninput="pcMatrizEscrita(this)"
+                                   class="tarifa-matriz w-32 bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-right text-[#1B2559]">
                         </td>`;
                     }).join('')}
                 </tr>`).join('')
@@ -4867,13 +5098,24 @@
             // Lo que haya escrito sin guardar no se pierde
             d.tabla = leerTarifasDeLaPantalla();
             d.meses = [...new Set([...(d.meses || []), mes])].sort();
+            if (_panelChoferes) _panelChoferes.meses = d.meses;
             pintarTarifas();
+            pcMarcarSinGuardar();
+        }
+
+        /** Lo que se escribe en la matriz tambien se refleja arriba. */
+        function pcMatrizEscrita(inp) {
+            const prov = inp.dataset.proveedor, mes = inp.dataset.mes, v = inp.value;
+            document.querySelectorAll(`.tarifa-chofer[data-mes="${mes}"]`).forEach(otro => {
+                if (otro.dataset.prov === prov) otro.value = v;
+            });
+            pcMarcarSinGuardar();
         }
 
         function leerTarifasDeLaPantalla() {
             const tabla = {};
             (_tarifasData?.meses || []).forEach(m => { tabla[m] = {}; });
-            document.querySelectorAll('.tarifa-input').forEach(inp => {
+            document.querySelectorAll('.tarifa-matriz').forEach(inp => {
                 const v = Number(inp.value);
                 if (!(v > 0)) return;
                 const m = inp.dataset.mes;
@@ -4916,10 +5158,13 @@
                             sin.map(x => `${x.proveedor}: ${x.viajes} viaje(s)`).join(' · '));
                     }
                 }
-                // La matriz se refresca por atras: en pantalla ya esta lo que
-                // el operador escribio, asi que esperar a que vuelva a bajar no
-                // le agrega nada mas que espera.
-                cargarTarifas();
+                // El panel se refresca por atras: en pantalla ya esta lo que el
+                // operador escribio, asi que esperar a que vuelva a bajar no le
+                // agrega nada mas que espera.
+                _pcSinGuardar = false;
+                const btn = document.getElementById('pc-guardar');
+                if (btn) { btn.textContent = 'Guardar tarifas'; btn.classList.remove('ring-2', 'ring-amber-300'); }
+                cargarPanelChoferes(_pcMes);
             } catch (e) {
                 if (typeof addNotification === 'function') addNotification('error', 'No se pudo guardar', String(e.message || e));
             }
@@ -19789,8 +20034,14 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         let _reglasRepartos = {};
         let _mesReglas = '';
 
-        /** "2026-09" de una fecha. Vacio = el mes de hoy. */
+        /** "2026-09" de una fecha. Vacio = el mes de hoy.
+         *  Si viene como "2026-10-01" se leen los numeros tal cual: pasarlo por
+         *  new Date() lo tomaba como medianoche UTC y en Buenos Aires eso es el
+         *  30 de septiembre, asi que los viajes del dia 1 se cotizaban con las
+         *  tarifas del mes anterior. */
         function mesDeFecha(iso) {
+            const corto = String(iso || '').match(/^(\d{4})-(\d{2})/);
+            if (corto) return corto[1] + '-' + corto[2];
             const f = iso ? new Date(iso) : new Date();
             if (isNaN(f.getTime())) return '';
             return f.getFullYear() + '-' + String(f.getMonth() + 1).padStart(2, '0');

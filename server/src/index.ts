@@ -193,6 +193,7 @@ const PROTECTED_PREFIXES = [
     '/api/v1/catalogos',
     '/api/v1/control-carga',
     '/api/v1/tarifas',
+    '/api/v1/panel-choferes',
 ];
 app.use((req: any, res: any, next: any) => {
     // Excepcion: el export de viajes tambien acepta la clave de servicio, como
@@ -1699,6 +1700,150 @@ app.get('/api/v1/tarifas', async (_req: any, res: any) => {
         });
     } catch (e: any) {
         console.error('GET tarifas:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** GET /api/v1/panel-choferes?mes=YYYY-MM
+ *
+ *  Todo lo que el operador necesita ver y corregir de una sola pantalla, en un
+ *  solo pedido: cada chofer con su contrato, su proveedor, la tarifa que le
+ *  corresponde ese mes y cuantos viajes hizo. Mas los dos agujeros que antes
+ *  quedaban escondidos: choferes que aparecen en viajes y no tienen ficha, y
+ *  proveedores en uso sin tarifa cargada.
+ *
+ *  Es de lectura. Para corregir se usan los endpoints que ya existen:
+ *  PATCH /users/:id (contrato y proveedor) y POST /tarifas (la tarifa). */
+app.get('/api/v1/panel-choferes', async (req: any, res: any) => {
+    try {
+        const mes = /^\d{4}-\d{2}$/.test(String(req.query.mes || '')) ? String(req.query.mes) : mesDeLaFecha(null);
+        const [anio, m] = mes.split('-').map(Number);
+        const desde = new Date(Date.UTC(anio, m - 1, 1));
+        const hasta = new Date(Date.UTC(anio, m, 0, 23, 59, 59));
+        // Para buscar la tarifa se usa el MEDIODIA DEL 15: mesDeLaFecha() pasa
+        // la fecha a hora de Buenos Aires, y el 1 a las 00:00 UTC cae el 30 del
+        // mes anterior. Con el 1 se buscaba la tarifa del mes equivocado.
+        const medioDelMes = new Date(Date.UTC(anio, m - 1, 15, 12, 0, 0));
+
+        const [gente, proveedores, viajes, tabla] = await Promise.all([
+            prisma.user.findMany({
+                where: { role: { in: ['CHOFER', 'DRIVER'] } },
+                select: {
+                    id: true, username: true, fullName: true, role: true,
+                    active: true, contractType: true, providerId: true
+                }
+            }),
+            prisma.provider.findMany({ select: { id: true, name: true, active: true }, orderBy: { name: 'asc' } }),
+            prisma.trip.findMany({
+                where: { date: { gte: desde, lte: hasta } },
+                select: { driver: true, contractType: true, provider: true, value: true }
+            }),
+            tablaDeTarifas()
+        ]);
+
+        const nombreProv = new Map(proveedores.map((p) => [p.id, p.name]));
+
+        // Una fila por persona. Si la misma persona tiene ficha de CHOFER y de
+        // DRIVER (con login), se junta: gana la que tenga el contrato cargado.
+        type Fila = any;
+        const filas: Fila[] = [];
+        for (const u of gente) {
+            const nombre = String(u.fullName || u.username || '').trim();
+            if (!nombre || esCuentaDePrueba(u.username) || esCuentaDePrueba(u.fullName)) continue;
+            const ya = filas.find((f) => mismoNombrePersona(f.nombre, nombre));
+            const contrato = u.contractType ? String(u.contractType).trim().toUpperCase() : null;
+            if (ya) {
+                // Se queda la ficha mas completa, pero se recuerdan las dos.
+                ya.fichas.push({ id: u.id, usuario: u.username, rol: u.role });
+                if (!ya.contrato && contrato) { ya.contrato = contrato; ya.id = u.id; ya.usuario = u.username; ya.rol = u.role; }
+                if (!ya.proveedorId && u.providerId) { ya.proveedorId = u.providerId; }
+                if (u.active !== false) ya.activo = true;
+                continue;
+            }
+            filas.push({
+                id: u.id, usuario: u.username, nombre, rol: u.role,
+                activo: u.active !== false,
+                contrato,
+                proveedorId: u.providerId || null,
+                fichas: [{ id: u.id, usuario: u.username, rol: u.role }]
+            });
+        }
+
+        // Viajes del mes por chofer, y lo que de verdad quedo cargado en ellos.
+        const porChofer = new Map<string, { viajes: number; valores: Set<number>; proveedores: Set<string> }>();
+        for (const t of viajes) {
+            const n = String(t.driver || '').trim();
+            if (!n) continue;
+            if (!porChofer.has(n)) porChofer.set(n, { viajes: 0, valores: new Set(), proveedores: new Set() });
+            const r = porChofer.get(n)!;
+            r.viajes++;
+            if (Number(t.value) > 0) r.valores.add(Number(t.value));
+            if (String(t.provider || '').trim()) r.proveedores.add(String(t.provider).trim());
+        }
+
+        const usados = new Set<string>();
+        for (const f of filas) {
+            let vj = 0;
+            const valores = new Set<number>();
+            for (const [n, r] of porChofer.entries()) {
+                if (!mismoNombrePersona(n, f.nombre)) continue;
+                usados.add(n);
+                vj += r.viajes;
+                r.valores.forEach((v) => valores.add(v));
+            }
+            f.viajes = vj;
+            f.valoresEnLosViajes = [...valores].sort((a, b) => a - b);
+
+            f.proveedor = f.proveedorId ? (nombreProv.get(f.proveedorId) || '(proveedor borrado)') : null;
+            const tar = f.contrato === 'TERCERIZADO' && f.proveedor
+                ? buscarEnLaTablaDeTarifas(tabla, f.proveedor, medioDelMes)
+                : null;
+            f.tarifa = tar ? tar.valor : null;
+            // Si la tarifa viene arrastrada de un mes anterior, se dice: el
+            // operador tiene que saber que ese mes no se cargo.
+            f.tarifaArrastradaDe = tar && tar.mes !== mes ? tar.mes : null;
+
+            if (!f.contrato) f.problema = 'Sin identificar: no se sabe si es propio o tercerizado';
+            else if (f.contrato === 'TERCERIZADO' && !f.proveedor) f.problema = 'Tercerizado sin proveedor';
+            else if (f.contrato === 'TERCERIZADO' && !f.tarifa) f.problema = 'El proveedor no tiene tarifa cargada';
+            else if (f.contrato === 'TERCERIZADO' && f.valoresEnLosViajes.some((v: number) => v !== f.tarifa)) {
+                f.problema = 'Hay viajes con otro valor: ' + f.valoresEnLosViajes.join(' / ');
+            } else f.problema = null;
+            delete f.fichas;
+        }
+
+        // Los que manejan y no tienen ficha. Antes quedaban tapados porque el
+        // contrato lo ponia el reparto; ahora hay que verlos.
+        const sinFicha = [...porChofer.entries()]
+            .filter(([n]) => !usados.has(n) && n !== '(sin chofer)')
+            .map(([nombre, r]) => ({ nombre, viajes: r.viajes, proveedoresEnLosViajes: [...r.proveedores] }))
+            .sort((a, b) => b.viajes - a.viajes);
+
+        // Proveedores que estan en uso y no tienen tarifa cargada para el mes.
+        const enUso = new Set<string>();
+        for (const f of filas) if (f.contrato === 'TERCERIZADO' && f.proveedor) enUso.add(f.proveedor);
+        const sinTarifa = [...enUso]
+            .filter((p) => !buscarEnLaTablaDeTarifas(tabla, p, medioDelMes))
+            .sort();
+
+        res.json({
+            mes,
+            meses: [...new Set([...Object.keys(tabla), mesDeLaFecha(null), mes])].sort(),
+            proveedores: proveedores.map((p) => ({ id: p.id, name: p.name, active: p.active !== false })),
+            tabla,
+            choferes: filas.sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es')),
+            sinFicha,
+            proveedoresSinTarifa: sinTarifa,
+            resumen: {
+                choferes: filas.length,
+                sinIdentificar: filas.filter((f) => !f.contrato).length,
+                propios: filas.filter((f) => f.contrato === 'PROPIO').length,
+                tercerizados: filas.filter((f) => f.contrato === 'TERCERIZADO').length,
+                conProblema: filas.filter((f) => !!f.problema).length
+            }
+        });
+    } catch (e: any) {
+        console.error('GET panel-choferes:', e);
         res.status(500).json({ error: e?.message || 'Error' });
     }
 });
