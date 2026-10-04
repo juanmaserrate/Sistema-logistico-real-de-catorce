@@ -20,7 +20,7 @@
          Plan gratuito: 50k cargas de mapa/mes. -->
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="/css/planificacion.css?v=20261004a">
+    <link rel="stylesheet" href="/css/planificacion.css?v=20261004b">
     <script src="/js/r14-utils.js"></script>
     <script src="/js/r14-notifications.js"></script>
 </head>
@@ -15780,12 +15780,15 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                 const db = new Date(String(b.date || '').replace(' ', 'T'));
                                 return da - db;
                             });
-                            for (const t of sortedTrips) {
+                            sortedTrips.forEach((t, _fila) => {
+                                // Rayado igual al de Log Semanal: una fila si,
+                                // una no, contando viajes de este chofer.
+                                const rayada = _fila % 2 === 1 ? ' pg-viaje-alt' : '';
                                 const date = t.date ? new Date(String(t.date).replace(' ', 'T')) : null;
                                 const dateStr = date ? date.toLocaleDateString('es-AR') : '--';
                                 const paid = paidSet.has(Number(t.id));
                                 tripsHtml += `
-                                    <tr class="bg-white hover:bg-[#F8FAFF] ${paid ? 'opacity-60' : ''}">
+                                    <tr class="pg-viaje${rayada} ${paid ? 'opacity-60' : ''}">
                                         <td></td>
                                         <td></td>
                                         <td></td>
@@ -15800,13 +15803,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                             <button onclick="togglePaidTripState(${Number(t.id)})" class="text-[9px] font-bold uppercase px-2 py-1 rounded-lg ${paid ? 'bg-rose-100 text-rose-700 hover:bg-rose-200' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}">${paid ? '↶ Revertir' : '✓ Pagar'}</button>
                                         </td>
                                     </tr>`;
-                            }
+                            });
                         }
 
                         if (provExpanded && groupExpanded) {
                             const dgEscKey = (prov + '|' + bu + '|' + dkey).replace(/'/g, "\\'");
                             driverRowsHtml += `
-                                <tr class="bg-amber-50/40 hover:bg-amber-50 cursor-pointer" onclick="togglePaymentDriverGroup('${dgEscKey}')">
+                                <tr class="pg-chofer cursor-pointer" onclick="togglePaymentDriverGroup('${dgEscKey}')">
                                     <td></td>
                                     <td></td>
                                     <td></td>
@@ -15829,7 +15832,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
                     if (provExpanded) {
                         provRowsHtml += `
-                            <tr class="bg-[#F4F7FE] hover:bg-[#E8ECF8] cursor-pointer" onclick="togglePaymentGroup('${escapeHtml(prov).replace(/'/g,"\\'")}','${escapeHtml(bu).replace(/'/g,"\\'")}')">
+                            <tr class="pg-un cursor-pointer" onclick="togglePaymentGroup('${escapeHtml(prov).replace(/'/g,"\\'")}','${escapeHtml(bu).replace(/'/g,"\\'")}')">
                                 <td></td>
                                 <td></td>
                                 <td class="px-4 py-2 text-[11px] font-black text-[#1B2559]">
@@ -15841,7 +15844,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                 <td></td>
                             </tr>
                             ${driverRowsHtml}
-                            <tr class="bg-[#E8ECF8] border-t border-[#D0D5DD]">
+                            <tr class="pg-un-total">
                                 <td></td>
                                 <td></td>
                                 <td class="px-4 py-2 text-[11px] font-black text-[#1B2559]">Total ${escapeHtml(bu)}</td>
@@ -15855,7 +15858,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 grandTotal += provTotal;
                 const provEscKey = escapeHtml(prov).replace(/'/g, "\\'");
                 rows.push(`
-                    <tr class="bg-indigo-50 hover:bg-indigo-100 cursor-pointer font-bold" onclick="togglePaymentProvider('${provEscKey}')">
+                    <tr class="pg-prov cursor-pointer font-bold" onclick="togglePaymentProvider('${provEscKey}')">
                         <td class="px-4 py-3 text-[#1B2559] text-center">
                             <i data-lucide="${provExpanded ? 'chevron-down' : 'chevron-right'}" class="w-4 h-4 inline-block"></i>
                         </td>
@@ -15865,7 +15868,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         <td></td>
                     </tr>
                     ${provRowsHtml}
-                    <tr class="bg-indigo-100 border-t-2 border-indigo-300">
+                    <tr class="pg-prov-total">
                         <td></td>
                         <td class="px-4 py-2 text-[11px] font-black text-indigo-900 uppercase">Total ${escapeHtml(prov)}</td>
                         <td colspan="5"></td>

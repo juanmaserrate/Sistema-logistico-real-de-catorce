@@ -981,3 +981,63 @@ input, select, textarea { transition: box-shadow 0.15s ease, background-color 0.
 /* Sin transicion de color: no hay a que hacerle transicion */
 #view-weekly tbody tr.wk-row,
 #view-weekly tbody tr.wk-row-alt { transition: none; }
+
+/* ---------- PLANILLA DE PAGOS: FILAS POR NIVEL --------------------------- */
+/* La tabla es un arbol: Proveedor > Unidad de negocio > Chofer > Viaje, y cada
+   nivel tiene su color. Antes el color salia de clases sueltas de Tailwind y el
+   rayado general de la app las pisaba segun si la fila habia caido en posicion
+   par o impar, asi que el total del proveedor y los viajes se pintaban al azar
+   y en modo oscuro se perdia la jerarquia entera.
+   Ahora cada nivel tiene su clase y su color, en claro y en oscuro.
+   Las filas de viajes van rayadas, como en Log Semanal, y no se iluminan al
+   pasar el mouse. Las filas de agrupacion SI se iluminan: son botones, se
+   hace click para abrirlas y cerrarlas, y el iluminado avisa que son clickeables. */
+:root {
+    --pg-prov: #ede8fc;
+    --pg-prov-hover: #e2daf9;
+    --pg-prov-total: #ded5fa;
+    --pg-un: #f2f3f6;
+    --pg-un-hover: #e8ecf8;
+    --pg-un-total: #e8ecf8;
+    --pg-chofer: #fffbf0;
+    --pg-chofer-hover: #fff7e2;
+    --pg-borde: #d0d5dd;
+}
+[data-theme="dark"] {
+    --pg-prov: rgba(180, 160, 240, 0.13);
+    --pg-prov-hover: rgba(180, 160, 240, 0.20);
+    --pg-prov-total: rgba(180, 160, 240, 0.22);
+    --pg-un: var(--surface-container);
+    --pg-un-hover: var(--surface-container-high);
+    --pg-un-total: var(--surface-container-high);
+    --pg-chofer: rgba(251, 191, 36, 0.09);
+    --pg-chofer-hover: rgba(251, 191, 36, 0.16);
+    --pg-borde: rgba(255, 255, 255, 0.10);
+}
+
+/* El rayado general de la app no aplica aca: lo manda la clase */
+#view-payments tbody tr:nth-child(even) { background: transparent; }
+
+/* Viajes: rayados y sin iluminarse */
+#view-payments tbody tr.pg-viaje,
+#view-payments tbody tr.pg-viaje:hover { background: var(--wk-fila) !important; }
+#view-payments tbody tr.pg-viaje-alt,
+#view-payments tbody tr.pg-viaje-alt:hover { background: var(--wk-fila-alt) !important; }
+#view-payments tbody tr.pg-viaje,
+#view-payments tbody tr.pg-viaje-alt { transition: none; }
+
+/* Agrupaciones: color por nivel, y se iluminan porque son clickeables */
+#view-payments tbody tr.pg-prov { background: var(--pg-prov) !important; }
+#view-payments tbody tr.pg-prov:hover { background: var(--pg-prov-hover) !important; }
+#view-payments tbody tr.pg-prov-total {
+    background: var(--pg-prov-total) !important;
+    border-top: 2px solid var(--pg-borde);
+}
+#view-payments tbody tr.pg-un { background: var(--pg-un) !important; }
+#view-payments tbody tr.pg-un:hover { background: var(--pg-un-hover) !important; }
+#view-payments tbody tr.pg-un-total {
+    background: var(--pg-un-total) !important;
+    border-top: 1px solid var(--pg-borde);
+}
+#view-payments tbody tr.pg-chofer { background: var(--pg-chofer) !important; }
+#view-payments tbody tr.pg-chofer:hover { background: var(--pg-chofer-hover) !important; }
