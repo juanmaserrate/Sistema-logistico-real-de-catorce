@@ -4991,7 +4991,7 @@
                         </select>
                     </td>
                     <td class="py-2 px-2">
-                        ${terc
+                        ${(terc || c.proveedorId)
                             ? `<select onchange="pcSetProveedor('${c.id}', this.value)" class="${selCls} ${c.proveedor ? '' : 'ring-2 ring-amber-400'}">${provOpts(c.proveedorId)}</select>`
                             : `<span class="text-[11px] text-[#A3AED0]">\u2014</span>`}
                     </td>
