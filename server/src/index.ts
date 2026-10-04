@@ -8892,10 +8892,13 @@ async function tablaDeTarifas(): Promise<Record<string, Record<string, number>>>
 /** La tarifa cargada a mano para ese proveedor en ese mes. Si el mes no tiene
  *  nada, se usa el ultimo mes anterior que si tenga: una tarifa sigue valiendo
  *  hasta que se cambie. */
-async function tarifaDeLaTabla(proveedor: any, fecha: any): Promise<{ valor: number; mes: string } | null> {
+function buscarEnLaTablaDeTarifas(
+    tabla: Record<string, Record<string, number>>,
+    proveedor: any,
+    fecha: any
+): { valor: number; mes: string } | null {
     const buscado = String(proveedor || '').trim();
     if (!buscado) return null;
-    const tabla = await tablaDeTarifas();
     const mes = mesDeLaFecha(fecha);
     const meses = Object.keys(tabla).filter((m) => m <= mes).sort().reverse();
     for (const m of meses) {
@@ -8906,6 +8909,12 @@ async function tarifaDeLaTabla(proveedor: any, fecha: any): Promise<{ valor: num
         }
     }
     return null;
+}
+
+/** La misma busqueda, leyendo la tabla de la base. Para un viaje suelto. */
+async function tarifaDeLaTabla(proveedor: any, fecha: any): Promise<{ valor: number; mes: string } | null> {
+    if (!String(proveedor || '').trim()) return null;
+    return buscarEnLaTablaDeTarifas(await tablaDeTarifas(), proveedor, fecha);
 }
 
 /** La tarifa que le corresponde a un viaje tercerizado.
@@ -8925,6 +8934,30 @@ async function tarifaDelViaje(proveedor: any, reparto: any, fecha: any): Promise
 async function aplicarTarifasAViajes(meses: string[], pisar: boolean, aplicar: boolean) {
     const cambios: any[] = [];
     const sinTarifa = new Map<string, number>();
+
+    // La tabla de tarifas y las reglas viven en appSettings. Antes se
+    // preguntaba a la base por CADA viaje: con un par de cientos de viajes
+    // tercerizados eran miles de consultas, y el modulo las hace dos veces
+    // (primero el previo, despues el guardado). Se leen una sola vez.
+    const tabla = await tablaDeTarifas();
+    const reglasPorMes = new Map<string, any>();
+    const reglaDe = async (reparto: any, fecha: any) => {
+        const clave = String(reparto || '').trim().toUpperCase();
+        if (!clave) return null;
+        const mes = mesDeLaFecha(fecha);
+        if (!reglasPorMes.has(mes)) reglasPorMes.set(mes, (await reglasDelMes(fecha)).repartos || {});
+        const repartos = reglasPorMes.get(mes);
+        const m = clave.match(/R\s*(\d{1,2})\s*$/);
+        return repartos[clave] || (m ? repartos['R' + Number(m[1])] : null) || null;
+    };
+    const tarifaDe = async (proveedor: any, reparto: any, fecha: any) => {
+        const deLaTabla = buscarEnLaTablaDeTarifas(tabla, proveedor, fecha);
+        if (deLaTabla) return { valor: deLaTabla.valor, segun: 'proveedor' };
+        const regla = await reglaDe(reparto, fecha);
+        if (regla?.tarifa && Number(regla.tarifa) > 0) return { valor: Number(regla.tarifa), segun: 'reparto' };
+        return null;
+    };
+
     for (const mes of meses) {
         if (!/^\d{4}-\d{2}$/.test(mes)) continue;
         const [anio, m] = mes.split('-').map(Number);
@@ -8937,7 +8970,7 @@ async function aplicarTarifasAViajes(meses: string[], pisar: boolean, aplicar: b
         });
         for (const t of viajes as any[]) {
             if (!pisar && Number(t.value) > 0) continue;
-            const tar = await tarifaDelViaje(t.provider, t.reparto, t.date);
+            const tar = await tarifaDe(t.provider, t.reparto, t.date);
             if (!tar) {
                 const k = String(t.provider || '(sin proveedor)');
                 sinTarifa.set(k, (sinTarifa.get(k) || 0) + 1);
