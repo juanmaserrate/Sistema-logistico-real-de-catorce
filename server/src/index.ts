@@ -9053,12 +9053,16 @@ app.post('/api/v1/trips', async (req, res) => {
         // La subzona la pone el sistema, no el operador
         datos.subzona = subzonaDelViaje(datos.reparto, datos.zone || datos.locality, datos.contractType);
         const trip = await prisma.trip.create({ data: datos });
-        await logAction(req, 'CREATE', 'trip', trip.id, trip.driver || String(trip.id), null, trip);
+        // Se contesta apenas el viaje esta guardado. La auditoria es otra
+        // escritura a la base: esperarla le sumaba una ida y vuelta mas a algo
+        // que el operador esta mirando.
+        res.json(trip);
         io.emit('trip:created', { trip });
+        logAction(req, 'CREATE', 'trip', trip.id, trip.driver || String(trip.id), null, trip)
+            .catch((e: any) => console.error('logAction CREATE trip:', e?.message || e));
         // Notificar al chofer asignado (nuevo modelo) > reparto > driver legacy
         const notifyTarget = String(trip.assignedMobileUser || trip.reparto || trip.driver || '').trim();
         if (notifyTarget) notifyDriver(notifyTarget, 'Nuevo viaje asignado', `Tenés un viaje asignado para ${trip.zone || 'hoy'}`, { tripId: trip.id });
-        res.json(trip);
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error creando viaje' });
     }
@@ -9085,9 +9089,10 @@ app.put('/api/v1/trips/:id', async (req, res) => {
             );
         }
         const trip = await prisma.trip.update({ where: { id: parseInt(id) }, data: body });
-        await logAction(req, 'UPDATE', 'trip', trip.id, trip.driver || id, before, trip);
-        io.emit('trip:updated', { trip });
         res.json(trip);
+        io.emit('trip:updated', { trip });
+        logAction(req, 'UPDATE', 'trip', trip.id, trip.driver || id, before, trip)
+            .catch((e: any) => console.error('logAction UPDATE trip:', e?.message || e));
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error actualizando viaje' });
     }

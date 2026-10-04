@@ -56,7 +56,30 @@ function addNotification(type, title, text) {
     const normalizedType = ['info', 'warning', 'critical', 'success'].includes(type) ? type : 'info';
     notifications.unshift({ id: Date.now(), type: normalizedType, title, text, time: 'Ahora' });
     renderNotifications();
+    avisarEnLaCampana();
     showToastNotification(normalizedType, title, text);
+}
+
+/** El toast flotante esta apagado a pedido, asi que una notificacion nueva
+ *  pasaba sin que nadie la viera. La campana late un momento: avisa sin tapar
+ *  la pantalla ni pedir que se la cierre. */
+function avisarEnLaCampana() {
+    const badge = document.getElementById('notif-count');
+    const campana = badge && badge.closest('button');
+    if (!campana) return;
+    if (!document.getElementById('r14-campana-css')) {
+        const css = document.createElement('style');
+        css.id = 'r14-campana-css';
+        css.textContent = '@keyframes r14Campana{0%,100%{transform:scale(1)}'
+            + '20%{transform:scale(1.25) rotate(-12deg)}40%{transform:scale(1.25) rotate(12deg)}'
+            + '60%{transform:scale(1.15) rotate(-6deg)}80%{transform:scale(1.1) rotate(4deg)}}'
+            + '.r14-campana-late{animation:r14Campana .7s ease-in-out 2}';
+        document.head.appendChild(css);
+    }
+    campana.classList.remove('r14-campana-late');
+    void campana.offsetWidth;          // reinicia la animacion si ya estaba corriendo
+    campana.classList.add('r14-campana-late');
+    setTimeout(() => campana.classList.remove('r14-campana-late'), 1600);
 }
 
 function getToastContainer() {

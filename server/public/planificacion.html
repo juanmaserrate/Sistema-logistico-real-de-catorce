@@ -22600,8 +22600,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             document.getElementById('new-trip-loc').value = loc || 'ZONA NO MAPEDA';
         }
 
-        async function saveNewTrip() {
-            let viajesTocados = [];
+        /** Valida, arma los payloads y cierra la ventana. El guardado contra el
+         *  servidor sigue en segundo plano: el operador no espera la red. */
+        function saveNewTrip() {
             const id = document.getElementById('new-trip-id').value;
             // Una sola fuente de verdad: los dias que estan tocados en el
             // calendario. Antes habia tres modos y el que no se miraba podia
@@ -22662,136 +22663,170 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 priority: '1'
             };
 
-            try {
-                if (id) {
-                    const oneDate = targetDates[0];
-                    const tripData = { ...baseTripData, date: new Date(oneDate + 'T12:00:00').toISOString() };
-                    delete tripData.status; // el estado lo manejan Iniciar/Finalizar y la app, no este formulario
-            if (document.getElementById('new-trip-exit').value) {
-                const [h, m] = document.getElementById('new-trip-exit').value.split(':');
-                        const d = new Date(oneDate + 'T00:00:00');
-                d.setHours(parseInt(h), parseInt(m), 0);
-                tripData.exitTime = d.toISOString();
+            // Los payloads se arman ANTES de cerrar, que es cuando los campos
+            // todavia estan en pantalla.
+            const paradas = Array.isArray(tripDeliveryRows) ? tripDeliveryRows.map(r => r.clientId) : [];
+            const quien = (localStorage.getItem('r14.loggedUser') || '').trim();
+            const payloads = targetDates.map(dia => {
+                const tripData = { ...baseTripData, date: new Date(dia + 'T12:00:00').toISOString() };
+                if (id) delete tripData.status;   // el estado lo manejan Iniciar/Finalizar y la app
+                ponerHorasEnElPayload(tripData, dia);
+                applyVueltaFromModalToPayload(tripData);
+                return tripData;
+            });
+
+            // La ventana se cierra YA. Lo que sigue es trabajo de red: el
+            // servidor esta a unos 250 ms de ida y vuelta (eso tarda hasta
+            // /api/health, que no hace nada), y esperarlo con el modal abierto
+            // es lo que hacia sentir que crear un viaje tardaba un monton.
+            closeNewTripModal();
+            if (id) guardarEdicionDeFondo(id, payloads[0], paradas);
+            else crearViajesDeFondo(payloads, paradas, quien);
+        }
+
+        /** Las horas de salida y llegada del modal, puestas sobre el dia que
+         *  corresponda. */
+        function ponerHorasEnElPayload(tripData, dia) {
+            const armar = (hhmm) => {
+                const [h, m] = String(hhmm).split(':');
+                const d = new Date(dia + 'T00:00:00');
+                d.setHours(parseInt(h, 10), parseInt(m, 10), 0, 0);
+                return d.toISOString();
+            };
+            const salida = document.getElementById('new-trip-exit').value;
+            const llegada = document.getElementById('new-trip-return').value;
+            if (salida) tripData.exitTime = armar(salida);
+            if (llegada) tripData.returnTime = armar(llegada);
+        }
+
+        /** Mete los viajes en la tabla sin esperar a que se recargue el mes.
+         *  Lo que devuelve el POST (o el PUT) ES el viaje tal como quedo
+         *  guardado, asi que pintarlo de una no es adivinar nada. */
+        function _ponerViajesEnLaTabla(lista) {
+            if (!lista.length || typeof __weeklyTripsById === 'undefined') return;
+            lista.forEach(t => __weeklyTripsById.set(t.id, t));
+            if (typeof _weeklyRebuildPlanningData === 'function') _weeklyRebuildPlanningData();
+            if (typeof filterWeeklyData === 'function') filterWeeklyData();
+        }
+
+        /** La notificacion para quien lo creo: que reparto, con que chofer, que
+         *  dias y con que numero quedo cada viaje, para poder buscarlo. */
+        function _avisarCreacion(creados, pedidos, yaEstaban, quien) {
+            if (typeof addNotification !== 'function') return;
+            const fallaron = pedidos - creados.length - yaEstaban;
+            if (!creados.length) {
+                addNotification('warning', 'No se creó ningún viaje',
+                    yaEstaban ? `Los ${yaEstaban} días ya tenían este viaje cargado.`
+                              : 'El servidor rechazó la carga.');
+                return;
             }
-            if (document.getElementById('new-trip-return').value) {
-                const [h, m] = document.getElementById('new-trip-return').value.split(':');
-                        const d = new Date(oneDate + 'T00:00:00');
-                d.setHours(parseInt(h), parseInt(m), 0);
-                tripData.returnTime = d.toISOString();
+            const t = creados[0];
+            const dias = creados
+                .map(x => new Date(x.date).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }));
+            const partes = [
+                t.reparto || 'sin reparto',
+                t.driver || 'sin chofer',
+                dias.length === 1 ? dias[0] : `${dias.length} días: ${dias.join(', ')}`,
+                '#' + creados.map(x => x.id).join(', #')
+            ];
+            if (quien) partes.push('lo cargó ' + quien);
+            const pendientes = [];
+            if (yaEstaban) pendientes.push(`${yaEstaban} ya estaban cargados`);
+            if (fallaron > 0) pendientes.push(`${fallaron} con error`);
+            addNotification(
+                pendientes.length ? 'warning' : 'success',
+                creados.length === 1 ? 'Viaje creado' : `${creados.length} viajes creados`,
+                partes.join(' · ') + (pendientes.length ? ' — ' + pendientes.join(' · ') : '')
+            );
+        }
+
+        async function _guardarParadasDeFondo(viajes, paradas) {
+            if (!paradas.length || !viajes.length) return;
+            const r = await Promise.allSettled(viajes.map(t => putTripDeliveryStops(t.id, paradas)));
+            const fallaron = r.filter(x => x.status === 'rejected').length;
+            if (fallaron && typeof addNotification === 'function') {
+                addNotification('warning', 'Paradas sin guardar',
+                    `${fallaron} viaje(s) quedaron creados pero sin sus paradas. Abrilos y volvé a cargarlas.`);
             }
-                    applyVueltaFromModalToPayload(tripData);
-                    // Bug fix: antes este PUT no mandaba headers de auth (X-Actor-Id, etc.),
-                    // bypaseando la auditoría. Ahora usamos getActorHeaders() como POST/DELETE.
-                    const res = await fetch(`${API_URL}/trips/${id}`, {
-                        method: 'PUT',
+        }
+
+        /** Crea los viajes contra el servidor con la ventana ya cerrada. */
+        async function crearViajesDeFondo(payloads, paradas, quien) {
+            const mandar = (lista, permitirDuplicado) => Promise.allSettled(lista.map(p =>
+                fetch(`${API_URL}/trips`, {
+                    method: 'POST',
                     headers: getActorHeaders(),
-                    body: JSON.stringify(tripData)
-                });
-                    if (!res.ok) throw new Error('Error al actualizar el viaje');
-                    const actualizado = await res.json().catch(() => null);
-                    if (actualizado && actualizado.id != null) viajesTocados = [actualizado];
-                    const paradasGuardadas = await saveTripDeliveryStops(parseInt(id, 10));
-                    if (paradasGuardadas === false && typeof addNotification === 'function') {
-                        addNotification('info', 'Paradas sin cambios', 'Se guardaron los datos del viaje, pero no las paradas.');
-                    }
-                } else {
-                    const payloads = targetDates.map(day => {
-                        const tripData = { ...baseTripData, date: new Date(day + 'T12:00:00').toISOString() };
-                        if (document.getElementById('new-trip-exit').value) {
-                            const [h, m] = document.getElementById('new-trip-exit').value.split(':');
-                            const d = new Date(day + 'T00:00:00');
-                            d.setHours(parseInt(h), parseInt(m), 0);
-                            tripData.exitTime = d.toISOString();
-                        }
-                        if (document.getElementById('new-trip-return').value) {
-                            const [h, m] = document.getElementById('new-trip-return').value.split(':');
-                            const d = new Date(day + 'T00:00:00');
-                            d.setHours(parseInt(h), parseInt(m), 0);
-                            tripData.returnTime = d.toISOString();
-                        }
-                        applyVueltaFromModalToPayload(tripData);
-                        return tripData;
-                    });
-                    const mandar = (lista, permitirDuplicado) => Promise.allSettled(lista.map(p =>
-                        fetch(`${API_URL}/trips`, {
-                            method: 'POST',
-                            headers: getActorHeaders(),
-                            body: JSON.stringify(permitirDuplicado ? { ...p, permitirDuplicado: true } : p)
-                        })
-                    ));
-                    let results = await mandar(payloads, false);
+                    body: JSON.stringify(permitirDuplicado ? { ...p, permitirDuplicado: true } : p)
+                })
+            ));
+            try {
+                let results = await mandar(payloads, false);
 
-                    // Los que el servidor rechazo por repetidos. Si de verdad hay
-                    // que cargarlos igual (una salida extra sin numero de vuelta),
-                    // se pregunta una sola vez y se reintentan solo esos.
-                    const repetidosIdx = results
-                        .map((r, i) => (r.status === 'fulfilled' && r.value.status === 409) ? i : -1)
-                        .filter(i => i >= 0);
-                    if (repetidosIdx.length) {
-                        const cuales = repetidosIdx.length === payloads.length
-                            ? `Los ${repetidosIdx.length} viajes ya están cargados`
-                            : `${repetidosIdx.length} de los ${payloads.length} ya están cargados`;
-                        if (confirm(`${cuales}. ¿Los cargo igual? (solo si es una salida extra del mismo reparto y chofer)`)) {
-                            const reintento = await mandar(repetidosIdx.map(i => payloads[i]), true);
-                            reintento.forEach((r, k) => { results[repetidosIdx[k]] = r; });
-                        }
-                    }
-
-                    const fulfilled = results.filter(r => r.status === 'fulfilled' && r.value.ok);
-                    const ok = fulfilled.length;
-                    // Los que el servidor rechazo por estar ya cargados: no son
-                    // un error, son dias que ya tenian ese viaje.
-                    const yaEstaban = results.filter(r => r.status === 'fulfilled' && r.value.status === 409).length;
-                    if (ok === 0 && yaEstaban === payloads.length) {
-                        if (typeof addNotification === 'function') {
-                            addNotification('warning', 'Ya estaban cargados',
-                                `Los ${yaEstaban} viajes ya existían, así que no se creó ninguno de nuevo.`);
-                        }
-                        if (typeof closeNewTripModal === 'function') closeNewTripModal();
-                        return;
-                    }
-                    if (ok === 0) throw new Error('No se pudo crear ningún viaje');
-                    if (ok < payloads.length && typeof addNotification === 'function') {
-                        const otros = payloads.length - ok - yaEstaban;
-                        const partes = [`Se crearon ${ok} de ${payloads.length}`];
-                        if (yaEstaban) partes.push(`${yaEstaban} ya estaban cargados`);
-                        if (otros > 0) partes.push(`${otros} con error`);
-                        addNotification('warning', 'Creación parcial', partes.join(' · ') + '.');
-                    }
-                    // El cuerpo de cada respuesta se lee UNA sola vez y se usa
-                    // para dos cosas: guardar las paradas y meter el viaje en la
-                    // tabla sin esperar a que se recargue el mes.
-                    const creados = await Promise.all(fulfilled.map(r => r.value.json().catch(() => null)));
-                    viajesTocados = creados.filter(t => t && t.id != null);
-
-                    // Auto-guardar paradas en cada viaje creado (evita paso extra con el chevron)
-                    if (Array.isArray(tripDeliveryRows) && tripDeliveryRows.length > 0) {
-                        await Promise.allSettled(viajesTocados.map(t =>
-                            saveTripDeliveryStops(t.id).catch(e => console.warn('saveTripDeliveryStops', t.id, e.message))));
+                // Los que el servidor rechazo por repetidos. Si de verdad hay
+                // que cargarlos igual (una salida extra sin numero de vuelta),
+                // se pregunta una sola vez y se reintentan solo esos. El
+                // calendario ya los habia marcado en ambar antes de crear.
+                const repetidosIdx = results
+                    .map((r, i) => (r.status === 'fulfilled' && r.value.status === 409) ? i : -1)
+                    .filter(i => i >= 0);
+                if (repetidosIdx.length) {
+                    const cuales = repetidosIdx.length === payloads.length
+                        ? `Los ${repetidosIdx.length} viajes ya están cargados`
+                        : `${repetidosIdx.length} de los ${payloads.length} ya están cargados`;
+                    if (confirm(`${cuales}. ¿Los cargo igual? (solo si es una salida extra del mismo reparto y chofer)`)) {
+                        const reintento = await mandar(repetidosIdx.map(i => payloads[i]), true);
+                        reintento.forEach((r, k) => { results[repetidosIdx[k]] = r; });
                     }
                 }
 
-                const msg = id ? 'Viaje Actualizado' : `Viajes creados (${targetDates.length})`;
-                if (typeof addNotification === 'function') addNotification('success', msg, 'La operación fue exitosa.');
-                closeNewTripModal();
+                const fulfilled = results.filter(r => r.status === 'fulfilled' && r.value.ok);
+                const yaEstaban = results.filter(r => r.status === 'fulfilled' && r.value.status === 409).length;
+                const creados = (await Promise.all(fulfilled.map(r => r.value.json().catch(() => null))))
+                    .filter(t => t && t.id != null);
 
-                // El viaje tiene que verse YA. El POST devuelve el viaje tal como
-                // quedo guardado, asi que se mete en el store y se repinta en el
-                // acto. Antes se invalidaba todo el mes y se esperaba el refetch
-                // con la tabla tapada por el cartel de "Cargando viajes...": de
-                // ahi venia la demora para ver el viaje recien creado.
-                if (viajesTocados.length && typeof __weeklyTripsById !== 'undefined') {
-                    viajesTocados.forEach(t => __weeklyTripsById.set(t.id, t));
-                    if (typeof _weeklyRebuildPlanningData === 'function') _weeklyRebuildPlanningData();
-                    if (typeof filterWeeklyData === 'function') filterWeeklyData();
-                }
-                // Y recien despues se refresca contra el servidor, en silencio:
-                // sin borrar la tabla, porque ya hay algo correcto en pantalla.
+                _ponerViajesEnLaTabla(creados);
+                _avisarCreacion(creados, payloads.length, yaEstaban, quien);
+                // Las paradas son una escritura aparte: el viaje ya existe, asi
+                // que no hay por que hacer esperar a nadie por ellas.
+                _guardarParadasDeFondo(creados, paradas);
+
                 if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
-                loadWeeklyData({ silencioso: viajesTocados.length > 0 });
+                loadWeeklyData({ silencioso: creados.length > 0 });
             } catch (err) {
                 console.error(err);
-                alert('Error guardando viaje: ' + err.message);
+                if (typeof addNotification === 'function') {
+                    addNotification('critical', 'No se pudieron crear los viajes', String(err?.message || err));
+                }
+            }
+        }
+
+        /** Guarda la edicion con la ventana ya cerrada. */
+        async function guardarEdicionDeFondo(id, tripData, paradas) {
+            try {
+                const res = await fetch(`${API_URL}/trips/${id}`, {
+                    method: 'PUT', headers: getActorHeaders(), body: JSON.stringify(tripData)
+                });
+                if (!res.ok) throw new Error('El servidor rechazó la edición (' + res.status + ')');
+                const actualizado = await res.json().catch(() => null);
+                if (actualizado && actualizado.id != null) _ponerViajesEnLaTabla([actualizado]);
+                if (typeof addNotification === 'function') {
+                    addNotification('success', `Viaje #${id} actualizado`,
+                        [tripData.reparto, tripData.driver].filter(Boolean).join(' · ') || 'Cambios guardados.');
+                }
+                // En una edicion las paradas se mandan siempre, incluso vacias:
+                // dejar la lista en cero es una decision valida del operador.
+                const guardadas = await putTripDeliveryStops(parseInt(id, 10), paradas).catch(() => false);
+                if (guardadas === false && typeof addNotification === 'function') {
+                    addNotification('info', 'Paradas sin cambios',
+                        'Se guardaron los datos del viaje, pero no las paradas.');
+                }
+                if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
+                loadWeeklyData({ silencioso: true });
+            } catch (err) {
+                console.error(err);
+                if (typeof addNotification === 'function') {
+                    addNotification('critical', `No se pudo guardar el viaje #${id}`, String(err?.message || err));
+                }
             }
         }
 
