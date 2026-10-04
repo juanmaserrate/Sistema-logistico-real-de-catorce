@@ -1900,19 +1900,18 @@ app.post('/api/v1/tarifas/aplicar', async (req: any, res: any) => {
         });
 
         const cambios: any[] = [];
+        // La tabla se lee UNA vez: antes se preguntaba por cada viaje.
+        const tablaTar = await tablaDeTarifas();
         for (const t of viajes as any[]) {
             if (!pisar && Number(t.value) > 0) continue;
-            // El reparto manda si tiene tarifa propia; si no, la del proveedor.
-            const regla = await reglaDelReparto(t.reparto, t.date);
-            const tarifa = (regla?.tarifa && Number(regla.tarifa) > 0)
-                ? Number(regla.tarifa)
-                : (await tarifaDeLaTabla(t.provider, t.date))?.valor || null;
+            // La tarifa la pone el PROVEEDOR del viaje. El reparto no interviene.
+            const tarifa = buscarEnLaTablaDeTarifas(tablaTar, t.provider, t.date)?.valor || null;
             if (!tarifa || tarifa === Number(t.value)) continue;
             cambios.push({
                 tripId: t.id, fecha: new Date(t.date).toISOString().slice(0, 10),
                 reparto: t.reparto, chofer: t.driver, proveedor: t.provider,
                 antes: Number(t.value) || 0, despues: tarifa,
-                segun: (regla?.tarifa && Number(regla.tarifa) > 0) ? 'reparto' : 'proveedor'
+                segun: 'proveedor'
             });
             if (aplicar) await prisma.trip.update({ where: { id: t.id }, data: { value: tarifa } });
         }
@@ -6075,7 +6074,8 @@ app.post('/api/admin/viajes-sin-cerrar', async (req: any, res: any) => {
     }
 });
 
-/** Pone el contrato (Propio/Tercerizado) segun el reparto en viajes ya creados.
+/** Pone el contrato (Propio/Tercerizado) en viajes ya creados segun LA FICHA
+ *  DEL CHOFER. El reparto no decide: lo puede cubrir cualquiera.
  *  Nunca toca los viajes de HOY que estan en camino.
  *  POST /api/admin/trips-set-contract { key, desde, hasta, dryRun? } */
 app.post('/api/admin/trips-set-contract', async (req: any, res: any) => {
@@ -6087,14 +6087,18 @@ app.post('/api/admin/trips-set-contract', async (req: any, res: any) => {
         const hoy = utcDayRange(buenosAiresYmd());
         const viajes = await prisma.trip.findMany({
             where: { date: { gte: ini, lte: fin } },
-            select: { id: true, date: true, reparto: true, contractType: true, status: true },
+            select: { id: true, date: true, reparto: true, driver: true, contractType: true, status: true },
             orderBy: { id: 'asc' }
         });
         const cambios: any[] = [];
         const salteados: any[] = [];
         for (const t of viajes) {
-            const sug = contratoPorReparto(t.reparto);
-            if (!sug) { salteados.push({ tripId: t.id, reparto: t.reparto, motivo: 'sin regla' }); continue; }
+            const suyo = await loQueEsElChofer(t.driver, t.date);
+            const sug = suyo?.tipo || null;
+            if (!sug) {
+                salteados.push({ tripId: t.id, chofer: t.driver, motivo: 'el chofer no tiene ficha ni regla propia' });
+                continue;
+            }
             if (String(t.contractType || '') === sug) continue;
             const esDeHoy = t.date >= hoy.start && t.date <= hoy.end;
             const enCamino = !['COMPLETED', 'RETURNED', 'CANCELLED'].includes(String(t.status || '').toUpperCase());
@@ -6102,7 +6106,7 @@ app.post('/api/admin/trips-set-contract', async (req: any, res: any) => {
                 salteados.push({ tripId: t.id, reparto: t.reparto, motivo: 'de hoy y en camino' });
                 continue;
             }
-            cambios.push({ tripId: t.id, reparto: t.reparto, antes: t.contractType || null, despues: sug });
+            cambios.push({ tripId: t.id, reparto: t.reparto, chofer: t.driver, antes: t.contractType || null, despues: sug, segun: suyo?.segun });
         }
         if (!dryRun) {
             for (const c of cambios) {
@@ -6586,10 +6590,12 @@ app.post('/api/admin/borrar-cuentas', async (req: any, res: any) => {
     }
 });
 
-/** Aplica las reglas por reparto a viajes YA cargados.
- *  - El contrato (Propio/Tercerizado) sale del REPARTO del viaje.
- *  - El proveedor sale del CHOFER del viaje: se arma un mapa chofer -> proveedor
- *    con las reglas del mes (las de cada reparto y las de los choferes sueltos).
+/** Corrige viajes YA cargados.
+ *  - El contrato (Propio/Tercerizado) sale de LA FICHA DEL CHOFER; si no esta
+ *    identificada, de su regla propia en "Choferes sueltos".
+ *  - El proveedor sale del mismo lado.
+ *  - La tarifa la pone ese proveedor, desde la tabla de Tarifas.
+ *  El reparto no decide nada: lo puede cubrir cualquiera.
  *
  *  No toca los viajes de hoy que todavia estan en camino, ni pisa un proveedor
  *  ya cargado salvo que se pida con pisarProveedor:true.
@@ -6602,8 +6608,6 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
     if (!desde || !hasta) return res.status(400).json({ error: 'Faltan "desde" y "hasta" (YYYY-MM-DD)' });
     const tocarContrato = req.body?.contrato !== false;
     const tocarProveedor = req.body?.proveedor !== false;
-    // Si el reparto no tiene regla, el contrato lo decide el chofer
-    const usarChofer = req.body?.usarChofer === true;
     // Valor a dejar en los tercerizados cuyo chofer no tiene proveedor conocido
     // (sirve para limpiar un proveedor cargado por error)
     const proveedorSiNoHayRegla = typeof req.body?.proveedorSiNoHayRegla === 'string'
@@ -6657,7 +6661,7 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
 
         const cambios: any[] = [];
         const salteados: any[] = [];
-        const sinReglaDeReparto = new Map<string, number>();
+        const sinFichaDelChofer = new Map<string, number>();
         const sinProveedorParaElChofer = new Map<string, number>();
         const sinTarifa = new Map<string, number>();
 
@@ -6673,16 +6677,12 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
             const detalle: any = {};
 
             if (tocarContrato) {
-                const regla = await reglaDelReparto(t.reparto, t.date);
-                let sug = regla?.tipo || null;
+                // Lo decide el chofer: su ficha de personal y, si no esta
+                // identificada, su regla propia. El reparto no entra.
+                const sug = (await loQueEsElChofer(t.driver, t.date))?.tipo || null;
                 if (!sug) {
-                    const clave = String(t.reparto || '(sin reparto)').toUpperCase();
-                    sinReglaDeReparto.set(clave, (sinReglaDeReparto.get(clave) || 0) + 1);
-                    // Sin regla de reparto, decide el chofer (si se pidio asi)
-                    if (usarChofer) {
-                        const porChofer = await reglaDelChoferDelViaje(t.driver, t.date);
-                        if (porChofer?.tipo) sug = porChofer.tipo;
-                    }
+                    const quien = String(t.driver || '(sin chofer)').toUpperCase();
+                    sinFichaDelChofer.set(quien, (sinFichaDelChofer.get(quien) || 0) + 1);
                 }
                 if (!sug) { /* no hay de donde sacarlo */ }
                 else if (String(t.contractType || '') !== sug) {
@@ -6693,7 +6693,9 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
 
             if (tocarProveedor) {
                 const chofer = String(t.driver || '').trim();
-                const prov = (await reglaDelChoferDelViaje(chofer, t.date))?.proveedor || null;
+                const prov = (await loQueEsElChofer(chofer, t.date))?.proveedor
+                    || (await reglaDelChoferDelViaje(chofer, t.date))?.proveedor
+                    || null;
                 // El contrato que va a quedar despues de este mismo pase
                 const contratoFinal = String(data.contractType || t.contractType || '');
                 if (!prov) {
@@ -6723,21 +6725,17 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
                 }
             }
 
-            // ── Tarifa del viaje tercerizado ────────────────────────────
-            // Primero la del reparto ("SAM 3 LUNES R13" cobra como el R13, que
-            // es el mismo reparto haciendo otra unidad de negocio). Si el
-            // reparto no tiene tarifa propia, la pone el proveedor.
+            // -- Tarifa del viaje tercerizado --------------------------
+            // La pone el PROVEEDOR del chofer, desde la tabla de Tarifas.
+            // Si ese proveedor no tiene tarifa cargada, el viaje queda en cero
+            // y aparece en "sinTarifa": antes se le ponia el precio del
+            // reparto, que podia ser el de otro proveedor.
             if (tocarValor) {
                 const contratoFinal = String(data.contractType || t.contractType || '').toLowerCase();
                 if (contratoFinal === 'tercerizado' && !(Number(t.value) > 0)) {
-                    const regla = await reglaDelReparto(t.reparto, t.date);
-                    let tarifa: number | null = regla?.tarifa ? Number(regla.tarifa) : null;
-                    let deDonde = 'reparto';
-                    if (!tarifa) {
-                        const prov = String(data.provider || t.provider || '').trim();
-                        const porProv = await tarifaDelProveedor(prov, t.date);
-                        if (porProv) { tarifa = porProv; deDonde = 'proveedor'; }
-                    }
+                    const prov = String(data.provider || t.provider || '').trim();
+                    let tarifa: number | null = await tarifaDelProveedor(prov, t.date);
+                    let deDonde = 'proveedor';
                     if (!tarifa) {
                         const porChofer = await reglaDelChofer(t.driver, t.date);
                         if (porChofer?.tarifa) { tarifa = Number(porChofer.tarifa); deDonde = 'chofer'; }
@@ -6746,7 +6744,8 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
                         data.value = tarifa;
                         detalle.valor = { antes: Number(t.value) || 0, despues: tarifa, segun: deDonde };
                     } else {
-                        sinTarifa.set(String(t.reparto || '(sin reparto)'), (sinTarifa.get(String(t.reparto || '(sin reparto)')) || 0) + 1);
+                        const k = prov || '(sin proveedor)';
+                        sinTarifa.set(k, (sinTarifa.get(k) || 0) + 1);
                     }
                 }
             }
@@ -6779,7 +6778,7 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
             porValor: cambios.filter((c) => c.detalle.valor).length,
             repartosSinTarifa: [...sinTarifa.entries()].sort((a, b) => b[1] - a[1]).map(([nombre, viajes]) => ({ nombre, viajes })),
             ejemplos: cambios.slice(0, 15),
-            repartosSinRegla: contar(sinReglaDeReparto),
+            choferesSinFicha: contar(sinFichaDelChofer),
             choferesSinProveedor: contar(sinProveedorParaElChofer),
             proveedoresQueCambian: contar(pisados),
             salteados: salteados.slice(0, 40),
@@ -8863,14 +8862,9 @@ async function reglasDelMes(fecha: any): Promise<{ repartos: any; choferes: any[
     }
 }
 
-async function reglaDelReparto(reparto: any, fecha: any): Promise<ReglaReparto | null> {
-    const clave = String(reparto || '').trim().toUpperCase();
-    if (!clave) return null;
-    const { repartos } = await reglasDelMes(fecha);
-    // "SAM 2 VIERNES R12" sigue la regla del R12
-    const m = clave.match(/R\s*(\d{1,2})\s*$/);
-    return repartos[clave] || (m ? repartos['R' + Number(m[1])] : null) || null;
-}
+// reglaDelReparto() se saco: el reparto ya no decide contrato, proveedor ni
+// tarifa. Lo que queda de "Reglas por reparto" es el chofer habitual, que solo
+// se usa en la pantalla para avisar cuando va otro.
 
 /** Para los choferes que no tienen reparto propio. Se usa solo cuando el
  *  reparto del viaje no tiene regla. */
@@ -8917,16 +8911,13 @@ async function tarifaDeLaTabla(proveedor: any, fecha: any): Promise<{ valor: num
     return buscarEnLaTablaDeTarifas(await tablaDeTarifas(), proveedor, fecha);
 }
 
-/** La tarifa que le corresponde a un viaje tercerizado.
- *  MANDA la tabla de Tarifas por proveedor, que es lo que se carga a mano en
- *  el modulo. La tarifa del reparto queda de respaldo, para los proveedores
- *  que todavia no tengan tarifa cargada. */
-async function tarifaDelViaje(proveedor: any, reparto: any, fecha: any): Promise<{ valor: number; segun: string } | null> {
+/** La tarifa de un viaje tercerizado: la que tiene cargada SU PROVEEDOR en la
+ *  tabla de Tarifas, para el mes del viaje. Unica fuente.
+ *  Si el proveedor no tiene tarifa cargada, el viaje queda sin valor y se
+ *  informa: es mejor que quede en cero y se vea, a ponerle el precio de otro. */
+async function tarifaDelViaje(proveedor: any, fecha: any): Promise<{ valor: number; segun: string } | null> {
     const deLaTabla = await tarifaDeLaTabla(proveedor, fecha);
-    if (deLaTabla) return { valor: deLaTabla.valor, segun: 'proveedor' };
-    const regla = await reglaDelReparto(reparto, fecha);
-    if (regla?.tarifa && Number(regla.tarifa) > 0) return { valor: Number(regla.tarifa), segun: 'reparto' };
-    return null;
+    return deLaTabla ? { valor: deLaTabla.valor, segun: 'proveedor' } : null;
 }
 
 /** Aplica las tarifas a los viajes tercerizados ya cargados de esos meses.
@@ -8935,27 +8926,14 @@ async function aplicarTarifasAViajes(meses: string[], pisar: boolean, aplicar: b
     const cambios: any[] = [];
     const sinTarifa = new Map<string, number>();
 
-    // La tabla de tarifas y las reglas viven en appSettings. Antes se
-    // preguntaba a la base por CADA viaje: con un par de cientos de viajes
-    // tercerizados eran miles de consultas, y el modulo las hace dos veces
-    // (primero el previo, despues el guardado). Se leen una sola vez.
+    // La tabla de tarifas vive en appSettings. Antes se preguntaba a la base
+    // por CADA viaje: con un par de cientos de viajes tercerizados eran miles
+    // de consultas, y el modulo las hace dos veces (primero el previo, despues
+    // el guardado). Se lee una sola vez.
     const tabla = await tablaDeTarifas();
-    const reglasPorMes = new Map<string, any>();
-    const reglaDe = async (reparto: any, fecha: any) => {
-        const clave = String(reparto || '').trim().toUpperCase();
-        if (!clave) return null;
-        const mes = mesDeLaFecha(fecha);
-        if (!reglasPorMes.has(mes)) reglasPorMes.set(mes, (await reglasDelMes(fecha)).repartos || {});
-        const repartos = reglasPorMes.get(mes);
-        const m = clave.match(/R\s*(\d{1,2})\s*$/);
-        return repartos[clave] || (m ? repartos['R' + Number(m[1])] : null) || null;
-    };
-    const tarifaDe = async (proveedor: any, reparto: any, fecha: any) => {
+    const tarifaDe = (proveedor: any, fecha: any) => {
         const deLaTabla = buscarEnLaTablaDeTarifas(tabla, proveedor, fecha);
-        if (deLaTabla) return { valor: deLaTabla.valor, segun: 'proveedor' };
-        const regla = await reglaDe(reparto, fecha);
-        if (regla?.tarifa && Number(regla.tarifa) > 0) return { valor: Number(regla.tarifa), segun: 'reparto' };
-        return null;
+        return deLaTabla ? { valor: deLaTabla.valor, segun: 'proveedor' } : null;
     };
 
     for (const mes of meses) {
@@ -8970,7 +8948,7 @@ async function aplicarTarifasAViajes(meses: string[], pisar: boolean, aplicar: b
         });
         for (const t of viajes as any[]) {
             if (!pisar && Number(t.value) > 0) continue;
-            const tar = await tarifaDe(t.provider, t.reparto, t.date);
+            const tar = tarifaDe(t.provider, t.date);
             if (!tar) {
                 const k = String(t.provider || '(sin proveedor)');
                 sinTarifa.set(k, (sinTarifa.get(k) || 0) + 1);
@@ -8988,24 +8966,12 @@ async function aplicarTarifasAViajes(meses: string[], pisar: boolean, aplicar: b
     return { cambios, sinTarifa: [...sinTarifa.entries()].map(([proveedor, viajes]) => ({ proveedor, viajes })) };
 }
 
+/** La tarifa de un proveedor en ese mes. Sale de la tabla de Tarifas y de
+ *  ningun otro lado: antes se deducia de los repartos que el proveedor hacia,
+ *  y eso era volver a dejar que el reparto pusiera el precio. */
 async function tarifaDelProveedor(proveedor: any, fecha: any): Promise<number | null> {
-    const buscado = String(proveedor || '').trim();
-    if (!buscado) return null;
-    // Primero la tabla de Tarifas, que es donde se carga a mano.
-    const deLaTabla = await tarifaDeLaTabla(buscado, fecha);
-    if (deLaTabla) return deLaTabla.valor;
-    // Si todavia no esta cargada, se deduce de los repartos que ya hace.
-    const { repartos } = await reglasDelMes(fecha);
-    const tarifas: number[] = [];
-    for (const r of Object.values<any>(repartos || {})) {
-        if (!r?.tarifa || !r?.proveedor) continue;
-        if (mismoNombrePersona(r.proveedor, buscado)) tarifas.push(Number(r.tarifa));
-    }
-    if (!tarifas.length) return null;
-    // La mas repetida; si empatan, la mas alta
-    const veces = new Map<number, number>();
-    for (const t of tarifas) veces.set(t, (veces.get(t) || 0) + 1);
-    return [...veces.entries()].sort((a, b) => b[1] - a[1] || b[0] - a[0])[0][0];
+    if (!String(proveedor || '').trim()) return null;
+    return (await tarifaDeLaTabla(proveedor, fecha))?.valor ?? null;
 }
 
 async function reglaDelChofer(chofer: any, fecha: any): Promise<ReglaReparto | null> {
@@ -9014,24 +8980,69 @@ async function reglaDelChofer(chofer: any, fecha: any): Promise<ReglaReparto | n
     return (choferes || []).find((c: any) => mismoNombrePersona(c.chofer, chofer)) || null;
 }
 
-/** Contrato habitual de cada reparto. Respaldo para cuando no hay reglas
- *  cargadas todavia; lo que manda es la tabla de "Reglas por reparto". */
-const CONTRATO_POR_REPARTO: Record<string, string> = {
-    R1: 'Tercerizado',  R2: 'Tercerizado',  R3: 'Tercerizado',  R4: 'Propio',
-    R5: 'Tercerizado',  R6: 'Propio',       R7: 'Tercerizado',  R8: 'Tercerizado',
-    R9: 'Propio',       R10: 'Tercerizado', R11: 'Propio',      R12: 'Tercerizado',
-    R13: 'Tercerizado', R14: 'Tercerizado', R16: 'Propio',      R17: 'Tercerizado',
-    R18: 'Tercerizado', R19: 'Propio',      R20: 'Tercerizado', R22: 'Propio',
-    R23: 'Propio',      R24: 'Propio'
-};
+/** -- QUIEN DECIDE QUE --------------------------------------------------
+ *  Propio o tercerizado lo decide EL CHOFER, por su ficha de personal.
+ *  El proveedor sale de esa misma ficha. Y la tarifa la pone el proveedor,
+ *  desde la tabla de Tarifas. El reparto no decide nada de esto: lo puede
+ *  cubrir cualquiera, y lo que se paga depende de quien lo hizo.
+ *  Lo unico que queda del reparto es el aviso de "chofer habitual". */
+type FichaDeChofer = { nombre: string; contrato: string | null; proveedor: string | null };
+let _fichas: { leidas: number; lista: FichaDeChofer[] } | null = null;
 
-/** Manda el numero de reparto del final del nombre: "R12" y "SAM 2 VIERNES R12"
- *  son los dos del R12, aunque el segundo vaya a otros puntos.
- *  "CDI (TODOS)" o "LIBRE" no tienen numero y quedan sin regla. */
-function contratoPorReparto(reparto: any): string | null {
-    const m = String(reparto || '').trim().toUpperCase().match(/R\s*(\d{1,2})\s*$/);
-    return m ? (CONTRATO_POR_REPARTO['R' + Number(m[1])] || null) : null;
+async function fichasDeChoferes(): Promise<FichaDeChofer[]> {
+    // Cache corto: cargar 31 viajes no puede ir a buscar las fichas 31 veces,
+    // pero si el operador acaba de corregir una ficha tiene que verla casi en
+    // el momento.
+    if (_fichas && Date.now() - _fichas.leidas < 15000) return _fichas.lista;
+    const [gente, proveedores] = await Promise.all([
+        prisma.user.findMany({
+            where: { active: { not: false } },
+            select: { username: true, fullName: true, contractType: true, providerId: true }
+        }),
+        prisma.provider.findMany({ select: { id: true, name: true } })
+    ]);
+    const nombreProv = new Map(proveedores.map((p) => [p.id, p.name]));
+    const lista: FichaDeChofer[] = gente
+        .filter((u: any) => !esCuentaDePrueba(u.username) && !esCuentaDePrueba(u.fullName))
+        .map((u: any) => ({
+            nombre: String(u.fullName || u.username || '').trim(),
+            contrato: u.contractType ? String(u.contractType).trim().toUpperCase() : null,
+            proveedor: u.providerId ? (nombreProv.get(u.providerId) || null) : null
+        }))
+        .filter((f: FichaDeChofer) => !!f.nombre);
+    _fichas = { leidas: Date.now(), lista };
+    return lista;
 }
+
+async function fichaDelChofer(chofer: any): Promise<FichaDeChofer | null> {
+    const n = String(chofer || '').trim();
+    if (!n) return null;
+    for (const f of await fichasDeChoferes()) if (mismoNombrePersona(f.nombre, n)) return f;
+    return null;
+}
+
+/** Lo que es el chofer: primero su ficha de personal; si no esta identificada,
+ *  su regla propia en "Choferes sueltos". El reparto NO entra. */
+async function loQueEsElChofer(
+    chofer: any,
+    fecha: any
+): Promise<{ tipo: string; proveedor: string | null; segun: string } | null> {
+    const f = await fichaDelChofer(chofer);
+    if (f && (f.contrato === 'PROPIO' || f.contrato === 'TERCERIZADO')) {
+        return {
+            tipo: f.contrato === 'PROPIO' ? 'Propio' : 'Tercerizado',
+            proveedor: f.contrato === 'PROPIO' ? null : f.proveedor,
+            segun: 'ficha'
+        };
+    }
+    const r = await reglaDelChofer(chofer, fecha);
+    if (r?.tipo) return { tipo: String(r.tipo), proveedor: r.proveedor || null, segun: 'regla del chofer' };
+    return null;
+}
+
+// La tabla fija de "contrato habitual de cada reparto" se saco a proposito:
+// el reparto ya no decide si un viaje es propio o tercerizado. Lo decide el
+// chofer que lo hizo, por su ficha de personal.
 
 /** Busca un viaje ya cargado que sea el mismo: mismo dia, mismo reparto,
  *  mismo chofer y misma vuelta. Es la combinacion que no puede repetirse: la
@@ -9064,14 +9075,16 @@ async function viajeYaCargado(datos: any): Promise<any | null> {
 app.post('/api/v1/trips', async (req, res) => {
     try {
         const datos = { ...req.body };
-        // Si el viaje llega sin contrato, se completa con la regla del reparto
-        // para ese mes. Si viene con uno elegido, se respeta.
+        // Si el viaje llega sin contrato, lo pone EL CHOFER (su ficha de
+        // personal). Si viene con uno elegido, se respeta. El reparto ya no
+        // decide: el mismo reparto lo puede hacer un chofer propio un dia y
+        // uno tercerizado al otro, y lo que se paga depende de eso.
         if (!String(datos.contractType || '').trim()) {
-            const regla = (await reglaDelReparto(datos.reparto, datos.date))
-                || (await reglaDelChofer(datos.driver, datos.date));
-            const sug = regla?.tipo || contratoPorReparto(datos.reparto);
-            if (sug) datos.contractType = sug;
-            if (regla?.proveedor && !String(datos.provider || '').trim()) datos.provider = regla.proveedor;
+            const suyo = await loQueEsElChofer(datos.driver, datos.date);
+            if (suyo) {
+                datos.contractType = suyo.tipo;
+                if (suyo.proveedor && !String(datos.provider || '').trim()) datos.provider = suyo.proveedor;
+            }
         }
         // Un viaje manual no se le manda a ningun celular.
         if (datos.isManual === true) datos.assignedMobileUser = null;
@@ -9093,11 +9106,10 @@ app.post('/api/v1/trips', async (req, res) => {
         }
         delete datos.permitirDuplicado;
 
-        // Un viaje tercerizado sin valor se costea en cero. Si hay tarifa
-        // cargada para ese proveedor, se usa. El reparto manda si tiene una
-        // tarifa propia en Reglas por reparto.
+        // Un viaje tercerizado sin valor se costea en cero. La tarifa la pone
+        // el proveedor del chofer, desde la tabla de Tarifas.
         if (String(datos.contractType || '').toLowerCase() === 'tercerizado' && !(Number(datos.value) > 0)) {
-            const tar = await tarifaDelViaje(datos.provider, datos.reparto, datos.date);
+            const tar = await tarifaDelViaje(datos.provider, datos.date);
             if (tar) datos.value = tar.valor;
         }
 
@@ -11411,9 +11423,9 @@ app.post('/api/v1/trips/bulk', async (req, res) => {
 
             if (row.isManual === true) row.assignedMobileUser = null;
             if (String(row.contractType || '').toLowerCase() === 'tercerizado' && !(Number(row.value) > 0)) {
-                const k = norm(row.provider) + '|' + norm(row.reparto) + '|' + mesDeLaFecha(row.date);
+                const k = norm(row.provider) + '|' + mesDeLaFecha(row.date);
                 if (!tarifasVistas.has(k)) {
-                    const tar = await tarifaDelViaje(row.provider, row.reparto, row.date);
+                    const tar = await tarifaDelViaje(row.provider, row.date);
                     tarifasVistas.set(k, tar ? tar.valor : null);
                 }
                 const valor = tarifasVistas.get(k);
