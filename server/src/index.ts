@@ -9798,30 +9798,172 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
  *  A proposito NO acepta forzar: aca los viajes son recien creados y no hay
  *  progreso de ningun chofer que proteger. Un viaje en curso devuelve su 409
  *  como siempre y el operador lo resuelve de a uno, con su confirmacion. */
+/** Camino rapido para viajes RECIEN CREADOS: los que todavia no tienen ruta.
+ *
+ *  Ahi no hay absolutamente nada que proteger —ni ruta, ni paradas previas, ni
+ *  progreso de ningun chofer— asi que repetir el procedimiento completo viaje
+ *  por viaje es trabajo al pedo: son unas 8 consultas por viaje, en fila.
+ *  Aca se hace todo junto: una consulta para los viajes, una para validar los
+ *  destinos, una para el deposito, las rutas de una y las paradas de una.
+ *
+ *  SOLO se usa con viajes sin ruta. Cualquier otro cae en el camino de
+ *  siempre, con su guarda y su confirmacion. */
+async function paradasDeViajesNuevos(
+    items: { tripId: number; clientIds: string[] }[],
+    tenantId: string
+): Promise<{ ok: any[]; fallaron: any[] }> {
+    const ok: any[] = [];
+    const fallaron: any[] = [];
+    if (!items.length) return { ok, fallaron };
+
+    const trips = await prisma.trip.findMany({ where: { id: { in: items.map((i) => i.tripId) } } });
+    const porId = new Map(trips.map((t) => [t.id, t]));
+
+    // Todos los destinos de la tanda, validados de una sola vez.
+    const todosLosClientes = [...new Set(items.flatMap((i) => i.clientIds))];
+    const clientes = await prisma.client.findMany({
+        where: { id: { in: todosLosClientes } },
+        select: { id: true, localidad: true, zone: true, partido: true }
+    });
+    const clientePorId = new Map(clientes.map((c) => [c.id, c]));
+    const base = await ensureBaseClient(tenantId);
+    const baseId = base ? base.id : null;
+
+    // El usuario del celular se resuelve una vez por combinacion: los viajes de
+    // una tanda suelen compartir reparto y chofer.
+    const usuarios = new Map<string, any>();
+    const usuarioDe = async (t: any) => {
+        const k = [t.assignedMobileUser, t.reparto, t.driver].map((x) => String(x || '').trim()).join('|');
+        if (!usuarios.has(k)) usuarios.set(k, await resolveRepartoUserForTrip(t, tenantId));
+        return usuarios.get(k);
+    };
+
+    // 1) Se arma todo en memoria
+    const rutasACrear: any[] = [];
+    const validos: { tripId: number; clientIds: string[] }[] = [];
+    for (const it of items) {
+        const t = porId.get(it.tripId);
+        if (!t) { fallaron.push({ tripId: it.tripId, status: 404, error: 'Viaje no encontrado' }); continue; }
+
+        const faltan = it.clientIds.filter((id) => !clientePorId.has(id));
+        if (faltan.length) {
+            fallaron.push({
+                tripId: it.tripId, status: 400,
+                error: 'Hay clientes inexistentes o dados de baja en la lista',
+                missingClientIds: faltan.slice(0, 20)
+            });
+            continue;
+        }
+        const usuario = await usuarioDe(t);
+        if (!usuario) {
+            fallaron.push({ tripId: it.tripId, status: 400, error: 'Asigna un reparto o chofer valido al viaje' });
+            continue;
+        }
+        // El deposito va siempre ultimo: sin esa parada el viaje no puede
+        // cerrarse solo con la hora real de vuelta.
+        const lista = [...it.clientIds];
+        if (lista.length && baseId && lista[lista.length - 1] !== baseId) lista.push(baseId);
+
+        rutasACrear.push({ tenantId, date: new Date(t.date), driverId: usuario.id, status: 'PLANNED', tripId: t.id });
+        validos.push({ tripId: it.tripId, clientIds: lista });
+    }
+    if (!validos.length) return { ok, fallaron };
+
+    // 2) Las rutas, de una
+    const rutas: any[] = await (prisma.route as any).createManyAndReturn({ data: rutasACrear });
+    const rutaPorTrip = new Map(rutas.map((r: any) => [r.tripId, r]));
+
+    // 3) Las paradas, de una
+    const paradas: any[] = [];
+    for (const v of validos) {
+        const ruta = rutaPorTrip.get(v.tripId);
+        if (!ruta) continue;
+        v.clientIds.forEach((clientId, idx) => {
+            paradas.push({
+                routeId: ruta.id,
+                clientId,
+                sequence: idx + 1,
+                status: 'PENDING',
+                isReturnToBase: baseId != null && clientId === baseId && idx === v.clientIds.length - 1
+            });
+        });
+    }
+    if (paradas.length) await prisma.stop.createMany({ data: paradas });
+
+    // 4) La zona del viaje, si venia vacia. Se calcula con los clientes que ya
+    //    estan en memoria, sin volver a preguntarle a la base.
+    for (const v of validos) {
+        const t = porId.get(v.tripId);
+        if (String(t?.zone || '').trim()) continue;
+        const comoParadas = v.clientIds.map((id, i) => ({ sequence: i + 1, client: clientePorId.get(id) }));
+        try {
+            const { zona } = zonaMayoritaria(comoParadas as any);
+            if (zona) await prisma.trip.update({ where: { id: v.tripId }, data: { zone: zona, locality: zona } });
+        } catch (_) { /* la zona es un extra, no corta la carga */ }
+    }
+
+    // 5) Un aviso por viaje, como cuando iban de a uno: a cada chofer le tiene
+    //    que llegar el suyo.
+    for (const v of validos) {
+        const ruta = rutaPorTrip.get(v.tripId);
+        if (!ruta) continue;
+        try {
+            if (ruta.driverId) {
+                io.to(`driver:${ruta.driverId}`).emit('route:updated', {
+                    routeId: ruta.id, tripId: v.tripId, type: 'stops_reordered', stopCount: v.clientIds.length
+                });
+            }
+            io.emit('route:updated', { routeId: ruta.id, tripId: v.tripId, type: 'stops_reordered' });
+            io.emit('trip:updated', { trip: { id: v.tripId } });
+        } catch (_) { /* el aviso no corta la carga */ }
+        ok.push({ tripId: v.tripId, routeId: ruta.id, stopCount: v.clientIds.length });
+    }
+    return { ok, fallaron };
+}
+
 app.post('/api/v1/trips/stops-bulk', async (req, res) => {
     const items: any[] = Array.isArray(req.body?.paradas) ? req.body.paradas : [];
     if (!items.length) return res.status(400).json({ error: 'Falta "paradas"' });
     if (items.length > 500) return res.status(400).json({ error: 'Maximo 500 viajes por tanda' });
 
-    const ok: any[] = [];
-    const fallaron: any[] = [];
-    // De a uno por adentro, cada uno con su propia transaccion: si un viaje
-    // falla, los demas quedan guardados igual que cuando iban por separado.
-    for (const it of items) {
-        const tripId = parseInt(it?.tripId, 10);
-        if (!Number.isFinite(tripId)) {
-            fallaron.push({ tripId: it?.tripId ?? null, status: 400, error: 'ID invalido' });
-            continue;
+    try {
+        const limpios: { tripId: number; clientIds: string[] }[] = [];
+        const fallaron: any[] = [];
+        for (const it of items) {
+            const tripId = parseInt(it?.tripId, 10);
+            if (!Number.isFinite(tripId)) {
+                fallaron.push({ tripId: it?.tripId ?? null, status: 400, error: 'ID invalido' });
+                continue;
+            }
+            limpios.push({ tripId, clientIds: Array.isArray(it?.clientIds) ? it.clientIds.map(String).filter(Boolean) : [] });
         }
-        const r = await guardarParadasDelViaje(
-            tripId,
-            Array.isArray(it?.clientIds) ? it.clientIds : [],
-            { forzar: false }
-        );
-        if (r.ok) ok.push({ tripId: r.tripId, routeId: r.routeId, stopCount: r.stopCount });
-        else fallaron.push({ tripId: r.tripId, status: r.status, ...r.body });
+
+        // Quienes ya tienen ruta NO entran al camino rapido: ahi puede haber
+        // progreso del chofer y eso lo maneja el procedimiento de siempre.
+        const conRuta = await prisma.route.findMany({
+            where: { tripId: { in: limpios.map((i) => i.tripId) } },
+            select: { tripId: true }
+        });
+        const yaTienenRuta = new Set(conRuta.map((r) => r.tripId));
+
+        const nuevos = limpios.filter((i) => !yaTienenRuta.has(i.tripId) && i.clientIds.length > 0);
+        const resto = limpios.filter((i) => yaTienenRuta.has(i.tripId) || i.clientIds.length === 0);
+
+        const r1 = await paradasDeViajesNuevos(nuevos, 'default-tenant');
+        const ok = [...r1.ok];
+        fallaron.push(...r1.fallaron);
+
+        for (const it of resto) {
+            const r = await guardarParadasDelViaje(it.tripId, it.clientIds, { forzar: false });
+            if (r.ok) ok.push({ tripId: r.tripId, routeId: r.routeId, stopCount: r.stopCount });
+            else fallaron.push({ tripId: r.tripId, status: r.status, ...r.body });
+        }
+
+        res.json({ total: items.length, guardados: ok.length, ok, fallaron, porCaminoRapido: r1.ok.length });
+    } catch (e: any) {
+        console.error('POST trips/stops-bulk:', e);
+        res.status(500).json({ error: e?.message || 'Error guardando las paradas' });
     }
-    res.json({ total: items.length, guardados: ok.length, ok, fallaron });
 });
 
 /** Inicio / fin de recorrido desde torre de control (operador), sin validar chofer. */
