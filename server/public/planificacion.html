@@ -20,7 +20,7 @@
          Plan gratuito: 50k cargas de mapa/mes. -->
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="/css/planificacion.css?v=20260930a">
+    <link rel="stylesheet" href="/css/planificacion.css?v=20261004a">
     <script src="/js/r14-utils.js"></script>
     <script src="/js/r14-notifications.js"></script>
 </head>
@@ -14424,8 +14424,12 @@
             weeklyTripStopsBuffers = {};
             weeklyTripStopsFetched = {};
             
-            body.innerHTML = data.map(t => {
+            body.innerHTML = data.map((t, _fila) => {
                 const isPropio = t.contractType === 'Propio';
+                // Rayado: una fila si, una no. Se marca aca y no con CSS porque
+                // abajo de cada viaje va una fila de detalle (oculta), asi que
+                // contar filas del DOM pintaria siempre la equivocada.
+                const rayada = _fila % 2 === 1 ? ' wk-row-alt' : '';
                 // Columna COSTO: para tercerizados es la plata que se paga al
                 // proveedor; para los propios no hay factura, así que en vez de
                 // un importe se muestra el tag "Propio". El costo estimado del
@@ -14436,7 +14440,7 @@
                 const costoPropioTxt = cost > 0 ? ('$ ' + Math.round(cost).toLocaleString('es-AR')) : 'sin calcular';
                 
                 return `
-                    <tr class="hover:bg-[#F4F7FE] transition-colors group" id="weekly-row-${t.id}">
+                    <tr class="wk-row${rayada} group" id="weekly-row-${t.id}">
                         <td class="sticky-col z-20 w-12 text-center align-middle">
                             <input type="checkbox" class="weekly-trip-checkbox rounded border-[#E0E5F2] text-indigo-600 focus:ring-indigo-500 cursor-pointer" value="${t.id}" onchange="onTripCheckboxChange()">
                         </td>
@@ -14520,7 +14524,7 @@
                             </div>
                         </td>
                     </tr>
-                    <tr id="weekly-detail-${t.id}" class="hidden bg-[#F8FAFF]/90">
+                    <tr id="weekly-detail-${t.id}" class="hidden wk-detail">
                         <td colspan="17" class="p-0 border-b border-[#E0E5F2] align-top">
                             <div id="weekly-stops-wrap-${t.id}" class="px-4 py-3 sm:px-6 sm:py-4">
                                 <p class="text-[11px] text-[#A3AED0]">Usá la flecha para cargar los puntos.</p>

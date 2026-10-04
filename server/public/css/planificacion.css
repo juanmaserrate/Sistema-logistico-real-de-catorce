@@ -939,3 +939,45 @@ input, select, textarea { transition: box-shadow 0.15s ease, background-color 0.
     .view-animate { animation: none !important; }
     button { transition: none; }
 }
+
+/* ---------- LOG SEMANAL: FILAS RAYADAS ----------------------------------- */
+/* Tres cosas:
+   1. Las filas de viajes se alternan de color, como un cuaderno rayado.
+   2. Al pasar el mouse no se iluminan: el rayado ya separa una fila de otra.
+   3. Anda igual en modo claro y en modo oscuro.
+   El rayado lo marca el JS con .wk-row-alt, porque debajo de cada viaje hay una
+   fila de detalle escondida y contar filas con CSS pintaria la que no es. */
+:root {
+    --wk-fila: #ffffff;
+    --wk-fila-alt: #f6f7f9;
+    --wk-detalle: #eef1f8;
+}
+[data-theme="dark"] {
+    --wk-fila: var(--surface-container-low);
+    --wk-fila-alt: var(--surface);
+    --wk-detalle: var(--surface-container);
+}
+
+/* El rayado general de la app no aplica aca: lo manda la clase */
+#view-weekly tbody tr:nth-child(even) { background: transparent; }
+
+#view-weekly tbody tr.wk-row,
+#view-weekly tbody tr.wk-row:hover,
+#view-weekly tbody tr.wk-row > td.sticky-col,
+#view-weekly tbody tr.wk-row:hover > td.sticky-col {
+    background: var(--wk-fila) !important;
+}
+#view-weekly tbody tr.wk-row-alt,
+#view-weekly tbody tr.wk-row-alt:hover,
+#view-weekly tbody tr.wk-row-alt > td.sticky-col,
+#view-weekly tbody tr.wk-row-alt:hover > td.sticky-col {
+    background: var(--wk-fila-alt) !important;
+}
+#view-weekly tbody tr.wk-detail,
+#view-weekly tbody tr.wk-detail:hover,
+#view-weekly tbody tr.wk-detail > td {
+    background: var(--wk-detalle) !important;
+}
+/* Sin transicion de color: no hay a que hacerle transicion */
+#view-weekly tbody tr.wk-row,
+#view-weekly tbody tr.wk-row-alt { transition: none; }
