@@ -1743,6 +1743,14 @@ app.get('/api/v1/panel-choferes', async (req: any, res: any) => {
 
         const nombreProv = new Map(proveedores.map((p) => [p.id, p.name]));
 
+        /** "R1", "R 12", "Reparto 2": son cuentas del celular de un reparto, no
+         *  personas. En el panel de choferes no van: nadie les va a cargar un
+         *  contrato porque no son nadie. */
+        const esCuentaDeReparto = (nombre: any) => {
+            const n = String(nombre || '').trim().toUpperCase();
+            return /^R\s*\d{1,2}$/.test(n) || /^REPARTO\b/.test(n);
+        };
+
         // Una fila por persona. Si la misma persona tiene ficha de CHOFER y de
         // DRIVER (con login), se junta: gana la que tenga el contrato cargado.
         type Fila = any;
@@ -1750,6 +1758,7 @@ app.get('/api/v1/panel-choferes', async (req: any, res: any) => {
         for (const u of gente) {
             const nombre = String(u.fullName || u.username || '').trim();
             if (!nombre || esCuentaDePrueba(u.username) || esCuentaDePrueba(u.fullName)) continue;
+            if (esCuentaDeReparto(nombre) || esCuentaDeReparto(u.username)) continue;
             const ya = filas.find((f) => mismoNombrePersona(f.nombre, nombre));
             const contrato = u.contractType ? String(u.contractType).trim().toUpperCase() : null;
             if (ya) {
@@ -1812,6 +1821,18 @@ app.get('/api/v1/panel-choferes', async (req: any, res: any) => {
             delete f.fichas;
         }
 
+        // Fuera del panel lo que no es nada que corregir:
+        //  - fichas dadas de baja sin viajes en el mes (duplicados viejos)
+        //  - cuentas de celular sin contrato, sin proveedor y sin viajes
+        // Todo lo que tenga viajes se queda, aunque este de baja: si manejo,
+        // tiene que poder explicarse.
+        const visibles = filas.filter((f) => {
+            if (f.viajes > 0) return true;
+            if (!f.activo) return false;
+            if (f.rol === 'DRIVER' && !f.contrato && !f.proveedorId) return false;
+            return true;
+        });
+
         // Los que manejan y no tienen ficha. Antes quedaban tapados porque el
         // contrato lo ponia el reparto; ahora hay que verlos.
         const sinFicha = [...porChofer.entries()]
@@ -1821,7 +1842,7 @@ app.get('/api/v1/panel-choferes', async (req: any, res: any) => {
 
         // Proveedores que estan en uso y no tienen tarifa cargada para el mes.
         const enUso = new Set<string>();
-        for (const f of filas) if (f.contrato === 'TERCERIZADO' && f.proveedor) enUso.add(f.proveedor);
+        for (const f of visibles) if (f.contrato === 'TERCERIZADO' && f.proveedor) enUso.add(f.proveedor);
         const sinTarifa = [...enUso]
             .filter((p) => !buscarEnLaTablaDeTarifas(tabla, p, medioDelMes))
             .sort();
@@ -1831,15 +1852,16 @@ app.get('/api/v1/panel-choferes', async (req: any, res: any) => {
             meses: [...new Set([...Object.keys(tabla), mesDeLaFecha(null), mes])].sort(),
             proveedores: proveedores.map((p) => ({ id: p.id, name: p.name, active: p.active !== false })),
             tabla,
-            choferes: filas.sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es')),
+            choferes: visibles.sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es')),
             sinFicha,
             proveedoresSinTarifa: sinTarifa,
+            ocultos: filas.length - visibles.length,
             resumen: {
-                choferes: filas.length,
-                sinIdentificar: filas.filter((f) => !f.contrato).length,
-                propios: filas.filter((f) => f.contrato === 'PROPIO').length,
-                tercerizados: filas.filter((f) => f.contrato === 'TERCERIZADO').length,
-                conProblema: filas.filter((f) => !!f.problema).length
+                choferes: visibles.length,
+                sinIdentificar: visibles.filter((f) => !f.contrato).length,
+                propios: visibles.filter((f) => f.contrato === 'PROPIO').length,
+                tercerizados: visibles.filter((f) => f.contrato === 'TERCERIZADO').length,
+                conProblema: visibles.filter((f) => !!f.problema).length
             }
         });
     } catch (e: any) {
