@@ -12736,7 +12736,9 @@
         }
         function addBuRow() {
             const cont = document.getElementById('bu-rows');
-            if (cont) cont.insertAdjacentHTML('beforeend', buRowHtml('', ''));
+            if (!cont) return;
+            cont.insertAdjacentHTML('beforeend', buRowHtml('', ''));
+            acActivarTodos(cont);   // la fila nueva, con el desplegable propio
         }
         function removeBuRow(btn) {
             const row = btn && btn.closest ? btn.closest('[data-bu-row]') : null;
@@ -12929,6 +12931,7 @@
                     latitude: '', longitude: ''
                 });
                 modal.classList.remove('hidden');
+                acActivarTodos(body);   // el reparto de cada unidad, sin el desplegable negro
                 lucide.createIcons();
                 return;
             }
@@ -12939,6 +12942,7 @@
             currentlyEditingSchoolId = id;
             body.innerHTML = schoolFormHtml(school);
             modal.classList.remove('hidden');
+            acActivarTodos(body);
             lucide.createIcons();
         }
 
@@ -22569,6 +22573,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 // que el click haga lo suyo antes de cerrar.
                 if (_acAbierto && _acAbierto.input === input) acCerrar();
             }, 150));
+        }
+
+        /** Activa todos los campos con datalist que haya dentro de algo recien
+         *  dibujado. Es idempotente: pasar dos veces por el mismo no hace nada. */
+        function acActivarTodos(contenedor) {
+            const raiz = contenedor || document;
+            raiz.querySelectorAll('input[list]').forEach(acActivar);
         }
 
         function _acOpciones(input) {
