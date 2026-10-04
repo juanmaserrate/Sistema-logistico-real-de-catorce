@@ -4887,7 +4887,15 @@
                 _pcSinGuardar = false;
                 // La matriz de abajo y el panel comparten la misma tabla: lo que
                 // se escribe en un lado se ve en el otro y se guarda junto.
-                _tarifasData = { meses: data.meses, proveedores: (data.proveedores || []).map(p => p.name), tabla: data.tabla };
+                _tarifasData = {
+                    // El selector de arriba ofrece todos los meses; la matriz de
+                    // abajo solo los que tienen algo cargado mas el que se esta
+                    // mirando, para que el mes elegido siempre tenga su columna
+                    // donde guardar lo que se escriba en las filas de arriba.
+                    meses: [...new Set([...(data.mesesConTarifa || data.meses || []), data.mes])].sort(),
+                    proveedores: (data.proveedores || []).map(p => p.name),
+                    tabla: data.tabla
+                };
                 pintarPanelChoferes();
                 pintarTarifas();
             } catch (e) {
@@ -4908,7 +4916,10 @@
             // El selector de mes
             const selMes = document.getElementById('pc-mes');
             if (selMes) {
-                selMes.innerHTML = (d.meses || []).map(m => `<option value="${m}">${_nombreMes(m)}</option>`).join('');
+                // Todos los meses, no solo los que ya tienen tarifa: asi se
+                // puede mirar un mes viejo o dejar cargado el que viene.
+                selMes.innerHTML = (d.meses || []).map(m =>
+                    `<option value="${m}">${_nombreMes(m)}${(d.mesesConTarifa || []).includes(m) ? '' : ' · sin cargar'}</option>`).join('');
                 selMes.value = d.mes;
             }
 

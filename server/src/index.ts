@@ -1725,7 +1725,7 @@ app.get('/api/v1/panel-choferes', async (req: any, res: any) => {
         // mes anterior. Con el 1 se buscaba la tarifa del mes equivocado.
         const medioDelMes = new Date(Date.UTC(anio, m - 1, 15, 12, 0, 0));
 
-        const [gente, proveedores, viajes, tabla] = await Promise.all([
+        const [gente, proveedores, viajes, tabla, rangoViajes] = await Promise.all([
             prisma.user.findMany({
                 where: { role: { in: ['CHOFER', 'DRIVER'] } },
                 select: {
@@ -1738,8 +1738,35 @@ app.get('/api/v1/panel-choferes', async (req: any, res: any) => {
                 where: { date: { gte: desde, lte: hasta } },
                 select: { driver: true, contractType: true, provider: true, value: true }
             }),
-            tablaDeTarifas()
+            tablaDeTarifas(),
+            prisma.trip.aggregate({ _min: { date: true }, _max: { date: true } })
         ]);
+
+        // ── Los meses que ofrece el selector ───────────────────────────────
+        // Antes solo aparecian los que ya tenian tarifa cargada, asi que no se
+        // podia ni mirar un mes viejo ni dejar cargada la tarifa del que viene.
+        // Ahora va desde el primer mes con viajes (o con tarifa, lo que sea mas
+        // viejo) hasta un año despues del mes actual.
+        const sumarMeses = (clave: string, n: number) => {
+            const [a, b] = clave.split('-').map(Number);
+            const total = a * 12 + (b - 1) + n;
+            return Math.floor(total / 12) + '-' + String((total % 12) + 1).padStart(2, '0');
+        };
+        const mesActual = mesDeLaFecha(null);
+        const conTarifa = Object.keys(tabla).filter((k) => /^\d{4}-\d{2}$/.test(k)).sort();
+        const candidatosIni = [mesActual, mes];
+        if (rangoViajes._min.date) candidatosIni.push(mesDeLaFecha(rangoViajes._min.date));
+        if (conTarifa.length) candidatosIni.push(conTarifa[0]);
+        const candidatosFin = [sumarMeses(mesActual, 12), mes];
+        if (rangoViajes._max.date) candidatosFin.push(mesDeLaFecha(rangoViajes._max.date));
+        if (conTarifa.length) candidatosFin.push(conTarifa[conTarifa.length - 1]);
+
+        const desdeMes = candidatosIni.sort()[0];
+        const hastaMes = candidatosFin.sort().reverse()[0];
+        const todosLosMeses: string[] = [];
+        for (let k = desdeMes; k <= hastaMes && todosLosMeses.length < 240; k = sumarMeses(k, 1)) {
+            todosLosMeses.push(k);
+        }
 
         const nombreProv = new Map(proveedores.map((p) => [p.id, p.name]));
 
@@ -1849,7 +1876,11 @@ app.get('/api/v1/panel-choferes', async (req: any, res: any) => {
 
         res.json({
             mes,
-            meses: [...new Set([...Object.keys(tabla), mesDeLaFecha(null), mes])].sort(),
+            // Para el selector: todos. Para la matriz de abajo: solo los que
+            // tienen algo cargado, mas el que se esta mirando, asi no se
+            // convierte en una tabla de veinte columnas vacias.
+            meses: todosLosMeses,
+            mesesConTarifa: [...new Set([...conTarifa, mesActual, mes])].sort(),
             proveedores: proveedores.map((p) => ({ id: p.id, name: p.name, active: p.active !== false })),
             tabla,
             choferes: visibles.sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es')),
