@@ -9239,8 +9239,18 @@ async function fichasDeChoferes(): Promise<FichaDeChofer[]> {
 async function fichaDelChofer(chofer: any): Promise<FichaDeChofer | null> {
     const n = String(chofer || '').trim();
     if (!n) return null;
-    for (const f of await fichasDeChoferes()) if (mismoNombrePersona(f.nombre, n)) return f;
-    return null;
+    // Casi todos los choferes tienen DOS fichas: la del catalogo (CHOFER), que
+    // es la que tiene cargado el contrato, y la de la cuenta del celular
+    // (DRIVER), que suele estar vacia. Devolver la primera que aparezca era
+    // una moneda al aire: si salia la del celular, el viaje quedaba sin
+    // contrato. Gana siempre la mas completa.
+    let mejor: FichaDeChofer | null = null;
+    const puntaje = (f: FichaDeChofer) => (f.contrato ? 2 : 0) + (f.proveedor ? 1 : 0);
+    for (const f of await fichasDeChoferes()) {
+        if (!mismoNombrePersona(f.nombre, n)) continue;
+        if (!mejor || puntaje(f) > puntaje(mejor)) mejor = f;
+    }
+    return mejor;
 }
 
 /** Lo que es el chofer: primero su ficha de personal; si no esta identificada,
