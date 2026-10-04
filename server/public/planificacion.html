@@ -2180,8 +2180,9 @@
                         </table></div>
                         <p class="text-[10px] text-[#A3AED0] mt-3">
                             La tarifa es <b>del proveedor</b>, no de cada chofer: si la cambiás, cambia para todos los choferes de ese proveedor.
-                            Abajo está la tabla completa, mes a mes.
+                            Abajo está la tabla completa, mes a mes, solo para mirar.
                         </p>
+                        <div id="pc-sin-chofer" class="hidden mt-6 pt-5 border-t border-[#F4F7FE]"></div>
                     </div>
                 </div>
 
@@ -2189,7 +2190,10 @@
                 <div class="card-dark overflow-hidden">
                     <div class="p-6 border-b border-[#F4F7FE] bg-white">
                         <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Tarifas por proveedor, mes a mes</h4>
-                        <p class="text-xs text-[#A3AED0] mt-1">Al guardar se le aplica a los viajes tercerizados de esos meses: los ya cargados y los que se creen después.</p>
+                        <p class="text-xs text-[#A3AED0] mt-1">
+                            Solo para mirar. La tarifa se cambia arriba, en la columna <b>Tarifa por viaje</b> de cada chofer.
+                            Al guardar se le aplica a los viajes tercerizados de esos meses: los ya cargados y los que se creen después.
+                        </p>
                     </div>
                     <div class="p-6 bg-white">
                         <div class="overflow-x-auto"><table class="w-full text-sm">
@@ -5010,6 +5014,42 @@
                     <td class="py-2 px-2">${estado}</td>
                 </tr>`;
             }).join('') || '<tr><td colspan="6" class="py-4 px-2 text-[#A3AED0] font-bold">No hay choferes cargados.</td></tr>';
+
+            pintarProveedoresSinChofer();
+        }
+
+        /** Proveedores con tarifa cargada a los que no les quedo ningun chofer.
+         *  Sin esta lista su tarifa no se podria tocar desde ningun lado: la
+         *  columna de arriba vive en la fila del chofer, y abajo ya no se edita. */
+        function pintarProveedoresSinChofer() {
+            const d = _panelChoferes;
+            const caja = document.getElementById('pc-sin-chofer');
+            if (!caja) return;
+            const lista = (d && d.proveedoresSinChofer) || [];
+            if (!lista.length) { caja.innerHTML = ''; caja.classList.add('hidden'); return; }
+
+            caja.innerHTML = `
+                <p class="text-[11px] font-black text-[#A3AED0] uppercase tracking-wider">Proveedores sin ning\u00fan chofer asignado</p>
+                <p class="text-[11px] text-[#A3AED0] mb-3">
+                    Tienen tarifa cargada pero ning\u00fan chofer los tiene puestos en su ficha.
+                    Si alguien trabaja para ellos, marcalo arriba; mientras tanto la tarifa se cambia ac\u00e1.
+                </p>
+                <table class="w-full text-sm"><tbody>
+                ${lista.map(p => `
+                    <tr class="border-t border-[#F4F7FE]">
+                        <td class="py-2 px-2 font-black text-[#1B2559] whitespace-nowrap">${escapeHtml(p.nombre)}</td>
+                        <td class="py-2 px-2 text-center text-[11px] ${p.viajes ? 'font-bold text-[#1B2559]' : 'text-[#A3AED0]'}">
+                            ${p.viajes || 0} viaje(s) este mes</td>
+                        <td class="py-2 px-2 text-right">
+                            <input type="number" min="0" step="1000" value="${p.tarifa || ''}"
+                                   data-prov="${escapeHtml(p.nombre)}" data-mes="${d.mes}"
+                                   oninput="pcTarifaEscrita(this)"
+                                   class="tarifa-chofer w-32 bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-right text-[#1B2559]">
+                            ${p.tarifaArrastradaDe ? `<p class="text-[9px] text-[#A3AED0] mt-1">viene de ${_nombreMes(p.tarifaArrastradaDe)}</p>` : ''}
+                        </td>
+                    </tr>`).join('')}
+                </tbody></table>`;
+            caja.classList.remove('hidden');
         }
 
         /** La tarifa es del proveedor: se escribe una vez y se replica en todas
@@ -5022,6 +5062,12 @@
             });
             document.querySelectorAll(`.tarifa-matriz[data-mes="${mes}"]`).forEach(celda => {
                 if (celda.dataset.proveedor === prov) celda.value = v;
+            });
+            document.querySelectorAll(`.pc-matriz-texto[data-mes="${mes}"]`).forEach(txt => {
+                if (txt.dataset.proveedor !== prov) return;
+                const n = Number(v);
+                txt.textContent = n > 0 ? '$' + n.toLocaleString('es-AR') : '\u2014';
+                txt.className = 'pc-matriz-texto text-sm font-bold ' + (n > 0 ? 'text-[#1B2559]' : 'text-[#A3AED0]');
             });
             pcMarcarSinGuardar();
         }
@@ -5087,11 +5133,14 @@
                     <td class="py-2 px-2 font-black text-[#1B2559] whitespace-nowrap">${escapeHtml(prov)}</td>
                     ${meses.map(m => {
                         const v = Number((d.tabla?.[m] || {})[prov]) || '';
+                        // Solo lectura: lo que manda es la columna Tarifa de
+                        // arriba. El valor viaja igual al guardar, en el campo
+                        // oculto, asi no hay dos numeros que puedan discrepar.
                         return `<td class="py-2 px-2 text-right">
-                            <input type="number" min="0" step="1000" value="${v}"
-                                   data-proveedor="${escapeHtml(prov)}" data-mes="${m}"
-                                   oninput="pcMatrizEscrita(this)"
-                                   class="tarifa-matriz w-32 bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-right text-[#1B2559]">
+                            <span class="pc-matriz-texto text-sm font-bold ${v ? 'text-[#1B2559]' : 'text-[#A3AED0]'}"
+                                  data-proveedor="${escapeHtml(prov)}" data-mes="${m}">${v ? '$' + Number(v).toLocaleString('es-AR') : '\u2014'}</span>
+                            <input type="hidden" class="tarifa-matriz" value="${v}"
+                                   data-proveedor="${escapeHtml(prov)}" data-mes="${m}">
                         </td>`;
                     }).join('')}
                 </tr>`).join('')
@@ -5111,15 +5160,6 @@
             d.meses = [...new Set([...(d.meses || []), mes])].sort();
             if (_panelChoferes) _panelChoferes.meses = d.meses;
             pintarTarifas();
-            pcMarcarSinGuardar();
-        }
-
-        /** Lo que se escribe en la matriz tambien se refleja arriba. */
-        function pcMatrizEscrita(inp) {
-            const prov = inp.dataset.proveedor, mes = inp.dataset.mes, v = inp.value;
-            document.querySelectorAll(`.tarifa-chofer[data-mes="${mes}"]`).forEach(otro => {
-                if (otro.dataset.prov === prov) otro.value = v;
-            });
             pcMarcarSinGuardar();
         }
 

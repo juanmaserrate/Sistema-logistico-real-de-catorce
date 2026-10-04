@@ -1872,6 +1872,29 @@ app.get('/api/v1/panel-choferes', async (req: any, res: any) => {
         // Proveedores que estan en uso y no tienen tarifa cargada para el mes.
         const enUso = new Set<string>();
         for (const f of visibles) if (f.contrato === 'TERCERIZADO' && f.proveedor) enUso.add(f.proveedor);
+
+        // Al reves: proveedores que SI tienen tarifa cargada y no le quedo
+        // ningun chofer asignado. La tarifa se edita en la fila del chofer, asi
+        // que sin fila no habria donde tocarla: se listan aparte para que no
+        // quede un numero que nadie puede corregir.
+        const conTarifaCargada = new Set<string>();
+        for (const fila of Object.values<any>(tabla)) {
+            for (const [nombre, valor] of Object.entries<any>(fila || {})) {
+                if (Number(valor) > 0) conTarifaCargada.add(nombre);
+            }
+        }
+        const sinChofer = [...conTarifaCargada]
+            .filter((p) => ![...enUso].some((u) => mismoNombrePersona(u, p)))
+            .map((p) => ({
+                nombre: p,
+                tarifa: buscarEnLaTablaDeTarifas(tabla, p, medioDelMes)?.valor ?? null,
+                tarifaArrastradaDe: (() => {
+                    const t = buscarEnLaTablaDeTarifas(tabla, p, medioDelMes);
+                    return t && t.mes !== mes ? t.mes : null;
+                })(),
+                viajes: viajes.filter((v: any) => mismoNombrePersona(v.provider, p)).length
+            }))
+            .sort((a, b) => a.nombre.localeCompare(b.nombre, 'es'));
         const sinTarifa = [...enUso]
             .filter((p) => !buscarEnLaTablaDeTarifas(tabla, p, medioDelMes))
             .sort();
@@ -1888,6 +1911,7 @@ app.get('/api/v1/panel-choferes', async (req: any, res: any) => {
             choferes: visibles.sort((a, b) => String(a.nombre).localeCompare(String(b.nombre), 'es')),
             sinFicha,
             proveedoresSinTarifa: sinTarifa,
+            proveedoresSinChofer: sinChofer,
             ocultos: filas.length - visibles.length,
             resumen: {
                 choferes: visibles.length,
