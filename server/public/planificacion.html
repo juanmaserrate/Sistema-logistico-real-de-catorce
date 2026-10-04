@@ -3732,12 +3732,27 @@
             return clean;
         }
 
-        function ensureBusinessUnitInCatalog(value) {
+        async function ensureBusinessUnitInCatalog(value) {
             const v = normalizeBusinessUnit(value);
             if (!v) return;
-            const current = getBusinessUnitsCatalog();
-            if (current.includes(v)) return;
-            saveBusinessUnitsCatalog([...current, v]);
+            if (getBusinessUnitsCatalog().includes(v)) return;   // atajo, ya esta
+            // Se relee el catalogo del servidor antes de escribir: el que tiene
+            // esta pestana puede ser viejo, y mandarlo entero le devolveria al
+            // servidor lo que otro acaba de borrar.
+            let actual = [];
+            try {
+                const res = await fetch(`${API_URL}/settings/business_units`);
+                const d = res.ok ? await res.json() : null;
+                if (!Array.isArray(d)) return;                   // sin leer no se escribe
+                actual = d;
+            } catch (_) {
+                return;
+            }
+            if (actual.some(x => normalizeBusinessUnit(x) === v)) {
+                _buCache = actual;
+                return;
+            }
+            saveBusinessUnitsCatalog([...actual, v]);
         }
 
         /**
@@ -3758,7 +3773,13 @@
             // Si el viaje editado trae una unidad que no está en el catálogo
             // (ej. importada de un Excel viejo), se suma para no perderla.
             const elegidas = unidadesDeNegocio(selectedValue !== '' ? selectedValue : campo.value);
-            const list = saveBusinessUnitsCatalog([...getBusinessUnitsCatalog(), ...dynamic, ...elegidas]);
+            // Solo para mostrar: antes esto GUARDABA la union en el servidor
+            // cada vez que se abria el modal, asi que una unidad borrada volvia
+            // apenas alguien abria un viaje. Si de verdad hay una unidad nueva,
+            // la agrega ensureBusinessUnitInCatalog(), que relee el servidor.
+            const list = [...new Set([...getBusinessUnitsCatalog(), ...dynamic, ...elegidas]
+                .map(normalizeBusinessUnit).filter(Boolean))]
+                .sort((a, b) => a.localeCompare(b, 'es'));
             if (!elegidas.length) {
                 const porDefecto = list.includes('DMC') ? 'DMC' : (list[0] || '');
                 if (porDefecto) elegidas.push(porDefecto);
@@ -18021,7 +18042,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 });
                 const label = document.getElementById('planning-month-label');
                 if (label) label.textContent = `${monthLabels[idx]} ${yr}`;
-                saveBusinessUnitsCatalog(getBusinessUnitsCatalog());
+                // Aca se hacia saveBusinessUnitsCatalog(getBusinessUnitsCatalog()),
+                // o sea: al abrir la pagina se le mandaba de vuelta al servidor
+                // la copia que tenia este navegador. Una pestana vieja le
+                // devolvia las unidades que otro acababa de borrar. No se
+                // guarda nada: el catalogo se lee, no se reescribe solo.
 
                 // Sequentially load critical data
                 await Promise.all([
