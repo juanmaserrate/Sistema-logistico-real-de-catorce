@@ -4959,8 +4959,7 @@
                 if ((d.proveedoresSinTarifa || []).length) {
                     partes.push(`
                         <div>
-                            <p class="text-[11px] font-black text-amber-800 uppercase tracking-wider">Proveedores en uso sin tarifa cargada</p>
-                            <p class="text-[11px] text-amber-700 mb-2">Los viajes de sus choferes quedan en $0. Cargales el precio en la columna Tarifa.</p>
+                            <p class="text-[11px] font-black text-amber-800 uppercase tracking-wider mb-2">Proveedores en uso sin tarifa cargada</p>
                             <div class="flex flex-wrap gap-2">
                                 ${d.proveedoresSinTarifa.map(p => `<span class="px-3 py-1 rounded-lg text-[11px] font-black bg-white text-amber-800 border border-amber-200">${escapeHtml(p)}</span>`).join('')}
                             </div>
