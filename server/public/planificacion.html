@@ -22549,6 +22549,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         // navegador no muestre el suyo encima.
 
         let _acAbierto = null;   // { input, lista, caja, opciones, marcado }
+        let _acEligiendo = false;// para que al elegir no se vuelva a abrir solo
 
         function acActivar(input) {
             if (!input || input.dataset.acListo === '1') return;
@@ -22577,6 +22578,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         function acAbrir(input) {
+            if (_acEligiendo) return;
             if (input.disabled || input.readOnly) return;
             const todas = _acOpciones(input);
             const escrito = String(input.value || '').trim().toUpperCase();
@@ -22642,8 +22644,15 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             acCerrar();
             // Se avisa igual que si lo hubiera tipeado: los campos ya tienen su
             // propio oninput/onchange y de ahi salen los autocompletados.
-            input.dispatchEvent(new Event('input', { bubbles: true }));
-            input.dispatchEvent(new Event('change', { bubbles: true }));
+            // Mientras tanto no se puede volver a abrir: el propio "input" que
+            // se dispara aca lo reabria apenas elegias una opcion.
+            _acEligiendo = true;
+            try {
+                input.dispatchEvent(new Event('input', { bubbles: true }));
+                input.dispatchEvent(new Event('change', { bubbles: true }));
+            } finally {
+                _acEligiendo = false;
+            }
         }
 
         function acTecla(e) {
