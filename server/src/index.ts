@@ -2180,9 +2180,29 @@ app.get('/api/v1/settings/:key', async (req, res) => {
  *  recargaron con el codigo nuevo.
  *
  *  LEER sigue abierto: la pantalla pide varios ajustes antes de iniciar sesion. */
+/** Las claves que YA NO se guardan por aca. Tienen su propio endpoint.
+ *
+ *  El catalogo de unidades de negocio se borraba y volvia solo. La causa: el
+ *  navegador le devolvia su copia entera con un POST aca, desde codigo viejo
+ *  que seguia corriendo en pestanas abiertas. Pedir sesion no alcanzo, porque
+ *  la pagina le inyecta el token a todas las llamadas: la pestana vieja pasaba
+ *  igual. Sacando la clave de este endpoint, el codigo viejo no tiene por donde
+ *  escribirla: solo conoce esta direccion, y aca ya no entra. */
+const CLAVES_CON_ENDPOINT_PROPIO: Record<string, string> = {
+    business_units: 'POST /api/v1/catalogos/guardar',
+    vehicle_types: 'POST /api/v1/catalogos/guardar'
+};
+
 app.post('/api/v1/settings', requireAuth, async (req: any, res: any) => {
     try {
         const { key, value } = req.body;
+        const propio = CLAVES_CON_ENDPOINT_PROPIO[String(key || '')];
+        if (propio) {
+            return res.status(409).json({
+                error: `"${key}" no se guarda por aca. Usa ${propio}.`,
+                code: 'CLAVE_CON_ENDPOINT_PROPIO'
+            });
+        }
         const setting = await prisma.appSettings.upsert({
             where: { key },
             update: { value: JSON.stringify(value) },
@@ -11154,6 +11174,40 @@ app.get('/api/v1/catalogos/uso', async (req: any, res: any) => {
         res.json({ campo, uso, total: uso.reduce((n: number, x: any) => n + x.viajes, 0) });
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Guarda la lista de opciones de un catalogo.
+ *  POST /api/v1/catalogos/guardar { campo: 'businessUnit', opciones: [...] }
+ *
+ *  Es el UNICO lugar por donde se escribe el catalogo. Vive bajo /catalogos a
+ *  proposito: ese prefijo ya pide sesion, y sobre todo el codigo viejo que
+ *  anda dando vueltas en las pestanas abiertas no sabe que existe, asi que no
+ *  puede devolver una lista vieja y pisar lo que alguien acaba de borrar. */
+app.post('/api/v1/catalogos/guardar', async (req: any, res: any) => {
+    const campo = String(req.body?.campo || '');
+    const clave = ({ businessUnit: 'business_units', vehicleType: 'vehicle_types' } as Record<string, string>)[campo];
+    if (!clave) return res.status(400).json({ error: 'Campo no editable' });
+    if (!Array.isArray(req.body?.opciones)) return res.status(400).json({ error: 'Falta "opciones"' });
+
+    const limpia = [...new Set(
+        req.body.opciones.map((x: any) => String(x || '').trim().toUpperCase()).filter(Boolean)
+    )].sort((a: any, b: any) => String(a).localeCompare(String(b), 'es'));
+
+    try {
+        const fila = await prisma.appSettings.findUnique({ where: { key: clave } });
+        const antes = fila ? JSON.parse(fila.value) : null;
+        await prisma.appSettings.upsert({
+            where: { key: clave },
+            update: { value: JSON.stringify(limpia) },
+            create: { key: clave, value: JSON.stringify(limpia) }
+        });
+        res.json({ campo, clave, opciones: limpia, total: limpia.length });
+        logAction(req, 'UPDATE', 'settings', 0, CAMPOS_DE_CATALOGO[campo] || clave, antes, limpia)
+            .catch((e: any) => console.error('logAction catalogos/guardar:', e?.message || e));
+    } catch (e: any) {
+        console.error('POST catalogos/guardar:', e);
+        res.status(500).json({ error: e?.message || 'Error guardando el catalogo' });
     }
 });
 

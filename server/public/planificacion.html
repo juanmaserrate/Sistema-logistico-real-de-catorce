@@ -3723,13 +3723,12 @@
                 .sort((a, b) => a.localeCompare(b, 'es'));
             _buCache = clean;
             localStorage.setItem(BUSINESS_UNIT_STORAGE_KEY, JSON.stringify(clean));
-            // Persiste en la DB en background (no bloqueante). Va con las
-            // credenciales de la sesion: guardar un ajuste ahora pide estar
-            // logueado.
-            fetch(`${API_URL}/settings`, {
+            // Persiste en la DB en background (no bloqueante). Por el endpoint
+            // propio del catalogo: /settings ya no acepta esta clave.
+            fetch(`${API_URL}/catalogos/guardar`, {
                 method: 'POST',
                 headers: getActorHeaders(),
-                body: JSON.stringify({ key: 'business_units', value: clean })
+                body: JSON.stringify({ campo: 'businessUnit', opciones: clean })
             }).catch(() => {});
             return clean;
         }
@@ -19730,14 +19729,14 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         /** Guarda el catalogo (la lista de opciones) en el servidor. */
         async function guardarCatalogoLista(lista) {
-            const def = LISTAS_DEL_FORMULARIO[_listaActiva];
             const limpia = [...new Set(lista.map(x => String(x).trim().toUpperCase()).filter(Boolean))]
                 .sort((a, b) => a.localeCompare(b, 'es'));
-            await fetch(`${API_URL}/settings`, {
+            const res = await fetch(`${API_URL}/catalogos/guardar`, {
                 method: 'POST',
                 headers: getActorHeaders(),
-                body: JSON.stringify({ key: def.clave, value: limpia })
+                body: JSON.stringify({ campo: _listaActiva, opciones: limpia })
             });
+            if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'No se pudo guardar la lista');
             // El catalogo de unidades tiene su copia en el navegador
             if (_listaActiva === 'businessUnit') {
                 try { localStorage.setItem(BUSINESS_UNIT_STORAGE_KEY, JSON.stringify(limpia)); } catch (_) {}
