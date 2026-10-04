@@ -6806,22 +6806,42 @@ app.get('/api/admin/chofer-proveedor', async (req: any, res: any) => {
  *  rutas NO: quedarian huerfanas con sus paradas, asi que se borran aparte
  *  salvo que se pida lo contrario.
  *
- *  POST /api/admin/borrar-viajes { key, desde, hasta, aplicar, dejarRutas? } */
+ *  Tambien se le puede pasar una lista de ids en lugar del rango, para
+ *  borrar viajes puntuales: en ese caso, antes de borrar se guarda una copia
+ *  completa de cada viaje en AppSettings (viajes_backup_<fecha>).
+ *
+ *  POST /api/admin/borrar-viajes { key, desde, hasta | ids, aplicar, dejarRutas? } */
 app.post('/api/admin/borrar-viajes', async (req: any, res: any) => {
     if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     const { desde, hasta } = req.body || {};
-    if (!desde || !hasta) return res.status(400).json({ error: 'Faltan "desde" y "hasta" (YYYY-MM-DD)' });
+    const idsPedidos: number[] = Array.isArray(req.body?.ids)
+        ? ([...new Set(req.body.ids.map((x: any) => Number(x)).filter((n: any) => Number.isInteger(n) && n > 0))] as number[])
+        : [];
+    if (!idsPedidos.length && (!desde || !hasta)) {
+        return res.status(400).json({ error: 'Faltan "desde" y "hasta" (YYYY-MM-DD), o una lista de "ids"' });
+    }
+    if (idsPedidos.length > 500) return res.status(400).json({ error: 'Maximo 500 ids por vez' });
     const aplicar = req.body?.aplicar === true;
     const dejarRutas = req.body?.dejarRutas === true;
 
     try {
-        const ini = utcDayRange(String(desde)).start;
-        const fin = utcDayRange(String(hasta)).end;
+        const where: any = idsPedidos.length
+            ? { id: { in: idsPedidos } }
+            : {
+                date: {
+                    gte: utcDayRange(String(desde)).start,
+                    lte: utcDayRange(String(hasta)).end
+                }
+            };
 
         const viajes = await prisma.trip.findMany({
-            where: { date: { gte: ini, lte: fin } },
+            where,
             select: { id: true, date: true, status: true, linkedRoute: { select: { id: true } } }
         });
+
+        // Si se pidieron ids puntuales, los que no existen se avisan: borrar el
+        // id equivocado sin enterarse seria peor que no borrar nada.
+        const noEncontrados = idsPedidos.filter((id) => !viajes.some((t) => t.id === id));
         const ids = viajes.map((t) => t.id);
         const routeIds = viajes.map((t: any) => t.linkedRoute?.id).filter(Boolean) as number[];
 
@@ -6840,7 +6860,23 @@ app.post('/api/admin/borrar-viajes', async (req: any, res: any) => {
         }
         const enCamino = viajes.filter((t) => !['COMPLETED', 'RETURNED', 'CANCELLED'].includes(String(t.status || '').toUpperCase())).length;
 
+        // El viaje entero, para poder reconstruirlo si hizo falta. Solo en el
+        // borrado por ids: en un rango grande la copia seria enorme.
+        let backupKey: string | null = null;
+        const completos = idsPedidos.length
+            ? await prisma.trip.findMany({
+                where: { id: { in: ids } },
+                include: { linkedRoute: { include: { stops: true } } }
+            })
+            : [];
+
         if (aplicar) {
+            if (completos.length) {
+                backupKey = `viajes_backup_${new Date().toISOString().replace(/[:.]/g, '-')}`;
+                await prisma.appSettings.create({
+                    data: { key: backupKey, value: JSON.stringify(completos) }
+                });
+            }
             if (!dejarRutas && routeIds.length) {
                 await prisma.deviceLocation.updateMany({ where: { routeId: { in: routeIds } }, data: { routeId: null } });
                 await prisma.stop.deleteMany({ where: { routeId: { in: routeIds } } });
@@ -6848,14 +6884,20 @@ app.post('/api/admin/borrar-viajes', async (req: any, res: any) => {
             }
             // TripStop y TripLocation se van en cascada con el viaje
             await prisma.trip.deleteMany({ where: { id: { in: ids } } });
+            await logAction(req, 'DELETE', 'trip', 0, `${ids.length} viaje(s) borrados a mano`, { ids }, { backupKey });
         }
 
         res.json({
             aplicado: aplicar,
             desde, hasta,
+            porIds: !!idsPedidos.length,
+            noEncontrados,
+            backupKey,
             viajes: viajes.length,
             // Los ids, para poder sacar el respaldo antes de borrar
             ids: aplicar ? undefined : ids,
+            // El viaje completo, para revisarlo antes de borrar
+            detalle: aplicar ? undefined : completos,
             porMes,
             viajesSinCerrar: enCamino,
             seLlevaTambien: {
