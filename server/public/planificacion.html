@@ -139,6 +139,8 @@
                             <a href="#employees" id="btn-employees" class="nav-menu-item" role="menuitem"><i data-lucide="users-2"></i> <span>Personal</span></a>
                             <a href="#fleets" id="btn-fleets" class="nav-menu-item" role="menuitem"><i data-lucide="truck"></i> <span>Flotas</span></a>
                             <a href="#schools" id="btn-schools" class="nav-menu-item" role="menuitem"><i data-lucide="users-round"></i> <span>Clientes</span></a>
+                            <a href="javascript:void(0)" id="btn-unidades-negocio" class="nav-menu-item" role="menuitem"
+                               onclick="cerrarMenusNav(); abrirListasFormulario();"><i data-lucide="list"></i> <span>Unidades de negocio</span></a>
                         </div>
                     </div>
                     <div class="nav-menu" id="nav-menu-reportes" data-menu="reportes">
@@ -627,25 +629,9 @@
                     </div>
 
                     <!-- Listas de los desplegables -->
-                    <div class="card-dark p-8 flex flex-col">
-                        <div class="flex items-start gap-4">
-                            <div class="w-12 h-12 rounded-2xl bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
-                                <i data-lucide="list" class="w-6 h-6"></i>
-                            </div>
-                            <div class="min-w-0">
-                                <h4 class="text-base font-bold text-[#1B2559]">Listas de los desplegables</h4>
-                                <p class="text-xs text-[#A3AED0] font-medium mt-1 leading-relaxed">Las opciones que ofrece cada desplegable al crear un viaje: unidades de negocio y tipos de vehículo. Podés renombrarlas y borrarlas, y ver cuántos viajes y clientes usa cada una.</p>
-                            </div>
-                        </div>
-                        <div class="mt-5">
-                            <span id="ajustes-listas-resumen" class="inline-block px-3 py-1.5 rounded-xl bg-[#F4F7FE] text-[10px] font-bold text-[#A3AED0] uppercase tracking-widest">Cargando...</span>
-                        </div>
-                        <p class="text-[11px] text-[#A3AED0] font-medium mt-4 leading-relaxed">Al renombrar se cambia también en los viajes y en la ficha de los clientes. Antes de borrar te pregunto a cuál pasarlos.</p>
-                        <div class="flex-1"></div>
-                        <button onclick="abrirListasFormulario()" class="mt-6 w-full px-6 py-3.5 rounded-2xl bg-amber-500 text-white text-[11px] font-bold hover:bg-amber-600 transition-all shadow-lg shadow-amber-200 flex items-center justify-center gap-2 uppercase tracking-widest">
-                            <i data-lucide="pencil" class="w-4 h-4"></i> Editar listas
-                        </button>
-                    </div>
+                    <!-- La tarjeta de "Listas de los desplegables" se movio al menu
+                         Datos > Unidades de negocio. Estaba escondida en Ajustes y
+                         es algo que se usa seguido. -->
                 </div>
             </div>
 
@@ -4195,6 +4181,12 @@
                     btn.style.display = currentUserModules.includes(sec) ? '' : 'none';
                 }
             });
+            // Unidades de negocio no es una pantalla, es una ventana, asi que no
+            // entra en el bucle de arriba. Sigue los permisos de Ajustes, que es
+            // de donde se abria antes.
+            const btnUnidades = document.getElementById('btn-unidades-negocio');
+            if (btnUnidades) btnUnidades.style.display = currentUserModules.includes('ajustes') ? '' : 'none';
+
             // Un menu sin ninguna pantalla visible no tiene por que mostrarse
             document.querySelectorAll('.nav-menu').forEach(menu => {
                 const items = menu.querySelectorAll('.nav-menu-item');
@@ -24502,8 +24494,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         <div class="bg-white rounded-3xl w-[96vw] max-w-3xl max-h-[92vh] shadow-2xl overflow-hidden flex flex-col">
             <div class="p-6 border-b border-[#F4F7FE] flex justify-between items-center gap-3 bg-[#F8FAFF]">
                 <div>
-                    <h3 class="font-black text-[#1B2559] uppercase tracking-widest text-sm">Listas de los desplegables</h3>
-                    <p class="text-xs text-[#A3AED0] font-medium mt-1">Las opciones que se ofrecen al crear un viaje.</p>
+                    <h3 class="font-black text-[#1B2559] uppercase tracking-widest text-sm">Unidades de negocio</h3>
+                    <p class="text-xs text-[#A3AED0] font-medium mt-1">Las opciones que se ofrecen al crear un viaje, y cuántos viajes y clientes usa cada una.</p>
                 </div>
                 <button onclick="cerrarListasFormulario()" class="text-[#A3AED0] hover:text-[#1B2559]"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
