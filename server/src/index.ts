@@ -226,7 +226,21 @@ const staticCacheHeaders = (res: express.Response, filePath: string) => {
         res.setHeader('Cache-Control', 'public, max-age=3600');
     }
 };
-app.use(express.static(path.join(__dirname, '../public'), { etag: true, setHeaders: staticCacheHeaders }));
+
+/** La pagina y sus scripts se revalidan SIEMPRE.
+ *  El .html ya salia con no-cache, pero los .js y .css se guardaban una hora:
+ *  despues de un deploy el navegador quedaba con el HTML nuevo y el JS viejo,
+ *  que es peor que tener los dos viejos, porque son codigo que se llama entre
+ *  si. Con ETag la revalidacion contesta 304 sin cuerpo, asi que la pagina no
+ *  se pone mas lenta por esto. Las imagenes y las fuentes siguen cacheadas. */
+const cabecerasDeLaPagina = (res: express.Response, filePath: string) => {
+    if (/\.(html|js|css)$/i.test(filePath)) {
+        res.setHeader('Cache-Control', 'no-cache');
+    } else {
+        res.setHeader('Cache-Control', 'public, max-age=3600');
+    }
+};
+app.use(express.static(path.join(__dirname, '../public'), { etag: true, setHeaders: cabecerasDeLaPagina }));
 const clientDistDir = path.join(__dirname, '../../client/dist');
 app.use('/app', express.static(clientDistDir, { etag: true, setHeaders: staticCacheHeaders }));
 
