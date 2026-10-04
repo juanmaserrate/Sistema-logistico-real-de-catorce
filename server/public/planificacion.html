@@ -4916,7 +4916,10 @@
                             sin.map(x => `${x.proveedor}: ${x.viajes} viaje(s)`).join(' · '));
                     }
                 }
-                await cargarTarifas();
+                // La matriz se refresca por atras: en pantalla ya esta lo que
+                // el operador escribio, asi que esperar a que vuelva a bajar no
+                // le agrega nada mas que espera.
+                cargarTarifas();
             } catch (e) {
                 if (typeof addNotification === 'function') addNotification('error', 'No se pudo guardar', String(e.message || e));
             }
@@ -15024,6 +15027,50 @@
             </div>`;
         }
 
+        /** Saca viajes de la tabla en el acto, antes de que conteste el
+         *  servidor. Devuelve lo que saco, por si hay que volver atras. */
+        function _sacarViajesDeLaTabla(ids) {
+            const set = new Set(ids);
+            const copia = [];
+            if (typeof __weeklyTripsById !== 'undefined') {
+                ids.forEach(i => { const t = __weeklyTripsById.get(i); if (t) copia.push(t); __weeklyTripsById.delete(i); });
+            }
+            planningData = planningData.filter(t => !set.has(t.id));
+            if (typeof filterWeeklyData === 'function') filterWeeklyData();
+            return copia;
+        }
+
+        /** Vuelve a poner los viajes que se habian sacado: el servidor rechazo
+         *  el borrado y la pantalla no puede quedar mintiendo. */
+        function _devolverViajesALaTabla(viajes) {
+            if (!viajes || !viajes.length || typeof __weeklyTripsById === 'undefined') return;
+            viajes.forEach(t => { if (t && t.id != null) __weeklyTripsById.set(t.id, t); });
+            if (typeof _weeklyRebuildPlanningData === 'function') _weeklyRebuildPlanningData();
+            if (typeof filterWeeklyData === 'function') filterWeeklyData();
+        }
+
+        /** Pone en la fila lo que acaba de cambiar el servidor al iniciar o
+         *  finalizar. Los valores salen de la respuesta, no se inventan: la
+         *  tabla mira routeActualStart / routeActualEnd y el estado del viaje. */
+        function _aplicarRecorridoEnLaFila(tripId, action, ruta) {
+            if (typeof __weeklyTripsById === 'undefined') return;
+            const t = __weeklyTripsById.get(tripId);
+            if (!t) return;
+            const ahora = new Date().toISOString();
+            if (ruta && ruta.actualStartTime) t.routeActualStart = ruta.actualStartTime;
+            if (ruta && ruta.actualEndTime) t.routeActualEnd = ruta.actualEndTime;
+            if (action === 'start') {
+                t.status = 'OUT_OF_PLANT';
+                t.startedAt = (ruta && ruta.actualStartTime) || ahora;
+            } else {
+                t.status = 'COMPLETED';
+                t.completedAt = (ruta && ruta.actualEndTime) || ahora;
+            }
+            __weeklyTripsById.set(tripId, t);
+            if (typeof _weeklyRebuildPlanningData === 'function') _weeklyRebuildPlanningData();
+            if (typeof filterWeeklyData === 'function') filterWeeklyData();
+        }
+
         async function deleteSingleTrip(id) {
             // Un viaje en curso esta en el telefono del chofer: borrarlo se lo saca de la app.
             // Para sacar UNA parada se edita el viaje (✕ en la parada), no se borra el viaje.
@@ -15038,18 +15085,20 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 ¿Eliminar el viaje completo igual?`
                 : `¿Eliminar el viaje #${id}? Esta acción no se puede deshacer.`;
             if (!confirm(aviso)) return;
+            // La fila se saca EN EL ACTO y el borrado sigue por atras. Si el
+            // servidor lo rechaza, la fila vuelve: la pantalla no puede quedar
+            // mostrando algo que no paso.
+            const sacados = _sacarViajesDeLaTabla([id]);
             try {
                 const res = await fetch(`${API_URL}/trips/${id}`, { method: 'DELETE', headers: getActorHeaders() });
                 if (!res.ok) throw new Error('Error al eliminar');
-                // Sacar del store mensual (el fetch solo mergea, nunca borra) y
-                // invalidar el cache para que un refetch no lo traiga de vuelta.
-                if (typeof __weeklyTripsById !== 'undefined') __weeklyTripsById.delete(id);
+                // El cache mensual se invalida para que un refetch no lo traiga
+                // de vuelta (el fetch solo mergea, nunca borra).
                 if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
-                planningData = planningData.filter(t => t.id !== id);
-                filterWeeklyData();
                 if (typeof addNotification === 'function') addNotification('success', 'Viaje eliminado', `Viaje #${id} fue eliminado correctamente.`);
             } catch (e) {
-                if (typeof addNotification === 'function') addNotification('error', 'Error', e.message);
+                _devolverViajesALaTabla(sacados);
+                if (typeof addNotification === 'function') addNotification('error', 'No se pudo eliminar', String(e.message || e) + ' — el viaje sigue estando.');
             }
         }
 
@@ -15068,6 +15117,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 btn.classList.add('opacity-60', 'pointer-events-none');
                 btn.innerHTML = `Eliminando ${ids.length} viajes...`;
             }
+            // Las filas se van EN EL ACTO. Si el servidor rechaza, vuelven.
+            const sacados = _sacarViajesDeLaTabla(ids);
+            clearTripSelection();
             try {
                 const res = await fetch(`${API_URL}/trips/bulk-delete`, {
                     method: 'POST',
@@ -15077,12 +15129,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.error || `El servidor respondió ${res.status}`);
 
-                const borrados = new Set(ids);
-                if (typeof __weeklyTripsById !== 'undefined') ids.forEach(id => __weeklyTripsById.delete(id));
                 if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
-                planningData = planningData.filter(t => !borrados.has(t.id));
-                clearTripSelection();
-                filterWeeklyData();
 
                 if (typeof addNotification === 'function') {
                     const detalle = `${data.viajes} viaje(s), ${data.rutas || 0} recorrido(s) y ${data.paradas || 0} parada(s).`;
@@ -15090,8 +15137,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     else addNotification('warning', 'Eliminación parcial', `Se pidieron ${ids.length} y se eliminaron ${detalle}`);
                 }
             } catch (e) {
+                _devolverViajesALaTabla(sacados);
                 if (typeof addNotification === 'function') {
-                    addNotification('error', 'No se pudo eliminar', String(e.message || e));
+                    addNotification('error', 'No se pudo eliminar',
+                        String(e.message || e) + ` — los ${ids.length} viajes siguen estando.`);
                 } else {
                     alert('No se pudo eliminar: ' + (e.message || e));
                 }
@@ -21919,10 +21968,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         }
                     }).catch(() => {});
                 }
-                // Forzar refetch: el mes esta fresco en cache (<60s) y sin invalidar
-                // loadWeeklyData serviria el estado viejo (viaje sin iniciar/finalizar).
+                // La fila se actualiza con lo que contesto el servidor. Antes
+                // se recargaba el mes entero y se esperaba, con la tabla tapada
+                // por el cartel de "Cargando viajes...": de ahi la demora para
+                // ver que el viaje habia arrancado.
+                _aplicarRecorridoEnLaFila(tripId, action, data && data.route);
                 if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
-                await loadWeeklyData();
+                loadWeeklyData({ silencioso: true });
 
                 // Al iniciar, auto-cargar la traza del viaje sobre el mapa de Torre de Control
                 // así el operador no necesita apretar «Cargar traza detalle».

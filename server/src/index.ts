@@ -1757,8 +1757,6 @@ app.post('/api/v1/tarifas', async (req: any, res: any) => {
             update: { value: JSON.stringify(nueva) },
             create: { key: CLAVE_TARIFAS, value: JSON.stringify(nueva) }
         });
-        await logAction(req, 'UPDATE', 'settings', 0, 'Tarifas por proveedor', antes, nueva);
-
         // Lo que se carga aca manda: se lo pone a los viajes ya cargados de
         // esos meses, no solo a los que se creen despues.
         let viajesActualizados = 0;
@@ -1767,9 +1765,6 @@ app.post('/api/v1/tarifas', async (req: any, res: any) => {
             const r = await aplicarTarifasAViajes(meses, true, true);
             viajesActualizados = r.cambios.length;
             sinTarifa = r.sinTarifa;
-            if (viajesActualizados) {
-                await logAction(req, 'UPDATE', 'trip', 0, `${viajesActualizados} viajes con la tarifa nueva`, null, { meses, viajesActualizados });
-            }
         }
 
         res.json({
@@ -1779,6 +1774,15 @@ app.post('/api/v1/tarifas', async (req: any, res: any) => {
             viajesActualizados,
             sinTarifa
         });
+
+        // La auditoria va DESPUES de contestar: son dos escrituras mas a la
+        // base y el operador las estaba esperando sin necesidad.
+        logAction(req, 'UPDATE', 'settings', 0, 'Tarifas por proveedor', antes, nueva)
+            .catch((e: any) => console.error('logAction tarifas:', e?.message || e));
+        if (viajesActualizados) {
+            logAction(req, 'UPDATE', 'trip', 0, `${viajesActualizados} viajes con la tarifa nueva`, null, { meses, viajesActualizados })
+                .catch((e: any) => console.error('logAction tarifas/viajes:', e?.message || e));
+        }
     } catch (e: any) {
         console.error('POST tarifas:', e);
         res.status(500).json({ error: e?.message || 'Error' });
@@ -10090,9 +10094,10 @@ app.delete('/api/v1/trips/:id', async (req, res) => {
             await prisma.route.delete({ where: { id: linked.id } });
         }
         await prisma.trip.delete({ where: { id } });
-        await logAction(req, 'DELETE', 'trip', id, before?.driver || String(id), before, null);
-        io.emit('trip:deleted', { id });
         res.json({ success: true });
+        io.emit('trip:deleted', { id });
+        logAction(req, 'DELETE', 'trip', id, before?.driver || String(id), before, null)
+            .catch((e: any) => console.error('logAction DELETE trip:', e?.message || e));
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -10134,11 +10139,12 @@ app.post('/api/v1/trips/bulk-delete', async (req: any, res: any) => {
             total.viajes += (await prisma.trip.deleteMany({ where: { id: { in: lote } } })).count;
         }
 
-        // Una sola entrada de auditoria con el resumen, no una por viaje.
-        await logAction(req, 'DELETE', 'trip', 0, `${total.viajes} viajes (borrado masivo)`,
-            { ids, pedidos: ids.length }, total);
-        io.emit('trips:bulkDeleted', { ids, total });
         res.json({ success: true, pedidos: ids.length, ...total });
+        io.emit('trips:bulkDeleted', { ids, total });
+        // Una sola entrada de auditoria con el resumen, no una por viaje.
+        logAction(req, 'DELETE', 'trip', 0, `${total.viajes} viajes (borrado masivo)`,
+            { ids, pedidos: ids.length }, total)
+            .catch((e: any) => console.error('logAction bulk-delete:', e?.message || e));
     } catch (e: any) {
         console.error('bulk-delete trips:', e);
         res.status(500).json({ error: e?.message || 'Error borrando los viajes' });
