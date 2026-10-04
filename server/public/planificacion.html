@@ -22750,54 +22750,82 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
         }
 
-        /** Crea los viajes contra el servidor con la ventana ya cerrada. */
+        /** Crea los viajes contra el servidor con la ventana ya cerrada.
+         *
+         *  Un dia solo va por POST /trips, que es el camino de siempre. Varios
+         *  dias van en UNA sola llamada a /trips/bulk: mandar 31 pedidos en
+         *  paralelo tardaba 8,4 segundos, porque el navegador abre de a 6
+         *  conexiones y el servidor tenia que revisar duplicados uno por uno. */
         async function crearViajesDeFondo(payloads, paradas, quien) {
-            const mandar = (lista, permitirDuplicado) => Promise.allSettled(lista.map(p =>
-                fetch(`${API_URL}/trips`, {
-                    method: 'POST',
-                    headers: getActorHeaders(),
-                    body: JSON.stringify(permitirDuplicado ? { ...p, permitirDuplicado: true } : p)
-                })
-            ));
             try {
-                let results = await mandar(payloads, false);
+                const r = payloads.length === 1
+                    ? await _crearDeAUno(payloads)
+                    : await _crearEnTanda(payloads);
 
-                // Los que el servidor rechazo por repetidos. Si de verdad hay
-                // que cargarlos igual (una salida extra sin numero de vuelta),
-                // se pregunta una sola vez y se reintentan solo esos. El
-                // calendario ya los habia marcado en ambar antes de crear.
-                const repetidosIdx = results
-                    .map((r, i) => (r.status === 'fulfilled' && r.value.status === 409) ? i : -1)
-                    .filter(i => i >= 0);
-                if (repetidosIdx.length) {
-                    const cuales = repetidosIdx.length === payloads.length
-                        ? `Los ${repetidosIdx.length} viajes ya están cargados`
-                        : `${repetidosIdx.length} de los ${payloads.length} ya están cargados`;
-                    if (confirm(`${cuales}. ¿Los cargo igual? (solo si es una salida extra del mismo reparto y chofer)`)) {
-                        const reintento = await mandar(repetidosIdx.map(i => payloads[i]), true);
-                        reintento.forEach((r, k) => { results[repetidosIdx[k]] = r; });
-                    }
-                }
-
-                const fulfilled = results.filter(r => r.status === 'fulfilled' && r.value.ok);
-                const yaEstaban = results.filter(r => r.status === 'fulfilled' && r.value.status === 409).length;
-                const creados = (await Promise.all(fulfilled.map(r => r.value.json().catch(() => null))))
-                    .filter(t => t && t.id != null);
-
-                _ponerViajesEnLaTabla(creados);
-                _avisarCreacion(creados, payloads.length, yaEstaban, quien);
+                _ponerViajesEnLaTabla(r.creados);
+                _avisarCreacion(r.creados, payloads.length, r.yaEstaban, quien);
                 // Las paradas son una escritura aparte: el viaje ya existe, asi
                 // que no hay por que hacer esperar a nadie por ellas.
-                _guardarParadasDeFondo(creados, paradas);
+                _guardarParadasDeFondo(r.creados, paradas);
 
                 if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
-                loadWeeklyData({ silencioso: creados.length > 0 });
+                loadWeeklyData({ silencioso: r.creados.length > 0 });
             } catch (err) {
                 console.error(err);
                 if (typeof addNotification === 'function') {
                     addNotification('critical', 'No se pudieron crear los viajes', String(err?.message || err));
                 }
             }
+        }
+
+        async function _crearDeAUno(payloads) {
+            const mandar = (p, permitirDuplicado) => fetch(`${API_URL}/trips`, {
+                method: 'POST', headers: getActorHeaders(),
+                body: JSON.stringify(permitirDuplicado ? { ...p, permitirDuplicado: true } : p)
+            });
+            let res = await mandar(payloads[0], false);
+            if (res.status === 409) {
+                if (!confirm('Ese viaje ya está cargado. ¿Lo cargo igual? (solo si es una salida extra del mismo reparto y chofer)')) {
+                    return { creados: [], yaEstaban: 1 };
+                }
+                res = await mandar(payloads[0], true);
+            }
+            if (!res.ok) throw new Error('El servidor rechazó la carga (' + res.status + ')');
+            const t = await res.json().catch(() => null);
+            return { creados: t && t.id != null ? [t] : [], yaEstaban: 0 };
+        }
+
+        async function _crearEnTanda(payloads) {
+            const pedir = (lista, permitirDuplicado) => fetch(`${API_URL}/trips/bulk`, {
+                method: 'POST', headers: getActorHeaders(),
+                body: JSON.stringify({ trips: lista, permitirDuplicado: !!permitirDuplicado })
+            }).then(async (res) => {
+                const d = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(d.error || ('El servidor rechazó la carga (' + res.status + ')'));
+                return d;
+            });
+
+            const d = await pedir(payloads, false);
+            let creados = Array.isArray(d.trips) ? d.trips.filter(t => t && t.id != null) : [];
+            let yaEstaban = Number(d.salteadosPorDuplicado) || 0;
+
+            // Los que el servidor saltéo por repetidos. Si de verdad hay que
+            // cargarlos igual (una salida extra sin número de vuelta), se
+            // pregunta una sola vez y se reintentan solo esos. El calendario ya
+            // los había marcado en ámbar antes de crear.
+            const repes = Array.isArray(d.indicesRepetidos) ? d.indicesRepetidos : [];
+            if (repes.length) {
+                const cuales = repes.length === payloads.length
+                    ? `Los ${repes.length} viajes ya están cargados`
+                    : `${repes.length} de los ${payloads.length} ya están cargados`;
+                if (confirm(`${cuales}. ¿Los cargo igual? (solo si es una salida extra del mismo reparto y chofer)`)) {
+                    const d2 = await pedir(repes.map(i => payloads[i]), true);
+                    const mas = Array.isArray(d2.trips) ? d2.trips.filter(t => t && t.id != null) : [];
+                    creados = creados.concat(mas);
+                    yaEstaban = Math.max(0, yaEstaban - mas.length);
+                }
+            }
+            return { creados, yaEstaban };
         }
 
         /** Guarda la edicion con la ventana ya cerrada. */

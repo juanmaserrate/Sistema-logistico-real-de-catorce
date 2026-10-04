@@ -11091,48 +11091,126 @@ app.patch('/api/v1/clients/:id/requires-proof', async (req, res) => {
 });
 
 // ── Trips bulk import ─────────────────────────────────────────────────────────
+/** Crea muchos viajes de una sola vez.
+ *
+ *  Antes recorria la lista de a uno: por cada viaje preguntaba a la base si ya
+ *  estaba cargado y despues lo insertaba. Para 31 dias eran 62 idas y vueltas
+ *  a la base, una atras de la otra. Ahora son DOS: una consulta que trae todo
+ *  lo que ya hay en ese rango de fechas, y un unico insert.
+ *
+ *  POST /api/v1/trips/bulk { trips: [...], permitirDuplicado? } */
 app.post('/api/v1/trips/bulk', async (req, res) => {
     const rows: any[] = Array.isArray(req.body?.trips) ? req.body.trips : [];
-    if (!rows.length) return res.status(400).json({ error: 'El array trips está vacío' });
+    if (!rows.length) return res.status(400).json({ error: 'El array trips esta vacio' });
+    // El importador de Excel puede traer un mes entero de golpe.
+    if (rows.length > 2000) return res.status(400).json({ error: 'Maximo 2000 viajes por tanda' });
+    const permitirDuplicado = req.body?.permitirDuplicado === true;
 
-    let created = 0;
-    const errors: { row: number; error: string }[] = [];
-    const duplicados: any[] = [];
-    // Lo ya creado en esta misma tanda, para que la carga no se duplique a si
-    // misma si viene el mismo viaje repetido en el archivo.
-    const enEstaTanda = new Set<string>();
-    const normFila = (r: any) => {
-        const n = (v: any) => String(v || '').trim().toUpperCase()
-            .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+    const norm = (v: any) => String(v || '').trim().toUpperCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+    const claveDe = (r: any) => {
         const d = new Date(r.date);
         return [isNaN(d.getTime()) ? '' : d.toISOString().slice(0, 10),
-                n(r.reparto), n(r.driver), Number(r.vuelta) || 1].join(' | ');
+                norm(r.reparto), norm(r.driver), Number(r.vuelta) || 1].join(' | ');
     };
 
-    for (let i = 0; i < rows.length; i++) {
-        try {
-            const row = rows[i];
-            if (!row.date) { errors.push({ row: i + 1, error: 'Falta fecha' }); continue; }
+    try {
+        const errors: { row: number; error: string }[] = [];
+        const duplicados: any[] = [];
 
-            const clave = normFila(row);
-            if (enEstaTanda.has(clave)) {
-                duplicados.push({ row: i + 1, viaje: clave, motivo: 'repetido dentro del mismo archivo' });
+        // ── 1) Una sola consulta: todo lo que ya hay en el rango ───────────
+        const fechas = rows.map((r) => new Date(r.date)).filter((d) => !isNaN(d.getTime()));
+        if (!fechas.length) return res.status(400).json({ error: 'Ningun viaje trae una fecha valida' });
+        const dias = fechas.map((d) => d.toISOString().slice(0, 10)).sort();
+        const yaEstan = new Map<string, any>();
+        if (!permitirDuplicado) {
+            const existentes = await prisma.trip.findMany({
+                where: {
+                    date: {
+                        gte: utcDayRange(dias[0]).start,
+                        lte: utcDayRange(dias[dias.length - 1]).end
+                    }
+                },
+                select: { id: true, date: true, reparto: true, driver: true, vuelta: true }
+            });
+            for (const t of existentes) yaEstan.set(claveDe(t), t);
+        }
+
+        // ── 2) Se arma cada viaje en memoria ──────────────────────────────
+        // La tarifa se busca una sola vez por proveedor y mes: todos los viajes
+        // de una tanda suelen compartirlos, y asi no se repite la consulta.
+        const tarifasVistas = new Map<string, number | null>();
+        const enEstaTanda = new Set<string>();
+        const aCrear: any[] = [];
+        const saltadas: number[] = [];
+
+        for (let i = 0; i < rows.length; i++) {
+            const row = { ...rows[i] };
+            if (!row.date || isNaN(new Date(row.date).getTime())) {
+                errors.push({ row: i + 1, error: 'Falta la fecha o es invalida' });
                 continue;
             }
-            const repetido = await viajeYaCargado(row);
+            const clave = claveDe(row);
+            if (enEstaTanda.has(clave)) {
+                duplicados.push({ row: i + 1, viaje: clave, motivo: 'repetido dentro de la misma tanda' });
+                saltadas.push(i);
+                continue;
+            }
+            const repetido = yaEstan.get(clave);
             if (repetido) {
                 duplicados.push({ row: i + 1, viaje: clave, motivo: 'ya estaba cargado', tripId: repetido.id });
+                saltadas.push(i);
                 continue;
             }
 
-            await prisma.trip.create({ data: { ...row, createdAt: undefined, updatedAt: undefined } });
+            if (row.isManual === true) row.assignedMobileUser = null;
+            if (String(row.contractType || '').toLowerCase() === 'tercerizado' && !(Number(row.value) > 0)) {
+                const k = norm(row.provider) + '|' + norm(row.reparto) + '|' + mesDeLaFecha(row.date);
+                if (!tarifasVistas.has(k)) {
+                    const tar = await tarifaDelViaje(row.provider, row.reparto, row.date);
+                    tarifasVistas.set(k, tar ? tar.valor : null);
+                }
+                const valor = tarifasVistas.get(k);
+                if (valor) row.value = valor;
+            }
+            row.subzona = subzonaDelViaje(row.reparto, row.zone || row.locality, row.contractType);
+            delete row.createdAt;
+            delete row.updatedAt;
+            delete row.permitirDuplicado;
+
             enEstaTanda.add(clave);
-            created++;
-        } catch (e: any) {
-            errors.push({ row: i + 1, error: e?.message || 'Error desconocido' });
+            aCrear.push(row);
         }
+
+        // ── 3) Un unico insert, que devuelve los viajes creados ───────────
+        let creados: any[] = [];
+        if (aCrear.length) {
+            creados = await (prisma.trip as any).createManyAndReturn({ data: aCrear });
+        }
+
+        res.json({
+            created: creados.length,
+            trips: creados,
+            errors,
+            total: rows.length,
+            salteadosPorDuplicado: duplicados.length,
+            duplicados,
+            // Los indices de la lista original que NO se crearon por repetidos:
+            // sirven para reintentar solo esos con permitirDuplicado.
+            indicesRepetidos: saltadas
+        });
+
+        // Despues de contestar: avisos y auditoria no cambian la respuesta.
+        for (const t of creados) io.emit('trip:created', { trip: t });
+        if (creados.length) {
+            logAction(req, 'CREATE', 'trip', 0, `${creados.length} viajes en una tanda`, null,
+                      { ids: creados.map((t: any) => t.id) })
+                .catch((e: any) => console.error('logAction bulk trips:', e?.message || e));
+        }
+    } catch (e: any) {
+        console.error('POST trips/bulk:', e);
+        res.status(500).json({ error: e?.message || 'Error creando los viajes' });
     }
-    res.json({ created, errors, total: rows.length, salteadosPorDuplicado: duplicados.length, duplicados });
 });
 
 // ── WebSocket: rooms por chofer ───────────────────────────────────────────────
