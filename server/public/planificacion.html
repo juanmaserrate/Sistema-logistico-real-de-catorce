@@ -23142,8 +23142,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 const generic = ['EXTERNO', 'R14 LOG', 'PROPIO'];
                 provInpEdit.value = (p && !generic.includes(p.toUpperCase())) ? p : '';
             }
-            // Cada unidad del viaje por separado: el campo puede traer varias
-            for (const u of unidadesDeNegocio(trip.businessUnit)) ensureBusinessUnitInCatalog(u);
+            // Abrir un viaje NO toca el catalogo. Antes, cada unidad del viaje
+            // se volvia a agregar sola: alcanzaba con que alguien abriera un
+            // viaje viejo para que reapareciera una unidad recien borrada.
+            // La unidad del viaje igual se ve en el desplegable, porque
+            // populateBusinessUnitSelect la suma a la lista que muestra.
+            // Al catalogo solo se escribe cuando el operador lo pide: con el
+            // boton de agregar unidad, o desde Ajustes > Listas.
             populateBusinessUnitSelect(trip.businessUnit || 'DMC');
 
             document.getElementById('new-trip-driver').value = (trip.driver || '').toUpperCase();
