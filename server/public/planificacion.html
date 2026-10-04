@@ -587,25 +587,6 @@
 
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
                     <!-- Reglas por reparto -->
-                    <div class="card-dark p-8 flex flex-col">
-                        <div class="flex items-start gap-4">
-                            <div class="w-12 h-12 rounded-2xl bg-indigo-50 text-indigo-600 flex items-center justify-center shrink-0">
-                                <i data-lucide="list-checks" class="w-6 h-6"></i>
-                            </div>
-                            <div class="min-w-0">
-                                <h4 class="text-base font-bold text-[#1B2559]">Reglas por reparto</h4>
-                                <p class="text-xs text-[#A3AED0] font-medium mt-1 leading-relaxed">Quién hace cada reparto, si es propio o tercerizado, con qué proveedor y a qué tarifa. También los choferes que trabajan sin reparto fijo. Cambian mes a mes.</p>
-                            </div>
-                        </div>
-                        <div class="mt-5">
-                            <span id="ajustes-reglas-resumen" class="inline-block px-3 py-1.5 rounded-xl bg-[#F4F7FE] text-[10px] font-bold text-[#A3AED0] uppercase tracking-widest">Cargando...</span>
-                        </div>
-                        <p class="text-[11px] text-[#A3AED0] font-medium mt-4 leading-relaxed">Al crear un viaje, el sistema sugiere contrato, proveedor y tarifa según estas reglas. Todo queda editable.</p>
-                        <div class="flex-1"></div>
-                        <button onclick="abrirReglasRepartos()" class="mt-6 w-full px-6 py-3.5 rounded-2xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2 uppercase tracking-widest">
-                            <i data-lucide="pencil" class="w-4 h-4"></i> Editar reglas
-                        </button>
-                    </div>
 
                     <!-- Campos del viaje -->
                     <div class="card-dark p-8 flex flex-col">
@@ -20133,25 +20114,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 const el = document.getElementById(id);
                 if (el) el.textContent = texto;
             };
-            // Reglas del mes en curso
-            try {
-                await cargarReglasRepartos();
-                const meses = Object.keys(_reglasRepartos).sort();
-                const hoy = mesDeFecha(null);
-                const elegido = _reglasRepartos[hoy] ? hoy : meses[meses.length - 1];
-                if (!elegido) {
-                    chip('ajustes-reglas-resumen', 'Sin reglas cargadas');
-                } else {
-                    const datos = reglasDelMes(null);
-                    const nRep = Object.keys(datos.repartos || {}).length;
-                    const nCho = (datos.choferes || []).length;
-                    const partes = [nRep + (nRep === 1 ? ' reparto' : ' repartos')];
-                    if (nCho) partes.push(nCho + (nCho === 1 ? ' chofer suelto' : ' choferes sueltos'));
-                    chip('ajustes-reglas-resumen', nombreDeMes(elegido) + ' · ' + partes.join(' · '));
-                }
-            } catch (_) {
-                chip('ajustes-reglas-resumen', 'No se pudieron leer');
-            }
             // Campos del formulario
             try {
                 await cargarConfigCampos();
@@ -20176,13 +20138,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
             if (window.lucide) lucide.createIcons();
         }
-        // ═══ REGLAS POR REPARTO ═════════════════════════════════════════════
-        // Quien hace cada reparto, si es propio o tercerizado, con que proveedor
-        // y a que tarifa. Cambian mes a mes, asi que se guardan por mes:
-        //   { "2026-09": { "R1": { tipo, chofer, proveedor, tarifa, auxiliares } } }
-
-        let _reglasRepartos = {};
-        let _mesReglas = '';
+        // ═══ TARIFAS Y AYUDANTES DE FECHA ════════════════════
+        // Lo que queda de lo que era "Reglas por reparto". El modulo se
+        // borro entero: el reparto ya no decide nada. Quien hace cada viaje
+        // lo dice la ficha del chofer, y cuanto vale, la tabla de Tarifas.
 
         /** "2026-09" de una fecha. Vacio = el mes de hoy.
          *  Si viene como "2026-10-01" se leen los numeros tal cual: pasarlo por
@@ -20214,16 +20173,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             return comunes >= 2;
         }
 
-        async function cargarReglasRepartos() {
-            try {
-                const res = await fetch(`${API_URL}/settings/reglas_repartos`, { headers: getActorHeaders() });
-                _reglasRepartos = (res.ok ? await res.json() : null) || {};
-            } catch (_) {
-                _reglasRepartos = {};
-            }
-            return _reglasRepartos;
-        }
-
         /** La tabla de Tarifas por proveedor: { "2026-10": { "JAVIER GAREIS": 290000 } }.
          *  Es la UNICA fuente del precio de un viaje tercerizado. Antes el
          *  modal no la miraba y sacaba el precio de la regla del reparto, que
@@ -20237,30 +20186,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 _tablaTarifas = {};
             }
             return _tablaTarifas;
-        }
-
-        /** Las reglas del mes que corresponde a esa fecha. Si ese mes no se cargo,
-         *  vale el ultimo cargado antes. */
-        function reglasDelMes(fechaIso) {
-            const meses = Object.keys(_reglasRepartos).sort();
-            if (!meses.length) return { repartos: {}, choferes: [] };
-            const mes = mesDeFecha(fechaIso);
-            const elegido = _reglasRepartos[mes] ? mes : (meses.filter(m => m <= mes).pop() || meses[meses.length - 1]);
-            const delMes = _reglasRepartos[elegido] || {};
-            // Formato viejo: el mes era directamente el mapa de repartos
-            if (delMes.repartos || delMes.choferes) {
-                return { repartos: delMes.repartos || {}, choferes: delMes.choferes || [] };
-            }
-            return { repartos: delMes, choferes: [] };
-        }
-
-        /** La regla de un reparto en la fecha del viaje. */
-        function reglaDeReparto(reparto, fechaIso) {
-            const clave = String(reparto || '').trim().toUpperCase();
-            if (!clave) return null;
-            const { repartos } = reglasDelMes(fechaIso);
-            const m = clave.match(/R\s*(\d{1,2})\s*$/);
-            return repartos[clave] || (m ? repartos['R' + Number(m[1])] : null) || null;
         }
 
         /** La tarifa de un proveedor en el mes del viaje, de la tabla de Tarifas.
@@ -20280,189 +20205,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             return null;
         }
 
-        /** Chofer sin reparto propio: solo se mira si el reparto no tiene regla. */
-        function reglaDeChofer(chofer, fechaIso) {
-            if (!String(chofer || '').trim()) return null;
-            const { choferes } = reglasDelMes(fechaIso);
-            return (choferes || []).find(c => mismoNombre(c.chofer, chofer)) || null;
-        }
-
-        // ── El modal ────────────────────────────────────────────────────────
-        async function abrirReglasRepartos() {
-            await cargarReglasRepartos();
-            const meses = Object.keys(_reglasRepartos).sort();
-            const hoy = mesDeFecha(null);
-            if (!meses.includes(hoy)) meses.push(hoy);
-            meses.sort();
-            _mesReglas = meses.includes(hoy) ? hoy : meses[meses.length - 1];
-            const sel = document.getElementById('reglas-mes');
-            sel.innerHTML = meses.map(m => `<option value="${m}">${nombreDeMes(m)}</option>`).join('');
-            sel.value = _mesReglas;
-            renderReglas();
-            renderChoferesSueltos();
-            document.getElementById('reglas-repartos-modal').classList.remove('hidden');
-            if (window.lucide) lucide.createIcons();
-        }
-
         function nombreDeMes(clave) {
             const nombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
             const [a, m] = String(clave).split('-');
             return (nombres[Number(m) - 1] || clave) + ' ' + a;
         }
 
-        function cerrarReglasRepartos() {
-            document.getElementById('reglas-repartos-modal').classList.add('hidden');
-        }
-
-        function cambiarMesReglas() {
-            _mesReglas = document.getElementById('reglas-mes').value;
-            renderReglas();
-            renderChoferesSueltos();
-        }
-
-        function ordenReparto(k) {
-            const m = String(k).match(/(\d+)/);
-            return m ? Number(m[1]) : 999;
-        }
-
-        /** El bloque del mes que se esta editando, siempre en el formato nuevo. */
-        function bloqueDelMes() {
-            let b = _reglasRepartos[_mesReglas];
-            if (!b) b = _reglasRepartos[_mesReglas] = { repartos: {}, choferes: [] };
-            // Formato viejo: el mes era directamente el mapa de repartos
-            if (!b.repartos && !b.choferes) b = _reglasRepartos[_mesReglas] = { repartos: b, choferes: [] };
-            if (!b.repartos) b.repartos = {};
-            if (!b.choferes) b.choferes = [];
-            return b;
-        }
-
-        function renderReglas() {
-            const body = document.getElementById('reglas-tbody');
-            const delMes = bloqueDelMes().repartos;
-            const claves = Object.keys(delMes).sort((a, b) => ordenReparto(a) - ordenReparto(b));
-            const inp = 'w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1.5 text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-500';
-            body.innerHTML = claves.length ? claves.map(k => {
-                const r = delMes[k] || {};
-                return `<tr class="hover:bg-[#FAFBFF]">
-                    <td class="px-3 py-2 text-xs font-black text-[#1B2559]">${escapeHtml(k)}</td>
-                    <td class="px-3 py-2">
-                        <select class="${inp}" onchange="editarRegla('${k}','tipo',this.value)">
-                            <option value="" ${!r.tipo ? 'selected' : ''}>—</option>
-                            <option value="Propio" ${r.tipo === 'Propio' ? 'selected' : ''}>Propio</option>
-                            <option value="Tercerizado" ${r.tipo === 'Tercerizado' ? 'selected' : ''}>Tercerizado</option>
-                        </select>
-                    </td>
-                    <td class="px-3 py-2"><input class="${inp}" value="${escapeHtml(r.chofer || '')}" oninput="editarRegla('${k}','chofer',this.value)"></td>
-                    <td class="px-3 py-2"><input class="${inp}" value="${escapeHtml(r.proveedor || '')}" oninput="editarRegla('${k}','proveedor',this.value)"></td>
-                    <td class="px-3 py-2"><input type="number" class="${inp} text-right" value="${r.tarifa ?? ''}" oninput="editarRegla('${k}','tarifa',this.value)"></td>
-                    <td class="px-3 py-2"><input class="${inp}" value="${escapeHtml(r.auxiliares || '')}" oninput="editarRegla('${k}','auxiliares',this.value)"></td>
-                    <td class="px-3 py-2 text-right">
-                        <button onclick="borrarRegla('${k}')" class="text-rose-500 hover:text-rose-700" title="Sacar"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-                    </td>
-                </tr>`;
-            }).join('') : '<tr><td colspan="7" class="px-3 py-6 text-[11px] text-[#A3AED0] font-medium">Este mes no tiene reglas. Podés copiarlas del mes anterior.</td></tr>';
-            document.getElementById('reglas-aviso').textContent = claves.length ? `${claves.length} repartos en ${nombreDeMes(_mesReglas)}` : '';
-            if (window.lucide) lucide.createIcons();
-        }
-
-        function editarRegla(reparto, campo, valor) {
-            const repartos = bloqueDelMes().repartos;
-            const r = repartos[reparto] || {};
-            r[campo] = campo === 'tarifa' ? (valor === '' ? null : Number(valor)) : valor;
-            repartos[reparto] = r;
-        }
-
-        // ── Choferes sin reparto propio ─────────────────────────────────────
-        function renderChoferesSueltos() {
-            const body = document.getElementById('reglas-choferes-tbody');
-            if (!body) return;
-            const lista = bloqueDelMes().choferes;
-            const inp = 'w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1.5 text-[11px] font-bold outline-none focus:ring-2 focus:ring-indigo-500';
-            body.innerHTML = lista.length ? lista.map((c, i) => `<tr class="hover:bg-[#FAFBFF]">
-                <td class="px-3 py-2"><input class="${inp}" value="${escapeHtml(c.chofer || '')}" oninput="editarChoferSuelto(${i},'chofer',this.value)"></td>
-                <td class="px-3 py-2">
-                    <select class="${inp}" onchange="editarChoferSuelto(${i},'tipo',this.value)">
-                        <option value="" ${!c.tipo ? 'selected' : ''}>—</option>
-                        <option value="Propio" ${c.tipo === 'Propio' ? 'selected' : ''}>Propio</option>
-                        <option value="Tercerizado" ${c.tipo === 'Tercerizado' ? 'selected' : ''}>Tercerizado</option>
-                    </select>
-                </td>
-                <td class="px-3 py-2"><input class="${inp}" value="${escapeHtml(c.proveedor || '')}" oninput="editarChoferSuelto(${i},'proveedor',this.value)"></td>
-                <td class="px-3 py-2"><input type="number" class="${inp} text-right" value="${c.tarifa ?? ''}" oninput="editarChoferSuelto(${i},'tarifa',this.value)"></td>
-                <td class="px-3 py-2 text-right">
-                    <button onclick="borrarChoferSuelto(${i})" class="text-rose-500 hover:text-rose-700"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
-                </td>
-            </tr>`).join('') : '<tr><td colspan="5" class="px-3 py-4 text-[11px] text-[#A3AED0] font-medium">Ninguno. Se usan solo cuando el reparto del viaje no tiene regla.</td></tr>';
-            if (window.lucide) lucide.createIcons();
-        }
-
-        function editarChoferSuelto(i, campo, valor) {
-            const lista = bloqueDelMes().choferes;
-            if (!lista[i]) return;
-            lista[i][campo] = campo === 'tarifa' ? (valor === '' ? null : Number(valor)) : valor;
-        }
-
-        function borrarChoferSuelto(i) {
-            const lista = bloqueDelMes().choferes;
-            if (!confirm(`¿Sacar a ${lista[i]?.chofer || 'este chofer'} de las reglas de ${nombreDeMes(_mesReglas)}?`)) return;
-            lista.splice(i, 1);
-            renderChoferesSueltos();
-        }
-
-        function agregarChoferSuelto() {
-            const inp = document.getElementById('regla-nuevo-chofer');
-            const nombre = (inp.value || '').trim();
-            if (!nombre) return;
-            bloqueDelMes().choferes.push({ chofer: nombre, tipo: 'Tercerizado', proveedor: '', tarifa: null });
-            inp.value = '';
-            renderChoferesSueltos();
-        }
-
-        function borrarRegla(reparto) {
-            if (!confirm(`¿Sacar ${reparto} de las reglas de ${nombreDeMes(_mesReglas)}?`)) return;
-            delete bloqueDelMes().repartos[reparto];
-            renderReglas();
-        }
-
-        function agregarFilaRegla() {
-            const inp = document.getElementById('regla-nuevo-reparto');
-            const nombre = (inp.value || '').trim().toUpperCase();
-            if (!nombre) return;
-            const repartos = bloqueDelMes().repartos;
-            if (repartos[nombre]) return alert(nombre + ' ya está en la lista.');
-            repartos[nombre] = { tipo: '', chofer: '', proveedor: '', tarifa: null, auxiliares: '' };
-            inp.value = '';
-            renderReglas();
-        }
-
-        function copiarMesAnteriorReglas() {
-            const meses = Object.keys(_reglasRepartos).sort();
-            const anterior = meses.filter(m => m < _mesReglas).pop();
-            if (!anterior) return alert('No hay un mes anterior cargado.');
-            const actual = bloqueDelMes().repartos;
-            if (Object.keys(actual).length && !confirm(`Se van a pisar las reglas de ${nombreDeMes(_mesReglas)} con las de ${nombreDeMes(anterior)}. ¿Seguir?`)) return;
-            _reglasRepartos[_mesReglas] = JSON.parse(JSON.stringify(_reglasRepartos[anterior]));
-            bloqueDelMes();
-            renderReglas();
-            renderChoferesSueltos();
-        }
-
-        async function guardarReglasRepartos() {
-            try {
-                const res = await fetch(`${API_URL}/settings`, {
-                    method: 'POST',
-                    headers: getActorHeaders(),
-                    body: JSON.stringify({ key: 'reglas_repartos', value: _reglasRepartos })
-                });
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                cerrarReglasRepartos();
-                if (typeof addNotification === 'function') {
-                    addNotification('success', 'Reglas por reparto', 'Guardado. Se aplican a los viajes nuevos.');
-                }
-            } catch (e) {
-                alert('No se pudo guardar: ' + e.message);
-            }
-        }
 
         // ═══ CAMPOS DEL VIAJE ═══════════════════════════════════════════════
         // El operador elige que campos ve al crear un viaje y puede sumar los
@@ -22059,17 +21807,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             // 1) Quien es el chofer
             const contratoFicha = _driverContractMap.get(chofer) || null;
             const provFicha = _driverProviderMap.get(chofer) || null;
-            const suelto = chofer ? reglaDeChofer(chofer, fecha) : null;
 
             let sugerido = null, deDonde = null, proveedor = '';
             if (contratoFicha) {
                 sugerido = contratoFicha === 'PROPIO' ? 'Propio' : 'Tercerizado';
                 deDonde = `la ficha de ${chofer}`;
                 proveedor = sugerido === 'Tercerizado' ? (provFicha?.providerName || '') : '';
-            } else if (suelto?.tipo) {
-                sugerido = suelto.tipo;
-                deDonde = `la regla de ${chofer}`;
-                proveedor = sugerido === 'Tercerizado' ? (suelto.proveedor || '') : '';
             }
 
             if (!sugerido) {
@@ -22086,8 +21829,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         aviso.classList.add('hidden');
                     }
                 }
-                avisarChoferDistinto(reparto);
-                return;
+                    return;
             }
 
             sel.value = sugerido;
@@ -22119,24 +21861,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 aviso.dataset.origen = contratoFicha ? 'ficha' : 'chofer';
                 aviso.classList.remove('hidden');
             }
-            avisarChoferDistinto(reparto);
         }
 
-        /** Si el chofer elegido no es el habitual del reparto, se avisa. No se
-         *  bloquea nada: los choferes cambian y el operador sabe por que. */
-        function avisarChoferDistinto(reparto) {
-            const aviso = document.getElementById('new-trip-chofer-regla');
-            if (!aviso) return;
-            const fecha = document.getElementById('new-trip-date')?.value || '';
-            const regla = reglaDeReparto(reparto || document.getElementById('new-trip-reparto')?.value, fecha);
-            const elegido = (document.getElementById('new-trip-driver')?.value || '').trim();
-            if (!regla?.chofer || !elegido || mismoNombre(regla.chofer, elegido)) {
-                aviso.classList.add('hidden');
-                return;
-            }
-            aviso.textContent = `El chofer habitual de este reparto es ${regla.chofer}`;
-            aviso.classList.remove('hidden');
-        }
 
         async function onNewTripRepartoChange() {
             const reparto = (document.getElementById('new-trip-reparto')?.value || '').trim();
@@ -22889,9 +22615,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             refrescarAvisoChoferNuevo('');
             // Los campos que el operador eligio ver, y los suyos propios
             cargarConfigCampos().then(() => { aplicarConfigCampos(); pintarCamposExtra(null); });
-            // El chofer habitual de cada reparto (solo para el aviso) y la
-            // tabla de Tarifas, que es de donde sale el precio del viaje.
-            cargarReglasRepartos();
+            // La tabla de Tarifas, que es de donde sale el precio del viaje.
             cargarTablaTarifas();
             resetTripDeliveryPanelForNewTrip();
         }
@@ -23060,7 +22784,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             // Cambia el chofer -> cambian los dias que ya tienen este viaje.
             if (typeof ntCalRender === 'function') ntCalRender();
             refrescarAvisoChoferNuevo(driverName);
-            avisarChoferDistinto(null);
             const provInp = document.getElementById('new-trip-provider');
             if (!document.getElementById('new-trip-contract')) return;
             // Una sola funcion decide, se elija primero el chofer o primero el
@@ -24572,70 +24295,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         </div>
     </div>
 
-    <!-- MODAL: REGLAS POR REPARTO -->
-    <div id="reglas-repartos-modal" class="modal-overlay hidden fixed inset-0 z-[70] flex items-center justify-center p-3" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
-        <div class="bg-white rounded-3xl w-[97vw] max-w-6xl max-h-[92vh] shadow-2xl overflow-hidden flex flex-col">
-            <div class="p-6 border-b border-[#F4F7FE] flex flex-wrap justify-between items-center gap-3 bg-[#F8FAFF]">
-                <div>
-                    <h3 class="font-black text-[#1B2559] uppercase tracking-widest text-sm">Reglas por reparto</h3>
-                    <p class="text-xs text-[#A3AED0] font-medium mt-1">Quién hace cada reparto, si es propio o tercerizado y a qué tarifa. Cambian mes a mes.</p>
-                </div>
-                <div class="flex items-center gap-2">
-                    <select id="reglas-mes" onchange="cambiarMesReglas()" class="bg-white border border-[#E0E5F2] rounded-xl px-4 py-2.5 text-xs font-bold text-[#1B2559] outline-none"></select>
-                    <button onclick="copiarMesAnteriorReglas()" class="px-4 py-2.5 rounded-xl bg-[#F4F7FE] text-[#1B2559] text-[10px] font-bold hover:bg-[#E0E5F2]">Copiar del mes anterior</button>
-                    <button onclick="cerrarReglasRepartos()" class="text-[#A3AED0] hover:text-[#1B2559] ml-2"><i data-lucide="x" class="w-5 h-5"></i></button>
-                </div>
-            </div>
-            <div class="p-6 overflow-auto custom-scrollbar flex-1">
-                <table class="w-full text-left">
-                    <thead class="bg-[#FAFBFF] sticky top-0">
-                        <tr class="text-[9px] font-black uppercase tracking-widest text-[#A3AED0]">
-                            <th class="px-3 py-2">Reparto</th>
-                            <th class="px-3 py-2">Tipo</th>
-                            <th class="px-3 py-2">Chofer</th>
-                            <th class="px-3 py-2">Proveedor</th>
-                            <th class="px-3 py-2 text-right">Tarifa</th>
-                            <th class="px-3 py-2">Auxiliares</th>
-                            <th class="px-3 py-2"></th>
-                        </tr>
-                    </thead>
-                    <tbody id="reglas-tbody" class="divide-y divide-[#F4F7FE]"></tbody>
-                </table>
-                <div class="mt-4 flex items-center gap-2">
-                    <input id="regla-nuevo-reparto" type="text" placeholder="R25" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold uppercase outline-none">
-                    <button onclick="agregarFilaRegla()" class="px-4 py-2.5 rounded-xl bg-[#F4F7FE] text-[#1B2559] text-[10px] font-bold hover:bg-[#E0E5F2]">Agregar reparto</button>
-                </div>
-
-                <div class="mt-8 border-t border-[#F4F7FE] pt-5">
-                    <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest mb-1">Choferes sin reparto</h4>
-                    <p class="text-[11px] text-[#A3AED0] font-medium mb-3">Para los que trabajan sin un reparto fijo. Se usan solo si el reparto del viaje no tiene regla.</p>
-                    <table class="w-full text-left">
-                        <thead class="bg-[#FAFBFF]">
-                            <tr class="text-[9px] font-black uppercase tracking-widest text-[#A3AED0]">
-                                <th class="px-3 py-2">Chofer</th>
-                                <th class="px-3 py-2">Tipo</th>
-                                <th class="px-3 py-2">Proveedor</th>
-                                <th class="px-3 py-2 text-right">Tarifa</th>
-                                <th class="px-3 py-2"></th>
-                            </tr>
-                        </thead>
-                        <tbody id="reglas-choferes-tbody" class="divide-y divide-[#F4F7FE]"></tbody>
-                    </table>
-                    <div class="mt-3 flex items-center gap-2">
-                        <input id="regla-nuevo-chofer" type="text" placeholder="Nombre del chofer" class="w-56 bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold outline-none">
-                        <button onclick="agregarChoferSuelto()" class="px-4 py-2.5 rounded-xl bg-[#F4F7FE] text-[#1B2559] text-[10px] font-bold hover:bg-[#E0E5F2]">Agregar chofer</button>
-                    </div>
-                </div>
-            </div>
-            <div class="p-5 border-t border-[#F4F7FE] bg-[#F8FAFF] flex justify-between items-center gap-3">
-                <span id="reglas-aviso" class="text-[11px] font-bold text-[#A3AED0]"></span>
-                <div class="flex gap-3">
-                    <button onclick="cerrarReglasRepartos()" class="px-5 py-3 rounded-xl text-[11px] font-bold text-[#A3AED0] hover:text-[#1B2559]">Cerrar</button>
-                    <button onclick="guardarReglasRepartos()" class="px-6 py-3 rounded-xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200">GUARDAR</button>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- MODAL: CAMPOS DEL VIAJE -->
     <div id="campos-viaje-modal" class="modal-overlay hidden fixed inset-0 z-[70] flex items-center justify-center p-3" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
@@ -24867,7 +24526,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
                             </div>
                             <datalist id="new-trip-driver-list"></datalist>
-                            <p id="new-trip-chofer-regla" class="hidden mt-1 text-[10px] font-bold text-amber-600"></p>
                             <div id="new-trip-driver-new" class="hidden mt-2 flex items-center gap-2">
                                 <span class="text-[10px] font-bold text-amber-700 flex-1">«<span id="new-trip-driver-new-name"></span>» no está en la lista. ¿Lo guardo?</span>
                                 <button type="button" onclick="guardarChoferNuevo()"

@@ -6649,26 +6649,6 @@ app.post('/api/admin/renombrar-persona', async (req: any, res: any) => {
             .filter((x: any) => norm(`${x.firstName || ''} ${x.lastName}`) === objetivo || norm(x.lastName) === objetivo)
             .map((x: any) => ({ id: x.id, month: x.month, firstName: x.firstName, lastName: x.lastName }));
 
-        const filaReglas = await prisma.appSettings.findUnique({ where: { key: 'reglas_repartos' } });
-        const reglasConEseNombre: any[] = [];
-        if (filaReglas) {
-            try {
-                const todo = JSON.parse(filaReglas.value) || {};
-                for (const [mes, bloque] of Object.entries<any>(todo)) {
-                    const repartos = bloque?.repartos || bloque || {};
-                    for (const [rep, r] of Object.entries<any>(repartos)) {
-                        if (norm(r?.chofer) === objetivo) reglasConEseNombre.push({ mes, reparto: rep, campo: 'chofer' });
-                        if (String(r?.auxiliares || '').split(',').some((x) => norm(x) === objetivo)) {
-                            reglasConEseNombre.push({ mes, reparto: rep, campo: 'auxiliares' });
-                        }
-                    }
-                    for (const c of (bloque?.choferes || [])) {
-                        if (norm(c?.chofer) === objetivo) reglasConEseNombre.push({ mes, campo: 'chofer suelto' });
-                    }
-                }
-            } catch (_) { /* si no se puede leer, no se informa */ }
-        }
-
         // Cuanto se usa cada cuenta, para poder decidir cual conviene dejar
         const candidatas = [...usuariosACambiar, ...users.filter((u) => norm(u.fullName) === norm(a))];
         const usoDeCuentas: any[] = [];
@@ -6702,8 +6682,7 @@ app.post('/api/admin/renombrar-persona', async (req: any, res: any) => {
             usuariosConEseNombre: usuariosACambiar.map((u) => ({ username: u.username, antes: u.fullName, role: u.role })),
             ojo_usuariosQueYaSeLlamanAsi: usuariosYaConEseNombre,
             usoDeCuentas,
-            revisar_sueldos: sueldos,
-            revisar_reglasRepartos: reglasConEseNombre
+            revisar_sueldos: sueldos
         });
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error' });
@@ -6877,39 +6856,6 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
             orderBy: { id: 'asc' }
         });
 
-        // Mapa chofer -> proveedor, armado con las reglas del mes de cada viaje
-        type ReglaDeChofer = { tipo?: string; proveedor?: string };
-        const cacheMapa = new Map<string, Map<string, ReglaDeChofer>>();
-        const mapaDeChoferes = async (fecha: any): Promise<Map<string, ReglaDeChofer>> => {
-            const mes = mesDeLaFecha(fecha);
-            if (cacheMapa.has(mes)) return cacheMapa.get(mes)!;
-            const { repartos, choferes } = await reglasDelMes(fecha);
-            const mapa = new Map<string, ReglaDeChofer>();
-            const guardar = (nombre: any, r: any) => {
-                const n = String(nombre || '').trim();
-                if (!n) return;
-                const prev = mapa.get(n) || {};
-                mapa.set(n, {
-                    tipo: r?.tipo || prev.tipo,
-                    proveedor: r?.proveedor || prev.proveedor
-                });
-            };
-            for (const r of Object.values<any>(repartos || {})) guardar(r?.chofer, r);
-            // Los choferes sueltos pisan: son la regla propia de esa persona
-            for (const c of (choferes || [])) guardar(c?.chofer, c);
-            cacheMapa.set(mes, mapa);
-            return mapa;
-        };
-
-        /** La regla del chofer del viaje, buscada por nombre. */
-        const reglaDelChoferDelViaje = async (chofer: any, fecha: any): Promise<ReglaDeChofer | null> => {
-            const nombre = String(chofer || '').trim();
-            if (!nombre) return null;
-            const mapa = await mapaDeChoferes(fecha);
-            for (const [n, r] of mapa.entries()) if (mismoNombrePersona(n, nombre)) return r;
-            return null;
-        };
-
         const cambios: any[] = [];
         const salteados: any[] = [];
         const sinFichaDelChofer = new Map<string, number>();
@@ -6944,9 +6890,7 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
 
             if (tocarProveedor) {
                 const chofer = String(t.driver || '').trim();
-                const prov = (await loQueEsElChofer(chofer, t.date))?.proveedor
-                    || (await reglaDelChoferDelViaje(chofer, t.date))?.proveedor
-                    || null;
+                const prov = (await loQueEsElChofer(chofer, t.date))?.proveedor || null;
                 // El contrato que va a quedar despues de este mismo pase
                 const contratoFinal = String(data.contractType || t.contractType || '');
                 if (!prov) {
@@ -6985,12 +6929,8 @@ app.post('/api/admin/aplicar-reglas-a-viajes', async (req: any, res: any) => {
                 const contratoFinal = String(data.contractType || t.contractType || '').toLowerCase();
                 if (contratoFinal === 'tercerizado' && !(Number(t.value) > 0)) {
                     const prov = String(data.provider || t.provider || '').trim();
-                    let tarifa: number | null = await tarifaDelProveedor(prov, t.date);
-                    let deDonde = 'proveedor';
-                    if (!tarifa) {
-                        const porChofer = await reglaDelChofer(t.driver, t.date);
-                        if (porChofer?.tarifa) { tarifa = Number(porChofer.tarifa); deDonde = 'chofer'; }
-                    }
+                    const tarifa: number | null = await tarifaDelProveedor(prov, t.date);
+                    const deDonde = 'proveedor';
                     if (tarifa) {
                         data.value = tarifa;
                         detalle.valor = { antes: Number(t.value) || 0, despues: tarifa, segun: deDonde };
@@ -7711,31 +7651,6 @@ app.post('/api/admin/renombrar-proveedor', async (req: any, res: any) => {
             }
         }
 
-        // ── 2) Las reglas por reparto ────────────────────────────────────────
-        const fila = await prisma.appSettings.findUnique({ where: { key: 'reglas_repartos' } });
-        const reglasTocadas: any[] = [];
-        if (fila) {
-            const todo = JSON.parse(fila.value) || {};
-            for (const [mes, contenido] of Object.entries<any>(todo)) {
-                const repartos = contenido?.repartos || contenido || {};
-                for (const [nombre, r] of Object.entries<any>(repartos)) {
-                    if (r?.proveedor && norm(r.proveedor) === objetivo) {
-                        reglasTocadas.push({ mes, reparto: nombre, antes: r.proveedor, despues: a });
-                        if (aplicar) r.proveedor = a;
-                    }
-                }
-                for (const c of (contenido?.choferes || [])) {
-                    if (c?.proveedor && norm(c.proveedor) === objetivo) {
-                        reglasTocadas.push({ mes, chofer: c.chofer, antes: c.proveedor, despues: a });
-                        if (aplicar) c.proveedor = a;
-                    }
-                }
-            }
-            if (aplicar && reglasTocadas.length) {
-                await prisma.appSettings.update({ where: { key: 'reglas_repartos' }, data: { value: JSON.stringify(todo) } });
-            }
-        }
-
         // ── 3) La ficha de proveedor, si el nombre viejo existe ──────────────
         const provs = await prisma.provider.findMany({ select: { id: true, name: true } });
         const viejo = provs.find((p) => norm(p.name) === objetivo);
@@ -7764,8 +7679,7 @@ app.post('/api/admin/renombrar-proveedor', async (req: any, res: any) => {
                 id: t.id, fecha: new Date(t.date).toISOString().slice(0, 10),
                 reparto: t.reparto, chofer: t.driver, valor: Number(t.value) || 0
             })),
-            reglas: reglasTocadas,
-            fichaProveedor
+                        fichaProveedor
         });
     } catch (e: any) {
         console.error('renombrar-proveedor:', e);
@@ -8031,48 +7945,6 @@ app.get('/api/v1/control-carga', async (req: any, res: any) => {
             }
         }
 
-        // ── 6) El contrato del viaje no coincide con lo que es el chofer ────
-        // Si el chofer es propio y el viaje figura tercerizado (o al reves), o
-        // se le esta pagando a un proveedor de mas, o el viaje esta mal marcado.
-        const contradicciones: any[] = [];
-        {
-            const porMes = new Map<string, Map<string, string>>();
-            const tipoDelChofer = async (nombre: string, fecha: any) => {
-                const mes = mesDeLaFecha(fecha);
-                if (!porMes.has(mes)) {
-                    const { repartos, choferes } = await reglasDelMes(fecha);
-                    const m = new Map<string, string>();
-                    for (const r of Object.values<any>(repartos || {})) {
-                        if (r?.chofer && r?.tipo) m.set(String(r.chofer).trim(), String(r.tipo));
-                    }
-                    for (const c of (choferes || [])) {
-                        if (c?.chofer && c?.tipo) m.set(String(c.chofer).trim(), String(c.tipo));
-                    }
-                    porMes.set(mes, m);
-                }
-                const mapa = porMes.get(mes)!;
-                for (const [n, tipo] of mapa.entries()) if (mismoNombrePersona(n, nombre)) return tipo;
-                return null;
-            };
-            for (const t of viajes as any[]) {
-                const delViaje = String(t.contractType || '').toLowerCase();
-                if (!delViaje) continue;
-                const suyo = await tipoDelChofer(String(t.driver || ''), t.date);
-                if (!suyo) continue;
-                if (suyo.toLowerCase() === delViaje) continue;
-                contradicciones.push({
-                    tripId: t.id,
-                    fecha: new Date(t.date).toISOString().slice(0, 10),
-                    reparto: t.reparto,
-                    chofer: t.driver,
-                    elChoferEs: suyo,
-                    elViajeDice: t.contractType,
-                    proveedor: t.provider || '',
-                    valor: Number(t.value) || 0
-                });
-            }
-        }
-
         // ── 7) Fichas sin identificar ───────────────────────────────────────
         const fichasSinIdentificar = fichas
             .filter((f: any) => (f.role === 'CHOFER' && !f.contractType) || (f.role === 'AUXILIAR' && !f.payType))
@@ -8096,13 +7968,6 @@ app.get('/api/v1/control-carga', async (req: any, res: any) => {
                 porque: 'Lo que dice la ficha (Fijo o Jornal) no se corresponde con lo que tiene cargado en Liquidacion. El costo puede salir mal.',
                 gravedad: 'alta',
                 items: [...desajuste.values()].sort((a, b) => b.viajes - a.viajes)
-            },
-            {
-                clave: 'contrato_no_coincide',
-                titulo: 'El viaje no coincide con lo que es el chofer',
-                porque: 'El chofer es de un tipo y el viaje figura del otro. O se le esta pagando de mas a un proveedor, o el viaje quedo mal marcado.',
-                gravedad: 'alta',
-                items: contradicciones
             },
             {
                 clave: 'terc_sin_proveedor',
@@ -8153,72 +8018,6 @@ app.get('/api/v1/control-carga', async (req: any, res: any) => {
     }
 });
 
-/** Viajes donde el contrato del viaje no coincide con lo que es el chofer.
- *  GET /api/admin/contrato-vs-chofer?key=...&desde=&hasta= */
-app.get('/api/admin/contrato-vs-chofer', async (req: any, res: any) => {
-    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
-    try {
-        const ini = utcDayRange(String(req.query.desde)).start;
-        const fin = utcDayRange(String(req.query.hasta)).end;
-        const viajes = await prisma.trip.findMany({
-            where: { date: { gte: ini, lte: fin } },
-            select: {
-                id: true, date: true, reparto: true, driver: true, contractType: true,
-                provider: true, value: true, businessUnit: true, zone: true, locality: true,
-                auxiliar: true, status: true,
-                linkedRoute: { select: { actualStartTime: true, actualEndTime: true, stops: { select: { id: true } } } }
-            },
-            orderBy: { date: 'asc' }
-        });
-        const cache = new Map<string, Map<string, string>>();
-        const tipoDelChofer = async (nombre: string, fecha: any) => {
-            const mes = mesDeLaFecha(fecha);
-            if (!cache.has(mes)) {
-                const { repartos, choferes } = await reglasDelMes(fecha);
-                const m = new Map<string, string>();
-                for (const r of Object.values<any>(repartos || {})) if (r?.chofer && r?.tipo) m.set(String(r.chofer).trim(), String(r.tipo));
-                for (const c of (choferes || [])) if (c?.chofer && c?.tipo) m.set(String(c.chofer).trim(), String(c.tipo));
-                cache.set(mes, m);
-            }
-            for (const [n, tipo] of cache.get(mes)!.entries()) if (mismoNombrePersona(n, nombre)) return tipo;
-            return null;
-        };
-        const filas: any[] = [];
-        for (const t of viajes as any[]) {
-            const delViaje = String(t.contractType || '').toLowerCase();
-            if (!delViaje) continue;
-            const suyo = await tipoDelChofer(String(t.driver || ''), t.date);
-            if (!suyo || suyo.toLowerCase() === delViaje) continue;
-            filas.push({
-                tripId: t.id, fecha: new Date(t.date).toISOString().slice(0, 10),
-                reparto: t.reparto, chofer: t.driver,
-                elChoferEs: suyo, elViajeDice: t.contractType,
-                proveedor: t.provider || '', valor: Number(t.value) || 0,
-                unidadNegocio: t.businessUnit || '', localidad: t.zone || '', partido: t.locality || '',
-                auxiliar: t.auxiliar || '', estado: t.status || '',
-                paradas: t.linkedRoute?.stops?.length || 0,
-                horaSalida: t.linkedRoute?.actualStartTime ? new Date(t.linkedRoute.actualStartTime).toISOString() : '',
-                horaLlegada: t.linkedRoute?.actualEndTime ? new Date(t.linkedRoute.actualEndTime).toISOString() : ''
-            });
-        }
-        // Todos los viajes de esos mismos choferes, para poder comparar contra
-        // como vienen trabajando el resto del mes.
-        const nombres = new Set(filas.map((f) => String(f.chofer || '').toUpperCase()));
-        const contexto = (viajes as any[])
-            .filter((t) => nombres.has(String(t.driver || '').toUpperCase()))
-            .map((t) => ({
-                tripId: t.id, fecha: new Date(t.date).toISOString().slice(0, 10),
-                reparto: t.reparto, chofer: t.driver, contrato: t.contractType,
-                proveedor: t.provider || '', valor: Number(t.value) || 0,
-                unidadNegocio: t.businessUnit || '', localidad: t.zone || '',
-                auxiliar: t.auxiliar || '', estado: t.status || '',
-                paradas: t.linkedRoute?.stops?.length || 0
-            }));
-        res.json({ viajesRevisados: viajes.length, contradicciones: filas.length, filas, contexto });
-    } catch (e: any) {
-        res.status(500).json({ error: e?.message || 'Error' });
-    }
-});
 
 /** Corrige un grupo de viajes puntuales: contrato, proveedor y/o valor.
  *  El valor solo se pone en los que estan en cero, para no pisar lo cargado.
@@ -9060,7 +8859,6 @@ function subzonaDelViaje(reparto: any, localidad: any, contrato: any): string | 
  *
  * Forma: { "2026-09": { "R1": { tipo, chofer, proveedor, tarifa } }, ... }
  */
-type ReglaReparto = { tipo?: string; chofer?: string; proveedor?: string; tarifa?: number | null; auxiliares?: string };
 
 /** Mes de una fecha en formato "YYYY-MM", en hora de Buenos Aires. */
 function mesDeLaFecha(fecha: any): string {
@@ -9089,33 +8887,12 @@ function mismoNombrePersona(a: any, b: any): boolean {
     return comunes >= 2;
 }
 
-/** Las reglas del mes que corresponde a esa fecha. Si ese mes no se cargo, vale
- *  el ultimo cargado antes: las reglas siguen hasta que alguien las cambie. */
-async function reglasDelMes(fecha: any): Promise<{ repartos: any; choferes: any[] }> {
-    const vacio = { repartos: {}, choferes: [] };
-    try {
-        const row = await prisma.appSettings.findUnique({ where: { key: 'reglas_repartos' } });
-        if (!row) return vacio;
-        const todo = JSON.parse(row.value) || {};
-        const meses = Object.keys(todo).sort();
-        if (!meses.length) return vacio;
-        const mes = mesDeLaFecha(fecha);
-        const elegido = todo[mes] ? mes : (meses.filter((m) => m <= mes).pop() || meses[meses.length - 1]);
-        const delMes = todo[elegido] || {};
-        // Formato viejo: el mes era directamente el mapa de repartos
-        if (delMes.repartos || delMes.choferes) {
-            return { repartos: delMes.repartos || {}, choferes: delMes.choferes || [] };
-        }
-        return { repartos: delMes, choferes: [] };
-    } catch (e: any) {
-        console.warn('[reglas] no se pudieron leer:', e?.message || e);
-        return vacio;
-    }
-}
 
-// reglaDelReparto() se saco: el reparto ya no decide contrato, proveedor ni
-// tarifa. Lo que queda de "Reglas por reparto" es el chofer habitual, que solo
-// se usa en la pantalla para avisar cuando va otro.
+
+// "Reglas por reparto" se borro entero. El reparto no decide si un viaje es
+// propio o tercerizado, ni con que proveedor, ni a que tarifa: eso lo dice la
+// ficha del chofer y la tabla de Tarifas. Lo ultimo que quedaba era el aviso
+// del chofer habitual, y tampoco se usa mas.
 
 /** Para los choferes que no tienen reparto propio. Se usa solo cuando el
  *  reparto del viaje no tiene regla. */
@@ -9227,11 +9004,7 @@ async function tarifaDelProveedor(proveedor: any, fecha: any): Promise<number | 
     return (await tarifaDeLaTabla(proveedor, fecha))?.valor ?? null;
 }
 
-async function reglaDelChofer(chofer: any, fecha: any): Promise<ReglaReparto | null> {
-    if (!String(chofer || '').trim()) return null;
-    const { choferes } = await reglasDelMes(fecha);
-    return (choferes || []).find((c: any) => mismoNombrePersona(c.chofer, chofer)) || null;
-}
+
 
 /** -- QUIEN DECIDE QUE --------------------------------------------------
  *  Propio o tercerizado lo decide EL CHOFER, por su ficha de personal.
@@ -9284,11 +9057,16 @@ async function fichaDelChofer(chofer: any): Promise<FichaDeChofer | null> {
     return mejor;
 }
 
-/** Lo que es el chofer: primero su ficha de personal; si no esta identificada,
- *  su regla propia en "Choferes sueltos". El reparto NO entra. */
+/** Lo que es el chofer: su ficha de personal, y nada mas.
+ *
+ *  Antes habia un respaldo en "Choferes sueltos", dentro de Reglas por reparto.
+ *  Ese modulo se borro entero: el reparto no decide nada, y el respaldo ya no
+ *  cubria a nadie porque todos los choferes tienen ficha. Si alguno no la
+ *  tiene, el viaje queda sin contrato y el panel de Choferes y tarifas lo marca
+ *  en ambar, que es donde corresponde arreglarlo. */
 async function loQueEsElChofer(
     chofer: any,
-    fecha: any
+    _fecha?: any
 ): Promise<{ tipo: string; proveedor: string | null; segun: string } | null> {
     const f = await fichaDelChofer(chofer);
     if (f && (f.contrato === 'PROPIO' || f.contrato === 'TERCERIZADO')) {
@@ -9298,8 +9076,6 @@ async function loQueEsElChofer(
             segun: 'ficha'
         };
     }
-    const r = await reglaDelChofer(chofer, fecha);
-    if (r?.tipo) return { tipo: String(r.tipo), proveedor: r.proveedor || null, segun: 'regla del chofer' };
     return null;
 }
 
