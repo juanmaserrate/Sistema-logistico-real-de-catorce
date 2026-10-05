@@ -21836,7 +21836,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         aviso.classList.add('hidden');
                     }
                 }
-                    return;
+                if (typeof sugerirPatenteDelChofer === 'function') sugerirPatenteDelChofer();
+                return;
             }
 
             sel.value = sugerido;
@@ -21868,8 +21869,55 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 aviso.dataset.origen = contratoFicha ? 'ficha' : 'chofer';
                 aviso.classList.remove('hidden');
             }
+            // El coche tambien lo decide el chofer, en los viajes propios
+            if (typeof sugerirPatenteDelChofer === 'function') sugerirPatenteDelChofer();
         }
 
+
+        /** La patente que le toca a un chofer, segun Flota. */
+        function patenteDelChofer(chofer) {
+            const n = String(chofer || '').trim().toUpperCase();
+            if (!n) return null;
+            const v = (allVehicles || []).find(x => mismoNombre(x.driverName || x.driver, n));
+            return v ? String(v.plate || '').trim().toUpperCase() : null;
+        }
+
+        /** Para un viaje propio, completa el coche con la patente del chofer.
+         *
+         *  Es una sugerencia: se puede cambiar a mano, y si el operador ya
+         *  eligio otra, no se la pisa. Quien maneja que patente le toca a cada
+         *  chofer es el modulo Flota, en la columna Chofer de cada vehiculo:
+         *  aca no hay ninguna lista aparte que mantener. */
+        function sugerirPatenteDelChofer() {
+            const editando = !!(document.getElementById('new-trip-id')?.value || '').trim();
+            const sel = document.getElementById('new-trip-vehicle');
+            const aviso = document.getElementById('new-trip-vehicle-hint');
+            if (!sel) return;
+            const contrato = document.getElementById('new-trip-contract')?.value || '';
+            const chofer = (document.getElementById('new-trip-driver')?.value || '').trim().toUpperCase();
+            const limpiar = () => { if (aviso) { aviso.textContent = ''; aviso.classList.add('hidden'); } };
+
+            if (editando || contrato !== 'Propio' || !chofer) return limpiar();
+
+            const patente = patenteDelChofer(chofer);
+            if (!patente) {
+                if (aviso) {
+                    aviso.textContent = `${chofer} no tiene coche asignado en Flota`;
+                    aviso.classList.remove('hidden');
+                }
+                return;
+            }
+            // Si el operador ya puso otra a mano, no se le pisa
+            if (sel.value && sel.value !== sel.dataset.sugerida) {
+                return limpiar();
+            }
+            sel.value = patente;
+            sel.dataset.sugerida = patente;
+            if (aviso) {
+                aviso.textContent = `El coche de ${chofer} según Flota — podés cambiarlo`;
+                aviso.classList.remove('hidden');
+            }
+        }
 
         async function onNewTripRepartoChange() {
             const reparto = (document.getElementById('new-trip-reparto')?.value || '').trim();
@@ -22522,12 +22570,14 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 .filter(z => !isExcludedZoneName(z))
                 .sort((a, b) => a.localeCompare(b, 'es'));
 
-            // We usually have basic vehicle types like VANS, MINIBUS, DUCATO
+            // El coche se elige por patente, y las patentes salen de Flota:
+            // es el unico lugar donde se cargan, asi no hay dos listas que
+            // mantener. Se suman las que ya tenga algun viaje por si alguna
+            // vieja no esta en Flota.
             const uniqueVehicles = [...new Set([
-                ...(_tiposVehiculoCache || []),
-                ...planningData.map(t => t.vehicleType).filter(Boolean)
-            ])].sort();
-            if (uniqueVehicles.length === 0) uniqueVehicles.push('VANS', 'MINIBUS', 'DUCATO', 'UTILITARIO');
+                ...(allVehicles || []).map(v => v.plate),
+                ...planningData.map(t => t.vehicle).filter(Boolean)
+            ].map(p => String(p || '').trim().toUpperCase()).filter(Boolean))].sort();
 
             // El campo de chofer es escribible: las opciones van en un datalist,
             // asi el operador puede tipear un nombre que todavia no existe.
@@ -22809,10 +22859,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const valueContainer = document.getElementById('new-trip-value-container');
             const providerContainer = document.getElementById('new-trip-provider-container');
             const isTerc = contract !== 'Propio';
-            if (container) {
-                if (isTerc) container.classList.remove('hidden');
-                else container.classList.add('hidden');
-            }
+            // El coche se muestra siempre. Antes se escondia justo en los
+            // propios, que son los unicos que andan con la flota de la empresa.
+            if (container) container.classList.remove('hidden');
             if (providerContainer) {
                 if (isTerc) providerContainer.classList.remove('hidden');
                 else {
@@ -22879,7 +22928,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (modoSelEdit) modoSelEdit.value = trip.isManual ? 'MANUAL' : 'APP';
             onNewTripModoChange();
             refrescarAvisoChoferNuevo((trip.driver || '').trim().toUpperCase());
-            document.getElementById('new-trip-vehicle').value = trip.vehicleType || '';
+            document.getElementById('new-trip-vehicle').value = trip.vehicle || '';
             document.getElementById('new-trip-aux1').value = trip.auxiliar || '';
             document.getElementById('new-trip-aux2').value = trip.auxiliar2 || '';
             document.getElementById('new-trip-aux3').value = trip.auxiliar3 || '';
@@ -22989,7 +23038,14 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 isManual: esManual,
                 businessUnit: document.getElementById('new-trip-bu').value,
                 driver: (document.getElementById('new-trip-driver').value || '').trim().toUpperCase(),
-                vehicleType: document.getElementById('new-trip-vehicle').value,
+                // La patente del coche. El tipo (VAN, Ducato...) se toma de
+                // Flota: se carga una sola vez por vehiculo y no en cada viaje.
+                vehicle: document.getElementById('new-trip-vehicle').value || null,
+                vehicleType: (() => {
+                    const p = document.getElementById('new-trip-vehicle').value;
+                    const v = p ? (allVehicles || []).find(x => x.plate === p) : null;
+                    return v?.vehicleType || null;
+                })(),
                 auxiliar: document.getElementById('new-trip-aux1').value || null,
                 auxiliar2: document.getElementById('new-trip-aux2').value || null,
                 auxiliar3: document.getElementById('new-trip-aux3').value || null,
@@ -24566,8 +24622,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         </div>
 
                         <div id="new-trip-vehicle-container">
-                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Coche / Vehículo</label>
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Coche / Patente</label>
                             <select id="new-trip-vehicle" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                            <p id="new-trip-vehicle-hint" class="hidden mt-1 text-[10px] font-bold text-indigo-600"></p>
                         </div>
                         <div>
                             <div class="flex items-center justify-between mb-1">
