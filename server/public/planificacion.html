@@ -5202,7 +5202,11 @@
                     const detalle = `${data.cargadas} tarifa(s) en ${data.meses} mes(es)`
                         + (data.viajesActualizados ? ` · ${data.viajesActualizados} viaje(s) actualizados` : '');
                     addNotification('success', 'Tarifas guardadas', detalle + '.');
-                    const sin = (data.sinTarifa || []).filter(x => x.proveedor !== 'R14 LOG');
+                    // "PROPIO" no es un proveedor: son los viajes de la casa, y
+                    // no tienen que aparecer en el aviso de tarifas faltantes.
+                    // ("R14 LOG" es como se llamaban antes, por si queda alguno.)
+                    const sin = (data.sinTarifa || [])
+                        .filter(x => !['PROPIO', 'R14 LOG'].includes(String(x.proveedor || '').toUpperCase()));
                     if (sin.length) {
                         addNotification('warning', 'Sin tarifa cargada',
                             sin.map(x => `${x.proveedor}: ${x.viajes} viaje(s)`).join(' · '));
@@ -13217,7 +13221,7 @@
                         <td class="text-xs text-[#A3AED0]">${new Date(t.date).toLocaleDateString()}</td>
                         <td>
                             <div class="font-bold text-[#1B2559]">${t.driver || 'N/A'}</div>
-                            <div class="text-[10px] text-[#A3AED0] uppercase font-black">${t.provider || 'R14 LOG'}</div>
+                            <div class="text-[10px] text-[#A3AED0] uppercase font-black">${t.provider || 'PROPIO'}</div>
                         </td>
                         <td>
                             <div class="text-xs font-bold text-[#A3AED0]">${t.zone || '--'}</div>
@@ -23027,8 +23031,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 tripValue = Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed) : 0;
             }
             // Proveedor: si Tercerizado tomar el nombre ingresado (default 'EXTERNO' si vacío).
-            // Si Propio, siempre 'R14 LOG'.
-            let providerValue = 'R14 LOG';
+            // Si Propio dice 'PROPIO', que es lo que se lee en pantalla. Antes
+            // decia 'R14 LOG', el nombre de la empresa, y confundia: parecia un
+            // proveedor mas en la lista cuando en realidad es un viaje de casa.
+            let providerValue = 'PROPIO';
             if (isTercerizado) {
                 const provRaw = (document.getElementById('new-trip-provider')?.value || '').toString().trim().toUpperCase();
                 providerValue = provRaw || 'EXTERNO';
