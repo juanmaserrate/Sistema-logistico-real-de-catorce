@@ -3748,10 +3748,9 @@
             const list = [...new Set([...getBusinessUnitsCatalog(), ...dynamic, ...elegidas]
                 .map(normalizeBusinessUnit).filter(Boolean))]
                 .sort((a, b) => a.localeCompare(b, 'es'));
-            if (!elegidas.length) {
-                const porDefecto = list.includes('DMC') ? 'DMC' : (list[0] || '');
-                if (porDefecto) elegidas.push(porDefecto);
-            }
+            // Si no hay unidad elegida, el campo queda VACIO. Antes se ponia
+            // DMC solo, y un viaje que era de otra unidad quedaba cargado como
+            // DMC porque nadie se fijo en un campo que ya venia lleno.
             campo.value = elegidas.join(', ');
             pintarUnidadesDelViaje(list);
         }
@@ -22609,7 +22608,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 : 'Escribí o seleccioná una localidad…';
 
             document.getElementById('new-trip-vehicle').innerHTML = '<option value="">Seleccionar Vehículo</option>' + uniqueVehicles.map(v => `<option value="${v}">${v}</option>`).join('');
-            populateBusinessUnitSelect('DMC');
+            populateBusinessUnitSelect();
 
             // Reparto / Ruta: combinamos plantillas de ruta y usuarios DRIVER.
             // Solo sirve para cargar paradas predefinidas, no para asignar el chofer.
@@ -22660,7 +22659,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             toggleVehicleTypeField(); // Hide vehicle + proveedor + valor cuando es Propio
 
             document.getElementById('new-trip-loc').value = '';
-            populateBusinessUnitSelect(document.getElementById('new-trip-bu').value || 'DMC');
+            document.getElementById('new-trip-bu').value = '';
+            populateBusinessUnitSelect();
             document.getElementById('new-trip-exit').value = '';
             document.getElementById('new-trip-return').value = '';
             // Refrigerado default = No, temperatura vacía y deshabilitada
@@ -22925,7 +22925,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             // populateBusinessUnitSelect la suma a la lista que muestra.
             // Al catalogo solo se escribe cuando el operador lo pide: con el
             // boton de agregar unidad, o desde Ajustes > Listas.
-            populateBusinessUnitSelect(trip.businessUnit || 'DMC');
+            populateBusinessUnitSelect(trip.businessUnit || '');
 
             document.getElementById('new-trip-driver').value = (trip.driver || '').toUpperCase();
             const modoSelEdit = document.getElementById('new-trip-modo');
@@ -23010,6 +23010,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
             if (id && targetDates.length !== 1) {
                 return alert('Para editar un viaje existente solo se permite una fecha.');
+            }
+            if (!id && !(document.getElementById('new-trip-bu').value || '').trim()) {
+                ntTab('datos');
+                return alert('Elegí la unidad de negocio del viaje.');
             }
 
             const repartoValue = document.getElementById('new-trip-reparto').value || null;
