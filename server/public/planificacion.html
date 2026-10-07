@@ -147,7 +147,7 @@
                         <button type="button" class="nav-menu-btn" aria-haspopup="true" aria-expanded="false"
                                 onclick="alternarMenuNav('reportes')">Reportes <svg class="nav-menu-caret" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"></polyline></svg></button>
                         <div class="nav-menu-panel" role="menu">
-                            <a href="#dashboard" id="btn-dashboard" class="nav-menu-item" role="menuitem"><i data-lucide="line-chart"></i> <span>Dashboard logístico</span></a>
+                            <a href="#dashboard" id="btn-dashboard" class="nav-menu-item" role="menuitem"><i data-lucide="line-chart"></i> <span>Panel logístico</span></a>
                             <a href="#reports" id="btn-reports" class="nav-menu-item" role="menuitem"><i data-lucide="file-bar-chart"></i> <span>Reportes</span></a>
                             <a href="#crates-sim" id="btn-crates-sim" class="nav-menu-item" role="menuitem"><i data-lucide="package-search"></i> <span>Cajones en tránsito</span></a>
                             <a href="#incidents" id="btn-incidents" class="nav-menu-item" role="menuitem"><i data-lucide="alert-triangle"></i> <span>Incidencias</span><span id="incidents-badge" class="nav-menu-badge hidden">0</span></a>
@@ -981,7 +981,7 @@
             <div id="view-dashboard" class="hidden view-animate space-y-8">
                 <div class="card-dark p-8 flex flex-col lg:flex-row lg:items-end justify-between gap-6">
                     <div>
-                        <h3 class="text-2xl font-bold text-[#1B2559]">Dashboard logístico</h3>
+                        <h3 class="text-2xl font-bold text-[#1B2559]">Panel logístico</h3>
                     </div>
                     <div class="flex flex-wrap items-center gap-3">
                         <select id="dashboard-month-select" onchange="syncPlanningMonth(this.value)" class="bg-white border-0 rounded-2xl px-5 py-4 text-xs font-bold text-[#1B2559] shadow-sm outline-none hover:bg-[#F4F7FE] cursor-pointer">
@@ -1744,7 +1744,7 @@
                                     <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Torre Control</th>
                                     <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Logística</th>
                                     <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Pagos</th>
-                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Dashboard</th>
+                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Panel</th>
                                     <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Mapa/Ruteo</th>
                                     <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Costos</th>
                                     <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Manten.</th>
@@ -4506,7 +4506,7 @@
                 fleets: 'Flotas — Datos de vehículos',
                 weekly: 'Planificación Semanal',
                 payments: 'Planilla de Pagos a Tercerizados',
-                dashboard: 'Dashboard logístico',
+                dashboard: 'Panel logístico',
                 costs: 'Motor de Costos Operativos',
                 tarifas: 'Choferes y tarifas',
                 maintenance: 'Mantenimiento de Flota',
