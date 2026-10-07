@@ -23011,7 +23011,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (id && targetDates.length !== 1) {
                 return alert('Para editar un viaje existente solo se permite una fecha.');
             }
-            if (!id && !(document.getElementById('new-trip-bu').value || '').trim()) {
+            // Obligatoria siempre. Se reviso la base al sacar el relleno
+            // automatico: de 929 viajes cargados, ninguno esta sin unidad, asi
+            // que exigirla al editar no traba ningun viaje viejo.
+            if (!(document.getElementById('new-trip-bu').value || '').trim()) {
                 ntTab('datos');
                 return alert('Elegí la unidad de negocio del viaje.');
             }
@@ -24670,7 +24673,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                             </div>
                         </div>
                         <div>
-                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Unidad de negocio</label>
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Unidad de negocio <span class="text-rose-500">*</span></label>
                             <div id="new-trip-bu-chips" class="w-full min-h-[40px] bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2 flex flex-wrap gap-1.5 items-center shadow-sm"></div>
                             <input type="hidden" id="new-trip-bu">
                             <select id="new-trip-bu-agregar" onchange="agregarUnidadAlViaje(this.value)" class="mt-1.5 w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2 text-xs font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
