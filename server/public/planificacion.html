@@ -19611,6 +19611,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         };
 
         let _listaActiva = 'businessUnit';
+        // Lo que de verdad esta guardado en el catalogo. _listaOpciones es lo
+        // que se MUESTRA, que ademas incluye lo que aparece en viajes o en
+        // clientes aunque no este en el catalogo. Mezclar las dos cosas hacia
+        // que cualquier guardado le devolviera al catalogo todo lo que algun
+        // viaje usara: borrabas una unidad y volvia sola a la proxima edicion.
+        let _listaDelCatalogo = [];
         let _listaOpciones = [];   // las opciones del catalogo
         let _listaUso = {};        // cuantos viajes usa cada una
         let _listaUsoClientes = {};// cuantos clientes la tienen en su ficha
@@ -19657,6 +19663,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             } catch (_) {
                 _listaOpciones = [];
             }
+            _listaDelCatalogo = [..._listaOpciones];
             // Cuantos viajes usa cada valor (y valores que estan en viajes pero no en el catalogo)
             _listaUso = {};
             _listaUsoClientes = {};
@@ -19690,9 +19697,14 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     const n = _listaUso[op] || 0;
                     const c = _listaUsoClientes[op] || 0;
                     const sinUsar = !n && !c;
+                    // Puede estar en viajes sin estar en la lista: se avisa,
+                    // porque mientras exista un viaje asi se va a seguir viendo
+                    // en el desplegable aunque la saques de la lista.
+                    const fueraDelCatalogo = !_listaDelCatalogo.some(x => String(x).toUpperCase() === String(op).toUpperCase());
                     return `<tr class="hover:bg-[#FAFBFF] ${sinUsar ? 'opacity-60' : ''}">
                         <td class="px-3 py-2.5 text-xs font-black text-[#1B2559]">${escapeHtml(op)}
-                            ${sinUsar ? '<span class="ml-2 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider">no la usa nadie</span>' : ''}</td>
+                            ${sinUsar ? '<span class="ml-2 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider">no la usa nadie</span>' : ''}
+                            ${fueraDelCatalogo ? '<span class="ml-2 text-[9px] font-bold text-amber-600 uppercase tracking-wider">solo en viajes</span>' : ''}</td>
                         <td class="px-3 py-2.5 text-right text-[11px] font-bold ${n ? 'text-[#1B2559]' : 'text-[#A3AED0]'}">${n ? n : '\u2014'}</td>
                         <td class="px-3 py-2.5 text-right text-[11px] font-bold ${c ? 'text-[#1B2559]' : 'text-[#A3AED0]'} ${esBU ? '' : 'hidden'}">${c ? c : '\u2014'}</td>
                         <td class="px-3 py-2.5 text-right whitespace-nowrap">
@@ -19710,7 +19722,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (window.lucide) lucide.createIcons();
         }
 
-        /** Guarda el catalogo (la lista de opciones) en el servidor. */
+        /** Guarda el catalogo en el servidor. Recibe SOLO lo que va al
+         *  catalogo: lo que aparece en viajes pero nadie agrego a la lista no
+         *  entra, porque entonces borrar una opcion no serviria de nada. */
         async function guardarCatalogoLista(lista) {
             const limpia = [...new Set(lista.map(x => String(x).trim().toUpperCase()).filter(Boolean))]
                 .sort((a, b) => a.localeCompare(b, 'es'));
@@ -19725,6 +19739,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 try { localStorage.setItem(BUSINESS_UNIT_STORAGE_KEY, JSON.stringify(limpia)); } catch (_) {}
                 if (typeof _buCache !== 'undefined') _buCache = limpia;
             }
+            _listaDelCatalogo = limpia;
             return limpia;
         }
 
@@ -19746,7 +19761,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const v = String(inp.value || '').trim().toUpperCase();
             if (!v) return;
             if (_listaOpciones.some(o => o.toUpperCase() === v)) return alert(v + ' ya est\u00e1 en la lista.');
-            _listaOpciones = await guardarCatalogoLista([..._listaOpciones, v]);
+            await guardarCatalogoLista([..._listaDelCatalogo, v]);
+            await cargarListaFormulario();
             inp.value = '';
             renderListaFormulario();
         }
@@ -19763,7 +19779,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
             try {
                 const r = await reemplazarEnViajes(op, v, false);
-                _listaOpciones = await guardarCatalogoLista([..._listaOpciones.filter(o => o !== op), v]);
+                await guardarCatalogoLista([..._listaDelCatalogo.filter(o => o !== op), v]);
                 await cargarListaFormulario();
                 renderListaFormulario();
                 if (typeof addNotification === 'function') {
@@ -19793,7 +19809,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             // No la usa nadie: se borra y listo
             if (!n && !c) {
                 if (!confirm(`\u00bfBorrar "${op}" de la lista? No la usa ning\u00fan viaje ni ning\u00fan cliente.`)) return;
-                _listaOpciones = await guardarCatalogoLista(_listaOpciones.filter(o => o !== op));
+                await guardarCatalogoLista(_listaDelCatalogo.filter(o => o !== op));
+                await cargarListaFormulario();
                 await cargarListaFormulario();
                 renderListaFormulario();
                 return;
@@ -19853,7 +19870,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             cerrarBorrarOpcion();
             try {
                 const r = await reemplazarEnViajes(op, destino, !mover);
-                _listaOpciones = await guardarCatalogoLista(_listaOpciones.filter(o => o !== op));
+                await guardarCatalogoLista(_listaDelCatalogo.filter(o => o !== op));
+                await cargarListaFormulario();
                 await cargarListaFormulario();
                 renderListaFormulario();
                 if (typeof addNotification === 'function') {
