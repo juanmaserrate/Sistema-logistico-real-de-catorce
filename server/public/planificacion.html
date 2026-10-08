@@ -21458,33 +21458,32 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
             if (ul) {
                 if (tripRutas.length === 0) {
-                    ul.innerHTML = '<li class="text-[11px] font-bold text-[#A3AED0] italic px-1">Todavía no hay ninguna ruta. Elegí una acá abajo, o en «Reparto / Ruta».</li>';
+                    ul.innerHTML = '';
                 } else {
                     ul.innerHTML = tripRutas.map((nombre, i) => {
                         const rt = _plantillaDeRuta(nombre);
                         const cuantas = rt ? (rt.stops || []).length : null;
-                        const btn = 'w-7 h-7 rounded-lg text-[#2B3674] font-black hover:bg-[#E8ECF8] disabled:opacity-20 disabled:hover:bg-transparent shrink-0';
+                        const btn = 'w-6 h-6 rounded-md text-[#2B3674] text-xs font-black hover:bg-[#E8ECF8] disabled:opacity-20 disabled:hover:bg-transparent shrink-0';
                         return `
-                        <li class="flex items-center gap-2 bg-[#F8FAFF] border border-[#F4F7FE] rounded-xl px-3 py-2">
-                            <span class="w-6 h-6 rounded-lg bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center shrink-0">${i + 1}</span>
-                            <span class="flex-1 min-w-0 truncate text-sm font-bold text-[#2B3674]">${escapeHtmlTrip(nombre)}</span>
-                            <span class="text-[10px] font-bold ${cuantas == null ? 'text-amber-600' : 'text-[#A3AED0]'} shrink-0">${cuantas == null ? 'sin plantilla' : cuantas + ' paradas'}</span>
+                        <li class="flex items-center gap-1.5 bg-[#F8FAFF] border border-[#E0E5F2] rounded-xl pl-2 pr-1 py-1.5">
+                            <span class="w-5 h-5 rounded-md bg-indigo-600 text-white text-[9px] font-black flex items-center justify-center shrink-0">${i + 1}</span>
+                            <span class="flex-1 min-w-0 truncate text-xs font-black text-[#2B3674]" title="${escapeHtmlTrip(nombre)}">${escapeHtmlTrip(nombre)}</span>
+                            <span class="text-[9px] font-bold ${cuantas == null ? 'text-amber-600' : 'text-[#A3AED0]'} shrink-0">${cuantas == null ? 'sin plantilla' : cuantas + 'p'}</span>
                             <button type="button" onclick="moverRutaDelViaje(${i}, -1)" ${i === 0 ? 'disabled' : ''} class="${btn}" aria-label="Subir">↑</button>
                             <button type="button" onclick="moverRutaDelViaje(${i}, 1)" ${i === tripRutas.length - 1 ? 'disabled' : ''} class="${btn}" aria-label="Bajar">↓</button>
-                            <button type="button" onclick="quitarRutaDelViaje(${i})" class="text-rose-500 p-1 rounded-lg hover:bg-rose-50 font-bold shrink-0" aria-label="Quitar">✕</button>
+                            <button type="button" onclick="quitarRutaDelViaje(${i})" class="text-rose-500 w-6 h-6 rounded-md hover:bg-rose-50 text-xs font-black shrink-0" aria-label="Quitar">✕</button>
                         </li>`;
                     }).join('');
                 }
             }
 
             if (resumen) {
-                if (tripRutas.length > 1) resumen.textContent = tripRutas.join(' → ');
-                else resumen.textContent = '';
+                resumen.textContent = tripRutas.length ? tripRutas.join(' → ') : '—';
             }
 
             if (sel) {
                 const libres = rutasDisponibles().filter(n => !tripRutas.includes(n));
-                sel.innerHTML = '<option value="">+ Sumar una ruta…</option>'
+                sel.innerHTML = `<option value="">${tripRutas.length ? '+ Sumar otra ruta a este viaje…' : '+ Sumar una segunda ruta…'}</option>`
                     + libres.map(n => `<option value="${escapeHtmlTrip(n)}">${escapeHtmlTrip(n)}</option>`).join('');
                 sel.value = '';
             }
@@ -21503,7 +21502,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
             if (!aviso) return;
             if (tripRutas.length > 1) {
-                aviso.textContent = `${tripRutas.length} rutas: ${tripRutas.join(' → ')}. El viaje se guarda como ${tripRutas[0]} — las rutas y su orden se cambian en la pestaña Paradas.`;
+                aviso.textContent = `El chofer las hace en este orden. Las paradas se cargan igual: primero las de ${tripRutas[0]}, después las de ${tripRutas[1]}${tripRutas.length > 2 ? ', y así' : ''}.`;
                 aviso.classList.remove('hidden');
             } else {
                 aviso.textContent = '';
@@ -24806,7 +24805,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                             <div>
                                 <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Reparto / Ruta</label>
                                 <select id="new-trip-reparto" onchange="onNewTripRepartoChange()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
-                                <p id="new-trip-reparto-hint" class="hidden mt-1 text-[10px] font-bold text-indigo-600 leading-snug"></p>
                             </div>
                             <div>
                                 <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Vuelta del día</label>
@@ -24820,6 +24818,16 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                 </select>
                             </div>
                         </div>
+
+                        <!-- Un viaje puede hacer varias rutas seguidas. El orden de
+                             esta lista es el orden en que el chofer las recorre. -->
+                        <div>
+                            <ul id="trip-rutas-list" class="space-y-1"></ul>
+                            <select id="trip-rutas-agregar" onchange="agregarRutaAlViaje(this.value)"
+                                    class="mt-1.5 w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2 text-xs font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                            <p id="new-trip-reparto-hint" class="hidden mt-1 text-[10px] font-bold text-indigo-600 leading-snug"></p>
+                        </div>
+
                         <div>
                             <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Días <span class="normal-case font-medium text-[#A3AED0]">— tocá uno o varios</span></label>
                             <div class="rounded-xl border border-[#E0E5F2] bg-[#F8FAFF] p-2.5">
@@ -25006,23 +25014,18 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         <div id="trip-delivery-editor" class="hidden space-y-3">
                             <!-- Un viaje puede hacer varias rutas seguidas. El orden de
                                  esta lista es el orden en que el chofer las recorre. -->
-                            <div class="border border-[#E0E5F2] rounded-2xl p-3 bg-white space-y-2">
-                                <div class="flex items-center justify-between gap-2 flex-wrap">
+                            <div class="border border-[#E0E5F2] rounded-2xl p-3 bg-white flex flex-col sm:flex-row sm:items-center gap-3">
+                                <div class="flex-1 min-w-0">
                                     <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Rutas de este viaje</p>
-                                    <span id="trip-rutas-resumen" class="text-[10px] font-bold text-[#2B3674]"></span>
+                                    <p id="trip-rutas-resumen" class="text-sm font-black text-[#2B3674] truncate">—</p>
+                                    <p class="text-[10px] text-[#A3AED0] leading-snug mt-0.5">
+                                        Se agregan y se ordenan en «Datos del viaje». Las paradas se cargan una ruta después de la otra, en ese orden, desde las plantillas de «Rutas predefinidas». El depósito queda una sola vez, al final.
+                                    </p>
                                 </div>
-                                <ul id="trip-rutas-list" class="space-y-1.5"></ul>
-                                <div class="flex flex-col sm:flex-row gap-2">
-                                    <select id="trip-rutas-agregar" onchange="agregarRutaAlViaje(this.value)"
-                                            class="flex-1 bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
-                                    <button type="button" onclick="cargarParadasDeLasRutas()"
-                                            class="w-full sm:w-auto text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-2 hover:bg-indigo-100 whitespace-nowrap">
-                                        Cargar paradas de estas rutas
-                                    </button>
-                                </div>
-                                <p class="text-[10px] text-[#A3AED0] leading-snug">
-                                    Las paradas de cada ruta se cargan una ruta después de la otra, en este orden. Salen de las plantillas de «Rutas predefinidas» y se cruzan con el directorio de escuelas por nombre. El depósito queda una sola vez, al final.
-                                </p>
+                                <button type="button" onclick="cargarParadasDeLasRutas()"
+                                        class="w-full sm:w-auto shrink-0 text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-2 hover:bg-indigo-100 whitespace-nowrap">
+                                    Cargar paradas de estas rutas
+                                </button>
                             </div>
                             <p class="text-[10px] text-[#A3AED0]">Arrastrá las filas para reordenar paradas sueltas. El chofer ve la primera cuando el operador inicia el viaje.</p>
                             <ul id="trip-delivery-list" class="space-y-2 min-h-[2rem]"></ul>
