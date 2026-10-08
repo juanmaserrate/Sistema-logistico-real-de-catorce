@@ -740,6 +740,9 @@
                     <button onclick="openBulkEditModal()" class="px-5 py-3 rounded-2xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center gap-2">
                         <i data-lucide="edit-3" class="w-4 h-4"></i> Editar seleccionados
                     </button>
+                    <button onclick="fusionarViajes()" class="px-5 py-3 rounded-2xl bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 flex items-center gap-2">
+                        <i data-lucide="git-merge" class="w-4 h-4"></i> Fusionar
+                    </button>
                     <button onclick="bulkDeleteTrips()" class="px-5 py-3 rounded-2xl bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-600 transition-all shadow-lg shadow-rose-200 flex items-center gap-2">
                         <i data-lucide="trash-2" class="w-4 h-4"></i> Eliminar seleccionados
                     </button>
@@ -15425,6 +15428,162 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
         }
 
+        // ─────────────────────────── FUSIONAR VIAJES ───────────────────────────
+        // Dos viajes del mismo dia (el R1 y el R2, por ejemplo) pasan a ser uno
+        // con las dos rutas. No se inventa un viaje nuevo: UNO de los
+        // seleccionados se queda con todo y los otros se borran al guardar. Asi
+        // el que ya tenia paradas marcadas por el chofer no las pierde.
+        let _fusionAbsorbidos = [];   // ids que se borran cuando se guarda
+
+        /** Las rutas de un viaje, siempre como lista. */
+        function _rutasDeUnViaje(t) {
+            const r = Array.isArray(t && t.rutas) ? t.rutas : null;
+            const lista = (r && r.length) ? r : [t && (t.reparto || t.tripType)];
+            return [...new Set(lista.map(x => String(x || '').trim().toUpperCase()).filter(Boolean))];
+        }
+
+        async function fusionarViajes() {
+            const ids = [...selectedTripIds];
+            if (ids.length < 2) {
+                return alert('Marc\u00e1 al menos dos viajes para fusionar.');
+            }
+            const viajes = ids.map(id => getWeeklyTripById(id)).filter(Boolean);
+            if (viajes.length !== ids.length) {
+                return alert('No pude leer alguno de los viajes seleccionados. Record\u00e1 la pantalla y prob\u00e1 de nuevo.');
+            }
+
+            // Un viaje es de un solo dia
+            const soloDia = (t) => String(t.date || '').slice(0, 10);
+            const dias = [...new Set(viajes.map(soloDia))];
+            if (dias.length > 1) {
+                return alert('Los viajes son de d\u00edas distintos y un viaje fusionado es de un solo d\u00eda.\n\n'
+                           + dias.sort().map(d => '  \u00b7 ' + d.split('-').reverse().join('/')).join('\n'));
+            }
+
+            // Las paradas de cada uno, y cuanto marco el chofer
+            const porViaje = [];
+            for (const t of viajes) {
+                let d = { stops: [], routeStarted: false };
+                try {
+                    const r = await fetch(`${API_URL}/trips/${t.id}/delivery-stops`, { headers: getActorHeaders() });
+                    if (r.ok) d = await r.json();
+                } catch (e) { console.warn(e); }
+                const paradas = d.stops || [];
+                const marcadas = paradas.filter(x => x.status && x.status !== 'PENDING').length;
+                porViaje.push({ trip: t, paradas, marcadas });
+            }
+
+            // El que se queda con todo: el que mas progreso tiene, para no tirarlo
+            const base = [...porViaje].sort((a, b) => b.marcadas - a.marcadas || a.trip.id - b.trip.id)[0];
+            // El orden de las rutas sigue el orden en que se cargaron los viajes
+            const enOrden = [...porViaje].sort((a, b) => a.trip.id - b.trip.id);
+            const otros = porViaje.filter(x => x.trip.id !== base.trip.id);
+
+            const lineas = enOrden.map(x => `  #${x.trip.id}  ${_rutasDeUnViaje(x.trip).join(' + ') || 's/ruta'}`
+                + `  \u00b7  ${x.trip.driver || 's/chofer'}  \u00b7  ${x.paradas.length} paradas`
+                + (x.marcadas ? `  (${x.marcadas} ya marcadas)` : '')).join('\n');
+
+            const conProgreso = otros.filter(x => x.marcadas > 0);
+            let aviso = `Fusionar ${viajes.length} viajes del ${dias[0].split('-').reverse().join('/')}:\n\n${lineas}\n\n`
+                      + `Queda el #${base.trip.id} con las paradas de todos, en ese orden.\n`
+                      + `Los otros (${otros.map(x => '#' + x.trip.id).join(', ')}) se borran al guardar.`;
+            if (conProgreso.length) {
+                aviso += `\n\n\u26a0 OJO: `
+                      + conProgreso.map(x => `el #${x.trip.id} tiene ${x.marcadas} parada(s) ya marcadas por el chofer`).join(' y ')
+                      + `. Eso se pierde.`;
+            }
+            aviso += `\n\n\u00bfSigo?`;
+            if (!confirm(aviso)) return;
+
+            // Se abre el viaje que queda y se le suma lo de los otros
+            await openEditTripModal(base.trip.id);
+            // openEditTripModal se corta sin avisar si el viaje no esta en
+            // memoria. Sin esto el operador confirmaba y no pasaba nada.
+            if ((document.getElementById('new-trip-id')?.value || '') !== String(base.trip.id)) {
+                return alert(`No pude abrir el viaje #${base.trip.id}. Recargá la pantalla y probá de nuevo — no se tocó ningún viaje.`);
+            }
+
+            tripRutas = [...new Set(enOrden.flatMap(x => _rutasDeUnViaje(x.trip)))];
+
+            // Las paradas de todos, en orden, sin repetir y con un solo deposito
+            const vistos = new Set();
+            const filas = [];
+            let deposito = null;
+            for (const x of enOrden) {
+                const etiqueta = _rutasDeUnViaje(x.trip)[0] || '';
+                for (const p of x.paradas) {
+                    const fila = { clientId: p.clientId, name: p.name, address: p.address || '', ruta: etiqueta };
+                    if (esParadaDeposito(fila.name)) { if (!deposito) deposito = fila; continue; }
+                    if (vistos.has(fila.clientId)) continue;
+                    vistos.add(fila.clientId);
+                    filas.push(fila);
+                }
+            }
+            if (deposito) filas.push(deposito);
+            tripDeliveryRows = filas;
+
+            _fusionAbsorbidos = otros.map(x => x.trip.id);
+            renderTripRutas();
+            renderTripDeliveryList();
+            await populateTripDeliveryAddSelect();
+
+            document.getElementById('new-trip-modal-title').innerText = `Fusionar ${viajes.length} viajes en el #${base.trip.id}`;
+            document.getElementById('new-trip-save-btn').innerText = 'GUARDAR VIAJE FUSIONADO';
+            _mostrarConflictosDeFusion(viajes.map(t => t), base.trip);
+            ntTab('datos');
+        }
+
+        /** Marca en pantalla todo aquello en lo que los viajes NO coinciden. El
+         *  sistema no elige por el operador: le muestra las dos y que decida. */
+        function _mostrarConflictosDeFusion(viajes, base) {
+            const caja = document.getElementById('nt-fusion-aviso');
+            const texto = document.getElementById('nt-fusion-aviso-texto');
+            if (!caja || !texto) return;
+
+            const campos = [
+                ['Chofer',            t => String(t.driver || '').toUpperCase()],
+                ['Coche',             t => String(t.vehicle || '').toUpperCase()],
+                ['Contrato',          t => String(t.contractType || '')],
+                ['Proveedor',         t => String(t.provider || '').toUpperCase()],
+                ['Unidad de negocio', t => String(t.businessUnit || '')],
+                ['Localidad',         t => String(t.zone || '').toUpperCase()],
+                ['Usuario App',       t => String(t.assignedMobileUser || '')],
+                ['Vuelta',            t => t.vuelta == null ? '' : String(t.vuelta)],
+                ['Auxiliar',          t => String(t.auxiliar || '').toUpperCase()]
+            ];
+            const lineas = [];
+            for (const [nombre, leer] of campos) {
+                const vals = [...new Set(viajes.map(leer).filter(v => v !== ''))];
+                if (vals.length > 1) {
+                    lineas.push(`<b>${escapeHtml(nombre)}</b>: ${vals.map(v => escapeHtml(v)).join(' &nbsp;/&nbsp; ')} — quedó <b>${escapeHtml(leer(base) || 'vacío')}</b>`);
+                }
+            }
+
+            // La plata no se suma sola: la escribe el operador
+            const conValor = viajes.filter(t => Number(t.value) > 0);
+            if (conValor.length > 1) {
+                const suma = conValor.reduce((a, t) => a + Number(t.value), 0);
+                const detalle = conValor.map(t => `${_rutasDeUnViaje(t)[0] || ('#' + t.id)} $${Number(t.value).toLocaleString('es-AR')}`).join(' + ');
+                lineas.push(`<b>Valor</b>: ${escapeHtml(detalle)} = $${suma.toLocaleString('es-AR')} — <b>escribí el que queda</b>, no lo sumo solo`);
+                const val = document.getElementById('new-trip-value');
+                if (val) val.value = '';
+            }
+
+            // El usuario del celular lo elige el operador al fusionar
+            const usuarios = [...new Set(viajes.map(t => String(t.assignedMobileUser || '')).filter(Boolean))];
+            if (usuarios.length > 1) {
+                const sel = document.getElementById('new-trip-mobile-user');
+                if (sel) sel.value = '';
+                lineas.push('<b>Elegí el Usuario App</b>: el viaje fusionado va a un solo celular');
+            }
+
+            if (lineas.length === 0) {
+                lineas.push('Los viajes coinciden en todo. Revisá las rutas y las paradas y guardá.');
+            }
+            texto.innerHTML = lineas.map(l => `<p>· ${l}</p>`).join('');
+            caja.classList.remove('hidden');
+        }
+
         async function bulkDeleteTrips() {
             const ids = [...selectedTripIds];
             if (ids.length === 0) return;
@@ -22760,6 +22919,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             document.getElementById('new-trip-id').value = '';
             document.getElementById('new-trip-modal-title').innerText = 'Nuevo Viaje';
             document.getElementById('new-trip-save-btn').innerText = 'CREAR VIAJE';
+            // Si quedo una fusion a medias de antes, no se arrastra
+            _fusionAbsorbidos = [];
+            document.getElementById('nt-fusion-aviso')?.classList.add('hidden');
 
             // Traer choferes, auxiliares y repartos (usuarios móviles) desde sus
             // DRIVER → choferes con login para la app móvil (antes CHOFER + DRIVER unificados)
@@ -23343,6 +23505,19 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
             // Los payloads se arman ANTES de cerrar, que es cuando los campos
             // todavia estan en pantalla.
+            // Una fusion manda el viaje a un solo celular: hay que decir a cual
+            const absorbidos = [..._fusionAbsorbidos];
+            if (absorbidos.length && !esManual && !mobileUserValue) {
+                ntTab('datos');
+                return alert('Eleg\u00ed el Usuario App del viaje fusionado: va a un solo celular.');
+            }
+            if (absorbidos.length && isTercerizado && !(tripValue > 0)) {
+                if (!confirm('El viaje fusionado queda en $0. \u00bfLo guardo igual?')) {
+                    ntTab('datos');
+                    return;
+                }
+            }
+
             const paradas = Array.isArray(tripDeliveryRows) ? tripDeliveryRows.map(r => r.clientId) : [];
             const quien = (localStorage.getItem('r14.loggedUser') || '').trim();
             const payloads = targetDates.map(dia => {
@@ -23358,7 +23533,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             // /api/health, que no hace nada), y esperarlo con el modal abierto
             // es lo que hacia sentir que crear un viaje tardaba un monton.
             closeNewTripModal();
-            if (id) guardarEdicionDeFondo(id, payloads[0], paradas);
+            if (id) guardarEdicionDeFondo(id, payloads[0], paradas, absorbidos);
             else crearViajesDeFondo(payloads, paradas, quien);
         }
 
@@ -23541,7 +23716,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         /** Guarda la edicion con la ventana ya cerrada. */
-        async function guardarEdicionDeFondo(id, tripData, paradas) {
+        async function guardarEdicionDeFondo(id, tripData, paradas, absorbidos) {
             try {
                 const res = await fetch(`${API_URL}/trips/${id}`, {
                     method: 'PUT', headers: getActorHeaders(), body: JSON.stringify(tripData)
@@ -23560,12 +23735,42 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     addNotification('info', 'Paradas sin cambios',
                         'Se guardaron los datos del viaje, pero no las paradas.');
                 }
+                // Fusion: los viajes absorbidos se borran RECIEN ACA, con el
+                // viaje que queda ya guardado y con sus paradas puestas. Si algo
+                // falla antes, no se perdio ninguno.
+                if (Array.isArray(absorbidos) && absorbidos.length) {
+                    await _borrarViajesAbsorbidos(absorbidos, id);
+                }
                 if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
                 loadWeeklyData({ silencioso: true });
             } catch (err) {
                 console.error(err);
                 if (typeof addNotification === 'function') {
                     addNotification('critical', `No se pudo guardar el viaje #${id}`, String(err?.message || err));
+                }
+            }
+        }
+
+        /** Borra los viajes que quedaron fusionados dentro de otro. */
+        async function _borrarViajesAbsorbidos(ids, idQueQueda) {
+            try {
+                const res = await fetch(`${API_URL}/trips/bulk-delete`, {
+                    method: 'POST', headers: getActorHeaders(), body: JSON.stringify({ ids })
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || `El servidor respondi\u00f3 ${res.status}`);
+                _sacarViajesDeLaTabla(ids);
+                if (typeof clearTripSelection === 'function') clearTripSelection();
+                if (typeof addNotification === 'function') {
+                    addNotification('success', 'Viajes fusionados',
+                        `${ids.length + 1} viajes quedaron en el #${idQueQueda}. Se borraron ${ids.map(x => '#' + x).join(', ')}.`);
+                }
+            } catch (e) {
+                console.error(e);
+                if (typeof addNotification === 'function') {
+                    addNotification('critical', 'Fusion\u00f3 a medias',
+                        `El viaje #${idQueQueda} qued\u00f3 bien, pero no pude borrar ${ids.map(x => '#' + x).join(', ')}: `
+                        + String(e?.message || e) + ' \u2014 borralos a mano o van a quedar duplicados.');
                 }
             }
         }
@@ -24792,6 +24997,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 <input type="hidden" id="new-trip-date-start">
                 <input type="hidden" id="new-trip-date-end">
                 <input type="hidden" id="new-trip-multi-month">
+
+                <!-- Lo que no coincide entre los viajes que se fusionan -->
+                <div id="nt-fusion-aviso" class="hidden mb-4 rounded-2xl border border-amber-200 bg-amber-50 p-3">
+                    <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-1">Viaje fusionado — revisá esto</p>
+                    <div id="nt-fusion-aviso-texto" class="text-[11px] font-bold text-amber-800 leading-relaxed space-y-0.5"></div>
+                </div>
 
                 <div id="nt-panel-datos" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
 
