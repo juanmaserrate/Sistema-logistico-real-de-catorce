@@ -21408,8 +21408,230 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
     <script>
         let tripOverrides = {}; // Dict for local overrides logic removed.
-        /** Filas locales del modal de viaje: { clientId, name, address } en orden de reparto */
+        /** Filas locales del modal de viaje: { clientId, name, address, ruta } en orden de reparto.
+         *  `ruta` dice de que ruta vino la parada; las que agrego el operador a
+         *  mano no la tienen, y por eso nunca se pierden al rearmar. */
         let tripDeliveryRows = [];
+
+        /** Las rutas que hace este viaje, en el orden en que el chofer las recorre. */
+        let tripRutas = [];
+
+        function _ntEditando() {
+            return !!(document.getElementById('new-trip-id')?.value || '').trim();
+        }
+
+        /** Las rutas que se pueden elegir: las plantillas de «Rutas predefinidas». */
+        function rutasDisponibles() {
+            return [...new Set((routeTemplates || [])
+                .map(rt => String(rt.name || '').trim().toUpperCase())
+                .filter(Boolean))]
+                .sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
+        }
+
+        function _plantillaDeRuta(nombre) {
+            const n = String(nombre || '').trim().toUpperCase();
+            return (routeTemplates || []).find(t => String(t.name || '').trim().toUpperCase() === n) || null;
+        }
+
+        /** Pinta la lista de rutas del viaje y el desplegable para sumar otra. */
+        function renderTripRutas() {
+            const ul = document.getElementById('trip-rutas-list');
+            const sel = document.getElementById('trip-rutas-agregar');
+            const resumen = document.getElementById('trip-rutas-resumen');
+
+            if (ul) {
+                if (tripRutas.length === 0) {
+                    ul.innerHTML = '<li class="text-[11px] font-bold text-[#A3AED0] italic px-1">Todavía no hay ninguna ruta. Elegí una acá abajo, o en «Reparto / Ruta».</li>';
+                } else {
+                    ul.innerHTML = tripRutas.map((nombre, i) => {
+                        const rt = _plantillaDeRuta(nombre);
+                        const cuantas = rt ? (rt.stops || []).length : null;
+                        const btn = 'w-7 h-7 rounded-lg text-[#2B3674] font-black hover:bg-[#E8ECF8] disabled:opacity-20 disabled:hover:bg-transparent shrink-0';
+                        return `
+                        <li class="flex items-center gap-2 bg-[#F8FAFF] border border-[#F4F7FE] rounded-xl px-3 py-2">
+                            <span class="w-6 h-6 rounded-lg bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center shrink-0">${i + 1}</span>
+                            <span class="flex-1 min-w-0 truncate text-sm font-bold text-[#2B3674]">${escapeHtmlTrip(nombre)}</span>
+                            <span class="text-[10px] font-bold ${cuantas == null ? 'text-amber-600' : 'text-[#A3AED0]'} shrink-0">${cuantas == null ? 'sin plantilla' : cuantas + ' paradas'}</span>
+                            <button type="button" onclick="moverRutaDelViaje(${i}, -1)" ${i === 0 ? 'disabled' : ''} class="${btn}" aria-label="Subir">↑</button>
+                            <button type="button" onclick="moverRutaDelViaje(${i}, 1)" ${i === tripRutas.length - 1 ? 'disabled' : ''} class="${btn}" aria-label="Bajar">↓</button>
+                            <button type="button" onclick="quitarRutaDelViaje(${i})" class="text-rose-500 p-1 rounded-lg hover:bg-rose-50 font-bold shrink-0" aria-label="Quitar">✕</button>
+                        </li>`;
+                    }).join('');
+                }
+            }
+
+            if (resumen) {
+                if (tripRutas.length > 1) resumen.textContent = tripRutas.join(' → ');
+                else resumen.textContent = '';
+            }
+
+            if (sel) {
+                const libres = rutasDisponibles().filter(n => !tripRutas.includes(n));
+                sel.innerHTML = '<option value="">+ Sumar una ruta…</option>'
+                    + libres.map(n => `<option value="${escapeHtmlTrip(n)}">${escapeHtmlTrip(n)}</option>`).join('');
+                sel.value = '';
+            }
+
+            sincronizarRepartoConRutas();
+        }
+
+        /** El viaje se guarda con el nombre de su PRIMERA ruta: es la que sale en
+         *  la planilla semanal y en los filtros. Si hay mas de una, se avisa. */
+        function sincronizarRepartoConRutas() {
+            const sel = document.getElementById('new-trip-reparto');
+            const aviso = document.getElementById('new-trip-reparto-hint');
+            if (sel && tripRutas.length) {
+                const primera = tripRutas[0];
+                if ([...sel.options].some(o => o.value === primera)) sel.value = primera;
+            }
+            if (!aviso) return;
+            if (tripRutas.length > 1) {
+                aviso.textContent = `${tripRutas.length} rutas: ${tripRutas.join(' → ')}. El viaje se guarda como ${tripRutas[0]} — las rutas y su orden se cambian en la pestaña Paradas.`;
+                aviso.classList.remove('hidden');
+            } else {
+                aviso.textContent = '';
+                aviso.classList.add('hidden');
+            }
+        }
+
+        async function agregarRutaAlViaje(nombre) {
+            nombre = String(nombre || '').trim().toUpperCase();
+            if (!nombre || tripRutas.includes(nombre)) { renderTripRutas(); return; }
+            tripRutas.push(nombre);
+            renderTripRutas();
+            await _rearmarSiCorresponde();
+        }
+
+        async function moverRutaDelViaje(i, paso) {
+            const j = i + paso;
+            if (i < 0 || i >= tripRutas.length || j < 0 || j >= tripRutas.length) return;
+            const [x] = tripRutas.splice(i, 1);
+            tripRutas.splice(j, 0, x);
+            renderTripRutas();
+            await _rearmarSiCorresponde();
+        }
+
+        async function quitarRutaDelViaje(i) {
+            if (i < 0 || i >= tripRutas.length) return;
+            tripRutas.splice(i, 1);
+            renderTripRutas();
+            await _rearmarSiCorresponde();
+        }
+
+        /** En un viaje nuevo las paradas se rearman solas. En uno que ya existe
+         *  no: puede tener paradas ya marcadas por el chofer o un orden hecho a
+         *  mano, asi que el operador aprieta el boton cuando quiere. */
+        async function _rearmarSiCorresponde() {
+            if (_ntEditando()) {
+                const resumen = document.getElementById('trip-rutas-resumen');
+                if (resumen) resumen.textContent = 'Tocá «Cargar paradas» para rearmarlas';
+                return;
+            }
+            await cargarParadasDeLasRutas({ silencioso: true });
+        }
+
+        /** Trae las paradas de una ruta, sin tocar nada. */
+        async function _paradasDeRuta(nombre) {
+            try {
+                const res = await fetch(`${API_URL}/route-templates/resolve-for-trip?name=${encodeURIComponent(nombre)}`);
+                const j = await res.json();
+                if (!res.ok || !j.templateFound) return { stops: [], unmatched: [], falta: !j || !j.templateFound };
+                return {
+                    stops: (j.stops || []).map(st => ({
+                        clientId: st.clientId,
+                        name: st.name,
+                        address: st.address || '',
+                        ruta: nombre
+                    })),
+                    unmatched: j.unmatched || [],
+                    falta: false
+                };
+            } catch (e) {
+                console.warn(e);
+                return { stops: [], unmatched: [], falta: true };
+            }
+        }
+
+        /** Rearma las paradas del viaje: ruta por ruta, en el orden de la lista.
+         *
+         *  Reglas:
+         *   - una escuela no se repite: queda en la primera ruta que la lleva;
+         *   - el depósito (REAL DE CATORCE) queda una sola vez, al final;
+         *   - las paradas que el operador agrego a mano no se pierden: van
+         *     despues de las de las rutas. */
+        async function cargarParadasDeLasRutas(opts) {
+            const silencioso = !!(opts && opts.silencioso);
+            if (tripRutas.length === 0) {
+                if (!silencioso) {
+                    alert('Primero agregá al menos una ruta.');
+                    return;
+                }
+                tripDeliveryRows = tripDeliveryRows.filter(r => !r.ruta);
+                renderTripDeliveryList();
+                populateTripDeliveryAddSelect();
+                return;
+            }
+
+            // En un viaje que ya existe se avisa antes de rearmar
+            if (!silencioso && _ntEditando() && tripDeliveryRows.length > 0) {
+                const sinRuta = tripDeliveryRows.filter(r => !r.ruta).length;
+                const texto = `Este viaje ya tiene ${tripDeliveryRows.length} parada(s).\n\n`
+                    + `Las voy a rearmar en el orden de las rutas: ${tripRutas.join(' → ')}.`
+                    + (sinRuta ? `\n\nLas ${sinRuta} que no vienen de una ruta quedan al final.` : '')
+                    + '\n\n¿Sigo?';
+                if (!confirm(texto)) return;
+            }
+
+            const resultados = [];
+            for (const nombre of tripRutas) resultados.push([nombre, await _paradasDeRuta(nombre)]);
+
+            const vistos = new Set();
+            const armadas = [];
+            let deposito = null;
+            const sinPlantilla = [];
+            let sueltos = 0;
+
+            for (const [nombre, r] of resultados) {
+                if (r.falta || r.stops.length === 0) { sinPlantilla.push(nombre); continue; }
+                for (const fila of r.stops) {
+                    if (esParadaDeposito(fila.name)) { if (!deposito) deposito = fila; continue; }
+                    if (vistos.has(fila.clientId)) continue;
+                    vistos.add(fila.clientId);
+                    armadas.push(fila);
+                }
+                sueltos += (r.unmatched || []).length;
+            }
+
+            // Lo que puso el operador a mano sobrevive, al final
+            for (const fila of tripDeliveryRows) {
+                if (fila.ruta) continue;
+                if (esParadaDeposito(fila.name)) { if (!deposito) deposito = fila; continue; }
+                if (vistos.has(fila.clientId)) continue;
+                vistos.add(fila.clientId);
+                armadas.push(fila);
+            }
+            if (deposito) armadas.push(deposito);
+
+            tripDeliveryRows = armadas;
+            renderTripDeliveryList();
+            populateTripDeliveryAddSelect();
+            renderTripRutas();
+
+            if (typeof addNotification === 'function') {
+                if (sinPlantilla.length) {
+                    addNotification('warning', 'Rutas sin paradas',
+                        `${sinPlantilla.join(', ')}: no hay plantilla cargada o ningún nombre coincide con el directorio.`);
+                }
+                if (sueltos) {
+                    addNotification('warning', 'Coincidencias parciales',
+                        `${sueltos} nombre(s) de las plantillas no tienen escuela en el directorio.`);
+                }
+                if (!silencioso && !sinPlantilla.length) {
+                    addNotification('success', 'Paradas',
+                        `${tripDeliveryRows.length} paradas en el orden ${tripRutas.join(' → ')}.`);
+                }
+            }
+        }
 
         // escapeHtmlTrip() → js/r14-utils.js (alias de escapeHtml)
 
@@ -21430,6 +21652,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     <i data-lucide="grip-vertical" class="w-4 h-4 text-[#A3AED0] shrink-0"></i>
                     <span class="text-[#A3AED0] text-xs w-5">${i + 1}</span>
                     <span class="flex-1 min-w-0 truncate" title="${escapeHtmlTrip(row.address || '')}">${escapeHtmlTrip(row.name)}</span>
+                    ${(row.ruta && tripRutas.length > 1) ? `<span class="shrink-0 px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[9px] font-black uppercase tracking-wider">${escapeHtmlTrip(row.ruta)}</span>` : ''}
                     ${esParadaDeposito(row.name) ? '' : contactoBotonHtml('modal', row.clientId)}
                     <button type="button" onclick="tripDeliveryRemoveStop(${i})" class="text-rose-500 p-1 rounded-lg hover:bg-rose-50 font-bold" aria-label="Quitar">✕</button>
                 </li>
@@ -21795,6 +22018,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         function resetTripDeliveryPanelForNewTrip() {
             tripDeliveryRows = [];
+            tripRutas = [];
+            if (typeof renderTripRutas === 'function') renderTripRutas();
             const hint = document.getElementById('trip-delivery-hint');
             const editor = document.getElementById('trip-delivery-editor');
             const ul = document.getElementById('trip-delivery-list');
@@ -21946,14 +22171,19 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             // Cambia el reparto -> cambian los dias que ya tienen este viaje.
             if (typeof ntCalRender === 'function') ntCalRender();
             if (!reparto || /^libre$/i.test(reparto) || reparto === '') {
-                tripDeliveryRows = [];
+                tripRutas = [];
+                tripDeliveryRows = tripDeliveryRows.filter(r => !r.ruta);
+                renderTripRutas();
                 renderTripDeliveryList();
                 return;
             }
-            // Auto-load template stops silently, don't ask for confirmation
-            await fillTripDeliveryFromTemplate(reparto, { silentSuccess: true });
-            renderTripDeliveryList();
-            populateTripDeliveryAddSelect();
+            // Elegir el reparto arranca la lista de rutas del viaje: es la
+            // primera. Las otras se suman en la pestana Paradas.
+            if (tripRutas[0] !== reparto) {
+                tripRutas = [reparto, ...tripRutas.filter(r => r !== reparto)];
+            }
+            renderTripRutas();
+            await cargarParadasDeLasRutas({ silencioso: true });
             // Las paradas viven en su propia pestana: se actualiza el contador
             // para que se vea cuantas quedaron cargadas sin tener que ir a mirar.
             if (typeof ntActualizarTabParadas === 'function') ntActualizarTabParadas();
@@ -21990,7 +22220,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 tripDeliveryRows = j.stops.map((s) => ({
                     clientId: s.clientId,
                     name: s.name,
-                    address: s.address || ''
+                    address: s.address || '',
+                    ruta: String(reparto || '').trim().toUpperCase()
                 }));
                 if (j.unmatched && j.unmatched.length && typeof addNotification === 'function') {
                     addNotification(
@@ -22010,21 +22241,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
         }
 
+        /** Quedo del boton viejo de una sola plantilla. Ahora el viaje puede
+         *  tener varias rutas, asi que rearma con todas. */
         async function loadTripDeliveryFromTemplateClick() {
-            const reparto = (document.getElementById('new-trip-reparto')?.value || '').trim();
-            if (!reparto || /^libre$/i.test(reparto)) {
-                alert('Elegí un reparto (ej. R8) en el campo «Reparto / Ruta».');
-                return;
-            }
-            if (
-                tripDeliveryRows.length > 0 &&
-                !confirm('¿Reemplazar las paradas actuales por las de la plantilla «' + reparto + '»?')
-            ) {
-                return;
-            }
-            await fillTripDeliveryFromTemplate(reparto, { silentSuccess: false });
-            renderTripDeliveryList();
-            populateTripDeliveryAddSelect();
+            return cargarParadasDeLasRutas();
         }
 
         async function loadTripDeliveryForEdit(tripId, repartoLabel) {
@@ -22051,11 +22271,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             } catch (e) {
                 console.error(e);
             }
-            const reparto = (repartoLabel || '').trim();
-            if (tripDeliveryRows.length === 0 && reparto && !/^libre$/i.test(reparto)) {
+            const reparto = (repartoLabel || '').trim().toUpperCase();
+            tripRutas = (reparto && !/^LIBRE$/i.test(reparto)) ? [reparto] : [];
+            if (tripDeliveryRows.length === 0 && reparto && !/^LIBRE$/i.test(reparto)) {
                 await fillTripDeliveryFromTemplate(reparto, { silentSuccess: true });
             }
             await populateTripDeliveryAddSelect();
+            renderTripRutas();
             renderTripDeliveryList();
         }
 
@@ -24557,6 +24779,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                             <div>
                                 <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Reparto / Ruta</label>
                                 <select id="new-trip-reparto" onchange="onNewTripRepartoChange()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                                <p id="new-trip-reparto-hint" class="hidden mt-1 text-[10px] font-bold text-indigo-600 leading-snug"></p>
                             </div>
                             <div>
                                 <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Vuelta del día</label>
@@ -24754,17 +24977,27 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 <div id="nt-panel-paradas" class="hidden space-y-3">
                     <p id="trip-delivery-hint" class="text-[10px] text-[#A3AED0] font-medium leading-relaxed"></p>
                         <div id="trip-delivery-editor" class="hidden space-y-3">
-                            <p class="text-[10px] text-[#A3AED0]">
-                                Si elegís un reparto (R8, etc.), las paradas se toman de la plantilla en «Rutas predefinidas» y se cruzan con el directorio de escuelas por nombre.
-                            </p>
-                            <button
-                                type="button"
-                                onclick="loadTripDeliveryFromTemplateClick()"
-                                class="w-full sm:w-auto text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-2 hover:bg-indigo-100"
-                            >
-                                Cargar / refrescar desde plantilla de reparto
-                            </button>
-                            <p class="text-[10px] text-[#A3AED0]">Arrastrá las filas para reordenar. El chofer ve la primera cuando el operador inicia el viaje.</p>
+                            <!-- Un viaje puede hacer varias rutas seguidas. El orden de
+                                 esta lista es el orden en que el chofer las recorre. -->
+                            <div class="border border-[#E0E5F2] rounded-2xl p-3 bg-white space-y-2">
+                                <div class="flex items-center justify-between gap-2 flex-wrap">
+                                    <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Rutas de este viaje</p>
+                                    <span id="trip-rutas-resumen" class="text-[10px] font-bold text-[#2B3674]"></span>
+                                </div>
+                                <ul id="trip-rutas-list" class="space-y-1.5"></ul>
+                                <div class="flex flex-col sm:flex-row gap-2">
+                                    <select id="trip-rutas-agregar" onchange="agregarRutaAlViaje(this.value)"
+                                            class="flex-1 bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                                    <button type="button" onclick="cargarParadasDeLasRutas()"
+                                            class="w-full sm:w-auto text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-2 hover:bg-indigo-100 whitespace-nowrap">
+                                        Cargar paradas de estas rutas
+                                    </button>
+                                </div>
+                                <p class="text-[10px] text-[#A3AED0] leading-snug">
+                                    Las paradas de cada ruta se cargan una ruta después de la otra, en este orden. Salen de las plantillas de «Rutas predefinidas» y se cruzan con el directorio de escuelas por nombre. El depósito queda una sola vez, al final.
+                                </p>
+                            </div>
+                            <p class="text-[10px] text-[#A3AED0]">Arrastrá las filas para reordenar paradas sueltas. El chofer ve la primera cuando el operador inicia el viaje.</p>
                             <ul id="trip-delivery-list" class="space-y-2 min-h-[2rem]"></ul>
                             <div class="space-y-2 border border-[#E0E5F2] rounded-2xl p-3 bg-white">
                                 <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Agregar parada</p>
