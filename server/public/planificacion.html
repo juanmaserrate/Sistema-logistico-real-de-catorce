@@ -3596,6 +3596,16 @@
         // los IDs de layers/sources para poder limpiarlos correctamente.
         let mapboxPlannedLayerIds = []; // ['planned-route-{routeId}', ...]
         let mapboxTrailLayerIds = [];   // ['trail-{routeId}', ...]
+
+        // La linea de la ruta planificada NO se dibuja.
+        //
+        // Esa linea la trazaba Google Directions, siguiendo las calles. Con la
+        // cuenta de Google cortada, Directions no contesta y el servidor cae al
+        // plan B: unir las paradas con una recta. En el mapa quedaban rectas
+        // atravesando manzanas, que no son ningun recorrido real y confunden.
+        // Las paradas numeradas y los camiones se siguen viendo igual.
+        // Si algun dia vuelve Directions, se pone en true y vuelve la linea.
+        const MOSTRAR_LINEA_RUTA_PLANIFICADA = false;
         let controlLiveData = [];
         let controlAutoRefreshTimer = null;
         let controlHeavyRefreshTimer = null; // refresh completo (snap+rutas+trazas) espaciado
@@ -6591,20 +6601,23 @@
                         try {
                             // Cleanup previo por si quedo de un render anterior
                             _mbRemoveLayerAndSource(layerId);
-                            controlMap.addSource(layerId, { type: 'geojson', data: geojson });
-                            controlMap.addLayer({
-                                id: layerId,
-                                type: 'line',
-                                source: layerId,
-                                layout: { 'line-join': 'round', 'line-cap': 'round' },
-                                paint: {
-                                    'line-color': color,
-                                    'line-width': 4,
-                                    'line-opacity': 0.88
-                                }
-                            });
-                            mapboxPlannedLayerIds.push(layerId);
-                            // Marker fantasma para mantener compat con codigo viejo que usa .length
+                            if (MOSTRAR_LINEA_RUTA_PLANIFICADA) {
+                                controlMap.addSource(layerId, { type: 'geojson', data: geojson });
+                                controlMap.addLayer({
+                                    id: layerId,
+                                    type: 'line',
+                                    source: layerId,
+                                    layout: { 'line-join': 'round', 'line-cap': 'round' },
+                                    paint: {
+                                        'line-color': color,
+                                        'line-width': 4,
+                                        'line-opacity': 0.88
+                                    }
+                                });
+                                mapboxPlannedLayerIds.push(layerId);
+                            }
+                            // Marker fantasma: lo usa el .length que decide si hay
+                            // que volver a pedir el plan. Va aunque no se dibuje.
                             controlPlannedPolylines.push({ __layerId: layerId, __color: color });
                         } catch (e) {
                             console.warn('Mapbox addLayer planned:', e);
