@@ -14422,6 +14422,23 @@
             }
         }
 
+        /** Las rutas de un viaje, para mostrar.
+         *
+         *  Un viaje puede hacer varias rutas seguidas (R8 + R12 + CIC 1). La
+         *  lista completa esta en `rutas`; `reparto` guarda solo la primera,
+         *  porque es la que usan los filtros y la app del chofer. */
+        function rutasDelViaje(t, separador) {
+            const crudo = t && t.rutas;
+            let lista = [];
+            if (Array.isArray(crudo)) lista = crudo;
+            else if (typeof crudo === 'string' && crudo.trim()) {
+                try { const x = JSON.parse(crudo); if (Array.isArray(x)) lista = x; } catch (_) {}
+            }
+            lista = lista.map(r => String(r || '').trim()).filter(Boolean);
+            if (lista.length > 1) return lista.join(separador || ' + ');
+            return (t && (t.tripType || t.reparto)) || '--';
+        }
+
         function renderPlanningTable(data) {
             const body = document.getElementById('weekly-table-body');
             weeklyTripStopsBuffers = {};
@@ -14476,7 +14493,7 @@
                                 `).join('');
                             })()}
                         </td>
-                        <td class="font-bold text-[#2B3674]">${t.tripType || t.reparto || '--'}</td>
+                        <td class="font-bold text-[#2B3674]" title="${escapeHtml(rutasDelViaje(t, ' → '))}">${escapeHtml(rutasDelViaje(t))}</td>
                         <td class="font-bold text-[#2B3674]">${(t.assignedMobileUser || '--').toString().toUpperCase()}</td>
                         <td><div class="text-[10px] text-amber-600 font-bold uppercase">${formatBusinessUnit(t.businessUnit)}</div></td>
                         <td>
@@ -22247,7 +22264,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             return cargarParadasDeLasRutas();
         }
 
-        async function loadTripDeliveryForEdit(tripId, repartoLabel) {
+        async function loadTripDeliveryForEdit(tripId, repartoLabel, rutasGuardadas) {
             const hint = document.getElementById('trip-delivery-hint');
             const editor = document.getElementById('trip-delivery-editor');
             if (!tripId) {
@@ -22272,7 +22289,14 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 console.error(e);
             }
             const reparto = (repartoLabel || '').trim().toUpperCase();
-            tripRutas = (reparto && !/^LIBRE$/i.test(reparto)) ? [reparto] : [];
+            // Las rutas que quedaron guardadas mandan; si el viaje es viejo y no
+            // tiene ninguna, la unica ruta es su reparto.
+            const guardadas = Array.isArray(rutasGuardadas)
+                ? rutasGuardadas.map(r => String(r || '').trim().toUpperCase()).filter(Boolean)
+                : [];
+            tripRutas = guardadas.length
+                ? guardadas
+                : ((reparto && !/^LIBRE$/i.test(reparto)) ? [reparto] : []);
             if (tripDeliveryRows.length === 0 && reparto && !/^LIBRE$/i.test(reparto)) {
                 await fillTripDeliveryFromTemplate(reparto, { silentSuccess: true });
             }
@@ -23222,7 +23246,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
 
             autoFillLocalidad();
-            await loadTripDeliveryForEdit(trip.id, trip.tripType || trip.reparto || '');
+            await loadTripDeliveryForEdit(trip.id, trip.tripType || trip.reparto || '', trip.rutas);
         }
 
         function closeNewTripModal() {
@@ -23305,6 +23329,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 zone: document.getElementById('new-trip-zone').value,
                 reparto: repartoValue,
                 tripType: repartoValue,
+                // Todas las rutas del viaje, en orden. `reparto` es la primera:
+                // es la que miran los filtros, la app del chofer y la subzona.
+                rutas: (Array.isArray(tripRutas) && tripRutas.length) ? [...tripRutas] : null,
                 assignedMobileUser: mobileUserValue,
                 contractType: contractValue,
                 provider: providerValue,

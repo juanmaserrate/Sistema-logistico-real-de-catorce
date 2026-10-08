@@ -256,6 +256,10 @@ model Trip {
   reason             String?
   temperature        String?
   reparto            String?
+  /// Las rutas que hace el viaje, en orden: ["R8","R12","CIC 1"]. `reparto`
+  /// sigue siendo la primera, que es la que usan los filtros, la app del
+  /// chofer y la subzona. Esta lista existe para mostrarlas todas.
+  rutas              Json?
   assignedMobileUser String?
   locality           String?
   /// 1 = primera vuelta del día (costo auxiliar jornal completo); 2 o 3 = siguientes (misma regla de costo). null = calcular por hora/patente (legacy).
