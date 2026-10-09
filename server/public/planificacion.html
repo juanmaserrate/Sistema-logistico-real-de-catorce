@@ -6384,7 +6384,13 @@
                 const isVisible = controlVisibleTrips.has(tid);
                 const enfocado = hayFoco && isVisible;
                 const color = colors[idx % colors.length];
-                const reparto = it.reparto || it.deviceLabel || it.driver || 'SIN REPARTO';
+                // "GPS" es el nombre que le pone el servidor a un telefono que no
+                // pudo cruzar con ninguna ruta de hoy. No es un reparto: se usa
+                // como ultimo recurso el nombre con el que el celular se anuncia.
+                const repartoReal = String(it.reparto || '').trim();
+                const reparto = (repartoReal && repartoReal.toUpperCase() !== 'GPS')
+                    ? repartoReal
+                    : (it.deviceLabel || it.driver || 'SIN REPARTO');
                 const chofer = it.driver || '';
                 const hechas = Number(it.stopsDone);
                 const total = Number(it.stopsTotal);
