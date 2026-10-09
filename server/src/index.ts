@@ -2716,19 +2716,36 @@ app.post('/api/v1/control/map-matching-batch', async (req, res) => {
         const mapboxToken = await resolveMapboxAccessToken();
         if (mapboxToken) {
             const coords = valid.map(p => `${p.lng},${p.lat}`).join(';');
-            const radiuses = new Array(valid.length).fill('25').join(';');
+            // SIN `radiuses`. Con un radio fijo de 25 m, Mapbox devolvia el
+            // recorrido con confianza 0: forzado a pegar cada ping a 25 m, no
+            // encontraba un camino coherente. Dejandolo elegir, el mismo tramo
+            // pasa de confianza 0 a 0,97.
             const url = `https://api.mapbox.com/matching/v5/mapbox/driving/${coords}` +
-                `?geometries=geojson&overview=full&radiuses=${radiuses}&tidy=true&access_token=${mapboxToken}`;
+                `?geometries=geojson&overview=full&tidy=true&access_token=${mapboxToken}`;
             try {
                 const r = await fetchWithTimeout(url, {}, 8000);
                 const data: any = await r.json().catch(() => ({}));
-                const match = Array.isArray(data?.matchings) ? data.matchings[0] : null;
-                if (match?.geometry?.coordinates?.length) {
-                    const coordsArr: Array<[number, number]> = match.geometry.coordinates;
-                    const geometry = coordsArr.map(c => ({ lat: Number(c[1]), lng: Number(c[0]) }));
+                // Cuando el recorrido no se puede pegar de una sola pieza (el
+                // chofer para, entra a un playon, pierde senal), Mapbox lo
+                // parte en tramos. Antes se usaba solo el primero y se perdia
+                // el resto del viaje: van todos, uno detras del otro.
+                const tramos: any[] = Array.isArray(data?.matchings) ? data.matchings : [];
+                const geometry: Array<{ lat: number; lng: number }> = [];
+                for (const t of tramos) {
+                    const cs: Array<[number, number]> = t?.geometry?.coordinates || [];
+                    for (const c of cs) {
+                        const punto = { lat: Number(c[1]), lng: Number(c[0]) };
+                        const ult = geometry[geometry.length - 1];
+                        if (ult && ult.lat === punto.lat && ult.lng === punto.lng) continue;
+                        geometry.push(punto);
+                    }
+                }
+                if (geometry.length >= 2) {
+                    const confianzas = tramos.map((t: any) => Number(t?.confidence ?? 0));
                     return res.json({
                         geometry,
-                        confidence: Number(match.confidence ?? 0),
+                        confidence: confianzas.length ? Math.max(...confianzas) : 0,
+                        tramos: tramos.length,
                         provider: 'mapbox'
                     });
                 }
