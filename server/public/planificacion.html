@@ -6442,38 +6442,51 @@
             controlUpdatePlannedVisibility();
         }
 
+        /** ¿Hay un solo reparto enfocado? */
+        function controlHayFoco() {
+            return !!controlVisibleTrips
+                && controlVisibleTrips.size === 1
+                && (controlLiveData || []).length > 1;
+        }
+
         /** Deja en el mapa UN solo reparto y lo acerca.
          *
          *  Con 15 repartos encima, el mapa no se lee. Tocar un chip deja ese y
          *  esconde el resto; tocarlo de nuevo vuelve a mostrar todos. */
-        function controlEnfocarReparto(tripId) {
+        async function controlEnfocarReparto(tripId) {
             if (!controlVisibleTrips) return;
             const tid = String(tripId);
             const yaEstabaSolo = controlVisibleTrips.size === 1 && controlVisibleTrips.has(tid);
 
             if (yaEstabaSolo) {
                 (controlLiveData || []).forEach((it) => controlVisibleTrips.add(String(it.tripId)));
-            } else {
-                controlVisibleTrips.clear();
-                controlVisibleTrips.add(tid);
-                const it = (controlLiveData || []).find((x) => String(x.tripId) === tid);
-                const loc = it && it.lastLocation;
-                if (controlMap && loc && loc.latitude != null && loc.longitude != null) {
-                    controlMap.flyTo({
-                        center: [Number(loc.longitude), Number(loc.latitude)],
-                        zoom: Math.max(controlMap.getZoom(), 14.5),
-                        duration: 900
-                    });
-                } else if (typeof addNotification === 'function') {
-                    addNotification('warning', 'Sin ubicación',
-                        `${(it && (it.reparto || it.driver)) || 'Ese reparto'} no está reportando GPS ahora.`);
-                }
+                await controlAplicarFiltroEnElMapa();
+                return;
             }
-            controlAplicarFiltroEnElMapa();
+
+            controlVisibleTrips.clear();
+            controlVisibleTrips.add(tid);
+            const it = (controlLiveData || []).find((x) => String(x.tripId) === tid);
+            // Primero se redibuja y DESPUES se vuela: el redibujado reencuadra el
+            // mapa, y si volabamos antes nos alejaba de nuevo al instante.
+            await controlAplicarFiltroEnElMapa();
+
+            const loc = it && it.lastLocation;
+            if (controlMap && loc && loc.latitude != null && loc.longitude != null) {
+                controlMap.flyTo({
+                    center: [Number(loc.longitude), Number(loc.latitude)],
+                    zoom: Math.max(controlMap.getZoom(), 14.5),
+                    duration: 900,
+                    essential: true
+                });
+            } else if (typeof addNotification === 'function') {
+                addNotification('warning', 'Sin ubicación',
+                    `${(it && (it.reparto || it.driver)) || 'Ese reparto'} no está reportando GPS ahora.`);
+            }
         }
 
         /** Pinta el mapa y los chips con el filtro que haya puesto el operador. */
-        function controlAplicarFiltroEnElMapa() {
+        async function controlAplicarFiltroEnElMapa() {
             controlBuildDriverChips(controlLiveData);
             controlMarkersByTrip.forEach((marker, id) => {
                 _mbSetMarkerVisible(marker, controlIsTripVisible(id));
@@ -6482,7 +6495,7 @@
             // Las paradas se redibujan: cambia de que reparto son
             if (typeof drawControlPlannedRoutes === 'function') {
                 controlLastPlannedIdsKey = '';
-                drawControlPlannedRoutes(controlLiveData).catch(() => {});
+                await drawControlPlannedRoutes(controlLiveData).catch(() => {});
             }
             // Y las trazas, que ahora solo se dibujan para el reparto enfocado
             if (typeof loadControlTrailAllActive === 'function') {
@@ -6617,6 +6630,10 @@
 
             const ids = [...new Set(
                 (items || [])
+                    // Solo las paradas de los repartos que estan a la vista. Antes
+                    // se dibujaban las 80 y despues se escondian: el mapa cargaba
+                    // trabajo al pedo y quedaba lento con 15 repartos.
+                    .filter((i) => controlIsTripVisible(String(i.tripId)))
                     .map((i) => i.plannedRouteId)
                     .filter((id) => id != null && id !== '' && Number.isFinite(Number(id)))
                     .map((id) => Number(id))
@@ -6763,11 +6780,16 @@
                 });
                 const combined = markerPts.concat(allBoundsPoints);
                 if (combined.length === 0) return;
-                try {
-                    const bounds = new mapboxgl.LngLatBounds();
-                    combined.forEach((p) => bounds.extend([p.lng, p.lat]));
-                    controlMap.fitBounds(bounds, { padding: 60, maxZoom: 13 });
-                } catch (_) {}
+                // Con un reparto enfocado el encuadre NO se toca: el operador
+                // acaba de pedir que el mapa vaya a ese camion, y encuadrar todo
+                // lo volvia a alejar en el acto.
+                if (!controlHayFoco()) {
+                    try {
+                        const bounds = new mapboxgl.LngLatBounds();
+                        combined.forEach((p) => bounds.extend([p.lng, p.lat]));
+                        controlMap.fitBounds(bounds, { padding: 60, maxZoom: 13 });
+                    } catch (_) {}
+                }
                 controlUpdatePlannedVisibility();
             }
         }
