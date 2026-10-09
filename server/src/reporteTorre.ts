@@ -109,6 +109,22 @@ export async function filasViajesPorIds(prisma: Prisma, ids: number[]) {
     return filasViajesDe(prisma, { id: { in: ids } });
 }
 
+/** Unidades de negocio que NO se reparten en una localidad.
+ *
+ *  DESARROLLO no es un reparto a establecimientos: no tiene sentido pedirle
+ *  una localidad, y dejarla en blanco en el Excel parecia un dato faltante.
+ *  Por eso en vez de vacio se escribe la explicacion. */
+export const UNIDADES_SIN_LOCALIDAD = ['DESARROLLO'];
+
+/** El viaje pertenece a una unidad que no lleva localidad. */
+export function sinLocalidadPorUnidad(businessUnit: string | null | undefined): boolean {
+    const u = String(businessUnit ?? '').toUpperCase();
+    return UNIDADES_SIN_LOCALIDAD.some((x) => u.includes(x));
+}
+
+/** Lo que va en las columnas Localidad y Partido cuando la unidad no lleva. */
+export const TEXTO_SIN_LOCALIDAD = 'No aplica \u2014 DESARROLLO no lleva localidad';
+
 const MESES_LIBRO = ['01 Enero', '02 Febrero', '03 Marzo', '04 Abril', '05 Mayo', '06 Junio',
     '07 Julio', '08 Agosto', '09 Septiembre', '10 Octubre', '11 Noviembre', '12 Diciembre'];
 
@@ -140,8 +156,10 @@ async function filasViajesDe(prisma: Prisma, where: any) {
             'ID viaje': t.id,
             'Fecha': soloFecha(t.date),
             'Reparto': t.reparto || '',
-            // Lo que el sistema guarda como "zone" es la LOCALIDAD del viaje
-            'Localidad': t.zone || '',
+            // Lo que el sistema guarda como "zone" es la LOCALIDAD del viaje.
+            // Si la unidad no lleva localidad, se dice con todas las letras: en
+            // blanco parecia un dato que alguien se olvido de cargar.
+            'Localidad': sinLocalidadPorUnidad(t.businessUnit) ? TEXTO_SIN_LOCALIDAD : (t.zone || ''),
             // La subzona la pone el sistema segun el reparto; no se edita a mano
             'Subzona': t.subzona || '',
             'Unidad de negocio': t.businessUnit || '',

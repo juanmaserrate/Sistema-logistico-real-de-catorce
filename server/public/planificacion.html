@@ -3806,6 +3806,47 @@
                     + quedan.map(u => `<option value="${escapeHtml(u)}">${escapeHtml(u)}</option>`).join('');
                 sel.value = '';
             }
+            // Por aca pasan TODOS los cambios de unidad: al abrir el viaje, al
+            // sumar una y al sacarla. Por eso la regla se aplica desde aca.
+            if (typeof aplicarReglaDeLocalidad === 'function') aplicarReglaDeLocalidad();
+        }
+
+        /** Unidades de negocio que NO se reparten en una localidad.
+         *  Tiene que decir lo mismo que UNIDADES_SIN_LOCALIDAD del servidor. */
+        const UNIDADES_SIN_LOCALIDAD = ['DESARROLLO'];
+
+        function viajeSinLocalidad(unidades) {
+            const u = String(unidades ?? '').toUpperCase();
+            return UNIDADES_SIN_LOCALIDAD.some(x => u.includes(x));
+        }
+
+        /** DESARROLLO no se reparte en ninguna localidad, asi que el campo se
+         *  bloquea y se vacia. Antes se podia elegir una y despues, en el Excel,
+         *  aparecia una localidad que no significaba nada. */
+        function aplicarReglaDeLocalidad() {
+            const campo = document.getElementById('new-trip-bu');
+            const zona = document.getElementById('new-trip-zone');
+            const partido = document.getElementById('new-trip-loc');
+            const nota = document.getElementById('new-trip-zone-nota');
+            if (!zona) return;
+            const bloquear = viajeSinLocalidad(campo ? campo.value : '');
+
+            zona.disabled = bloquear;
+            zona.classList.toggle('opacity-50', bloquear);
+            zona.classList.toggle('cursor-not-allowed', bloquear);
+            if (bloquear) {
+                zona.value = '';
+                if (partido) partido.value = '';
+                zona.placeholder = 'No lleva localidad';
+            } else if (zona.placeholder === 'No lleva localidad') {
+                zona.placeholder = 'Localidad…';
+            }
+            if (nota) {
+                nota.textContent = bloquear
+                    ? 'DESARROLLO no se reparte en una localidad. En el Excel sale explicado.'
+                    : '';
+                nota.classList.toggle('hidden', !bloquear);
+            }
         }
 
         function agregarUnidadAlViaje(valor) {
@@ -23795,6 +23836,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         function autoFillLocalidad() {
+            if (viajeSinLocalidad(document.getElementById('new-trip-bu')?.value)) {
+                document.getElementById('new-trip-loc').value = '';
+                return;
+            }
             const zone = document.getElementById('new-trip-zone').value;
             const loc = typeof getLocalidadFromZone === 'function' ? getLocalidadFromZone(zone) : '';
             document.getElementById('new-trip-loc').value = loc || 'ZONA NO MAPEDA';
@@ -23869,7 +23914,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 // La localidad se guarda siempre igual escrita. Antes entraba tal
                 // cual la tipeaban: "Don Orione", "la reja " con espacio al final
                 // y "ALMIRANTE BRONW" convivian como si fueran lugares distintos.
-                zone: normalizarLocalidad(document.getElementById('new-trip-zone').value),
+                // Y si la unidad no lleva localidad, se guarda vacia aunque el
+                // viaje viniera con una cargada de antes.
+                zone: viajeSinLocalidad(document.getElementById('new-trip-bu').value)
+                    ? ''
+                    : normalizarLocalidad(document.getElementById('new-trip-zone').value),
                 reparto: repartoValue,
                 tripType: repartoValue,
                 // Todas las rutas del viaje, en orden. `reparto` es la primera:
@@ -25534,6 +25583,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                 <input type="text" id="new-trip-zone" list="new-trip-zone-list" placeholder="Localidad…" autocomplete="off"
                                        oninput="autoFillLocalidad()" onchange="autoFillLocalidad()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
                                 <datalist id="new-trip-zone-list"></datalist>
+                                <p id="new-trip-zone-nota" class="hidden mt-1 text-[10px] font-bold text-[#A3AED0] leading-snug"></p>
                             </div>
                             <div>
                                 <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Partido (auto)</label>

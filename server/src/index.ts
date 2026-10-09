@@ -1,7 +1,7 @@
 
 import express from 'express';
 import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail, limpiarTokenMail } from './mailer';
-import { armarReporte, filasViajesPorIds, mesDeFecha, esCuentaDePrueba, TIPOS_DE_ENVASE, sumaDeLosTipos } from './reporteTorre';
+import { armarReporte, filasViajesPorIds, mesDeFecha, esCuentaDePrueba, TIPOS_DE_ENVASE, sumaDeLosTipos, sinLocalidadPorUnidad, TEXTO_SIN_LOCALIDAD } from './reporteTorre';
 import { armarLibroViajes } from './libroViajes';
 import { metricasDelMes } from './metricasDashboard';
 import { subirArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnosticoSharepoint, limpiarTokenSharepoint } from './sharepoint';
@@ -1633,8 +1633,11 @@ app.post('/api/v1/trips/export-xlsx', async (req: any, res: any) => {
             return {
                 ...f,
                 Mes: mesDeFecha(f['Fecha']),
-                // El partido sale de la tabla de equivalencias que vive en la web
-                Partido: c.partido || '',
+                // El partido sale de la tabla de equivalencias que vive en la web.
+                // Si la unidad no lleva localidad, tampoco lleva partido.
+                Partido: sinLocalidadPorUnidad(f['Unidad de negocio'])
+                    ? TEXTO_SIN_LOCALIDAD
+                    : (c.partido || ''),
                 'Region UN': c.region || '',
                 'Categoria UN': c.categoria || ''
             };
