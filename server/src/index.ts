@@ -2709,6 +2709,10 @@ app.post('/api/v1/control/map-matching-batch', async (req, res) => {
             return res.json({ geometry: valid, confidence: 0, provider: 'none' });
         }
 
+        // `motivo` dice POR QUE se cayo al plan B. Desde afuera solo se veia
+        // "raw" y no habia manera de saber si faltaba el token, si Mapbox
+        // rechazaba la llamada o si no encontraba camino. Nunca lleva el token.
+        let motivo = 'sin-token';
         const mapboxToken = await resolveMapboxAccessToken();
         if (mapboxToken) {
             const coords = valid.map(p => `${p.lng},${p.lat}`).join(';');
@@ -2728,7 +2732,11 @@ app.post('/api/v1/control/map-matching-batch', async (req, res) => {
                         provider: 'mapbox'
                     });
                 }
-            } catch (e) {
+                motivo = r.ok
+                    ? `sin-matchings:${String(data?.code || 'n/d')}`
+                    : `http-${r.status}:${String(data?.code || data?.message || 'n/d')}`;
+            } catch (e: any) {
+                motivo = `error:${String(e?.name || '')}:${String(e?.message || e).slice(0, 140)}`;
                 console.warn('mapbox map-matching batch:', e);
             }
         }
