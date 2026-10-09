@@ -3815,9 +3815,14 @@
          *  Tiene que decir lo mismo que UNIDADES_SIN_LOCALIDAD del servidor. */
         const UNIDADES_SIN_LOCALIDAD = ['DESARROLLO'];
 
+        /** Solo bloquea si DESARROLLO es la UNICA unidad del viaje.
+         *
+         *  Combinada con otra (SAE + DESARROLLO, por ejemplo) el viaje si
+         *  reparte en algun lado, asi que la localidad hace falta. */
         function viajeSinLocalidad(unidades) {
-            const u = String(unidades ?? '').toUpperCase();
-            return UNIDADES_SIN_LOCALIDAD.some(x => u.includes(x));
+            const lista = unidadesDeNegocio(unidades);
+            return lista.length === 1
+                && UNIDADES_SIN_LOCALIDAD.includes(String(lista[0]).toUpperCase());
         }
 
         /** DESARROLLO no se reparte en ninguna localidad, asi que el campo se

@@ -116,10 +116,17 @@ export async function filasViajesPorIds(prisma: Prisma, ids: number[]) {
  *  Por eso en vez de vacio se escribe la explicacion. */
 export const UNIDADES_SIN_LOCALIDAD = ['DESARROLLO'];
 
-/** El viaje pertenece a una unidad que no lleva localidad. */
+/** El viaje pertenece a una unidad que no lleva localidad.
+ *
+ *  Solo cuenta si es la UNICA unidad. Combinada con otra (SAE + DESARROLLO,
+ *  por ejemplo) el viaje si reparte en algun lado y la localidad hace falta.
+ *  El campo guarda las unidades separadas por coma: "SAE, RETIRO". */
 export function sinLocalidadPorUnidad(businessUnit: string | null | undefined): boolean {
-    const u = String(businessUnit ?? '').toUpperCase();
-    return UNIDADES_SIN_LOCALIDAD.some((x) => u.includes(x));
+    const lista = String(businessUnit ?? '')
+        .split(',')
+        .map((x) => x.trim().toUpperCase())
+        .filter(Boolean);
+    return lista.length === 1 && UNIDADES_SIN_LOCALIDAD.includes(lista[0]);
 }
 
 /** Lo que va en las columnas Localidad y Partido cuando la unidad no lleva. */
