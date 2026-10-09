@@ -14790,6 +14790,41 @@
             return (t && (t.tripType || t.reparto)) || '--';
         }
 
+        /** Las localidades mal escritas que vimos en los viajes, y como van.
+         *
+         *  La clave esta SIN acentos, en mayusculas y con los espacios de mas
+         *  sacados, asi "Alte. Brown", "ALTE BROWN" y "alte brown" caen todas
+         *  en la misma entrada. */
+        const LOCALIDADES_EQUIVALENTES = {
+            'ALTE BROWN': 'ALMIRANTE BROWN',
+            'ALTE. BROWN': 'ALMIRANTE BROWN',
+            'ALMIRANTE BRONW': 'ALMIRANTE BROWN',   // el typo que aparecio en octubre
+            'ALMTE BROWN': 'ALMIRANTE BROWN',
+            'A. BROWN': 'ALMIRANTE BROWN',
+            'MALVINAS': 'MALVINAS ARGENTINAS',
+            'LOMAS': 'LOMAS DE ZAMORA',
+            'LOMAS DE ZAMORA.': 'LOMAS DE ZAMORA',
+            'RAFAEL CALZADA.': 'RAFAEL CALZADA',
+            'MINISTRO RIVADAVIA.': 'MINISTRO RIVADAVIA',
+            'DON ORIONE.': 'DON ORIONE'
+        };
+
+        /** Deja la localidad siempre escrita igual: sin espacios de mas, en
+         *  MAYUSCULAS y con el nombre completo.
+         *
+         *  Se usa en los dos lados, y por eso no se desincronizan: al GUARDAR un
+         *  viaje y al armar el desplegable. Sin esto, alcanzaba con que alguien
+         *  tipeara "Almirante Bronw" una vez para que quedara en la lista y el
+         *  resto del equipo la fuera eligiendo de ahi. */
+        function normalizarLocalidad(z) {
+            const limpio = String(z ?? '').replace(/\s+/g, ' ').trim();
+            if (!limpio) return '';
+            const clave = limpio
+                .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+                .toUpperCase();
+            return LOCALIDADES_EQUIVALENTES[clave] || clave;
+        }
+
         function renderPlanningTable(data) {
             const body = document.getElementById('weekly-table-body');
             weeklyTripStopsBuffers = {};
@@ -23332,11 +23367,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             //   1) zonas de los viajes visibles (comportamiento original)
             //   2) zonas del catálogo de clientes/escuelas (siempre disponibles)
             //   3) zonas canónicas operativas (ZONE_LOCALITY_MAP)
-            const _normZone = (z) => {
-                const t = String(z || '').trim();
-                if (t === 'ALTE. BROWN' || t === 'ALTE BROWN') return 'ALMIRANTE BROWN';
-                return t;
-            };
+            const _normZone = (z) => normalizarLocalidad(z);
             // Todas las zonas disponibles: viajes visibles + catálogo de clientes +
             // zonas canónicas operativas, EXCEPTO las excluidas por config de la empresa.
             const zonesFromTrips = planningData.map(t => _normZone(t.zone)).filter(Boolean);
@@ -23835,7 +23866,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 auxiliar: document.getElementById('new-trip-aux1').value || null,
                 auxiliar2: document.getElementById('new-trip-aux2').value || null,
                 auxiliar3: document.getElementById('new-trip-aux3').value || null,
-                zone: document.getElementById('new-trip-zone').value,
+                // La localidad se guarda siempre igual escrita. Antes entraba tal
+                // cual la tipeaban: "Don Orione", "la reja " con espacio al final
+                // y "ALMIRANTE BRONW" convivian como si fueran lugares distintos.
+                zone: normalizarLocalidad(document.getElementById('new-trip-zone').value),
                 reparto: repartoValue,
                 tripType: repartoValue,
                 // Todas las rutas del viaje, en orden. `reparto` es la primera:
