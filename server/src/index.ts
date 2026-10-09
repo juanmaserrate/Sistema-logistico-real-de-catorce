@@ -2862,6 +2862,12 @@ app.get('/api/v1/control/active-routes', async (_req, res) => {
                     stopId: s.id,
                     sequence: s.sequence,
                     name: s.client?.name || `Parada ${s.sequence}`,
+                    // Coordenadas de la parada. Van aca para que el mapa pueda
+                    // dibujarlas sin pasar por Google Directions, que esta caido.
+                    clientId: s.clientId ?? null,
+                    address: s.client?.address ?? null,
+                    lat: s.client?.latitude != null ? Number(s.client.latitude) : null,
+                    lng: s.client?.longitude != null ? Number(s.client.longitude) : null,
                     status: s.status,
                     actualArrival: s.actualArrival?.toISOString() ?? null,
                     actualDeparture: s.actualDeparture?.toISOString() ?? null,
@@ -10469,10 +10475,21 @@ app.get('/api/v1/fleet/locations', async (req, res) => {
             number,
             { stopId: number; sequence: number; name: string; lat: number; lng: number }
         >();
+        // Con la misma consulta sacamos de que reparto es cada telefono y cuanto
+        // lleva hecho. Antes el mapa mostraba todos los chips con la palabra
+        // "GPS" porque el nombre del reparto no viajaba hasta la pantalla.
+        const metaByRouteId = new Map<
+            number,
+            { reparto: string | null; driver: string | null; tripId: number | null;
+              stopsTotal: number; stopsDone: number; stopsFailed: number }
+        >();
         if (plannedIds.length > 0) {
             const routesToday = await prisma.route.findMany({
                 where: { id: { in: plannedIds } },
-                include: { stops: { orderBy: { sequence: 'asc' }, include: { client: true } } }
+                include: {
+                    stops: { orderBy: { sequence: 'asc' }, include: { client: true } },
+                    trip: { select: { id: true, reparto: true, driver: true } }
+                }
             });
             for (const rt of routesToday) {
                 const next = rt.stops.find(
@@ -10490,11 +10507,34 @@ app.get('/api/v1/fleet/locations', async (req, res) => {
                         lng: Number(next.client!.longitude)
                     });
                 }
+                metaByRouteId.set(rt.id, {
+                    reparto: rt.trip?.reparto ?? null,
+                    driver: rt.trip?.driver ?? null,
+                    tripId: rt.trip?.id ?? null,
+                    stopsTotal: rt.stops.length,
+                    stopsDone: rt.stops.filter((s) => s.status === 'COMPLETED').length,
+                    stopsFailed: rt.stops.filter((s) => s.status === 'UNDELIVERABLE').length
+                });
             }
         }
         for (const row of result as any[]) {
-            if (row.plannedRouteId != null && nextByRouteId.has(Number(row.plannedRouteId))) {
-                row.nextPlannedStop = nextByRouteId.get(Number(row.plannedRouteId));
+            if (row.plannedRouteId == null) continue;
+            const rid = Number(row.plannedRouteId);
+            if (nextByRouteId.has(rid)) row.nextPlannedStop = nextByRouteId.get(rid);
+            const meta = metaByRouteId.get(rid);
+            if (!meta) continue;
+            row.stopsTotal = meta.stopsTotal;
+            row.stopsDone = meta.stopsDone;
+            row.stopsFailed = meta.stopsFailed;
+            // Un telefono se mostraba como reparto "GPS" y chofer "Reparto 6".
+            // El nombre de verdad esta en el viaje: R6, y el chofer que lo hace.
+            if (row.source === 'device') {
+                if (meta.reparto) row.reparto = meta.reparto;
+                if (meta.driver) {
+                    row.deviceLabel = row.driver;   // "Reparto 6", como lo nombro el celular
+                    row.driver = meta.driver;
+                }
+                if (meta.tripId != null) row.realTripId = meta.tripId;
             }
         }
 

@@ -21,6 +21,16 @@
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
     <link rel="stylesheet" href="/css/planificacion.css?v=20261004b">
+    <style>
+      /* La parada que sigue late, para encontrarla sin buscarla */
+      @keyframes r14PulsoParada {
+        0%, 100% { transform: scale(1);    box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+        50%      { transform: scale(1.14); box-shadow: 0 0 0 7px rgba(217,119,6,.22), 0 2px 6px rgba(0,0,0,.35); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        .r14-stop-marker { animation: none !important; }
+      }
+    </style>
     <script src="/js/r14-utils.js"></script>
     <script src="/js/r14-notifications.js"></script>
 </head>
@@ -2282,7 +2292,7 @@
                             <span class="text-[10px] text-[#A3AED0] italic">Sin repartos activos</span>
                         </div>
                         <button onclick="controlToggleAllDrivers()" class="ml-auto px-3 py-1.5 rounded-lg bg-white border border-[#E0E5F2] text-[10px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all shrink-0">
-                            Mostrar/Ocultar todos
+                            Ver todos
                         </button>
                     </div>
                     <div id="control-live-map" class="w-full" style="height: calc(100vh - 320px); min-height: 480px; max-height: 800px;"></div>
@@ -6368,23 +6378,37 @@
                 controlVisibleTrips = new Set(items.map((it) => String(it.tripId)));
             }
 
+            const hayFoco = controlVisibleTrips.size === 1 && items.length > 1;
             container.innerHTML = items.map((it, idx) => {
                 const tid = String(it.tripId);
                 const isVisible = controlVisibleTrips.has(tid);
+                const enfocado = hayFoco && isVisible;
                 const color = colors[idx % colors.length];
-                const reparto = it.reparto || it.driver || 'SIN REPARTO';
+                const reparto = it.reparto || it.deviceLabel || it.driver || 'SIN REPARTO';
+                const chofer = it.driver || '';
+                const hechas = Number(it.stopsDone);
+                const total = Number(it.stopsTotal);
+                const avance = Number.isFinite(hechas) && Number.isFinite(total) && total > 0
+                    ? `${hechas}/${total}` : '';
+                const sinUbicacion = !it.lastLocation;
+                const prox = it.nextPlannedStop?.name || '';
+                const ayuda = [chofer, prox ? 'pr\u00f3xima: ' + prox : '', sinUbicacion ? 'sin GPS' : '']
+                    .filter(Boolean).join(' \u00b7 ');
                 return `
                     <button type="button"
-                        onclick="controlToggleTrip('${tid}')"
-                        class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all border ${
-                            isVisible
-                                ? 'bg-white border-[#E0E5F2] text-[#1B2559] shadow-sm'
-                                : 'bg-[#F4F7FE] border-transparent text-[#A3AED0] opacity-60'
+                        onclick="controlEnfocarReparto('${tid}')"
+                        class="flex items-center gap-1.5 pl-2 pr-2.5 py-1.5 rounded-xl text-[11px] font-black transition-all border ${
+                            enfocado
+                                ? 'bg-[#1B2559] border-[#1B2559] text-white shadow-md'
+                                : (isVisible
+                                    ? 'bg-white border-[#E0E5F2] text-[#1B2559] shadow-sm hover:border-indigo-300'
+                                    : 'bg-[#F4F7FE] border-transparent text-[#A3AED0] opacity-60 hover:opacity-100')
                         }"
-                        title="${isVisible ? 'Ocultar' : 'Mostrar'} reparto ${reparto}">
+                        title="${escapeHtml(reparto + (ayuda ? ' \u2014 ' + ayuda : ''))}">
                         <span class="w-2.5 h-2.5 rounded-full shrink-0 ${isVisible ? '' : 'opacity-30'}" style="background:${color}"></span>
-                        ${reparto}
-                        <span class="text-[9px] ${isVisible ? 'text-emerald-600' : 'text-[#A3AED0]'}">${isVisible ? '●' : '○'}</span>
+                        <span>${escapeHtml(reparto)}</span>
+                        ${avance ? `<span class="text-[9px] font-bold ${enfocado ? 'text-indigo-200' : 'text-[#A3AED0]'}">${avance}</span>` : ''}
+                        ${sinUbicacion ? '<span class="text-[9px] text-amber-500" title="Este reparto no esta reportando GPS">\u26a0</span>' : ''}
                     </button>`;
             }).join('');
         }
@@ -6412,6 +6436,54 @@
             controlUpdatePlannedVisibility();
         }
 
+        /** Deja en el mapa UN solo reparto y lo acerca.
+         *
+         *  Con 15 repartos encima, el mapa no se lee. Tocar un chip deja ese y
+         *  esconde el resto; tocarlo de nuevo vuelve a mostrar todos. */
+        function controlEnfocarReparto(tripId) {
+            if (!controlVisibleTrips) return;
+            const tid = String(tripId);
+            const yaEstabaSolo = controlVisibleTrips.size === 1 && controlVisibleTrips.has(tid);
+
+            if (yaEstabaSolo) {
+                (controlLiveData || []).forEach((it) => controlVisibleTrips.add(String(it.tripId)));
+            } else {
+                controlVisibleTrips.clear();
+                controlVisibleTrips.add(tid);
+                const it = (controlLiveData || []).find((x) => String(x.tripId) === tid);
+                const loc = it && it.lastLocation;
+                if (controlMap && loc && loc.latitude != null && loc.longitude != null) {
+                    controlMap.flyTo({
+                        center: [Number(loc.longitude), Number(loc.latitude)],
+                        zoom: Math.max(controlMap.getZoom(), 14.5),
+                        duration: 900
+                    });
+                } else if (typeof addNotification === 'function') {
+                    addNotification('warning', 'Sin ubicación',
+                        `${(it && (it.reparto || it.driver)) || 'Ese reparto'} no está reportando GPS ahora.`);
+                }
+            }
+            controlAplicarFiltroEnElMapa();
+        }
+
+        /** Pinta el mapa y los chips con el filtro que haya puesto el operador. */
+        function controlAplicarFiltroEnElMapa() {
+            controlBuildDriverChips(controlLiveData);
+            controlMarkersByTrip.forEach((marker, id) => {
+                _mbSetMarkerVisible(marker, controlIsTripVisible(id));
+            });
+            controlUpdatePlannedVisibility();
+            // Las paradas se redibujan: cambia de que reparto son
+            if (typeof drawControlPlannedRoutes === 'function') {
+                controlLastPlannedIdsKey = '';
+                drawControlPlannedRoutes(controlLiveData).catch(() => {});
+            }
+            // Y las trazas, que ahora solo se dibujan para el reparto enfocado
+            if (typeof loadControlTrailAllActive === 'function') {
+                loadControlTrailAllActive().catch(() => {});
+            }
+        }
+
         function controlToggleAllDrivers() {
             if (!controlVisibleTrips || !controlLiveData.length) return;
             const allVisible = controlLiveData.every((it) => controlVisibleTrips.has(String(it.tripId)));
@@ -6420,11 +6492,7 @@
             } else {
                 controlLiveData.forEach((it) => controlVisibleTrips.add(String(it.tripId)));
             }
-            controlBuildDriverChips(controlLiveData);
-            controlMarkersByTrip.forEach((marker, id) => {
-                _mbSetMarkerVisible(marker, controlIsTripVisible(id));
-            });
-            controlUpdatePlannedVisibility();
+            controlAplicarFiltroEnElMapa();
         }
 
         /** Ocultar/mostrar polylines y stop markers segun filtro - MAPBOX */
@@ -6466,9 +6534,26 @@
             for (const st of stops) {
                 const seq = Number(st.sequence);
                 const isNext = nextForRoute && Number(st.stopId) === Number(nextForRoute.stopId);
-                const title = isNext ? `Siguiente . ${seq}. ${st.name || 'Parada'}` : `${seq}. ${st.name || 'Parada'}`;
-                const fillCol = isNext ? '#d97706' : color;
-                const size = isNext ? 28 : 22;
+                const estado = String(st.status || 'PENDING').toUpperCase();
+                const entregada = estado === 'COMPLETED';
+                const fallada = estado === 'UNDELIVERABLE';
+
+                // Una parada se lee de un vistazo por su color:
+                //   verde = entregada . rojo = no se pudo . ambar grande = la
+                //   que sigue . color del reparto = todavia por hacer
+                let fillCol = color, borde = '2px solid #ffffff', size = 22, dentro = String(seq);
+                let rotulo = `${seq}. ${st.name || 'Parada'}`;
+                if (entregada) {
+                    fillCol = '#16a34a'; dentro = '\u2713';
+                    rotulo = `${seq}. ${st.name || 'Parada'} \u2014 entregada`;
+                } else if (fallada) {
+                    fillCol = '#dc2626'; dentro = '\u2715';
+                    rotulo = `${seq}. ${st.name || 'Parada'} \u2014 no se pudo entregar`;
+                } else if (isNext) {
+                    fillCol = '#d97706'; size = 30; borde = '3px solid #fde68a';
+                    rotulo = `PRÓXIMA \u2014 ${seq}. ${st.name || 'Parada'}`;
+                }
+                const title = rotulo;
 
                 // MAPBOX: marker como div circular con numero
                 const el = document.createElement('div');
@@ -6478,16 +6563,18 @@
                 el.style.borderRadius = '50%';
                 el.style.background = fillCol;
                 el.style.color = '#ffffff';
-                el.style.border = isNext ? '3px solid #fde68a' : '2px solid #ffffff';
+                el.style.border = borde;
                 el.style.boxShadow = '0 2px 6px rgba(0,0,0,0.35)';
                 el.style.display = 'flex';
                 el.style.alignItems = 'center';
                 el.style.justifyContent = 'center';
-                el.style.fontSize = isNext ? '12px' : '11px';
+                el.style.fontSize = isNext ? '13px' : '11px';
                 el.style.fontWeight = '700';
                 el.style.cursor = 'pointer';
+                el.style.opacity = entregada ? '0.75' : '1';
+                if (isNext) el.style.animation = 'r14PulsoParada 1.6s ease-in-out infinite';
                 el.title = title;
-                el.textContent = String(seq);
+                el.textContent = dentro;
 
                 const m = new mapboxgl.Marker({ element: el, anchor: 'center' })
                     .setLngLat([st.lng, st.lat])
@@ -6539,6 +6626,19 @@
                 return;
             }
 
+            // Las paradas salen de las rutas activas. Si el mapa dibuja antes de
+            // que el panel las haya traido, se piden aca: sin esto, la primera
+            // vuelta del refresco dejaba el mapa sin ninguna parada.
+            if (!Array.isArray(controlRutasActivas) || controlRutasActivas.length === 0) {
+                try {
+                    const r = await fetch(`${API_URL}/control/active-routes`);
+                    if (r.ok) {
+                        const l = await r.json();
+                        controlRutasActivas = Array.isArray(l) ? l : [];
+                    }
+                } catch (_) { /* se reintenta en el proximo refresco */ }
+            }
+
             const idsKey = ids.join(',');
             const samePlan = idsKey === controlLastPlannedIdsKey && controlPlannedPolylines.length > 0;
             const nextStopsKey = computeFleetNextStopsKey(items, ids);
@@ -6580,13 +6680,15 @@
                     const routeId = ids[idx];
                     const color = colors[idx % colors.length];
                     try {
-                        const res = await fetch(`${API_URL}/routes/${routeId}/geometry`, { headers: getActorHeaders() });
-                        const data = await res.json();
+                        // Las paradas (nombre, coordenadas y estado) ya vienen con
+                        // las rutas activas. Antes se las pedia a Google Directions,
+                        // que ademas de estar caido no devuelve como quedo cada una.
+                        const stopsDeLaRuta = paradasDeLaRuta(routeId);
                         if (token !== controlPlannedRoutesToken) return;
-                        if (!res.ok || !data.points || data.points.length < 2) continue;
+                        if (stopsDeLaRuta.length === 0) continue;
 
-                        const thinned = thinRoutePointsForMap(data.points, maxPts);
-                        const path = thinned.map((p) => ({ lat: p.lat, lng: p.lng }));
+                        const data = { stops: stopsDeLaRuta };
+                        const path = stopsDeLaRuta.map((p) => ({ lat: p.lat, lng: p.lng }));
 
                         // MAPBOX: crear source + line layer
                         const layerId = `planned-route-${routeId}`;
@@ -7350,6 +7452,8 @@
                 const res = await fetch(`${API_URL}/control/active-routes`);
                 if (!res.ok) throw new Error('HTTP ' + res.status);
                 const list = await res.json();
+                // El mapa usa estas mismas paradas, no hace falta pedirlas aparte
+                controlRutasActivas = Array.isArray(list) ? list : [];
                 if (!Array.isArray(list) || list.length === 0) {
                     box.innerHTML = '<p class="text-[#A3AED0] text-xs italic py-4">No hay viajes activos hoy.</p>';
                     return;
@@ -7441,6 +7545,20 @@
         // Carga las trazas GPS de TODAS las rutas activas simultáneamente,
         // con colores distintos para que el operador vea todas sin tener que elegir.
         const CONTROL_TRAIL_COLORS = ['#f97316','#e11d48','#0ea5e9','#10b981','#8b5cf6','#14b8a6','#f59e0b','#ec4899'];
+        // Las rutas activas de hoy con sus paradas (nombre, coordenadas y como
+        // quedo cada una). De aca saca el mapa las paradas: antes se las pedia a
+        // /routes/:id/geometry, que pasa por Google Directions y esta caido.
+        let controlRutasActivas = [];
+        function paradasDeLaRuta(routeId) {
+            const r = (controlRutasActivas || []).find(x => Number(x.routeId) === Number(routeId));
+            if (!r) return [];
+            return (r.stops || [])
+                .filter(st => st.lat != null && st.lng != null)
+                .map(st => ({
+                    stopId: st.stopId, sequence: st.sequence, name: st.name,
+                    lat: Number(st.lat), lng: Number(st.lng), status: st.status || 'PENDING'
+                }));
+        }
         // Mapa de routeId → polyline de la traza GPS, para poder ACTUALIZAR (no destruir/recrear)
         // y para extender la polyline con cada ping nuevo en tiempo real.
         const controlTrailByRouteId = new Map();
@@ -7515,6 +7633,10 @@
                 const { rid, j } = r.value;
                 const pts = Array.isArray(j.points) ? j.points : [];
                 if (!controlMap) continue;
+                // Quince trazas superpuestas no se leen. Solo se dibuja la del
+                // reparto que el operador tiene enfocado.
+                const filaDeLaRuta = (controlLiveData || []).find(x => Number(x.plannedRouteId) === Number(rid));
+                if (filaDeLaRuta && !controlIsTripVisible(String(filaDeLaRuta.tripId))) continue;
                 seen.add(rid);
                 const thin = thinRoutePointsForMap(pts.map(p => ({ lat: p.latitude, lng: p.longitude })), 500);
                 const color = CONTROL_TRAIL_COLORS[idx % CONTROL_TRAIL_COLORS.length];
