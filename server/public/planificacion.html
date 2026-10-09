@@ -12804,8 +12804,28 @@
                 _ubicarMapa.flyTo({ center: [lon, lat], zoom: 16, essential: true });
                 _ubicarPin.setLngLat([lon, lat]);
                 document.getElementById('ubicar-coords').textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+
+                // Mapbox siempre contesta algo. Buscando "Finochietto 1703,
+                // Longchamps" devolvia "Buenos Aires 1703, Burzaco": otra calle
+                // y otra localidad. Si el operador no mira, guarda la escuela en
+                // el lugar equivocado y el chofer va a parar ahi. Por eso cuando
+                // la calle no coincide el cartel se pone rojo y lo dice.
+                const calleDevuelta = f.properties?.context?.street?.name || '';
+                const pedida = q.split(',')[0].replace(/\d+/g, '').trim();
+                const limpiar = (x) => String(x || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+                    .toUpperCase().replace(/[^A-Z0-9]/g, '');
+                const a = limpiar(pedida), b = limpiar(calleDevuelta);
+                const coincide = !a || !b || a.includes(b) || b.includes(a);
+
                 if (aviso) {
-                    aviso.textContent = `Mapbox dice: ${f.properties?.full_address || q}. Revisalo antes de guardar.`;
+                    const donde = f.properties?.full_address || q;
+                    if (coincide) {
+                        aviso.textContent = `Mapbox dice: ${donde}. Revisalo antes de guardar.`;
+                        aviso.className = 'mx-6 mt-3 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2';
+                    } else {
+                        aviso.textContent = `⚠ OJO: buscaste «${pedida}» y Mapbox te llevó a «${donde}». Es otra calle. Movelo a mano antes de guardar.`;
+                        aviso.className = 'mx-6 mt-3 text-[11px] font-black text-rose-700 bg-rose-50 border border-rose-300 rounded-xl px-3 py-2';
+                    }
                     aviso.classList.remove('hidden');
                 }
             } catch (e) {
