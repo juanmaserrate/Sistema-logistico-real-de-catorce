@@ -2745,7 +2745,8 @@ app.post('/api/v1/control/map-matching-batch', async (req, res) => {
         return res.json({
             geometry: valid.map(p => ({ lat: p.lat, lng: p.lng })),
             confidence: 0,
-            provider: 'raw'
+            provider: 'raw',
+            motivo
         });
     } catch (e: any) {
         console.error('POST /control/map-matching-batch:', e);
