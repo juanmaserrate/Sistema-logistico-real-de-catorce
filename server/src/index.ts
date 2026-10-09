@@ -5709,6 +5709,28 @@ function geoNorm(s: string): string {
 function geoTokens(s: string): Set<string> {
     return new Set(geoNorm(s).split(/[^A-Z0-9]+/).filter((t) => t && !GEO_GENERICAS.has(t)));
 }
+/** Parecido entre dos nombres de calle, de 0 a 1, por pares de letras.
+ *
+ *  Comparar palabra por palabra rechazaba calles que SI eran la misma escrita
+ *  distinto: "JEAN JUARES" contra "Jean Jaures", "Cnel. Delia" contra "Coronel
+ *  Francisco de Elia". Esto las reconoce sin aflojar con las que de verdad son
+ *  otra cosa: "Finochietto" contra "Buenos Aires" da casi cero. */
+function geoParecido(a: string, b: string): number {
+    const limpia = (x: string) => geoNorm(x).replace(/[^A-Z0-9]/g, '');
+    const A = limpia(a), B = limpia(b);
+    if (!A || !B) return 0;
+    if (A === B) return 1;
+    const pares = (x: string) => {
+        const set = new Set<string>();
+        for (let i = 0; i < x.length - 1; i++) set.add(x.slice(i, i + 2));
+        return set;
+    };
+    const pa = pares(A), pb = pares(B);
+    if (!pa.size || !pb.size) return 0;
+    let comunes = 0;
+    for (const p of pa) if (pb.has(p)) comunes++;
+    return (2 * comunes) / (pa.size + pb.size);
+}
 /** De la direccion cargada saca "calle + altura" y el municipio. */
 function geoPartirDireccion(address: string, localidad?: string | null, partido?: string | null) {
     let d = String(address || '').replace(/\s*[·|]\s*Maps:.*$/i, '').replace(/\([^)]*\)/g, ' ').trim();
@@ -5782,14 +5804,20 @@ app.post('/api/admin/geocode-clients', async (req: any, res: any) => {
                 const pedidos = geoTokens(calle.replace(/\s*\d{1,5}\s*$/, ''));
                 const dados = geoTokens(calleDevuelta);
                 const comunes = [...pedidos].filter((t) => dados.has(t)).length;
-                const coincide = pedidos.size > 0 && dados.size > 0
-                    && (comunes === pedidos.size || comunes === dados.size || comunes / pedidos.size >= 0.6);
+                const parecido = geoParecido(calle.replace(/\s*\d{1,5}\s*$/, ''), calleDevuelta);
+                const coincide = (pedidos.size > 0 && dados.size > 0
+                        && (comunes === pedidos.size || comunes === dados.size || comunes / pedidos.size >= 0.6))
+                    // Misma calle escrita distinto. El umbral es alto a proposito:
+                    // una escuela mal ubicada manda al chofer al lugar equivocado,
+                    // y eso es peor que dejarla sin ubicar.
+                    || parecido >= 0.62;
                 if (lat == null || lon == null || !coincide) {
-                    sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: `Mapbox devolvio otra calle (${calleDevuelta || 'sin calle'})` });
+                    sinUbicar.push({ id: c.id, name: c.name, direccion: c.address,
+                        motivo: `Mapbox devolvio otra calle (${calleDevuelta || 'sin calle'}, parecido ${parecido.toFixed(2)})` });
                     continue;
                 }
                 await prisma.client.update({ where: { id: c.id }, data: { latitude: lat, longitude: lon } });
-                ubicados.push({ id: c.id, name: c.name, direccion: c.address, calleDevuelta, lat, lon });
+                ubicados.push({ id: c.id, name: c.name, direccion: c.address, calleDevuelta, lat, lon, parecido: Number(parecido.toFixed(2)) });
             } catch (e: any) {
                 sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: e?.message || 'error de red' });
             }

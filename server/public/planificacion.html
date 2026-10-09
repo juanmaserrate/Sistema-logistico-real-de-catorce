@@ -1370,6 +1370,11 @@
                         <select id="school-reparto-filter" onchange="filterSchools()" class="bg-[#F4F7FE] border-0 rounded-xl py-2.5 px-3 text-[11px] font-bold text-[#1B2559] outline-none min-w-[115px]">
                             <option value="">Todos los repartos</option>
                         </select>
+                        <button type="button" id="school-solo-sin-ubicar" onclick="alternarSoloSinUbicar()"
+                                class="bg-[#F4F7FE] text-[#1B2559] border-0 rounded-xl py-2.5 px-3 text-[11px] font-black outline-none whitespace-nowrap hover:bg-[#E8ECF8] transition-all"
+                                title="Mostrar solo los que no tienen ubicación en el mapa">
+                            Sin ubicar <span id="school-sin-ubicar-n" class="opacity-70"></span>
+                        </button>
                         <button type="button" id="btn-clear-school-filters" onclick="clearSchoolFilters()" class="px-4 py-3 rounded-2xl bg-[#F4F7FE] text-[#1B2559] hover:bg-[#E8ECF8] text-xs font-bold transition-all whitespace-nowrap">Limpiar filtros</button>
                         <button id="btn-delete-selected-schools" onclick="deleteSelectedSchools()" class="hidden px-4 py-3 rounded-2xl bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-bold transition-all whitespace-nowrap">
                             Eliminar seleccionados
@@ -12701,6 +12706,154 @@
          *  porque son varios campos anidados. */
         const SCHOOL_TIPOS = ['Proveedor', 'Escuela', 'Institución Pública', 'Comunitario', 'Comedor', 'Institución Religiosa', 'Club', 'CDI', 'UDI', 'Depósito'];
 
+        // ───────────── Ubicar una escuela a mano en el mapa ─────────────
+        // Hay direcciones que ningun buscador resuelve: las manzanas de Don
+        // Orione ("Manzana 23 Calle 17") y las esquinas sin altura ("Coihue y
+        // Mercedes"). Para esas, el punto lo pone quien conoce el lugar.
+        let _soloSinUbicar = false;
+        let _ubicarMapa = null;
+        let _ubicarPin = null;
+        let _ubicarClienteId = null;
+
+        function alternarSoloSinUbicar() {
+            _soloSinUbicar = !_soloSinUbicar;
+            const btn = document.getElementById('school-solo-sin-ubicar');
+            if (btn) {
+                btn.classList.toggle('bg-amber-500', _soloSinUbicar);
+                btn.classList.toggle('text-white', _soloSinUbicar);
+                btn.classList.toggle('bg-[#F4F7FE]', !_soloSinUbicar);
+                btn.classList.toggle('text-[#1B2559]', !_soloSinUbicar);
+            }
+            filterSchools();
+        }
+
+        function _contarSinUbicar() {
+            return (allSchools || []).filter(s => s.latitude == null || s.longitude == null).length;
+        }
+
+        async function abrirUbicarEnMapa(clientId) {
+            const c = (allSchools || []).find(x => String(x.id) === String(clientId));
+            if (!c) return;
+            _ubicarClienteId = c.id;
+
+            document.getElementById('ubicar-modal')?.classList.remove('hidden');
+            document.getElementById('ubicar-nombre').textContent = c.name || '(sin nombre)';
+            document.getElementById('ubicar-direccion').textContent =
+                [c.address, c.localidad, c.partido].filter(Boolean).join(' · ') || 'Sin dirección cargada';
+            document.getElementById('ubicar-buscar').value =
+                [c.address, c.localidad, 'Buenos Aires'].filter(Boolean).join(', ');
+            document.getElementById('ubicar-coords').textContent = '—';
+
+            const token = await getMapboxToken();
+            const caja = document.getElementById('ubicar-mapa');
+            if (!token) {
+                caja.innerHTML = '<p class="p-6 text-center text-xs font-bold text-rose-600">Falta el token de Mapbox.</p>';
+                return;
+            }
+            // El punto de arranque: donde ya estaba, o el deposito
+            const partida = (c.latitude != null && c.longitude != null)
+                ? [Number(c.longitude), Number(c.latitude)]
+                : [-58.4233261, -34.8353338];   // Real de Catorce, Burzaco
+
+            mapboxgl.accessToken = token;
+            if (_ubicarMapa) { try { _ubicarMapa.remove(); } catch (_) {} _ubicarMapa = null; }
+            caja.innerHTML = '';
+            _ubicarMapa = new mapboxgl.Map({
+                container: caja,
+                style: 'mapbox://styles/mapbox/streets-v12',
+                center: partida,
+                zoom: (c.latitude != null) ? 16 : 13
+            });
+            _ubicarMapa.addControl(new mapboxgl.NavigationControl(), 'top-right');
+            _ubicarPin = new mapboxgl.Marker({ draggable: true, color: '#dc2626' })
+                .setLngLat(partida)
+                .addTo(_ubicarMapa);
+            const mostrar = () => {
+                const p = _ubicarPin.getLngLat();
+                document.getElementById('ubicar-coords').textContent =
+                    `${p.lat.toFixed(6)}, ${p.lng.toFixed(6)}`;
+            };
+            _ubicarPin.on('dragend', mostrar);
+            // Tocar el mapa tambien mueve el pin: es mas comodo que arrastrarlo
+            _ubicarMapa.on('click', (ev) => { _ubicarPin.setLngLat(ev.lngLat); mostrar(); });
+            _ubicarMapa.on('load', () => { _ubicarMapa.resize(); mostrar(); });
+            mostrar();
+        }
+
+        /** Busca una direccion y lleva el pin ahi. No guarda nada: el operador
+         *  mira si cayo bien y recien despues guarda. */
+        async function ubicarBuscarDireccion() {
+            const q = (document.getElementById('ubicar-buscar')?.value || '').trim();
+            if (!q || !_ubicarMapa) return;
+            const token = await getMapboxToken();
+            if (!token) return;
+            const aviso = document.getElementById('ubicar-aviso');
+            try {
+                const url = 'https://api.mapbox.com/search/geocode/v6/forward'
+                    + `?q=${encodeURIComponent(q)}&country=ar&limit=1&language=es`
+                    + `&bbox=-58.60,-35.00,-58.15,-34.62&access_token=${encodeURIComponent(token)}`;
+                const r = await fetch(url);
+                const j = await r.json();
+                const f = j?.features?.[0];
+                const lon = f?.properties?.coordinates?.longitude;
+                const lat = f?.properties?.coordinates?.latitude;
+                if (lat == null || lon == null) {
+                    if (aviso) { aviso.textContent = 'No encontré esa dirección. Movelo a mano.'; aviso.classList.remove('hidden'); }
+                    return;
+                }
+                _ubicarMapa.flyTo({ center: [lon, lat], zoom: 16, essential: true });
+                _ubicarPin.setLngLat([lon, lat]);
+                document.getElementById('ubicar-coords').textContent = `${lat.toFixed(6)}, ${lon.toFixed(6)}`;
+                if (aviso) {
+                    aviso.textContent = `Mapbox dice: ${f.properties?.full_address || q}. Revisalo antes de guardar.`;
+                    aviso.classList.remove('hidden');
+                }
+            } catch (e) {
+                if (aviso) { aviso.textContent = 'No pude buscar. Movelo a mano.'; aviso.classList.remove('hidden'); }
+            }
+        }
+
+        async function ubicarGuardar() {
+            if (!_ubicarClienteId || !_ubicarPin) return;
+            const p = _ubicarPin.getLngLat();
+            const btn = document.getElementById('ubicar-guardar');
+            if (btn) { btn.disabled = true; btn.textContent = 'Guardando…'; }
+            try {
+                const r = await fetch(`${API_URL}/clients/${_ubicarClienteId}`, {
+                    method: 'PATCH',
+                    headers: { ...getActorHeaders(), 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ latitude: p.lat, longitude: p.lng })
+                });
+                if (!r.ok) throw new Error('El servidor respondió ' + r.status);
+                const actualizado = await r.json().catch(() => null);
+                const i = (allSchools || []).findIndex(x => String(x.id) === String(_ubicarClienteId));
+                if (i >= 0) {
+                    allSchools[i].latitude = actualizado?.latitude ?? p.lat;
+                    allSchools[i].longitude = actualizado?.longitude ?? p.lng;
+                }
+                cerrarUbicarEnMapa();
+                filterSchools();
+                if (typeof addNotification === 'function') {
+                    addNotification('success', 'Ubicación guardada',
+                        `Quedan ${_contarSinUbicar()} establecimientos sin ubicar.`);
+                }
+            } catch (e) {
+                if (typeof addNotification === 'function') {
+                    addNotification('critical', 'No se pudo guardar', String(e?.message || e));
+                } else { alert('No se pudo guardar: ' + e.message); }
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = 'GUARDAR ESTA UBICACIÓN'; }
+            }
+        }
+
+        function cerrarUbicarEnMapa() {
+            document.getElementById('ubicar-modal')?.classList.add('hidden');
+            document.getElementById('ubicar-aviso')?.classList.add('hidden');
+            if (_ubicarMapa) { try { _ubicarMapa.remove(); } catch (_) {} _ubicarMapa = null; }
+            _ubicarPin = null;
+            _ubicarClienteId = null;
+        }
+
         function renderSchools(schools) {
             const tbody = document.getElementById('schools-tbody');
             if (!tbody) return;
@@ -12743,7 +12896,9 @@
                     <td class="px-1 py-1.5 text-center">
                         ${ubicado
                             ? `<a href="https://www.google.com/maps?q=${c.latitude},${c.longitude}" target="_blank" onclick="event.stopPropagation()" class="text-emerald-600 font-black" title="${e(c.latitude)}, ${e(c.longitude)} — ver en el mapa">📍</a>`
-                            : '<span class="text-amber-600 font-black" title="Sin coordenadas: la app abre el navegador con la dirección escrita">falta</span>'}
+                            : `<button type="button" onclick="event.stopPropagation(); abrirUbicarEnMapa('${c.id}')"
+                                    class="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 text-[9px] font-black hover:bg-amber-200 transition-all"
+                                    title="Sin coordenadas: la app abre el navegador con la dirección escrita. Tocá para ponerla en el mapa.">ubicar</button>`}
                     </td>
                     <td class="px-1 py-1.5 text-center">
                         <input type="checkbox" ${c.requiresProofPhoto ? 'checked' : ''}
@@ -13345,6 +13500,10 @@
                 filtered = filtered.filter(s => (s.tipo || '').trim() === tipoVal);
             }
 
+            if (_soloSinUbicar) {
+                filtered = filtered.filter(s => s.latitude == null || s.longitude == null);
+            }
+
             // Filtros apilables por unidad de negocio y reparto. Si se eligen ambos,
             // debe existir UNA unidad que cumpla las dos (misma entrada unidad+reparto).
             const buVal = document.getElementById('school-bu-filter')?.value || '';
@@ -13365,6 +13524,12 @@
                     (s.contactName && s.contactName.toLowerCase().includes(query)) ||
                     (s.contactPhone && s.contactPhone.toLowerCase().includes(query))
                 );
+            }
+
+            const nSinUbicar = document.getElementById('school-sin-ubicar-n');
+            if (nSinUbicar) {
+                const n = _contarSinUbicar();
+                nSinUbicar.textContent = n ? `(${n})` : '';
             }
 
             const countBadge = document.getElementById('school-count');
@@ -25427,6 +25592,40 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             </div>
         </div>
     </div>
+<!-- UBICAR UNA ESCUELA A MANO EN EL MAPA -->
+<div id="ubicar-modal" class="modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center p-3" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
+    <div class="bg-white rounded-3xl w-[96vw] max-w-[980px] max-h-[94vh] shadow-2xl overflow-hidden flex flex-col">
+        <div class="px-6 py-4 border-b border-[#F4F7FE] bg-[#F8FAFF] flex justify-between items-start gap-4">
+            <div class="min-w-0">
+                <h3 class="font-black text-[#1B2559] uppercase tracking-widest text-sm">Ubicar en el mapa</h3>
+                <p id="ubicar-nombre" class="text-sm font-black text-[#2B3674] mt-1 truncate"></p>
+                <p id="ubicar-direccion" class="text-[11px] font-bold text-[#A3AED0] truncate"></p>
+            </div>
+            <button onclick="cerrarUbicarEnMapa()" class="text-[#A3AED0] hover:text-[#1B2559] shrink-0"><i data-lucide="x" class="w-5 h-5"></i></button>
+        </div>
+        <div class="px-6 py-3 border-b border-[#F4F7FE] flex flex-col sm:flex-row gap-2">
+            <input id="ubicar-buscar" type="text" placeholder="Buscar una dirección cerca…"
+                   onkeydown="if(event.key==='Enter'){event.preventDefault();ubicarBuscarDireccion();}"
+                   class="flex-1 bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold outline-none focus:ring-2 focus:ring-indigo-500">
+            <button type="button" onclick="ubicarBuscarDireccion()"
+                    class="px-4 py-2.5 rounded-xl bg-[#F4F7FE] border border-[#E0E5F2] text-[11px] font-black text-[#1B2559] hover:bg-[#E8ECF8] whitespace-nowrap">Buscar</button>
+        </div>
+        <p id="ubicar-aviso" class="hidden mx-6 mt-3 text-[11px] font-bold text-amber-700 bg-amber-50 border border-amber-200 rounded-xl px-3 py-2"></p>
+        <div class="px-6 py-3 flex-1 overflow-hidden">
+            <div id="ubicar-mapa" class="w-full rounded-2xl border border-[#E0E5F2] overflow-hidden" style="height: 56vh; min-height: 320px;"></div>
+            <p class="text-[10px] text-[#A3AED0] mt-2 leading-snug">
+                Tocá el mapa donde está la entrada, o arrastrá el pin rojo. Buscar solo acerca el mapa: no guarda nada hasta que toques el botón.
+            </p>
+        </div>
+        <div class="px-6 py-3 bg-[#F8FAFF] border-t border-[#F4F7FE] flex items-center gap-4">
+            <p class="flex-1 text-[11px] font-bold text-[#2B3674]">Punto elegido: <span id="ubicar-coords" class="font-black">—</span></p>
+            <button id="ubicar-guardar" onclick="ubicarGuardar()"
+                    class="bg-indigo-600 text-white px-7 py-3 rounded-2xl font-bold text-xs tracking-widest hover:bg-indigo-700 shadow-lg shadow-indigo-200 uppercase whitespace-nowrap">GUARDAR ESTA UBICACIÓN</button>
+            <button onclick="cerrarUbicarEnMapa()" class="px-5 border border-[#E0E5F2] rounded-2xl font-bold text-[#1B2559] text-xs hover:bg-[#F4F7FE]">Cancelar</button>
+        </div>
+    </div>
+</div>
+
 <!-- GLOBAL SEARCH MODAL -->
 <div id="global-search-modal" class="fixed inset-0 z-[99999] hidden">
     <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeGlobalSearch()"></div>
