@@ -4099,18 +4099,27 @@ function getMapboxTokenFromEnv(): string | null {
     return t || null;
 }
 
+/** El token de Mapbox del servidor.
+ *
+ *  Primero el que esta guardado en la base, y recien despues la variable de
+ *  entorno. El orden estaba al reves y eso tenia el map matching caido: en
+ *  Railway habia quedado un MAPBOX_ACCESS_TOKEN viejo que Mapbox ya rechaza
+ *  ("Not Authorized - Invalid Token"), y como ganaba sobre el bueno, el
+ *  recorrido de los choferes nunca se pegaba a las calles. El de la base es el
+ *  mismo que usa el mapa en pantalla, asi que si ese anda, anda todo.
+ *  Se prueban las dos claves: la vieja y la que usa el frente. */
 async function resolveMapboxAccessToken(): Promise<string | null> {
-    const fromEnv = getMapboxTokenFromEnv();
-    if (fromEnv) return fromEnv;
-    try {
-        const row = await prisma.appSettings.findUnique({ where: { key: APP_SETTINGS_MAPBOX_TOKEN } });
-        if (!row?.value) return null;
-        const parsed = JSON.parse(row.value) as unknown;
-        if (typeof parsed === 'string' && parsed.trim()) return parsed.trim();
-        return null;
-    } catch {
-        return null;
+    for (const clave of [APP_SETTINGS_MAPBOX_TOKEN, 'mapbox_access_token_public']) {
+        try {
+            const row = await prisma.appSettings.findUnique({ where: { key: clave } });
+            if (!row?.value) continue;
+            const parsed = JSON.parse(row.value) as unknown;
+            if (typeof parsed === 'string' && parsed.trim()) return parsed.trim();
+        } catch {
+            /* sigue con la proxima clave */
+        }
     }
+    return getMapboxTokenFromEnv();
 }
 
 /** Máximo de puntos por solicitud Directions (origin + hasta 23 intermedios + destination) */
