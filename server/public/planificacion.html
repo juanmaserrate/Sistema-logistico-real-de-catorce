@@ -1874,6 +1874,11 @@
                             class="px-5 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black uppercase tracking-wide shadow-lg shadow-emerald-100 flex items-center gap-2">
                             <i data-lucide="zap" class="w-4 h-4"></i> Traer horas del mes
                         </button>
+                        <button type="button" id="btn-traer-flota" onclick="abrirTraerDeFlota()"
+                            title="Suma los gastos que se cargaron uno por uno en Gastos de Flota y los pone en los rubros de este mes. Antes de pisar nada te muestra que va a poner."
+                            class="px-5 py-4 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-black uppercase tracking-wide shadow-lg shadow-sky-100 flex items-center gap-2">
+                            <i data-lucide="download" class="w-4 h-4"></i> Traer de Gastos de Flota
+                        </button>
                         <button type="button" onclick="copyCostsFromPrevMonth()"
                             title="Copia los gastos fijos/variables guardados del mes anterior para no recargarlos a mano. Despues ajustas solo lo que cambio."
                             class="px-5 py-4 rounded-2xl bg-white border border-[#E0E5F2] hover:bg-[#F4F7FE] text-[#1B2559] text-[11px] font-black uppercase tracking-wide flex items-center gap-2">
@@ -2026,6 +2031,24 @@
                     <p id="flota-aviso-sin-fecha" class="hidden text-[11px] font-bold text-amber-600 leading-snug"></p>
                     <div id="flota-lista" class="w-full min-w-0"></div>
                     <div id="flota-resumen" class="hidden pt-6 border-t border-[#F4F7FE] space-y-4"></div>
+                </div>
+            </div>
+
+            <!-- Modal: vista previa de "Traer de Gastos de Flota" -->
+            <!-- No se pisa nada sin mostrarlo primero: lo que esta escrito a mano
+                 puede ser el dato bueno y el cargado por evento el incompleto. -->
+            <div id="modal-traer-flota" class="fixed inset-0 z-50 hidden flex items-center justify-center p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);" onclick="if(event.target===this)cerrarTraerDeFlota()">
+                <div class="modal-content w-full max-w-3xl p-8 bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+                    <h3 class="text-xl font-bold text-[#1B2559] mb-1">Traer de Gastos de Flota</h3>
+                    <p id="traer-flota-sub" class="text-xs text-[#A3AED0] font-medium mb-6"></p>
+                    <div id="traer-flota-cuerpo"></div>
+                    <div class="flex gap-3 pt-6">
+                        <button type="button" id="traer-flota-aplicar" onclick="aplicarTraerDeFlota()"
+                                class="flex-1 bg-sky-600 text-white py-3 rounded-xl font-bold hover:bg-sky-700 flex items-center justify-center gap-2 shadow-lg shadow-sky-200">
+                            <i data-lucide="check" class="w-4 h-4"></i> Aplicar al formulario
+                        </button>
+                        <button type="button" onclick="cerrarTraerDeFlota()" class="px-6 py-3 border border-[#E0E5F2] rounded-xl font-bold text-[#1B2559] hover:bg-[#F4F7FE]">Cancelar</button>
+                    </div>
                 </div>
             </div>
 
@@ -20741,6 +20764,149 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
             // El mes que esta arriba puede haber cambiado
             if (typeof loadCostsData === 'function') loadCostsData();
+        }
+
+
+        // ═════════ TRAER LOS GASTOS DE FLOTA AL MOTOR DE COSTOS ═════════
+        // Antes el operador cargaba la reparacion en Mantenimiento y despues
+        // alguien escribia el total del mes a mano aca. Doble trabajo, y los dos
+        // numeros no coincidian sin que nadie supiera cual estaba bien.
+        //
+        // Reglas, a proposito:
+        //  - Solo toca los rubros que tienen gastos cargados ese mes. Un rubro
+        //    sin gastos NO se pone en cero: seria borrar un dato bueno porque
+        //    todavia no se empezo a cargar por evento.
+        //  - La nomina nunca se toca: no es un gasto de flota.
+        //  - No guarda: deja el formulario cargado y el usuario revisa y guarda.
+
+        let _traerFlotaPendiente = null;   // lo calculado, esperando el Aplicar
+
+        async function abrirTraerDeFlota() {
+            const btn = document.getElementById('btn-traer-flota');
+            const mes = document.getElementById('costs-month-select').value;
+            const anio = String(nowBuenosAires().year);
+            if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+            try {
+                // La pantalla del Motor no carga la flota, asi que se pide ahora
+                await loadMaintenanceData();
+            } catch (e) {
+                console.error('flota', e);
+            } finally {
+                if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+            }
+
+            const porMes = flotaPorMesYRubro(anio);
+            const delMes = porMes[mes] || { _total: 0 };
+            const deFlota = RUBROS_COSTOS.filter(r => rubrosDeFlota().includes(r.id));
+
+            const filas = deFlota.map(r => {
+                const input = document.querySelector(`.cost-input[data-id="${r.id}"][data-cost-type="${r.tipo}"]`);
+                const ahora = input ? (parseFloat(input.value) || 0) : 0;
+                const trae = Number(delMes[r.id]) || 0;
+                return { id: r.id, tipo: r.tipo, nombre: r.nombre, ahora, trae, cambia: trae > 0 };
+            });
+
+            _traerFlotaPendiente = { mes, anio, filas };
+
+            const plata = (n) => '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+            const conGastos = filas.filter(f => f.cambia);
+            const sinGastos = filas.filter(f => !f.cambia);
+
+            const sub = document.getElementById('traer-flota-sub');
+            if (sub) {
+                sub.textContent = `${mes} ${anio} \u00b7 ${conGastos.length} rubro(s) con gastos cargados por un total de `
+                    + plata(conGastos.reduce((a, f) => a + f.trae, 0))
+                    + '. Nada se guarda todav\u00eda: revis\u00e1 y despu\u00e9s toc\u00e1 Guardar.';
+            }
+
+            const cuerpo = document.getElementById('traer-flota-cuerpo');
+            if (!conGastos.length) {
+                cuerpo.innerHTML = `<div class="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm font-bold text-amber-700 leading-relaxed">
+                        No hay ning\u00fan gasto cargado para ${escapeHtml(mes)} ${anio} en Gastos de Flota, as\u00ed que no hay nada que traer.<br>
+                        <span class="font-medium">Carg\u00e1 los gastos en la pantalla <b>Gastos de Flota</b> y volv\u00e9 ac\u00e1.</span>
+                    </div>`;
+                const ap = document.getElementById('traer-flota-aplicar');
+                if (ap) { ap.disabled = true; ap.style.opacity = '0.4'; }
+            } else {
+                const ap = document.getElementById('traer-flota-aplicar');
+                if (ap) { ap.disabled = false; ap.style.opacity = ''; }
+                const fila = (f) => {
+                    const dif = f.trae - f.ahora;
+                    let aviso = '<span class="text-[#A3AED0]">\u2014</span>';
+                    if (!f.ahora) aviso = '<span class="text-emerald-600 font-bold">estaba vac\u00edo</span>';
+                    else if (Math.abs(dif) < 1) aviso = '<span class="text-emerald-600 font-bold">igual</span>';
+                    else aviso = `<span class="text-rose-600 font-bold">${dif > 0 ? '+' : '\u2212'}${plata(Math.abs(dif))}</span>`;
+                    return `<tr class="border-t border-[#F4F7FE]">
+                        <td class="px-3 py-2 font-bold text-[#2B3674]">${escapeHtml(f.nombre)}</td>
+                        <td class="px-3 py-2 text-right text-[#A3AED0] font-bold">${f.ahora ? plata(f.ahora) : '\u2014'}</td>
+                        <td class="px-3 py-2 text-right text-[#1B2559] font-black">${plata(f.trae)}</td>
+                        <td class="px-3 py-2 text-right">${aviso}</td>
+                    </tr>`;
+                };
+                cuerpo.innerHTML = `
+                    <div class="overflow-x-auto border border-[#F4F7FE] rounded-2xl">
+                        <table class="w-full text-xs border-collapse">
+                            <thead class="bg-[#F8FAFF] text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">
+                                <tr>
+                                    <th class="px-3 py-3 text-left">Rubro</th>
+                                    <th class="px-3 py-3 text-right">Lo que hay ahora</th>
+                                    <th class="px-3 py-3 text-right">Lo que trae</th>
+                                    <th class="px-3 py-3 text-right">Diferencia</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white">${conGastos.map(fila).join('')}</tbody>
+                            <tfoot>
+                                <tr class="bg-[#1B2559] text-white">
+                                    <td class="px-3 py-3 font-black uppercase tracking-wider">Total</td>
+                                    <td class="px-3 py-3 text-right font-black">${plata(conGastos.reduce((a, f) => a + f.ahora, 0))}</td>
+                                    <td class="px-3 py-3 text-right font-black">${plata(conGastos.reduce((a, f) => a + f.trae, 0))}</td>
+                                    <td class="px-3 py-3"></td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
+                    ${sinGastos.length ? `<p class="mt-4 text-[11px] font-bold text-[#A3AED0] leading-snug">
+                        No se tocan (no tienen ning\u00fan gasto cargado este mes, y ponerlos en cero borrar\u00eda lo que ya est\u00e1 escrito):
+                        ${escapeHtml(sinGastos.map(f => f.nombre).join(' \u00b7 '))}</p>` : ''}
+                    <p class="mt-3 text-[11px] font-bold text-[#A3AED0] leading-snug">
+                        El <b>Costo Chofer / N\u00f3mina</b> nunca se toca: no es un gasto de flota, sale de Liquidaci\u00f3n de Sueldos.</p>`;
+            }
+
+            document.getElementById('modal-traer-flota').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function cerrarTraerDeFlota() {
+            document.getElementById('modal-traer-flota').classList.add('hidden');
+            _traerFlotaPendiente = null;
+        }
+
+        function aplicarTraerDeFlota() {
+            const p = _traerFlotaPendiente;
+            if (!p) return cerrarTraerDeFlota();
+            // El mes pudo cambiar entre que se abrio el modal y que se aplico
+            const mesAhora = document.getElementById('costs-month-select').value;
+            if (mesAhora !== p.mes) {
+                alert('Cambiaste de mes con la ventana abierta. Volv\u00e9 a tocar el bot\u00f3n para ' + mesAhora + '.');
+                return cerrarTraerDeFlota();
+            }
+
+            let aplicados = 0;
+            p.filas.filter(f => f.cambia).forEach(f => {
+                const input = document.querySelector(`.cost-input[data-id="${f.id}"][data-cost-type="${f.tipo}"]`);
+                if (!input) return;
+                input.value = Math.round(f.trae);
+                aplicados++;
+            });
+
+            // calculateCosts(true) recalcula Y marca el mes como no guardado, que
+            // es lo que hace aparecer el aviso de "cambios sin guardar".
+            if (typeof calculateCosts === 'function') calculateCosts(true);
+            cerrarTraerDeFlota();
+            if (typeof addNotification === 'function') {
+                addNotification('success', 'Motor de Costos',
+                    `${aplicados} rubro(s) de ${p.mes} tra\u00eddos de Gastos de Flota. Revis\u00e1 y toc\u00e1 Guardar.`);
+            }
         }
 
         function calculateCosts(fromUser) {
