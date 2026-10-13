@@ -20332,7 +20332,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     const monto = Number(r.cost) || 0;
                     total += monto;
                     const id = rubroDeCategoria(r.category);
-                    const nombre = id ? (nombreDelRubro(id) || id) : 'Sin categor\u00eda';
+                    // Una categoria que no entra en ningun rubro se muestra con su
+                    // nombre y marcada: decirle "Sin categoria" escondia el dato
+                    // y no se podia encontrar la fila para arreglarla.
+                    const cat = String(r.category || '').trim();
+                    const nombre = id
+                        ? (nombreDelRubro(id) || id)
+                        : (cat ? cat + ' \u2014 sin rubro del Motor' : 'Sin categor\u00eda');
                     porRubro[nombre] = (porRubro[nombre] || 0) + monto;
                 });
                 const orden = Object.entries(porRubro).sort((a, b) => b[1] - a[1]);
