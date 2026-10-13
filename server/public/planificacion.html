@@ -1901,27 +1901,10 @@
                             <span class="text-[10px] font-bold text-[#A3AED0]">USD / ARS</span>
                         </div>
                         <div class="space-y-6">
-                            <div class="flex items-center justify-between">
-                                <label class="text-sm font-bold text-[#2B3674]">Seguros y Licencias</label>
-                                <div class="flex gap-4 items-center">
-                                    <input type="number" data-cost-type="fijo" data-id="seguros" oninput="calculateCosts()" class="cost-input w-32 bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559] text-right outline-none focus:ring-2 focus:ring-indigo-500/20">
-                                    <span class="text-xs font-bold text-[#A3AED0] w-24 text-right" id="hs-fijo-seguros">$ 0</span>
-                                </div>
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <label class="text-sm font-bold text-[#2B3674]">Patentes y VTV</label>
-                                <div class="flex gap-4 items-center">
-                                    <input type="number" data-cost-type="fijo" data-id="patentes" oninput="calculateCosts()" class="cost-input w-32 bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559] text-right outline-none focus:ring-2 focus:ring-indigo-500/20">
-                                    <span class="text-xs font-bold text-[#A3AED0] w-24 text-right" id="hs-fijo-patentes">$ 0</span>
-                                </div>
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <label class="text-sm font-bold text-[#2B3674]">Costo Chofer / Nómina</label>
-                                <div class="flex gap-4 items-center">
-                                    <input type="number" data-cost-type="fijo" data-id="chofer" oninput="calculateCosts()" class="cost-input w-32 bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559] text-right outline-none focus:ring-2 focus:ring-indigo-500/20">
-                                    <span class="text-xs font-bold text-[#A3AED0] w-24 text-right" id="hs-fijo-chofer">$ 0</span>
-                                </div>
-                            </div>
+                            <!-- Las filas las arma pintarRubrosDelMes() desde RUBROS_COSTOS,
+                                 que es la misma lista que usa la vista anual. -->
+                            <div id="costs-fijo-rows" class="space-y-6"></div>
+                            <p id="costs-fijo-otros" class="hidden text-[10px] font-bold text-amber-600 leading-snug"></p>
                             <div class="flex items-center justify-between pt-6 border-t border-[#F4F7FE]">
                                 <span class="text-sm font-extrabold text-[#1B2559] uppercase tracking-widest">Total Fijos</span>
                                 <div class="flex gap-4 items-center">
@@ -1938,27 +1921,8 @@
                             <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Estructura Variable (Dinámica)</h4>
                         </div>
                         <div class="space-y-6">
-                            <div class="flex items-center justify-between">
-                                <label class="text-sm font-bold text-[#2B3674]">Combustibles (Litros/Km)</label>
-                                <div class="flex gap-4 items-center">
-                                    <input type="number" data-cost-type="variable" data-id="combustible" oninput="calculateCosts()" class="cost-input w-32 bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559] text-right outline-none focus:ring-2 focus:ring-indigo-500/20">
-                                    <span class="text-xs font-bold text-[#A3AED0] w-24 text-right" id="hs-var-combustible">$ 0</span>
-                                </div>
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <label class="text-sm font-bold text-[#2B3674]">Mantenimiento / Repuestos</label>
-                                <div class="flex gap-4 items-center">
-                                    <input type="number" data-cost-type="variable" data-id="prev" oninput="calculateCosts()" class="cost-input w-32 bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559] text-right outline-none focus:ring-2 focus:ring-indigo-500/20">
-                                    <span class="text-xs font-bold text-[#A3AED0] w-24 text-right" id="hs-var-prev">$ 0</span>
-                                </div>
-                            </div>
-                            <div class="flex items-center justify-between">
-                                <label class="text-sm font-bold text-[#2B3674]">Neumáticos y Lavado</label>
-                                <div class="flex gap-4 items-center">
-                                    <input type="number" data-cost-type="variable" data-id="cubiertas" oninput="calculateCosts()" class="cost-input w-32 bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559] text-right outline-none focus:ring-2 focus:ring-indigo-500/20">
-                                    <span class="text-xs font-bold text-[#A3AED0] w-24 text-right" id="hs-var-cubiertas">$ 0</span>
-                                </div>
-                            </div>
+                            <div id="costs-var-rows" class="space-y-6"></div>
+                            <p id="costs-var-otros" class="hidden text-[10px] font-bold text-amber-600 leading-snug"></p>
                             <div class="flex items-center justify-between pt-6 border-t border-[#F4F7FE]">
                                 <span class="text-sm font-extrabold text-[#1B2559] uppercase tracking-widest">Total Variables</span>
                                 <div class="flex gap-4 items-center">
@@ -1990,6 +1954,26 @@
                         <i data-lucide="calculator" class="w-5 h-5"></i>
                         CALCULAR COSTOS DEL MES
                     </button>
+                </div>
+
+                <!-- VISTA ANUAL: los 12 meses juntos, como la planilla de Gastos Logistica -->
+                <div class="card-dark overflow-hidden">
+                    <div class="p-6 border-b border-[#F4F7FE] flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                        <div>
+                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Gastos logística — año completo</h4>
+                            <p class="text-[11px] text-[#A3AED0] font-medium mt-1">Los mismos rubros de arriba, con los doce meses a la vez. Escribí en cualquier casillero y después guardá.</p>
+                        </div>
+                        <div class="flex items-center gap-2 flex-wrap">
+                            <span id="costs-anual-estado" class="text-[11px] font-bold text-[#A3AED0]"></span>
+                            <button type="button" onclick="cargarVistaAnual()"
+                                    class="px-4 py-2.5 rounded-xl bg-white border border-[#E0E5F2] text-[11px] font-black text-[#1B2559] uppercase hover:bg-[#F4F7FE]">Recargar</button>
+                            <button type="button" id="btn-guardar-anual" onclick="guardarVistaAnual()"
+                                    class="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-[11px] font-black uppercase hover:bg-indigo-700 shadow-lg shadow-indigo-100">Guardar los meses tocados</button>
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-[11px] border-collapse" id="costs-anual-tabla"></table>
+                    </div>
                 </div>
             </div>
 
@@ -3528,6 +3512,10 @@
                 return;
             }
 
+            // Las filas se arman antes de llenarlas, si no no hay donde escribir
+            if (typeof pintarRubrosDelMes === 'function' && !document.querySelector('#costs-fijo-rows [data-cost-type]')) {
+                pintarRubrosDelMes();
+            }
             const monthData = getCostsDatabase()[month];
             const hsEl = document.getElementById('cost-horas-reales');
             if (hsEl) hsEl.value = monthData?.horas_reales || '';
@@ -3539,6 +3527,12 @@
             costsFormMonth = month;
             calculateCosts(false);
             renderCostsSaveStatus();
+            // Si el mes guardo algun rubro que la pantalla ya no muestra, se dice:
+            // el servidor lo suma igual al costo y el total no cerraria con lo que se ve.
+            if (typeof avisarRubrosViejos === 'function') avisarRubrosViejos(month);
+            // La tabla del ano se rearma con lo que acaba de llegar del servidor,
+            // salvo que haya cambios sin guardar ahi.
+            if (typeof cargarVistaAnual === 'function' && _anualTocados.size === 0) cargarVistaAnual();
 
             // Hint no intrusivo: mostrar cuantas horas calcula el SISTEMA para este
             // mes (sin pisar el valor guardado). El boton "Traer horas del mes"
@@ -19932,6 +19926,194 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         // globalCostsDatabase and DEFAULT_COSTS are now at the top of the first script block.
 
+
+        /** Los rubros del Motor de Costos, en el mismo orden y con los mismos
+         *  nombres que la planilla de Gastos Logistica.
+         *
+         *  `tipo` separa fijos de variables SOLO para agrupar en pantalla: el
+         *  calculo del costo por hora suma los dos y divide por las horas
+         *  reales, asi que mover un rubro de un lado al otro no cambia ningun
+         *  numero. Los `id` son los que ya estaban guardados, para no perder lo
+         *  que se cargo antes. */
+        const RUBROS_COSTOS = [
+            { id: 'seguros',     tipo: 'fijo',     nombre: 'Seguros' },
+            { id: 'licencias',   tipo: 'fijo',     nombre: 'Licencias y certificados' },
+            { id: 'patentes',    tipo: 'fijo',     nombre: 'Patentes' },
+            { id: 'multas',      tipo: 'fijo',     nombre: 'Multas' },
+            { id: 'chofer',      tipo: 'fijo',     nombre: 'Costo Chofer / Nómina' },
+            { id: 'combustible', tipo: 'variable', nombre: 'Combustible' },
+            { id: 'prev',        tipo: 'variable', nombre: 'Reparación y mant. Preventivo' },
+            { id: 'refrig',      tipo: 'variable', nombre: 'Reparación y mant. Refrigeración' },
+            { id: 'cubiertas',   tipo: 'variable', nombre: 'Reparación y mant. Cubiertas' },
+            { id: 'lavado',      tipo: 'variable', nombre: 'Lavado de unidades' },
+            { id: 'lubricantes', tipo: 'variable', nombre: 'Lubricantes y consumibles' }
+        ];
+        const MESES_COSTOS = ['enero','febrero','marzo','abril','mayo','junio',
+                              'julio','agosto','septiembre','octubre','noviembre','diciembre'];
+
+        function rubrosDe(tipo) { return RUBROS_COSTOS.filter(r => r.tipo === tipo); }
+
+        /** Arma las filas del formulario del mes desde RUBROS_COSTOS. */
+        function pintarRubrosDelMes() {
+            const fila = (r) => `
+                <div class="flex items-center justify-between">
+                    <label class="text-sm font-bold text-[#2B3674]">${escapeHtml(r.nombre)}</label>
+                    <div class="flex gap-4 items-center">
+                        <input type="number" data-cost-type="${r.tipo}" data-id="${r.id}" oninput="calculateCosts()"
+                               class="cost-input w-32 bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559] text-right outline-none focus:ring-2 focus:ring-indigo-500/20">
+                        <span class="text-xs font-bold text-[#A3AED0] w-24 text-right" id="hs-${r.tipo === 'fijo' ? 'fijo' : 'var'}-${r.id}">$ 0</span>
+                    </div>
+                </div>`;
+            const f = document.getElementById('costs-fijo-rows');
+            const v = document.getElementById('costs-var-rows');
+            if (f) f.innerHTML = rubrosDe('fijo').map(fila).join('');
+            if (v) v.innerHTML = rubrosDe('variable').map(fila).join('');
+        }
+
+        /** Avisa si el mes tiene guardado algun rubro que la pantalla ya no
+         *  muestra. El servidor los suma igual al costo, asi que callarlos
+         *  hacia que el total no cerrara con lo que se ve. */
+        function avisarRubrosViejos(month) {
+            const d = (globalCostsDatabase || {})[month] || {};
+            for (const tipo of ['fijo', 'variable']) {
+                const caja = document.getElementById(tipo === 'fijo' ? 'costs-fijo-otros' : 'costs-var-otros');
+                if (!caja) continue;
+                const conocidos = new Set(rubrosDe(tipo).map(r => r.id));
+                const sueltos = Object.entries(d[tipo] || {})
+                    .filter(([k, val]) => !conocidos.has(k) && Number(val) > 0);
+                if (!sueltos.length) { caja.textContent = ''; caja.classList.add('hidden'); continue; }
+                caja.textContent = '\u26a0 Este mes tiene guardado ademas: '
+                    + sueltos.map(([k, val]) => `${k} $${Number(val).toLocaleString('es-AR')}`).join(' \u00b7 ')
+                    + '. Suma al total aunque no se vea aca.';
+                caja.classList.remove('hidden');
+            }
+        }
+
+        // ───────────────── VISTA ANUAL (los 12 meses juntos) ─────────────────
+        const _anualTocados = new Set();   // meses con cambios sin guardar
+
+        function cargarVistaAnual() {
+            const tabla = document.getElementById('costs-anual-tabla');
+            if (!tabla) return;
+            const db = globalCostsDatabase || {};
+            const plata = (n) => Number(n || 0).toLocaleString('es-AR');
+            const cab = `<thead><tr class="bg-[#F8FAFF]">
+                    <th class="text-left px-3 py-2 font-black text-[#1B2559] uppercase tracking-wider sticky left-0 bg-[#F8FAFF] min-w-[220px]">Gastos log\u00edstica</th>
+                    ${MESES_COSTOS.map(m => `<th class="px-2 py-2 font-black text-[#1B2559] uppercase">${m.slice(0,3)}</th>`).join('')}
+                </tr></thead>`;
+
+            const filaRubro = (r) => `<tr class="border-t border-[#F4F7FE]">
+                    <td class="px-3 py-1.5 font-bold text-[#2B3674] sticky left-0 bg-white">${escapeHtml(r.nombre)}</td>
+                    ${MESES_COSTOS.map(m => `<td class="px-1 py-1">
+                        <input type="number" data-anual-mes="${m}" data-anual-tipo="${r.tipo}" data-anual-id="${r.id}"
+                               oninput="tocarVistaAnual('${m}')"
+                               value="${Number((db[m] && db[m][r.tipo] && db[m][r.tipo][r.id]) || 0) || ''}"
+                               class="w-24 bg-[#F4F7FE] border-0 rounded-lg px-2 py-1.5 text-[11px] font-bold text-right outline-none focus:ring-2 focus:ring-indigo-500/20">
+                    </td>`).join('')}
+                </tr>`;
+
+            const filaHoras = `<tr class="border-t-2 border-[#E0E5F2] bg-[#F8FAFF]">
+                    <td class="px-3 py-1.5 font-black text-[#1B2559] sticky left-0 bg-[#F8FAFF]">Horas trabajadas</td>
+                    ${MESES_COSTOS.map(m => `<td class="px-1 py-1">
+                        <input type="number" data-anual-mes="${m}" data-anual-horas="1"
+                               oninput="tocarVistaAnual('${m}')"
+                               value="${Number((db[m] && db[m].horas_reales) || 0) || ''}"
+                               class="w-24 bg-white border border-[#E0E5F2] rounded-lg px-2 py-1.5 text-[11px] font-bold text-right outline-none focus:ring-2 focus:ring-indigo-500/20">
+                    </td>`).join('')}
+                </tr>`;
+
+            const filaTotal = `<tr class="bg-[#1B2559] text-white">
+                    <td class="px-3 py-2 font-black uppercase tracking-wider sticky left-0 bg-[#1B2559]">Total</td>
+                    ${MESES_COSTOS.map(m => `<td class="px-2 py-2 text-right font-black" id="anual-total-${m}">$ 0</td>`).join('')}
+                </tr>`;
+
+            tabla.innerHTML = cab + '<tbody>'
+                + `<tr class="bg-[#EEF1F8]"><td class="px-3 py-1 font-black text-[9px] text-[#A3AED0] uppercase tracking-widest sticky left-0 bg-[#EEF1F8]" colspan="13">Estructura fija</td></tr>`
+                + rubrosDe('fijo').map(filaRubro).join('')
+                + `<tr class="bg-[#EEF1F8]"><td class="px-3 py-1 font-black text-[9px] text-[#A3AED0] uppercase tracking-widest sticky left-0 bg-[#EEF1F8]" colspan="13">Estructura variable</td></tr>`
+                + rubrosDe('variable').map(filaRubro).join('')
+                + filaHoras + filaTotal + '</tbody>';
+
+            recalcularTotalesAnuales();
+            _anualTocados.clear();
+            pintarEstadoAnual();
+        }
+
+        function recalcularTotalesAnuales() {
+            for (const m of MESES_COSTOS) {
+                let t = 0;
+                document.querySelectorAll(`[data-anual-mes="${m}"][data-anual-id]`)
+                    .forEach(i => { t += parseFloat(i.value) || 0; });
+                const celda = document.getElementById(`anual-total-${m}`);
+                if (celda) celda.textContent = t ? '$ ' + Math.round(t).toLocaleString('es-AR') : '\u2014';
+            }
+        }
+
+        function tocarVistaAnual(mes) {
+            _anualTocados.add(mes);
+            recalcularTotalesAnuales();
+            pintarEstadoAnual();
+        }
+
+        function pintarEstadoAnual() {
+            const el = document.getElementById('costs-anual-estado');
+            if (!el) return;
+            if (!_anualTocados.size) { el.textContent = ''; return; }
+            const l = [..._anualTocados];
+            el.innerHTML = `<span class="text-amber-600">\u25cf ${l.length} mes(es) sin guardar: ${l.join(', ')}</span>`;
+        }
+
+        /** Guarda SOLO los meses que se tocaron, uno por uno, con el mismo
+         *  endpoint que usa el formulario de arriba. */
+        async function guardarVistaAnual() {
+            if (!_anualTocados.size) {
+                if (typeof addNotification === 'function') addNotification('info', 'Motor de Costos', 'No tocaste ning\u00fan mes.');
+                return;
+            }
+            const btn = document.getElementById('btn-guardar-anual');
+            if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+            const meses = [..._anualTocados];
+            const ok = [], fallaron = [];
+            for (const m of meses) {
+                // Se arranca de lo que YA tenia guardado el mes, asi no se borra
+                // ningun rubro viejo que la pantalla no muestre.
+                const previo = (globalCostsDatabase || {})[m] || {};
+                const p = {
+                    fijo: { ...(previo.fijo || {}) },
+                    variable: { ...(previo.variable || {}) },
+                    horas_reales: Number(previo.horas_reales) || 0,
+                    fallback_hours: Number(previo.fallback_hours) || 8
+                };
+                document.querySelectorAll(`[data-anual-mes="${m}"][data-anual-id]`).forEach(i => {
+                    p[i.getAttribute('data-anual-tipo')][i.getAttribute('data-anual-id')] = parseFloat(i.value) || 0;
+                });
+                const hs = document.querySelector(`[data-anual-mes="${m}"][data-anual-horas]`);
+                if (hs) p.horas_reales = parseFloat(hs.value) || 0;
+                try {
+                    const res = await fetch(`${API_URL}/costs/params`, {
+                        method: 'POST', headers: getActorHeaders(),
+                        body: JSON.stringify({ month: m, costsParams: p })
+                    });
+                    const d = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+                    globalCostsDatabase[m] = d.data;
+                    ok.push(m);
+                } catch (e) {
+                    console.error(m, e);
+                    fallaron.push(m);
+                }
+            }
+            ok.forEach(m => _anualTocados.delete(m));
+            pintarEstadoAnual();
+            if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+            if (typeof addNotification === 'function') {
+                if (!fallaron.length) addNotification('success', 'Motor de Costos', `Guardados: ${ok.join(', ')}.`);
+                else addNotification('critical', 'Motor de Costos',
+                    `Guardados ${ok.join(', ') || 'ninguno'}. NO se pudo con: ${fallaron.join(', ')}.`);
+            }
+            // El mes que esta arriba puede haber cambiado
+            if (typeof loadCostsData === 'function') loadCostsData();
+        }
 
         function calculateCosts(fromUser) {
             const month = document.getElementById('costs-month-select').value;
