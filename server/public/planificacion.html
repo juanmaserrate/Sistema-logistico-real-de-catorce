@@ -139,6 +139,7 @@
                         <div class="nav-menu-panel" role="menu">
                             <a href="#payments" id="btn-payments" class="nav-menu-item" role="menuitem"><i data-lucide="wallet"></i> <span>Planilla de Pagos</span></a>
                             <a href="#costs" id="btn-costs" class="nav-menu-item" role="menuitem"><i data-lucide="bar-chart-3"></i> <span>Motor de Costos</span></a>
+                            <a href="#fleet-costs" id="btn-fleet-costs" class="nav-menu-item" role="menuitem"><i data-lucide="fuel"></i> <span>Gastos de Flota</span></a>
                             <a href="#tarifas" id="btn-tarifas" class="nav-menu-item" role="menuitem"><i data-lucide="receipt"></i> <span>Choferes y tarifas</span></a>
                         </div>
                     </div>
@@ -1798,13 +1799,8 @@
                             </div>
                             <div class="col-span-2">
                                 <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Categoría</label>
-                                <select id="repair-category" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm">
-                                    <option value="">-- Sin Categoría --</option>
-                                    <option value="Reparación y mant. Preventivo">Reparación y mant. Preventivo</option>
-                                    <option value="Reparación y mant. Refrigeración">Reparación y mant. Refrigeración</option>
-                                    <option value="Reparación y mant. Cubiertas">Reparación y mant. Cubiertas</option>
-                                    <option value="Lubricantes y consumibles">Lubricantes y consumibles</option>
-                                </select>
+                                <!-- Las opciones las llena openAddRepairModal() desde CATEGORIAS_FLOTA -->
+                                <select id="repair-category" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></select>
                             </div>
                             <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Fecha *</label><input type="date" id="repair-date" required class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
                             <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Kilometraje</label><input type="text" inputmode="numeric" id="repair-mileage" oninput="sanitizeNumericInput(this,false)" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
@@ -1973,6 +1969,93 @@
                     </div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-[11px] border-collapse" id="costs-anual-tabla"></table>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- VIEW: GASTOS DE FLOTA -->
+            <!-- Escribe en la misma tabla que Mantenimiento (/api/v1/maintenance).
+                 Alla se mira la ficha tecnica de un camion; aca se mira la plata
+                 de toda la flota. Un solo dato, dos miradas. -->
+            <div id="view-fleet-costs" class="hidden view-animate space-y-8">
+                <div class="card-dark p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
+                    <div>
+                        <h3 class="text-2xl font-bold text-[#1B2559]">Gastos de Flota</h3>
+                        <p class="text-sm text-[#A3AED0] font-medium max-w-2xl">Cada gasto del cami&oacute;n con su fecha, su patente y su comprobante: combustible, lavados, seguros, patentes, licencias, multas y taller. De ac&aacute; sale, por rubro, lo que el Motor de Costos tiene que sumar.</p>
+                    </div>
+                    <div class="flex items-center gap-3 flex-wrap">
+                        <select id="flota-anio" onchange="renderFleetCosts()" class="bg-[#F4F7FE] border-0 rounded-2xl px-5 py-3 text-xs font-bold text-[#1B2559] outline-none"></select>
+                        <button type="button" onclick="abrirModalGastoFlota()"
+                                class="px-6 py-3.5 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black uppercase tracking-wide shadow-lg shadow-indigo-100 flex items-center gap-2">
+                            <i data-lucide="plus" class="w-4 h-4"></i> Nuevo gasto
+                        </button>
+                    </div>
+                </div>
+
+                <div class="card-dark p-8 space-y-6 w-full min-w-0 overflow-hidden">
+                    <div class="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-4">
+                        <div>
+                            <h4 class="text-xl font-bold text-[#1B2559]">Gastos cargados</h4>
+                            <p id="flota-lista-meta" class="text-sm text-[#A3AED0] font-medium"></p>
+                        </div>
+                        <div class="flex gap-3 items-center flex-wrap">
+                            <select id="flota-filtro-mes" onchange="renderFleetCosts()" class="bg-[#F4F7FE] border-0 rounded-2xl px-5 py-3 text-xs font-bold text-[#1B2559] outline-none"></select>
+                            <select id="flota-filtro-patente" onchange="renderFleetCosts()" class="bg-[#F4F7FE] border-0 rounded-2xl px-5 py-3 text-xs font-bold text-[#1B2559] outline-none"></select>
+                            <select id="flota-filtro-categoria" onchange="renderFleetCosts()" class="bg-[#F4F7FE] border-0 rounded-2xl px-5 py-3 text-xs font-bold text-[#1B2559] outline-none"></select>
+                        </div>
+                    </div>
+                    <p id="flota-aviso-sin-fecha" class="hidden text-[11px] font-bold text-amber-600 leading-snug"></p>
+                    <div id="flota-lista" class="w-full min-w-0"></div>
+                    <div id="flota-resumen" class="hidden pt-6 border-t border-[#F4F7FE] space-y-4"></div>
+                </div>
+            </div>
+
+            <!-- Modal: Nuevo gasto de flota -->
+            <div id="modal-gasto-flota" class="fixed inset-0 z-50 hidden flex items-center justify-center p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);" onclick="if(event.target===this)cerrarModalGastoFlota()">
+                <div class="modal-content w-full max-w-lg p-8 bg-white rounded-3xl shadow-2xl" onclick="event.stopPropagation()">
+                    <h3 class="text-xl font-bold text-[#1B2559] mb-1">Nuevo gasto de flota</h3>
+                    <p class="text-xs text-[#A3AED0] font-medium mb-6">Se guarda en el servidor al instante. Queda disponible para el Motor de Costos del mes de la fecha que pongas.</p>
+                    <div class="space-y-4">
+                        <div class="grid grid-cols-2 gap-4">
+                            <div class="col-span-2">
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Patente *</label>
+                                <select id="gf-plate" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-indigo-600"></select>
+                            </div>
+                            <div class="col-span-2">
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Categor&iacute;a *</label>
+                                <select id="gf-cat" onchange="pintarRubroDelGasto()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></select>
+                                <p id="gf-rubro" class="mt-1 text-[10px] font-bold text-indigo-600"></p>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Fecha *</label>
+                                <input type="date" id="gf-date" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Importe ($) *</label>
+                                <input type="text" inputmode="decimal" id="gf-cost" oninput="sanitizeNumericInput(this,true)" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Proveedor / Taller</label>
+                                <input type="text" id="gf-workshop" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm">
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Kilometraje</label>
+                                <input type="text" inputmode="numeric" id="gf-km" oninput="sanitizeNumericInput(this,false)" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm">
+                            </div>
+                            <div class="col-span-2">
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Detalle</label>
+                                <input type="text" id="gf-work" placeholder="Qu&eacute; se pag&oacute;, n&ordm; de comprobante&hellip;" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm">
+                            </div>
+                        </div>
+                        <p id="gf-error" class="hidden text-xs font-bold text-rose-600 leading-snug"></p>
+                        <div class="flex gap-3 pt-2">
+                            <button type="button" id="gf-guardar" onclick="guardarNuevoGastoFlota()"
+                                    class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 flex items-center justify-center gap-2 shadow-lg shadow-indigo-200">
+                                <i data-lucide="save" class="w-4 h-4"></i> Guardar
+                            </button>
+                            <button type="button" onclick="cerrarModalGastoFlota()" class="px-6 py-3 border border-[#E0E5F2] rounded-xl font-bold text-[#1B2559] hover:bg-[#F4F7FE]">Cancelar</button>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -4185,8 +4268,8 @@
 
         // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
         const ACCESS_PROFILES = {
-            SUPERADMIN: ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','tarifas','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'],
-            TRAFICO: ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','tarifas','budget','fleets','maintenance','routes','users','ajustes','employees','schools','reports','incidents','historial'],
+            SUPERADMIN: ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'],
+            TRAFICO: ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','fleet-costs','tarifas','budget','fleets','maintenance','routes','users','ajustes','employees','schools','reports','incidents','historial'],
             RRHH: ['salaries','employees'],
             ADMINISTRACION: ['weekly','payments','dashboard','tarifas','budget','salaries','schools','reports']
         };
@@ -4222,7 +4305,7 @@
             }
 
             // Hide/show nav buttons based on access
-            const allSections = ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','tarifas','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
+            const allSections = ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
             allSections.forEach(sec => {
                 const btn = document.getElementById('btn-' + sec);
                 if (btn) {
@@ -4440,7 +4523,7 @@
             return { ...stored, ...hardcoded };
         }
 
-        const ALL_MODULES = ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','tarifas','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
+        const ALL_MODULES = ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
 
         function renderProfileAssignments() {
             const tbody = document.getElementById('profile-assignments-body');
@@ -4575,6 +4658,7 @@
                 payments: 'Planilla de Pagos a Tercerizados',
                 dashboard: 'Panel logístico',
                 costs: 'Motor de Costos Operativos',
+                'fleet-costs': 'Gastos de Flota',
                 tarifas: 'Choferes y tarifas',
                 maintenance: 'Mantenimiento de Flota',
                 employees: 'Gestión de Personal',
@@ -4600,6 +4684,7 @@
                 payments: 'Resumen de viajes tercerizados a pagar agrupados por proveedor, unidad y reparto',
                 dashboard: 'Costos propio vs tercerizado y distribución por unidad, zona y localidad',
                 costs: 'Motor financiero para el cálculo de rentabilidad y gastos fijos/variables',
+                'fleet-costs': 'Lo que gasta la flota, cargado gasto por gasto con fecha, patente y comprobante',
                 tarifas: 'Quién es propio y quién tercerizado, con qué proveedor y a qué tarifa. Define el valor de los viajes tercerizados',
                 maintenance: 'Seguimiento técnico preventivo y correctivo de la flota propia',
                 employees: 'Acceso unificado a legajos de choferes, auxiliares y liquidaciones',
@@ -4637,6 +4722,7 @@
             if(id === 'salaries') loadSalariesTable();
             if(id === 'employees') { loadProvidersList(); loadEmployeesSection(); loadSalariesTable(); }
             if(id === 'maintenance') { loadMaintenanceData(); checkExpiryAlerts(); }
+            if(id === 'fleet-costs') { cargarGastosDeFlota(); }
             if(id === 'control') {
                 checkExpiryAlerts();
                 setTimeout(() => {
@@ -18829,6 +18915,57 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
 
         // --- MANTENIMIENTO VEHICULAR ---
+        /** Las categorias de gasto de la flota, y a que rubro del Motor de
+         *  Costos entra cada una.
+         *
+         *  Es la tabla que une las dos pantallas: el operador carga el gasto con
+         *  una de estas categorias y el Motor despues lo suma solo en el rubro
+         *  que corresponde. Cada `rubro` tiene que existir en RUBROS_COSTOS.
+         *
+         *  `grupo` separa el taller (lleva kilometraje y trabajo realizado) del
+         *  gasto corriente de la unidad. La nomina NO esta: los sueldos salen de
+         *  Liquidacion, no de la flota. */
+        const CATEGORIAS_FLOTA = [
+            { cat: 'Reparaci\u00f3n y mant. Preventivo',    rubro: 'prev',        grupo: 'taller' },
+            { cat: 'Reparaci\u00f3n y mant. Refrigeraci\u00f3n', rubro: 'refrig',      grupo: 'taller' },
+            { cat: 'Reparaci\u00f3n y mant. Cubiertas',     rubro: 'cubiertas',   grupo: 'taller' },
+            { cat: 'Lubricantes y consumibles',         rubro: 'lubricantes', grupo: 'taller'  },
+            { cat: 'Combustible',                       rubro: 'combustible', grupo: 'gasto'  },
+            { cat: 'Lavado de unidades',                rubro: 'lavado',      grupo: 'gasto'  },
+            { cat: 'Seguros',                           rubro: 'seguros',     grupo: 'gasto'  },
+            { cat: 'Patentes',                          rubro: 'patentes',    grupo: 'gasto'  },
+            { cat: 'Licencias y certificados',          rubro: 'licencias',   grupo: 'gasto'  },
+            { cat: 'Multas',                            rubro: 'multas',      grupo: 'gasto'  }
+        ];
+
+        /** El id del rubro del Motor al que entra esa categoria ('' si ninguno). */
+        function rubroDeCategoria(cat) {
+            const c = String(cat || '').trim();
+            const x = CATEGORIAS_FLOTA.find(y => y.cat === c);
+            return x ? x.rubro : '';
+        }
+
+        /** El nombre del rubro del Motor, para mostrarlo al lado de la categoria. */
+        function nombreDelRubro(rubroId) {
+            if (!rubroId || typeof RUBROS_COSTOS === 'undefined') return '';
+            const r = RUBROS_COSTOS.find(x => x.id === rubroId);
+            return r ? r.nombre : '';
+        }
+
+        /** Las <option> de categoria, iguales en Mantenimiento y en Gastos de
+         *  Flota.
+         *
+         *  Si la fila ya tenia una categoria que no esta en la lista, se agrega
+         *  igual. Sin esto el select la mostraba como "Sin Categoria" y con un
+         *  solo click se perdia el dato cargado. */
+        function opcionesDeCategoria(seleccionada) {
+            const sel = String(seleccionada || '').trim();
+            const lista = CATEGORIAS_FLOTA.map(x => x.cat);
+            if (sel && !lista.includes(sel)) lista.push(sel);
+            return '<option value="">-- Sin Categor\u00eda --</option>'
+                + lista.map(c => `<option value="${escapeHtml(c)}"${c === sel ? ' selected' : ''}>${escapeHtml(c)}</option>`).join('');
+        }
+
         const MAINT_STORAGE_KEY = 'r14_maintenance_data';
         let maintenanceVehicles = [];
         let selectedMaintenancePlate = null;
@@ -19350,13 +19487,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                         </select>
                                     </td>
                                     <td class="px-3 py-2">
-                                        <select onchange="updateRepairField('${r.plate}','${r.id}','category', this.value)" class="bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs">
-                                            <option value="">-- Sin Categoría --</option>
-                                            <option value="Reparación y mant. Preventivo" ${r.category === 'Reparación y mant. Preventivo' ? 'selected' : ''}>Reparación y mant. Preventivo</option>
-                                            <option value="Reparación y mant. Refrigeración" ${r.category === 'Reparación y mant. Refrigeración' ? 'selected' : ''}>Reparación y mant. Refrigeración</option>
-                                            <option value="Reparación y mant. Cubiertas" ${r.category === 'Reparación y mant. Cubiertas' ? 'selected' : ''}>Reparación y mant. Cubiertas</option>
-                                            <option value="Lubricantes y consumibles" ${r.category === 'Lubricantes y consumibles' ? 'selected' : ''}>Lubricantes y consumibles</option>
-                                        </select>
+                                        <select onchange="updateRepairField('${r.plate}','${r.id}','category', this.value)" class="bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs">${opcionesDeCategoria(r.category)}</select>
                                     </td>
                                     <td class="px-3 py-2"><input type="date" value="${esc((r.date || '').split('T')[0])}" oninput="updateRepairField('${r.plate}','${r.id}','date', this.value)" class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
                                     <td class="px-3 py-2"><input type="text" inputmode="numeric" autocomplete="off" value="${esc(r.mileage)}" oninput="sanitizeNumericInput(this,false); updateRepairField('${r.plate}','${r.id}','mileage', this.value)" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
@@ -19515,9 +19646,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (!isLocal) payload.id = id;
 
             try {
+                // getActorHeaders() mete el token de sesion. Con solo
+                // Content-Type el servidor contestaba 401 y la fila no se
+                // guardaba nunca (el endpoint pide login).
                 const res = await fetch(url, {
                     method: method,
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: getActorHeaders(),
                     body: JSON.stringify(payload)
                 });
                 
@@ -19552,6 +19686,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             plateSel.innerHTML = '<option value="">-- Seleccionar Unidad --</option>' + 
                 [...plateSet].sort().map(p => `<option value="${p}">${p}</option>`).join('');
 
+            // Las categorias salen de CATEGORIAS_FLOTA, que es la misma lista que
+            // usa Gastos de Flota. Se llena siempre, no solo al editar: si no, el
+            // desplegable de una reparacion nueva quedaba vacio.
+            document.getElementById('repair-category').innerHTML = opcionesDeCategoria('');
+
             if (editId) {
                 // Find record across all plates
                 let rec = null;
@@ -19563,8 +19702,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
                 if (rec) {
                     plateSel.value = foundPlate || '';
-                    document.getElementById('repair-category').value = rec.category || '';
-                    if (rec.category) document.getElementById('repair-category').value = rec.category;
+                    document.getElementById('repair-category').innerHTML = opcionesDeCategoria(rec.category);
                     document.getElementById('repair-date').value = rec.date ? (String(rec.date).split('T')[0]) : '';
                     document.getElementById('repair-mileage').value = rec.mileage || '';
                     document.getElementById('repair-workshop').value = rec.workshop || '';
@@ -19618,7 +19756,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
 
             try {
-                const res = await fetch(`${API_URL}/maintenance/${id}`, { method: 'DELETE' });
+                const res = await fetch(`${API_URL}/maintenance/${id}`, { method: 'DELETE', headers: getActorHeaders() });
                 if (res.ok) {
                     // Update cache manually before reload to be responsive
                     const data = getMaintenanceData();
@@ -19926,6 +20064,343 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         // globalCostsDatabase and DEFAULT_COSTS are now at the top of the first script block.
 
+
+
+        // ═════════════════════ GASTOS DE FLOTA ═════════════════════
+        // Carga de la flota gasto por gasto. Escribe en la MISMA tabla que
+        // Mantenimiento (/api/v1/maintenance), asi que no hay dos verdades: lo
+        // que se carga aca se ve alla y al reves.
+        //
+        // Antes de esto, de los 10 rubros de flota solo 4 se podian cargar por
+        // evento (los de taller). Combustible, lavados, seguros, patentes,
+        // licencias y multas eran un total del mes tipeado a mano en el Motor,
+        // sin fecha, sin patente y sin comprobante.
+
+        /** Todas las filas cargadas, con la patente de la fila y la clave con la
+         *  que esta guardada en la cache (que es la que piden las funciones de
+         *  Mantenimiento para encontrarla). */
+        function flotaFilasTodas() {
+            const data = getMaintenanceData();
+            const filas = [];
+            Object.entries(data.records || {}).forEach(([clave, rows]) => {
+                (rows || []).forEach(r => filas.push({ ...r, plate: r.plate || clave, _clave: clave }));
+            });
+            return filas;
+        }
+
+        /** Anio y mes de un gasto, o null si todavia no tiene fecha. */
+        function flotaPeriodo(r) {
+            const ym = getRepairYearMonthKey(r);
+            if (!ym) return null;
+            const [anio, mesNum] = ym.split('-');
+            return { anio, mesNum, mes: MESES_COSTOS[parseInt(mesNum, 10) - 1] || '' };
+        }
+
+        function flotaAniosDisponibles() {
+            const s = new Set([String(nowBuenosAires().year)]);
+            flotaFilasTodas().forEach(r => { const p = flotaPeriodo(r); if (p) s.add(p.anio); });
+            return [...s].sort().reverse();
+        }
+
+        function flotaAnioElegido() {
+            const el = document.getElementById('flota-anio');
+            return (el && el.value) || String(nowBuenosAires().year);
+        }
+
+        function flotaPatentesDisponibles() {
+            const s = new Set();
+            (maintenanceVehicles || []).forEach(v => { if (v.plate) s.add(String(v.plate).trim().toUpperCase()); });
+            flotaFilasTodas().forEach(r => { if (r.plate) s.add(String(r.plate).trim().toUpperCase()); });
+            return [...s].sort();
+        }
+
+        async function cargarGastosDeFlota() {
+            await loadMaintenanceData();
+            renderFleetCosts();
+        }
+
+        function renderFleetCosts() {
+            const lista = document.getElementById('flota-lista');
+            if (!lista) return;
+            const plata = (n) => '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+
+            // ── Los desplegables se arman con lo que hay cargado ──
+            const anioSel = document.getElementById('flota-anio');
+            if (anioSel) {
+                const anios = flotaAniosDisponibles();
+                const previo = anioSel.value;
+                anioSel.innerHTML = anios.map(a => `<option value="${a}">${a}</option>`).join('');
+                anioSel.value = anios.includes(previo) ? previo : anios[0];
+            }
+            const patSel = document.getElementById('flota-filtro-patente');
+            if (patSel) {
+                const previo = patSel.value;
+                const pats = flotaPatentesDisponibles();
+                patSel.innerHTML = '<option value="">Patente: todas</option>'
+                    + pats.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+                if (previo && pats.includes(previo)) patSel.value = previo;
+            }
+            const catSel = document.getElementById('flota-filtro-categoria');
+            if (catSel && !catSel.options.length) {
+                catSel.innerHTML = '<option value="">Categor\u00eda: todas</option>'
+                    + CATEGORIAS_FLOTA.map(x => `<option value="${escapeHtml(x.cat)}">${escapeHtml(x.cat)}</option>`).join('');
+            }
+            const mesSel = document.getElementById('flota-filtro-mes');
+            if (mesSel && !mesSel.options.length) {
+                mesSel.innerHTML = '<option value="">Mes: todos</option>'
+                    + MESES_COSTOS.map((m, i) => `<option value="${String(i + 1).padStart(2, '0')}">${m}</option>`).join('');
+            }
+
+            const anio = flotaAnioElegido();
+            const fMes = (mesSel && mesSel.value) || '';
+            const fPat = ((patSel && patSel.value) || '').toUpperCase();
+            const fCat = (catSel && catSel.value) || '';
+
+            const todas = flotaFilasTodas();
+
+            // Las filas sin fecha no entran a ningun mes, asi que se avisan
+            // aparte: si no, la plata quedaba cargada y sin aparecer en ninguna
+            // cuenta.
+            const sinFecha = todas.filter(r => !flotaPeriodo(r));
+            const avisoSF = document.getElementById('flota-aviso-sin-fecha');
+            if (avisoSF) {
+                if (sinFecha.length) {
+                    const monto = sinFecha.reduce((a, r) => a + (Number(r.cost) || 0), 0);
+                    avisoSF.textContent = '\u26a0 Hay ' + sinFecha.length + ' gasto(s) sin fecha por '
+                        + plata(monto) + '. Al no tener fecha no entran en ning\u00fan mes: busc\u00e1 "Mes: todos" y complet\u00e1les la fecha.';
+                    avisoSF.classList.remove('hidden');
+                } else {
+                    avisoSF.textContent = '';
+                    avisoSF.classList.add('hidden');
+                }
+            }
+
+            const filas = todas.filter(r => {
+                const p = flotaPeriodo(r);
+                if (fMes || p) {
+                    if (!p) return false;
+                    if (p.anio !== anio) return false;
+                    if (fMes && p.mesNum !== fMes) return false;
+                }
+                if (fPat && String(r.plate || '').toUpperCase() !== fPat) return false;
+                if (fCat && String(r.category || '').trim() !== fCat) return false;
+                return true;
+            }).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+
+            const metaEl = document.getElementById('flota-lista-meta');
+            if (metaEl) {
+                const partes = [filas.length + ' gasto' + (filas.length === 1 ? '' : 's'), 'a\u00f1o ' + anio];
+                if (fMes) partes.push(MESES_COSTOS[parseInt(fMes, 10) - 1]);
+                if (fPat) partes.push('patente ' + fPat);
+                if (fCat) partes.push(fCat);
+                metaEl.textContent = partes.join(' \u00b7 ');
+            }
+
+            const resumen = document.getElementById('flota-resumen');
+            if (!filas.length) {
+                lista.innerHTML = '<p class="text-[#A3AED0] text-sm">No hay gastos cargados con estos filtros. Us\u00e1 <b>Nuevo gasto</b> para cargar el primero.</p>';
+                if (resumen) { resumen.classList.add('hidden'); resumen.innerHTML = ''; }
+                return;
+            }
+
+            const chipRubro = (cat) => {
+                const id = rubroDeCategoria(cat);
+                if (!id) {
+                    return '<span class="text-[10px] font-bold text-amber-600" title="Esta categor\u00eda no entra en ning\u00fan rubro del Motor de Costos">sin rubro</span>';
+                }
+                return '<span class="text-[10px] font-bold text-indigo-600">' + escapeHtml(nombreDelRubro(id) || id) + '</span>';
+            };
+
+            lista.innerHTML = `
+                <div class="w-full max-w-full overflow-x-auto border border-[#F4F7FE] rounded-xl" style="display:block">
+                    <table class="w-full min-w-[1100px] text-left border-collapse">
+                        <thead class="bg-[#F8FAFF] text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">
+                            <tr>
+                                <th class="px-3 py-3">Fecha</th>
+                                <th class="px-3 py-3">Patente</th>
+                                <th class="px-3 py-3">Categor\u00eda</th>
+                                <th class="px-3 py-3">Rubro del Motor</th>
+                                <th class="px-3 py-3 text-right">Importe</th>
+                                <th class="px-3 py-3">Proveedor / Taller</th>
+                                <th class="px-3 py-3">Detalle</th>
+                                <th class="px-3 py-3">Km</th>
+                                <th class="px-3 py-3 text-right">Acciones</th>
+                            </tr>
+                        </thead>
+                        <tbody class="divide-y divide-slate-100 bg-white">
+                            ${filas.map(r => `
+                                <tr>
+                                    <td class="px-3 py-2"><input type="date" value="${escapeHtml((r.date || '').split('T')[0])}"
+                                        oninput="updateRepairField('${r._clave}','${r.id}','date', this.value)"
+                                        class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
+                                    <td class="px-3 py-2 text-xs font-black text-[#1B2559]">${escapeHtml(r.plate)}</td>
+                                    <td class="px-3 py-2">
+                                        <select onchange="cambiarCategoriaDelGasto('${r._clave}','${r.id}', this.value)"
+                                                class="bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs">${opcionesDeCategoria(r.category)}</select>
+                                    </td>
+                                    <td class="px-3 py-2">${chipRubro(r.category)}</td>
+                                    <td class="px-3 py-2 text-right"><input type="text" inputmode="decimal" autocomplete="off" value="${escapeHtml(r.cost)}"
+                                        oninput="sanitizeNumericInput(this,true); updateRepairField('${r._clave}','${r.id}','cost', this.value)"
+                                        class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs text-right"></td>
+                                    <td class="px-3 py-2"><input type="text" value="${escapeHtml(r.workshop)}"
+                                        oninput="updateRepairField('${r._clave}','${r.id}','workshop', this.value)"
+                                        class="w-44 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
+                                    <td class="px-3 py-2"><input type="text" value="${escapeHtml(r.workDone)}"
+                                        oninput="updateRepairField('${r._clave}','${r.id}','workDone', this.value)"
+                                        class="w-64 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
+                                    <td class="px-3 py-2"><input type="text" inputmode="numeric" autocomplete="off" value="${escapeHtml(r.mileage)}"
+                                        oninput="sanitizeNumericInput(this,false); updateRepairField('${r._clave}','${r.id}','mileage', this.value)"
+                                        class="w-24 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
+                                    <td class="px-3 py-2 text-right whitespace-nowrap">
+                                        <button onclick="guardarGastoDeFlota('${r._clave}','${r.id}')" title="Guardar los cambios de esta fila"
+                                                class="p-2 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 mr-1 shadow-sm"><i data-lucide="save" class="w-4 h-4"></i></button>
+                                        <button onclick="borrarGastoDeFlota('${r._clave}','${r.id}')" title="Borrar este gasto"
+                                                class="p-2 rounded-lg bg-rose-50 text-rose-500 hover:bg-rose-100 shadow-sm"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                                    </td>
+                                </tr>`).join('')}
+                        </tbody>
+                    </table>
+                </div>`;
+
+            // ── Resumen por rubro de lo que esta a la vista ──
+            if (resumen) {
+                const porRubro = {};
+                let total = 0;
+                filas.forEach(r => {
+                    const monto = Number(r.cost) || 0;
+                    total += monto;
+                    const id = rubroDeCategoria(r.category);
+                    const nombre = id ? (nombreDelRubro(id) || id) : 'Sin categor\u00eda';
+                    porRubro[nombre] = (porRubro[nombre] || 0) + monto;
+                });
+                const orden = Object.entries(porRubro).sort((a, b) => b[1] - a[1]);
+                resumen.innerHTML = `
+                    <div class="flex items-center justify-between">
+                        <span class="text-sm font-extrabold text-[#1B2559] uppercase tracking-widest">Total a la vista</span>
+                        <span class="text-2xl font-extrabold text-[#1B2559]">${plata(total)}</span>
+                    </div>
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm">
+                        ${orden.map(([n, v]) => `
+                            <div class="flex justify-between gap-4 bg-[#F8FAFF] rounded-xl px-4 py-3 border border-[#EEF2FF]">
+                                <span class="text-[#A3AED0] font-medium truncate" title="${escapeHtml(n)}">${escapeHtml(n)}</span>
+                                <span class="font-extrabold text-[#1B2559] whitespace-nowrap">${plata(v)}</span>
+                            </div>`).join('')}
+                    </div>`;
+                resumen.classList.remove('hidden');
+            }
+
+            lucide.createIcons();
+        }
+
+        /** Cambiar la categoria cambia el rubro del Motor, asi que la fila se
+         *  vuelve a pintar para que se vea a donde fue a parar. */
+        function cambiarCategoriaDelGasto(clave, id, valor) {
+            updateRepairField(clave, id, 'category', valor);
+            renderFleetCosts();
+        }
+
+        async function guardarGastoDeFlota(clave, id) {
+            await saveRepairRow(clave, id);
+            renderFleetCosts();
+        }
+
+        async function borrarGastoDeFlota(clave, id) {
+            await deleteRepair(clave, id);
+            renderFleetCosts();
+        }
+
+        // ── Modal de carga ──
+        function abrirModalGastoFlota() {
+            const pats = flotaPatentesDisponibles();
+            if (!pats.length) {
+                alert('Todav\u00eda no hay ninguna unidad cargada, as\u00ed que no hay a qui\u00e9n cargarle el gasto. Carg\u00e1 la unidad en Datos > Flotas y volv\u00e9 a entrar.');
+                return;
+            }
+            const sel = document.getElementById('gf-plate');
+            sel.innerHTML = pats.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+            const fPat = (document.getElementById('flota-filtro-patente')?.value || '').toUpperCase();
+            if (fPat && pats.includes(fPat)) sel.value = fPat;
+
+            document.getElementById('gf-cat').innerHTML =
+                opcionesDeCategoria(document.getElementById('flota-filtro-categoria')?.value || '');
+
+            // La fecha de hoy en hora argentina. Con toISOString() despues de las
+            // 21 hs daba el dia siguiente, y el gasto caia en el mes equivocado.
+            const h = nowBuenosAires();
+            document.getElementById('gf-date').value =
+                `${h.year}-${String(h.month + 1).padStart(2, '0')}-${String(h.day).padStart(2, '0')}`;
+
+            ['gf-cost', 'gf-workshop', 'gf-km', 'gf-work'].forEach(x => {
+                const e = document.getElementById(x);
+                if (e) e.value = '';
+            });
+            const err = document.getElementById('gf-error');
+            if (err) { err.textContent = ''; err.classList.add('hidden'); }
+            pintarRubroDelGasto();
+            document.getElementById('modal-gasto-flota').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function cerrarModalGastoFlota() {
+            document.getElementById('modal-gasto-flota').classList.add('hidden');
+        }
+
+        /** Muestra a que rubro del Motor va a entrar lo que se esta cargando. */
+        function pintarRubroDelGasto() {
+            const el = document.getElementById('gf-rubro');
+            if (!el) return;
+            const id = rubroDeCategoria(document.getElementById('gf-cat')?.value || '');
+            el.textContent = id
+                ? 'Entra al Motor de Costos como: ' + (nombreDelRubro(id) || id)
+                : '';
+        }
+
+        async function guardarNuevoGastoFlota() {
+            const err = document.getElementById('gf-error');
+            const decir = (t) => {
+                if (err) { err.textContent = t; err.classList.remove('hidden'); }
+                else alert(t);
+            };
+            const plate = String(document.getElementById('gf-plate').value || '').trim().toUpperCase();
+            const category = String(document.getElementById('gf-cat').value || '').trim();
+            const date = String(document.getElementById('gf-date').value || '').trim();
+            const costRaw = String(document.getElementById('gf-cost').value || '').trim().replace(',', '.');
+            const cost = parseFloat(costRaw);
+            const kmRaw = String(document.getElementById('gf-km').value || '').trim().replace(',', '.');
+            const mileage = kmRaw === '' ? null : (parseFloat(kmRaw) || null);
+
+            if (!plate) return decir('Falta la patente.');
+            if (!category) return decir('Falta la categor\u00eda: es la que decide a qu\u00e9 rubro del Motor entra el gasto.');
+            if (!date) return decir('Falta la fecha: sin fecha el gasto no entra en ning\u00fan mes.');
+            if (!Number.isFinite(cost) || cost <= 0) return decir('El importe tiene que ser un n\u00famero mayor a cero.');
+
+            const btn = document.getElementById('gf-guardar');
+            if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+            try {
+                const res = await fetch(`${API_URL}/maintenance`, {
+                    method: 'POST',
+                    headers: getActorHeaders(),
+                    body: JSON.stringify({
+                        plate, category, date, cost, mileage,
+                        workshop: String(document.getElementById('gf-workshop').value || '').trim(),
+                        workDone: String(document.getElementById('gf-work').value || '').trim(),
+                        notes: ''
+                    })
+                });
+                const d = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+                cerrarModalGastoFlota();
+                await cargarGastosDeFlota();
+                if (typeof addNotification === 'function') {
+                    addNotification('success', 'Gastos de Flota',
+                        `${category} de ${plate}: $${Math.round(cost).toLocaleString('es-AR')} guardado.`);
+                }
+            } catch (e) {
+                decir('No se pudo guardar: ' + (e.message || e));
+            } finally {
+                if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+            }
+        }
 
         /** Los rubros del Motor de Costos, en el mismo orden y con los mismos
          *  nombres que la planilla de Gastos Logistica.
