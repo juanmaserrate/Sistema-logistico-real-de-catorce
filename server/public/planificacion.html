@@ -8296,8 +8296,10 @@
                 (serv, loc) => unirAlias(serv, loc, quitado, choques));
             if (final && typeof final === 'object') _aliasCache = final;
             if (choques.length && typeof addNotification === 'function') {
+                const uno = choques.length === 1;
                 addNotification('warning', 'Alias de paradas',
-                    `${choques.length} alias apuntaban a otro cliente en el servidor y quedaron con el tuyo: `
+                    `${choques.length} alias ${uno ? 'apuntaba' : 'apuntaban'} a otro cliente en el servidor y `
+                    + `${uno ? 'qued\u00f3' : 'quedaron'} con el tuyo: `
                     + choques.slice(0, 5).join(', ') + (choques.length > 5 ? '\u2026' : ''));
             }
             return final;
