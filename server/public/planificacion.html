@@ -16928,17 +16928,27 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         async function togglePaidTripState(tripId) {
             const id = Number(tripId);
             const pagar = !isTripPaid(id);
-            const ok = await marcarPagoEnElServidor([id], pagar);
-            if (!ok) return;
+            const r = await marcarPagoEnElServidor([id], pagar);
+            if (!r) return;
             renderPaymentsTable();
-            if (typeof addNotification === 'function') {
+            if (typeof addNotification !== 'function') return;
+            if ((r.yaEstaban || []).includes(id)) {
+                // La pantalla estaba vieja: otro ya lo habia dejado asi
+                addNotification('info', 'Planilla de Pagos',
+                    `El viaje #${id} ya estaba ${pagar ? 'pagado' : 'pendiente'}: lo dej\u00f3 as\u00ed otra persona. La pantalla qued\u00f3 al d\u00eda.`);
+            } else {
                 addNotification('success', 'Planilla de Pagos',
                     `Viaje #${id} ${pagar ? 'marcado como pagado' : 'vuelto a pendiente'}.`);
             }
         }
 
         /** Escribe el estado de pago en el servidor y lo refleja en los viajes
-         *  que ya estan en memoria. Devuelve si salio bien. */
+         *  que ya estan en memoria.
+         *
+         *  El servidor mira como esta el viaje AHORA antes de escribir, asi que
+         *  la respuesta dice cuales cambio de verdad y cuales ya estaban asi
+         *  porque otra persona se adelanto. Devuelve esa respuesta, o null si
+         *  fallo. */
         async function marcarPagoEnElServidor(ids, pagar) {
             try {
                 const res = await fetch(`${API_URL}/trips/payment-status`, {
@@ -16947,17 +16957,19 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 });
                 const d = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+                // Los viajes en memoria quedan como quedo el servidor, tanto los
+                // que cambiamos nosotros como los que ya estaban asi.
                 const cuando = pagar ? new Date().toISOString() : null;
-                ids.forEach(id => {
+                [...(d.cambiados || []), ...(d.yaEstaban || [])].forEach(id => {
                     const t = (planningData || []).find(x => Number(x.id) === Number(id));
-                    if (t) { t.paymentStatus = pagar ? 'PAID' : null; t.paymentDate = cuando; }
+                    if (t) { t.paymentStatus = pagar ? 'PAID' : null; t.paymentDate = pagar ? (t.paymentDate || cuando) : null; }
                 });
-                return true;
+                return d;
             } catch (e) {
                 if (typeof addNotification === 'function') {
                     addNotification('critical', 'Planilla de Pagos', 'No se pudo guardar el pago: ' + (e.message || e));
                 } else alert('No se pudo guardar el pago: ' + (e.message || e));
-                return false;
+                return null;
             }
         }
 
@@ -16981,14 +16993,50 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const existentes = new Set((planningData || []).map(t => Number(t.id)));
             const faltan = locales.filter(id => existentes.has(id) && !yaPagados.has(id));
             if (faltan.length) {
-                const ok = await marcarPagoEnElServidor(faltan, true);
-                if (!ok) return;                      // se reintenta la proxima vez
+                const r = await marcarPagoEnElServidor(faltan, true);
+                if (!r) return;                       // se reintenta la proxima vez
                 if (typeof addNotification === 'function') {
                     addNotification('info', 'Planilla de Pagos',
                         `${faltan.length} pago(s) que estaban solo en esta computadora quedaron guardados en el servidor.`);
                 }
             }
             try { localStorage.setItem(MARCA, '1'); } catch (_) {}
+        }
+
+        /** Vuelve a preguntar el estado de pago de los viajes que ya estan en
+         *  pantalla. Sin esto, el que dejo la pantalla abierta no se entera de
+         *  lo que marco el resto y despues actua sobre una foto vieja. */
+        async function refrescarPagosDesdeElServidor() {
+            const viajes = planningData || [];
+            if (!viajes.length) return;
+            const meses = [...new Set(viajes.map(t => {
+                const d = new Date(t.date);
+                return isNaN(d.getTime()) ? null : `${MESES_COSTOS[d.getMonth()]}|${d.getFullYear()}`;
+            }).filter(Boolean))];
+            let cambios = 0;
+            for (const clave of meses) {
+                const [mes, anio] = clave.split('|');
+                try {
+                    const res = await fetch(`${API_URL}/trips?month=${encodeURIComponent(mes)}&year=${anio}`,
+                        { headers: getActorHeaders(), cache: 'no-store' });
+                    if (!res.ok) continue;
+                    const frescos = await res.json();
+                    if (!Array.isArray(frescos)) continue;
+                    const porId = new Map(frescos.map(t => [Number(t.id), t]));
+                    viajes.forEach(t => {
+                        const f = porId.get(Number(t.id));
+                        if (!f) return;
+                        if ((t.paymentStatus || null) !== (f.paymentStatus || null)) cambios++;
+                        t.paymentStatus = f.paymentStatus || null;
+                        t.paymentDate = f.paymentDate || null;
+                    });
+                } catch (_) { /* si falla, se sigue con lo que hay */ }
+            }
+            if (cambios && typeof addNotification === 'function') {
+                addNotification('info', 'Planilla de Pagos',
+                    `${cambios} viaje(s) cambiaron de estado desde que abriste. La pantalla qued\u00f3 al d\u00eda.`);
+            }
+            return cambios;
         }
 
         function loadPaymentsView() {
@@ -17003,8 +17051,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         function _initPaymentsView() {
-            // Los pagos que quedaron marcados solo en este navegador se suben una vez
-            if (typeof migrarPagosDelNavegadorUnaVez === 'function') migrarPagosDelNavegadorUnaVez();
+            // Primero se pone al dia con lo que marco el resto, y recien despues
+            // se sube lo que haya quedado suelto en este navegador: al reves se
+            // compararia contra una foto vieja.
+            refrescarPagosDesdeElServidor()
+                .then(() => { if (typeof migrarPagosDelNavegadorUnaVez === 'function') return migrarPagosDelNavegadorUnaVez(); })
+                .then(() => { if (typeof renderPaymentsTable === 'function') renderPaymentsTable(); })
+                .catch(() => {});
             // Poblar filtros de proveedor y UN con valores únicos
             const provSel = document.getElementById('payments-provider-filter');
             const buSel = document.getElementById('payments-bu-filter');

@@ -9342,15 +9342,41 @@ app.post('/api/v1/trips/payment-status', async (req: any, res: any) => {
     if (!limpios.length) return res.status(400).json({ error: 'Ids invalidos' });
     try {
         const estado = paid ? 'PAID' : null;
-        const r = await prisma.trip.updateMany({
-            where: { id: { in: limpios } },
-            data: { paymentStatus: estado, paymentDate: paid ? new Date() : null }
+        // Se mira el estado de AHORA antes de escribir, todo en una transaccion.
+        // Si otra persona ya lo habia marcado, no se vuelve a escribir y se avisa:
+        // la pantalla del que hace click puede ser de hace una hora.
+        const r = await prisma.$transaction(async (tx) => {
+            const antes = await tx.trip.findMany({
+                where: { id: { in: limpios } },
+                select: { id: true, paymentStatus: true }
+            });
+            const estaPagado = (t: any) => String(t.paymentStatus || '').toUpperCase() === 'PAID';
+            const yaEstaban = antes.filter((t) => estaPagado(t) === !!paid).map((t) => t.id);
+            const aCambiar = antes.filter((t) => estaPagado(t) !== !!paid).map((t) => t.id);
+            if (aCambiar.length) {
+                await tx.trip.updateMany({
+                    where: { id: { in: aCambiar } },
+                    data: { paymentStatus: estado, paymentDate: paid ? new Date() : null }
+                });
+            }
+            const noExisten = limpios.filter((id) => !antes.some((t) => t.id === id));
+            return { aCambiar, yaEstaban, noExisten };
         });
+
         // Es plata: queda en la auditoria quien lo marco y cuando
-        await logAction(req, 'UPDATE', 'Trip', limpios.join(','),
-            `Pago ${paid ? 'marcado' : 'revertido'} en ${r.count} viaje(s)`,
-            null, { paymentStatus: estado, ids: limpios });
-        res.json({ actualizados: r.count, paid: !!paid, ids: limpios });
+        if (r.aCambiar.length) {
+            await logAction(req, 'UPDATE', 'Trip', r.aCambiar.join(','),
+                `Pago ${paid ? 'marcado' : 'revertido'} en ${r.aCambiar.length} viaje(s)`,
+                null, { paymentStatus: estado, ids: r.aCambiar });
+        }
+        res.json({
+            actualizados: r.aCambiar.length,
+            cambiados: r.aCambiar,
+            yaEstaban: r.yaEstaban,     // alguien se adelanto: no hacia falta tocarlos
+            noExisten: r.noExisten,
+            paid: !!paid,
+            ids: limpios
+        });
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error al guardar el estado de pago' });
     }
