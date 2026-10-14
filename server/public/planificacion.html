@@ -3503,6 +3503,69 @@
             }
         }
         
+        // ═══════ GUARDAR EN EL SERVIDOR LO QUE VIVIA EN EL NAVEGADOR ═══════
+        // Varios modulos guardaban su dato solo en localStorage: si alguien
+        // limpiaba el navegador se perdia, desde otra computadora no estaba, y
+        // lo que cargaba uno no lo veia el resto. Estas dos funciones hacen
+        // siempre lo mismo: leer del servidor con respaldo local, y escribir en
+        // los dos lados.
+
+        /** Trae una clave del servidor. Si el servidor todavia no tiene nada y
+         *  este navegador si, la sube: asi no se pierde lo que ya estaba.
+         *
+         *  Devuelve el valor. `vacio` dice que forma tiene cuando no hay nada
+         *  (un array o un objeto). */
+        async function traerDelServidorConRespaldo(claveServidor, claveLocal, vacio) {
+            const deLocal = () => {
+                try {
+                    const raw = localStorage.getItem(claveLocal);
+                    return raw ? JSON.parse(raw) : null;
+                } catch { return null; }
+            };
+            const tieneAlgo = (v) => v && (Array.isArray(v) ? v.length > 0 : Object.keys(v).length > 0);
+
+            let delServidor = null;
+            try {
+                const res = await fetch(`${API_URL}/settings/${claveServidor}`, { cache: 'no-store' });
+                // Ojo: con la clave todavia sin crear el servidor contesta null
+                // con estado 200. "No tiene nada" no es "no contesto".
+                if (res.ok) {
+                    const d = await res.json();
+                    delServidor = (d && typeof d === 'object') ? d : vacio;
+                }
+            } catch (e) { console.error(claveServidor, e); }
+
+            const locales = deLocal();
+            if (delServidor === null) return tieneAlgo(locales) ? locales : vacio;
+
+            if (!tieneAlgo(delServidor) && tieneAlgo(locales)) {
+                await guardarEnElServidor(claveServidor, claveLocal, locales, true);
+                return locales;
+            }
+            try { localStorage.setItem(claveLocal, JSON.stringify(delServidor)); } catch (_) {}
+            return delServidor;
+        }
+
+        /** Guarda en los dos lados. Si el servidor falla, avisa: lo peor seria
+         *  creer que quedo guardado para todos cuando quedo en una sola maquina. */
+        async function guardarEnElServidor(claveServidor, claveLocal, valor, callado) {
+            try { localStorage.setItem(claveLocal, JSON.stringify(valor)); } catch (_) {}
+            try {
+                const res = await fetch(`${API_URL}/settings`, {
+                    method: 'POST', headers: getActorHeaders(),
+                    body: JSON.stringify({ key: claveServidor, value: valor })
+                });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return true;
+            } catch (e) {
+                if (!callado && typeof addNotification === 'function') {
+                    addNotification('warning', 'No se guardo en el servidor',
+                        'Quedo en esta computadora, pero los demas no lo van a ver. Revisa la conexion y volve a intentar.');
+                }
+                return false;
+            }
+        }
+
         // --- MOTOR DE COSTOS GLOBALS ---
         let globalCostsDatabase = {};
 
@@ -4827,7 +4890,13 @@
             else stopDriverStatusPolling();
             if(id === 'payments') { if (typeof loadPaymentsView === 'function') loadPaymentsView(); }
             if(id === 'hdr') { if (typeof loadHdrList === 'function') loadHdrList(); }
-            if(id === 'routes') loadRouteTemplates();
+            if(id === 'routes') {
+                // El orden y los alias viven en el servidor: primero se traen
+                cargarOrdenDeRutasDelServidor()
+                    .then(cargarAliasDelServidor)
+                    .then(() => loadRouteTemplates())
+                    .catch(() => loadRouteTemplates());
+            }
             if(id === 'users') { loadUsers(); renderProfileAssignments(); }
             if(id === 'reports') initReportFilters();
             if(id === 'budget') { budgetInit(); }
@@ -8131,14 +8200,30 @@
         }
 
         // ── Stop Aliases ─────────────────────────────────────────────────────
+        // Los alias ("este nombre de parada es este cliente") son trabajo que
+        // alguien hizo a mano. Vivian en un solo navegador, asi que el que
+        // importaba desde otra maquina los volvia a hacer de cero.
+        const ALIAS_KEY = 'r14.stopAliases';
+        let _aliasCache = null;
+
         function getStopAliases() {
-            try { return JSON.parse(localStorage.getItem('r14.stopAliases') || '{}'); } catch { return {}; }
+            if (_aliasCache === null) {
+                try { _aliasCache = JSON.parse(localStorage.getItem(ALIAS_KEY) || '{}') || {}; }
+                catch { _aliasCache = {}; }
+            }
+            return _aliasCache;
+        }
+        async function cargarAliasDelServidor() {
+            const d = await traerDelServidorConRespaldo('stop_aliases', ALIAS_KEY, {});
+            _aliasCache = (d && typeof d === 'object') ? d : {};
+            return _aliasCache;
         }
         function setStopAlias(stopName, clientId) {
             const aliases = getStopAliases();
             if (clientId) aliases[norm(stopName)] = clientId;
             else delete aliases[norm(stopName)];
-            localStorage.setItem('r14.stopAliases', JSON.stringify(aliases));
+            _aliasCache = aliases;
+            guardarEnElServidor('stop_aliases', ALIAS_KEY, aliases);
         }
         function resolveStopToClient(stopName) {
             // 1. Direct name match
@@ -8327,13 +8412,28 @@
             }
         }
 
+        // El orden en que se muestran las rutas predefinidas: tambien lo
+        // acomoda una persona, y tambien lo veia una sola.
         const RT_ORDER_KEY = 'r14_route_templates_order';
+        let _rtOrderCache = null;
+
         function _getRtOrder() {
-            try { return JSON.parse(localStorage.getItem(RT_ORDER_KEY) || '[]'); }
-            catch { return []; }
+            if (_rtOrderCache === null) {
+                try {
+                    const arr = JSON.parse(localStorage.getItem(RT_ORDER_KEY) || '[]');
+                    _rtOrderCache = Array.isArray(arr) ? arr : [];
+                } catch { _rtOrderCache = []; }
+            }
+            return _rtOrderCache;
+        }
+        async function cargarOrdenDeRutasDelServidor() {
+            const d = await traerDelServidorConRespaldo('route_templates_order', RT_ORDER_KEY, []);
+            _rtOrderCache = Array.isArray(d) ? d : [];
+            return _rtOrderCache;
         }
         function _setRtOrder(arr) {
-            try { localStorage.setItem(RT_ORDER_KEY, JSON.stringify(arr)); } catch {}
+            _rtOrderCache = arr;
+            guardarEnElServidor('route_templates_order', RT_ORDER_KEY, arr);
         }
         function _applyRtOrder(list) {
             const order = _getRtOrder();
@@ -9124,14 +9224,47 @@
             activeDispatchIdx: null, // índice del despacho actualmente editado en el form
         };
 
+        // Los presupuestos guardados viven en el servidor. Antes quedaban en el
+        // navegador del que los hacia, con tope de 200: el 201 borraba el mas
+        // viejo sin avisar, y desde otra computadora el historial estaba vacio.
         const BUD_KEY = 'r14_budgets_saved';
+        let _presupuestosCache = null;
+
+        function presupuestosGuardados() {
+            if (_presupuestosCache === null) {
+                try {
+                    const raw = localStorage.getItem(BUD_KEY);
+                    const arr = raw ? JSON.parse(raw) : [];
+                    _presupuestosCache = Array.isArray(arr) ? arr : [];
+                } catch { _presupuestosCache = []; }
+            }
+            return _presupuestosCache;
+        }
+
+        async function presupuestosCargarDelServidor() {
+            const lista = await traerDelServidorConRespaldo('budgets_saved', BUD_KEY, []);
+            _presupuestosCache = Array.isArray(lista) ? lista : [];
+            return _presupuestosCache;
+        }
+
+        function presupuestosGuardar(lista) {
+            _presupuestosCache = lista;
+            guardarEnElServidor('budgets_saved', BUD_KEY, lista);
+        }
         const BUD_DEFAULT_KEY = 'r14_budget_defaults';
 
         async function budgetInit() {
             if (!window.__budgetInitialized) {
-                budgetLoadDefaults();
+                // Los presupuestos y los valores por defecto viven en el
+                // servidor: se esperan antes de pintar, si no el historial
+                // aparece vacio un segundo y despues se llena solo.
+                await Promise.all([
+                    presupuestosCargarDelServidor().catch(() => {}),
+                    budgetLoadDefaults().catch(() => {})
+                ]);
                 budgetLoadSavedList();
                 budgetUpdateHistoryCount();
+                budgetRenderHistory();
                 window.__budgetInitialized = true;
             }
             budgetRenderAuxList();
@@ -9934,16 +10067,17 @@
             if (typeof budgetUpdateCapacityWarning === 'function') budgetUpdateCapacityWarning();
         }
 
-        function budgetLoadDefaults() {
+        /** Los valores por defecto del cotizador (combustible, cargas sociales,
+         *  overhead, margen, sueldo y viatico del chofer) son decisiones de
+         *  negocio, no preferencias: tienen que ser los mismos para todos. */
+        async function budgetLoadDefaults() {
             try {
-                const raw = localStorage.getItem(BUD_DEFAULT_KEY);
-                if (!raw) return;
-                const d = JSON.parse(raw);
-                Object.entries(d).forEach(([id, val]) => {
+                const d = await traerDelServidorConRespaldo('budget_defaults', BUD_DEFAULT_KEY, {});
+                Object.entries(d || {}).forEach(([id, val]) => {
                     const el = document.getElementById(id);
                     if (el) el.value = val;
                 });
-            } catch {}
+            } catch (e) { console.error('budget_defaults', e); }
         }
 
         function budgetSaveDefaults() {
@@ -9954,7 +10088,7 @@
                          'bud-overhead-pct','bud-margin-pct','bud-wait-per-stop'];
             const obj = {};
             ids.forEach(id => { const el = document.getElementById(id); if (el) obj[id] = el.value; });
-            try { localStorage.setItem(BUD_DEFAULT_KEY, JSON.stringify(obj)); } catch {}
+            guardarEnElServidor('budget_defaults', BUD_DEFAULT_KEY, obj, true);
         }
 
         // ── TABS (Calculadora / Historial) ─────────────────────────────────
@@ -9990,7 +10124,7 @@
 
         function budgetUpdateHistoryCount() {
             let saved = [];
-            try { saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]'); } catch {}
+            saved = presupuestosGuardados();
             const el = document.getElementById('bud-history-count');
             if (el) el.textContent = String(saved.length);
         }
@@ -11493,7 +11627,7 @@
             const name = prompt('Nombre del presupuesto:', sugg);
             if (!name) return;
             try {
-                const saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]');
+                const saved = presupuestosGuardados();
                 saved.unshift({
                     id: Date.now(),
                     name,
@@ -11504,8 +11638,11 @@
                     km: budgetState.lastCalc.km,
                     calc: budgetState.lastCalc,
                 });
-                if (saved.length > 200) saved.length = 200;
-                localStorage.setItem(BUD_KEY, JSON.stringify(saved));
+                // Antes se cortaba en 200 porque el navegador tiene poco lugar.
+                // En el servidor no hace falta tirar tanto: el 201 borraba el mas
+                // viejo sin avisarle a nadie.
+                if (saved.length > 2000) saved.length = 2000;
+                presupuestosGuardar(saved);
                 budgetLoadSavedList();
                 budgetUpdateHistoryCount();
                 addNotification('success', 'Presupuesto guardado', name + ' — visible en Historial');
@@ -11516,7 +11653,7 @@
         function budgetLoadSavedList() { budgetUpdateHistoryCount(); }
 
         function budgetLoadSaved(id) {
-            const saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]');
+            const saved = presupuestosGuardados();
             const s = saved.find(x => x.id === id);
             if (!s) return;
             // Restaurar estado en formulario
@@ -11552,12 +11689,12 @@
             // localStorage llegó al cap (5MB), no rompemos el módulo Presupuestar.
             let saved = [];
             try {
-                saved = (JSON.parse(localStorage.getItem(BUD_KEY) || '[]') || []).filter(x => x.id !== id);
+                saved = presupuestosGuardados().filter(x => x.id !== id);
             } catch {
                 saved = [];
             }
             try {
-                localStorage.setItem(BUD_KEY, JSON.stringify(saved));
+                presupuestosGuardar(saved);
             } catch (e) {
                 addNotification('warning', 'Almacenamiento lleno', 'No se pudo guardar — limpiá presupuestos viejos.');
             }
@@ -11571,7 +11708,7 @@
             const empty = document.getElementById('bud-history-empty');
             if (!list) return;
             let saved = [];
-            try { saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]'); } catch {}
+            saved = presupuestosGuardados();
             const q = ((document.getElementById('bud-history-search')?.value) || '').toLowerCase().trim();
             if (q) {
                 saved = saved.filter(s => {
@@ -11622,7 +11759,7 @@
             if (!body || !wrap) return;
             if (!wrap.classList.contains('hidden')) { wrap.classList.add('hidden'); return; }
             if (!body.dataset.rendered) {
-                const saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]');
+                const saved = presupuestosGuardados();
                 const s = saved.find(x => x.id === id);
                 if (!s) return;
                 body.innerHTML = budgetBuildBreakdownHtml(s.calc, { compact: true });
@@ -11632,13 +11769,13 @@
         }
 
         function budgetReExportPresupuesto(id) {
-            const saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]');
+            const saved = presupuestosGuardados();
             const s = saved.find(x => x.id === id);
             if (!s) return;
             budgetOpenExportModal('presupuesto', s.calc);
         }
         function budgetReExportCuenta(id) {
-            const saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]');
+            const saved = presupuestosGuardados();
             const s = saved.find(x => x.id === id);
             if (!s) return;
             budgetOpenExportModal('cuenta', s.calc);
@@ -11646,7 +11783,7 @@
 
         function budgetExportHistoryCSV() {
             let saved = [];
-            try { saved = JSON.parse(localStorage.getItem(BUD_KEY) || '[]'); } catch {}
+            saved = presupuestosGuardados();
             if (saved.length === 0) { addNotification('warning', 'Vacío', 'No hay presupuestos guardados.'); return; }
             const esc = (v) => {
                 const s = String(v == null ? '' : v);
@@ -16600,37 +16737,99 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         // ─── PLANILLA DE PAGOS ──────────────────────────────────────────────
-        // Estado de pago persistido en localStorage por ahora.
-        // En el futuro se puede migrar a AppSettings o un campo en Trip.
+        // El estado de pago vive en el VIAJE (campo paymentStatus), que es el
+        // mismo que sale en la columna "Estado de pago" del export de la Torre.
+        //
+        // Antes vivia solo aca, en el navegador del que lo marcaba, y el campo
+        // del viaje no lo escribia nadie: la pantalla decia PAGADO y el reporte
+        // salia vacio. La clave local queda solo para subir una vez lo que ya
+        // estaba marcado en esta computadora.
         const PAYMENTS_PAID_KEY = 'r14.paid_trip_ids';
         const _expandedProviders = new Set();   // proveedores expandidos
         const _expandedGroups = new Set();      // grupos provider+BU expandidos
 
+        /** Los viajes pagados salen de los propios viajes, que ya traen el campo
+         *  del servidor. No hay una segunda lista que se pueda desincronizar. */
         function loadPaidTripIds() {
-            try {
-                const raw = localStorage.getItem(PAYMENTS_PAID_KEY);
-                if (!raw) return new Set();
-                const arr = JSON.parse(raw);
-                return new Set(Array.isArray(arr) ? arr.map(Number).filter(Number.isFinite) : []);
-            } catch (_) { return new Set(); }
-        }
-
-        function savePaidTripIds(set) {
-            try {
-                localStorage.setItem(PAYMENTS_PAID_KEY, JSON.stringify([...set]));
-            } catch (_) {}
+            const s = new Set();
+            (planningData || []).forEach(t => {
+                if (String(t.paymentStatus || '').toUpperCase() === 'PAID') s.add(Number(t.id));
+            });
+            return s;
         }
 
         function isTripPaid(tripId) {
-            return loadPaidTripIds().has(Number(tripId));
+            const t = (planningData || []).find(x => Number(x.id) === Number(tripId));
+            return !!t && String(t.paymentStatus || '').toUpperCase() === 'PAID';
         }
 
-        function togglePaidTripState(tripId) {
-            const set = loadPaidTripIds();
-            if (set.has(Number(tripId))) set.delete(Number(tripId));
-            else set.add(Number(tripId));
-            savePaidTripIds(set);
+        /** Marca o desmarca en el servidor y, recien cuando contesta bien,
+         *  actualiza la pantalla. Al reves la pantalla podia quedar diciendo
+         *  "pagado" sobre algo que nunca se guardo. */
+        async function togglePaidTripState(tripId) {
+            const id = Number(tripId);
+            const pagar = !isTripPaid(id);
+            const ok = await marcarPagoEnElServidor([id], pagar);
+            if (!ok) return;
             renderPaymentsTable();
+            if (typeof addNotification === 'function') {
+                addNotification('success', 'Planilla de Pagos',
+                    `Viaje #${id} ${pagar ? 'marcado como pagado' : 'vuelto a pendiente'}.`);
+            }
+        }
+
+        /** Escribe el estado de pago en el servidor y lo refleja en los viajes
+         *  que ya estan en memoria. Devuelve si salio bien. */
+        async function marcarPagoEnElServidor(ids, pagar) {
+            try {
+                const res = await fetch(`${API_URL}/trips/payment-status`, {
+                    method: 'POST', headers: getActorHeaders(),
+                    body: JSON.stringify({ ids, paid: !!pagar })
+                });
+                const d = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
+                const cuando = pagar ? new Date().toISOString() : null;
+                ids.forEach(id => {
+                    const t = (planningData || []).find(x => Number(x.id) === Number(id));
+                    if (t) { t.paymentStatus = pagar ? 'PAID' : null; t.paymentDate = cuando; }
+                });
+                return true;
+            } catch (e) {
+                if (typeof addNotification === 'function') {
+                    addNotification('critical', 'Planilla de Pagos', 'No se pudo guardar el pago: ' + (e.message || e));
+                } else alert('No se pudo guardar el pago: ' + (e.message || e));
+                return false;
+            }
+        }
+
+        /** Sube una sola vez los pagos que quedaron marcados solo en este
+         *  navegador. Solo toca los viajes que el servidor todavia no tiene
+         *  pagados, asi que no revive nada que alguien haya revertido. */
+        async function migrarPagosDelNavegadorUnaVez() {
+            const MARCA = 'r14.pagosMigradosAlServidor';
+            try { if (localStorage.getItem(MARCA)) return; } catch (_) { return; }
+            let locales = [];
+            try {
+                const raw = localStorage.getItem(PAYMENTS_PAID_KEY);
+                const arr = raw ? JSON.parse(raw) : [];
+                locales = Array.isArray(arr) ? arr.map(Number).filter(Number.isFinite) : [];
+            } catch (_) { return; }
+            if (!locales.length) {
+                try { localStorage.setItem(MARCA, '1'); } catch (_) {}
+                return;
+            }
+            const yaPagados = loadPaidTripIds();
+            const existentes = new Set((planningData || []).map(t => Number(t.id)));
+            const faltan = locales.filter(id => existentes.has(id) && !yaPagados.has(id));
+            if (faltan.length) {
+                const ok = await marcarPagoEnElServidor(faltan, true);
+                if (!ok) return;                      // se reintenta la proxima vez
+                if (typeof addNotification === 'function') {
+                    addNotification('info', 'Planilla de Pagos',
+                        `${faltan.length} pago(s) que estaban solo en esta computadora quedaron guardados en el servidor.`);
+                }
+            }
+            try { localStorage.setItem(MARCA, '1'); } catch (_) {}
         }
 
         function loadPaymentsView() {
@@ -16645,6 +16844,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         function _initPaymentsView() {
+            // Los pagos que quedaron marcados solo en este navegador se suben una vez
+            if (typeof migrarPagosDelNavegadorUnaVez === 'function') migrarPagosDelNavegadorUnaVez();
             // Poblar filtros de proveedor y UN con valores únicos
             const provSel = document.getElementById('payments-provider-filter');
             const buSel = document.getElementById('payments-bu-filter');
@@ -19259,7 +19460,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         // --- MOTOR DE COSTOS (NEW, consolidated at the end) ---
-        const COSTS_STORAGE_KEY = 'r14_costs_data';
 
 
         // --- MANTENIMIENTO VEHICULAR ---

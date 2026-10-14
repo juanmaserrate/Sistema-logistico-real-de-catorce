@@ -9328,6 +9328,34 @@ app.post('/api/v1/trips', async (req, res) => {
     }
 });
 
+/** Marca viajes como pagados, o los vuelve a pendiente.
+ *  POST /api/v1/trips/payment-status { ids: [1,2,3], paid: true }
+ *
+ *  Hasta ahora el estado de pago vivia solo en el navegador del que lo marcaba,
+ *  mientras el campo paymentStatus del viaje -- que es el que sale en la columna
+ *  "Estado de pago" del export de la Torre -- no lo escribia nadie. Dos
+ *  respuestas distintas a la misma pregunta, y la del reporte siempre vacia. */
+app.post('/api/v1/trips/payment-status', async (req: any, res: any) => {
+    const { ids, paid } = req.body || {};
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Faltan ids' });
+    const limpios = [...new Set(ids.map((x: any) => Number(x)).filter((n: number) => Number.isFinite(n)))];
+    if (!limpios.length) return res.status(400).json({ error: 'Ids invalidos' });
+    try {
+        const estado = paid ? 'PAID' : null;
+        const r = await prisma.trip.updateMany({
+            where: { id: { in: limpios } },
+            data: { paymentStatus: estado, paymentDate: paid ? new Date() : null }
+        });
+        // Es plata: queda en la auditoria quien lo marco y cuando
+        await logAction(req, 'UPDATE', 'Trip', limpios.join(','),
+            `Pago ${paid ? 'marcado' : 'revertido'} en ${r.count} viaje(s)`,
+            null, { paymentStatus: estado, ids: limpios });
+        res.json({ actualizados: r.count, paid: !!paid, ids: limpios });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error al guardar el estado de pago' });
+    }
+});
+
 app.put('/api/v1/trips/:id', async (req, res) => {
     const { id } = req.params;
     const body = { ...req.body };
