@@ -20688,7 +20688,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     if (!monto) return;                       // sin gastos: no se toca
                     const i = document.querySelector(`[data-anual-mes="${mes}"][data-anual-id="${id}"]`);
                     if (!i) return;
-                    i.value = numeroAR(Math.round(monto));
+                    // Sin redondear: la planilla tiene centavos (3.784.043,78) y
+                    // redondearlos hacia que el total no cerrara con el Excel.
+                    i.value = numeroAR(monto);
                     casilleros++;
                     tocado = true;
                 });
@@ -21154,7 +21156,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             p.filas.filter(f => f.cambia).forEach(f => {
                 const input = document.querySelector(`.cost-input[data-id="${f.id}"][data-cost-type="${f.tipo}"]`);
                 if (!input) return;
-                input.value = numeroAR(Math.round(f.trae));
+                input.value = numeroAR(f.trae);
                 aplicados++;
             });
 
