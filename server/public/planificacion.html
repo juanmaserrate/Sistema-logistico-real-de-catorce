@@ -21982,12 +21982,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 costsParams.variable[inp.getAttribute('data-id')] = leerNumeroAR(inp.value);
             });
 
-            // Obtener salaries del mes desde la base en memoria
-            const salariesData = (salariesDatabase || []).filter(e => {
-                // Intentar filtrar por mes; si no tiene campo mes, incluir todos
-                if (!e._month) return true;
-                return e._month === month;
-            });
+            // Los sueldos del mes. salariesDatabase es un objeto AGRUPADO POR MES
+            // ({ enero: [...], febrero: [...] }), no una lista: el .filter de antes
+            // reventaba siempre con "filter is not a function" y cortaba el calculo
+            // antes de empezar. Por eso el Motor nunca se pudo correr.
+            const salariesData = salariesDatabase[month] || [];
 
             // ── La alarma: se simula primero y se comparan las dos cifras ──
             // Calcular pisa el costo de TODOS los viajes propios del mes. Si lo
