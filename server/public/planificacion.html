@@ -2018,7 +2018,7 @@
                     <div class="p-6 border-b border-[#F4F7FE] flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                         <div>
                             <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Gastos de flota — <span id="flota-anual-anio">año completo</span></h4>
-                            <p class="text-[11px] text-[#A3AED0] font-medium mt-1 max-w-3xl">Sale solo de los gastos cargados acá abajo: no se escribe nada en esta tabla. Es la flota sola, sin sueldos. Abajo de cada mes está lo que el Motor de Costos tiene escrito a mano, para poder compararlos.</p>
+                            <p class="text-[11px] text-[#A3AED0] font-medium mt-1 max-w-3xl">Sale solo de los gastos cargados acá abajo: no se escribe nada en esta tabla. Es la flota sola, sin sueldos.</p>
                         </div>
                         <button type="button" onclick="cargarGastosDeFlota()"
                                 class="px-4 py-2.5 rounded-xl bg-white border border-[#E0E5F2] text-[11px] font-black text-[#1B2559] uppercase hover:bg-[#F4F7FE] whitespace-nowrap">Recargar</button>
@@ -20507,24 +20507,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             return out;
         }
 
-        /** Lo que el Motor de Costos tiene escrito a mano para la FLOTA de ese
-         *  mes (los mismos rubros, sin la nomina). */
-        function flotaEnElMotor(mes, anio) {
-            const d = (typeof costosDelMes === 'function' ? costosDelMes(mes, anio) : null) || {};
-            const ids = rubrosDeFlota();
-            let total = 0;
-            const porRubro = {};
-            for (const tipo of ['fijo', 'variable']) {
-                Object.entries(d[tipo] || {}).forEach(([k, v]) => {
-                    if (!ids.includes(k)) return;       // la nomina y los rubros viejos quedan afuera
-                    const monto = Number(v) || 0;
-                    porRubro[k] = (porRubro[k] || 0) + monto;
-                    total += monto;
-                });
-            }
-            return { porRubro, total };
-        }
-
         function renderFlotaAnual() {
             const tabla = document.getElementById('flota-anual-tabla');
             if (!tabla) return;
@@ -20559,38 +20541,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
             const totalAnio = MESES_COSTOS.reduce((a, m) => a + cargado[m]._total, 0);
             const filaTotal = `<tr class="r14-fila-total text-white">
-                    <td class="px-3 py-2 font-black uppercase tracking-wider sticky left-0">Total cargado</td>
+                    <td class="px-3 py-2 font-black uppercase tracking-wider sticky left-0">Total</td>
                     ${MESES_COSTOS.map(m => `<td class="px-2 py-2 text-right font-black">${plata(cargado[m]._total)}</td>`).join('')}
                     <td class="px-3 py-2 text-right font-black bg-[#11047A]">${plata(totalAnio)}</td>
-                </tr>`;
-
-            // El control: lo mismo, pero tipeado a mano en el Motor de Costos
-            const motor = {};
-            MESES_COSTOS.forEach(m => { motor[m] = flotaEnElMotor(m, anio); });
-            const motorAnio = MESES_COSTOS.reduce((a, m) => a + motor[m].total, 0);
-            const filaMotor = `<tr class="border-t-2 border-[#E0E5F2] r14-fila-control">
-                    <td class="px-3 py-2 font-black text-[#1B2559] sticky left-0">Cargado a mano en el Motor</td>
-                    ${MESES_COSTOS.map(m => `<td class="px-2 py-2 text-right font-bold ${motor[m].total ? 'text-[#2B3674]' : 'text-[#D0D6E8]'}">${plata(motor[m].total)}</td>`).join('')}
-                    <td class="px-3 py-2 text-right font-black text-[#1B2559] bg-[#EEF1F8]">${plata(motorAnio)}</td>
-                </tr>`;
-
-            // La diferencia solo se muestra cuando los dos lados tienen algo: si
-            // un mes todavia no se cargo por evento, no hay nada que comparar.
-            const difDe = (m) => {
-                if (!cargado[m]._total || !motor[m].total) return null;
-                return cargado[m]._total - motor[m].total;
-            };
-            const celdaDif = (m) => {
-                const d = difDe(m);
-                if (d === null) return '<td class="px-2 py-2 text-right text-[#D0D6E8]">\u2014</td>';
-                if (Math.abs(d) < 1) return '<td class="px-2 py-2 text-right font-bold text-emerald-600" title="Cierran">=</td>';
-                const signo = d > 0 ? '+' : '\u2212';
-                return `<td class="px-2 py-2 text-right font-black text-rose-600" title="Lo cargado por evento menos lo escrito a mano">${signo}$ ${numeroAR(Math.abs(Math.round(d)))}</td>`;
-            };
-            const filaDif = `<tr class="border-t border-[#F4F7FE] r14-fila-control">
-                    <td class="px-3 py-2 font-black text-[#1B2559] sticky left-0">Diferencia</td>
-                    ${MESES_COSTOS.map(m => celdaDif(m)).join('')}
-                    <td class="px-3 py-2 text-right text-[#A3AED0] bg-[#F8FAFF]"></td>
                 </tr>`;
 
             tabla.innerHTML = cab + '<tbody>'
@@ -20598,7 +20551,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 + deFlota.filter(r => r.tipo === 'fijo').map(filaRubro).join('')
                 + separador('Estructura variable')
                 + deFlota.filter(r => r.tipo === 'variable').map(filaRubro).join('')
-                + filaTotal + filaMotor + filaDif
+                + filaTotal
                 + '</tbody>';
         }
 
