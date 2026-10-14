@@ -4769,21 +4769,27 @@ async function tryCloseRouteIfComplete(routeId: number): Promise<boolean> {
         closeAt = now;
     }
 
-    await prisma.route.update({
-        where: { id: route.id },
-        data: { actualStartTime: startAt, actualEndTime: closeAt, status: 'COMPLETED' }
+    // Los dos en la MISMA transaccion. Antes la ruta se cerraba y el viaje iba
+    // aparte con un .catch que solo escribia en el log: si ese update fallaba,
+    // la ruta quedaba cerrada y el viaje abierto para siempre, sin que nadie se
+    // enterara. En la pantalla se ve como "el chofer tiene dos viajes abiertos".
+    await prisma.$transaction(async (tx) => {
+        await tx.route.update({
+            where: { id: route.id },
+            data: { actualStartTime: startAt, actualEndTime: closeAt, status: 'COMPLETED' }
+        });
+        if (route.tripId) {
+            await tx.trip.update({
+                where: { id: route.tripId },
+                data: {
+                    status: 'COMPLETED',
+                    completedAt: closeAt,
+                    // returnTime lo levanta el Motor de Costos para las horas del mes.
+                    returnTime: closeAt
+                }
+            });
+        }
     });
-    if (route.tripId) {
-        await prisma.trip.update({
-            where: { id: route.tripId },
-            data: {
-                status: 'COMPLETED',
-                completedAt: closeAt,
-                // returnTime lo levanta el Motor de Costos para las horas del mes.
-                returnTime: closeAt
-            }
-        }).catch((e: any) => console.warn('[base-stop] trip update:', e?.message || e));
-    }
     await prisma.deviceLocation.updateMany({
         where: { routeId: route.id, isActive: true },
         data: { isActive: false }
@@ -4900,6 +4906,70 @@ app.post('/api/admin/backfill-base-stops', async (req: any, res: any) => {
         res.json({ dryRun: !!dryRun, desde: fromYmd, ...result });
     } catch (e: any) {
         console.error('backfill-base-stops:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Cierra los VIAJES que quedaron abiertos aunque su recorrido ya termino.
+ *
+ *  close-stuck-routes mira las rutas sin hora de fin; esto mira al reves: la
+ *  ruta cerro pero el viaje se quedo en OUT_OF_PLANT. Pasaba cuando el update
+ *  del viaje fallaba y el error solo iba al log. En la pantalla se ve como que
+ *  el chofer tiene dos viajes abiertos al mismo tiempo.
+ *
+ *  POST /api/admin/cerrar-viajes-colgados { key, desde?, hasta?, dryRun? } */
+app.post('/api/admin/cerrar-viajes-colgados', async (req: any, res: any) => {
+    const { key, desde, hasta, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const ymd = (v: any) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null;
+        const d1 = ymd(desde), d2 = ymd(hasta);
+        const where: any = {
+            actualEndTime: { not: null },
+            trip: { is: { status: { not: 'COMPLETED' } } }
+        };
+        if (d1 && d2) where.date = { gte: utcDayRange(d1).start, lte: utcDayRange(d2).end };
+
+        const rutas = await prisma.route.findMany({
+            where,
+            select: {
+                id: true, tripId: true, actualEndTime: true, actualStartTime: true,
+                trip: { select: { id: true, date: true, reparto: true, driver: true, status: true, returnTime: true } }
+            },
+            orderBy: { id: 'asc' }
+        });
+
+        const detalle = rutas.map((r) => ({
+            tripId: r.tripId,
+            routeId: r.id,
+            fecha: r.trip?.date ? new Date(r.trip.date).toISOString().slice(0, 10) : null,
+            reparto: r.trip?.reparto || null,
+            chofer: r.trip?.driver || null,
+            estadoViaje: r.trip?.status || null,
+            rutaCerradaA: r.actualEndTime ? new Date(r.actualEndTime).toISOString() : null,
+            yaTeniaReturnTime: !!r.trip?.returnTime
+        }));
+
+        if (!dryRun) {
+            for (const r of rutas) {
+                if (!r.tripId || !r.actualEndTime) continue;
+                await prisma.trip.update({
+                    where: { id: r.tripId },
+                    data: {
+                        status: 'COMPLETED',
+                        completedAt: r.actualEndTime,
+                        // Sin returnTime el Motor de Costos le pone las horas por defecto
+                        returnTime: r.actualEndTime
+                    }
+                }).catch((e: any) => console.warn('[colgados] trip ' + r.tripId + ':', e?.message || e));
+                io.emit('trip:updated', { tripId: r.tripId, hint: 'cerrado_por_reparacion' });
+            }
+            await logAction(req, 'UPDATE', 'Trip', rutas.map((r) => r.tripId).join(','),
+                `${rutas.length} viaje(s) colgados cerrados con la hora de su recorrido`, null, { detalle });
+        }
+        res.json({ dryRun: !!dryRun, encontrados: rutas.length, viajes: detalle });
+    } catch (e: any) {
+        console.error('cerrar-viajes-colgados:', e);
         res.status(500).json({ error: e?.message || 'Error' });
     }
 });
