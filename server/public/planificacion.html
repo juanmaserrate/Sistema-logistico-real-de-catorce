@@ -1963,6 +1963,35 @@
                 </div>
             </div>
 
+            <!-- Modal: las horas del mes no cierran -->
+            <!-- El costo de cada viaje sale de repartir el gasto del mes entre las
+                 horas cargadas. Si lo que se reparte no da parecido, cada viaje
+                 queda con una tarifa que no corresponde. Antes pasaba en silencio. -->
+            <div id="modal-horas-no-cierran" class="fixed inset-0 z-[220] hidden flex items-center justify-center p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);" onclick="if(event.target===this)cerrarAvisoDeHoras()">
+                <div class="modal-content w-full max-w-2xl p-8 bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+                    <div class="flex items-center gap-4 mb-6">
+                        <div class="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center shrink-0">
+                            <i data-lucide="alert-triangle" class="w-6 h-6 text-amber-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold text-[#1B2559]">Las horas no cierran</h3>
+                            <p id="horas-aviso-sub" class="text-xs text-[#A3AED0] font-medium"></p>
+                        </div>
+                    </div>
+                    <div id="horas-aviso-cuerpo"></div>
+                    <div class="flex flex-col sm:flex-row gap-3 pt-6">
+                        <button type="button" onclick="cerrarAvisoDeHoras()"
+                                class="flex-1 bg-[#1B2559] text-white py-3 rounded-xl font-bold hover:bg-[#2B3674] shadow-lg">
+                            Revisar antes de calcular
+                        </button>
+                        <button type="button" onclick="calcularIgualAunqueNoCierre()"
+                                class="px-6 py-3 border border-amber-300 text-amber-700 rounded-xl font-bold hover:bg-amber-50">
+                            Calcular igual
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Modal: vista previa de "Traer datos reales" de una unidad -->
             <div id="modal-flota-reales" class="fixed inset-0 z-[210] hidden flex items-center justify-center p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);" onclick="if(event.target===this)cerrarDatosRealesDeFlota()">
                 <div class="modal-content w-full max-w-2xl p-8 bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
@@ -21816,6 +21845,123 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
         }
 
+
+        // ═════════ LA ALARMA DE LAS HORAS ═════════
+        // El costo de un viaje sale de dos pasos: el gasto del mes dividido por
+        // las horas cargadas da el precio de la hora, y eso por las horas del
+        // viaje da su costo. Para que el reparto cierre, la suma de las horas de
+        // todos los viajes tiene que dar parecido a las horas cargadas.
+        //
+        // Cuando no da, el sintoma es silencioso: los numeros salen igual, pero
+        // mal. En octubre se repartian 1.101 h contra 271 cargadas -- cada viaje
+        // habria quedado costeado a cuatro veces lo que corresponde.
+
+        /** Cuanto se tolera antes de frenar. Un 2% cubre el redondeo sin dejar
+         *  pasar un mes que esta realmente mal. */
+        const TOLERANCIA_HORAS = 0.02;
+
+        let _calcularIgualAunqueNoCierre = false;
+        let _avisoDeHorasPendiente = null;
+
+        /** Simula el calculo y compara. Devuelve 'frenar' si abrio el aviso. */
+        async function revisarQueLasHorasCierren(month, costsParams) {
+            const btn = document.getElementById('btn-calcular-mes');
+            if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+            let d = null;
+            try {
+                const res = await fetch(`${API_URL}/costs/calculate-month`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
+                    body: JSON.stringify({ month, year: Number(anioCostos()), costsParams, dryRun: true })
+                });
+                d = await res.json();
+                if (!res.ok) throw new Error(d.error || 'Error del servidor');
+            } catch (e) {
+                // Si la simulacion no sale, no se traba el trabajo: se deja seguir
+                console.error('[alarma horas]', e);
+                return 'seguir';
+            } finally {
+                if (btn) { btn.disabled = false; btn.style.opacity = ''; }
+            }
+
+            const cargadas = Number(costsParams.horas_reales) || 0;
+            const repartidas = Number(d.horasRepartidas) || 0;
+            if (!cargadas || !repartidas) return 'seguir';
+            const desvio = (repartidas - cargadas) / cargadas;
+            if (Math.abs(desvio) <= TOLERANCIA_HORAS) return 'seguir';
+
+            _avisoDeHorasPendiente = { month, d, cargadas, repartidas, desvio };
+            abrirAvisoDeHoras();
+            return 'frenar';
+        }
+
+        function abrirAvisoDeHoras() {
+            const p = _avisoDeHorasPendiente;
+            if (!p) return;
+            const { d, cargadas, repartidas, desvio } = p;
+            const hs = (n) => numeroAR(Math.round(n * 10) / 10) + ' h';
+            const pct = (desvio > 0 ? '+' : '\u2212') + numeroAR(Math.round(Math.abs(desvio) * 100)) + '%';
+            const sobra = desvio > 0;
+
+            const sub = document.getElementById('horas-aviso-sub');
+            if (sub) sub.textContent = `${p.month} ${anioCostos()} \u00b7 ${d.viajes} viajes propios`;
+
+            const cuerpo = document.getElementById('horas-aviso-cuerpo');
+            cuerpo.innerHTML = `
+                <div class="rounded-2xl border border-[#F4F7FE] overflow-hidden">
+                    <table class="w-full text-sm">
+                        <tbody>
+                            <tr class="border-b border-[#F4F7FE]">
+                                <td class="px-5 py-3 font-bold text-[#2B3674]">Horas cargadas en el Motor</td>
+                                <td class="px-5 py-3 text-right font-black text-[#1B2559] whitespace-nowrap">${hs(cargadas)}</td>
+                            </tr>
+                            <tr class="border-b border-[#F4F7FE]">
+                                <td class="px-5 py-3 font-bold text-[#2B3674]">Horas que se van a repartir</td>
+                                <td class="px-5 py-3 text-right font-black text-[#1B2559] whitespace-nowrap">${hs(repartidas)}</td>
+                            </tr>
+                            <tr class="bg-amber-50">
+                                <td class="px-5 py-3 font-black text-amber-800 uppercase tracking-wider text-xs">Desv\u00edo</td>
+                                <td class="px-5 py-3 text-right font-black text-amber-700 text-lg whitespace-nowrap">${pct}</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+                ${d.viajesSinHorario > 0 ? `
+                <p class="mt-5 text-sm font-bold text-[#2B3674] leading-relaxed">
+                    <b>${d.viajesSinHorario}</b> de los ${d.viajes} viajes no tienen horario cargado ni recorrido del GPS,
+                    as\u00ed que el c\u00e1lculo les asigna <b>${numeroAR(d.fallbackHours)} h</b> a cada uno.
+                    Son ${hs(d.viajesSinHorario * d.fallbackHours)} que nadie midi\u00f3.</p>` : ''}
+                <p class="mt-4 text-sm text-[#2B3674] leading-relaxed">
+                    ${sobra
+                        ? 'Se va a repartir <b>m\u00e1s</b> horas de las que el Motor usa para dividir, as\u00ed que la suma de los costos va a <b>superar el gasto real del mes</b>: cada viaje queda m\u00e1s caro de lo que cost\u00f3.'
+                        : 'Se va a repartir <b>menos</b> horas de las que el Motor usa para dividir, as\u00ed que la suma de los costos va a quedar <b>por debajo del gasto del mes</b>: cada viaje queda m\u00e1s barato de lo que cost\u00f3.'}</p>
+                <p class="mt-4 text-[11px] font-bold text-[#A3AED0] leading-snug">
+                    Calcular pisa el costo de los ${d.viajes} viajes propios del mes. Todav\u00eda no se escribi\u00f3 nada:
+                    esto fue una simulaci\u00f3n.</p>
+                ${d.viajesSinHorario > 0 ? `
+                <p class="mt-3 text-[11px] font-bold text-sky-700 leading-snug">
+                    Lo m\u00e1s probable es que sean viajes que quedaron sin cerrar. Al cerrarlos toman su hora real
+                    y el desv\u00edo desaparece solo.</p>` : ''}`;
+
+            document.getElementById('modal-horas-no-cierran').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function cerrarAvisoDeHoras() {
+            document.getElementById('modal-horas-no-cierran').classList.add('hidden');
+            _avisoDeHorasPendiente = null;
+            _calcularIgualAunqueNoCierre = false;
+        }
+
+        /** El usuario decide seguir igual: se vuelve a llamar al calculo saltando
+         *  la alarma una sola vez. */
+        function calcularIgualAunqueNoCierre() {
+            document.getElementById('modal-horas-no-cierran').classList.add('hidden');
+            _avisoDeHorasPendiente = null;
+            _calcularIgualAunqueNoCierre = true;
+            calcularCostosDelMes();
+        }
+
         async function calcularCostosDelMes() {
             const btn = document.getElementById('btn-calcular-mes');
             const month = document.getElementById('costs-month-select').value;
@@ -21842,6 +21988,16 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 if (!e._month) return true;
                 return e._month === month;
             });
+
+            // ── La alarma: se simula primero y se comparan las dos cifras ──
+            // Calcular pisa el costo de TODOS los viajes propios del mes. Si lo
+            // que se va a repartir no da parecido a las horas cargadas, el
+            // reparto no cierra y cada viaje queda con una tarifa que no es.
+            if (!_calcularIgualAunqueNoCierre) {
+                const aviso = await revisarQueLasHorasCierren(month, costsParams);
+                if (aviso === 'frenar') return;        // el modal se encarga
+            }
+            _calcularIgualAunqueNoCierre = false;
 
             if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> Calculando...'; lucide.createIcons(); }
 

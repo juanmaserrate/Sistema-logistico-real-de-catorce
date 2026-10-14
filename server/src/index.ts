@@ -9731,8 +9731,14 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
 
         // 6. Calcular y guardar costo de cada viaje
         const updates: any[] = [];
+        // Cuantos viajes no tienen NI horario cargado ni GPS: a esos el calculo
+        // les pone las horas por defecto, y son los que hacen que lo repartido
+        // no cierre con las horas del mes.
+        let viajesSinHorario = 0;
         for (const t of trips as any[]) {
             const durHrs = parseTripDurationHrs(t, fallbackHours);
+            // fallback 0 = centinela: si da 0 es que no habia de donde sacarla
+            if (parseTripDurationHrs(t, 0) <= 0) viajesSinHorario++;
             let tripCost = durHrs * vehicleHourlyRate;
 
             // Dedupe: si el mismo auxiliar figura en auxiliar y auxiliar2 (error de carga),
@@ -9769,7 +9775,24 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
             updates.push({ id: t.id, value, durHrs: Math.round(durHrs * 100) / 100 });
         }
 
-        res.json({ dryRun: !!dryRun, updated: dryRun ? 0 : updates.length, simulados: dryRun ? updates.length : 0, trips: updates.slice(0, 300), vehicleHourlyRate: Math.round(vehicleHourlyRate), auxTotalHours });
+        // Las horas que el calculo reparte de verdad. Se mandan aparte de `trips`
+        // porque esa lista viene cortada en 300 y sumarla del lado del navegador
+        // daria de menos justo en los meses mas grandes, que son los que importan.
+        const horasRepartidas = Math.round(updates.reduce((a: number, u: any) => a + (Number(u.durHrs) || 0), 0) * 10) / 10;
+        res.json({
+            dryRun: !!dryRun,
+            updated: dryRun ? 0 : updates.length,
+            simulados: dryRun ? updates.length : 0,
+            trips: updates.slice(0, 300),
+            vehicleHourlyRate: Math.round(vehicleHourlyRate),
+            auxTotalHours,
+            // Para que la pantalla pueda avisar antes de pisar los viajes
+            viajes: updates.length,
+            horasRepartidas,
+            horasReales,
+            viajesSinHorario,
+            fallbackHours
+        });
     } catch (e: any) {
         console.error('[calculate-month]', e);
         res.status(500).json({ error: e?.message || 'Error calculando costos' });
