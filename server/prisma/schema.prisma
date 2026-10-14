@@ -211,10 +211,15 @@ model Stop {
   cratesRecoveredJaula     Int?
   cratesDeliveredDeposito  Int?
   cratesRecoveredDeposito  Int?
+  /// De que ruta del viaje es esta parada ("R8", "R12"). Un viaje puede tener
+  /// varias rutas y la vuelta al deposito; sin esto no hay forma de cerrarlas
+  /// de a una. null = viaje de una sola ruta, como fue siempre.
+  ruta                  String?
   client                Client    @relation(fields: [clientId], references: [id])
   route                 Route     @relation(fields: [routeId], references: [id])
 
   @@index([status])
+  @@index([routeId, ruta])
 }
 
 model Trip {
@@ -277,6 +282,7 @@ model Trip {
   stops              TripStop[]
   locations          TripLocation[]
   linkedRoute        Route?
+  tramos             TripLeg[]
 
   @@index([date])
   @@index([driver])
@@ -361,6 +367,36 @@ model MaintenanceRecord {
   notes     String?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+/// Las horas de cada tramo de un viaje: cada ruta por separado y la vuelta al
+/// deposito.
+///
+/// Hasta ahora un viaje tenia UN solo par de horarios (Route.actualStartTime /
+/// actualEndTime), asi que no habia donde guardar cuanto duro cada ruta cuando
+/// el viaje hace dos o tres. Un tramo cerrado no se mueve mas.
+///
+/// La suma de los tramos da el total del viaje: el tramo N+1 arranca justo
+/// cuando se cerro el N, sin huecos.
+model TripLeg {
+  id        String    @id @default(uuid())
+  tripId    Int
+  /// 1, 2, 3... El orden en que se recorren. La vuelta al deposito es el ultimo.
+  orden     Int
+  /// "R8", "R12", o VUELTA_AL_DEPOSITO para el tramo final.
+  ruta      String
+  inicio    DateTime?
+  fin       DateTime?
+  /// Por que se cerro con paradas sin marcar. Lo escribe el chofer.
+  motivo    String?
+  /// Quien lo cerro: el chofer desde el celular o el operador desde la web.
+  cerradoPor String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  trip      Trip      @relation(fields: [tripId], references: [id], onDelete: Cascade)
+
+  @@unique([tripId, orden])
+  @@index([tripId])
 }
 
 model AppSettings {

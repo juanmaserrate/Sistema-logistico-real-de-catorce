@@ -3846,7 +3846,7 @@ app.get('/api/v1/routes', async (req, res) => {
     }
     const routes = await prisma.route.findMany({
         where,
-        include: { stops: { orderBy: { sequence: 'asc' }, include: { client: true } }, vehicle: true, driver: true, trip: { select: { id: true, businessUnit: true, reparto: true, zone: true, status: true, completedAt: true, isManual: true } } },
+        include: { stops: { orderBy: { sequence: 'asc' }, include: { client: true } }, vehicle: true, driver: true, trip: { select: { id: true, businessUnit: true, reparto: true, zone: true, status: true, completedAt: true, isManual: true, rutas: true, tramos: { orderBy: { orden: 'asc' } } } } },
         orderBy: { date: 'desc' }
     });
     // Un viaje manual no va a ningun celular: se filtra cuando la consulta viene
@@ -9550,6 +9550,247 @@ function leerMesDeCostos(todos: Record<string, any>, mes: string, anio: number):
     return todos[claveCostos(m, anio)] ?? (anio === ANIO_COSTOS_LEGADO ? todos[m] : undefined);
 }
 
+// ═══════════════════ TRAMOS DEL VIAJE ═══════════════════
+// Un viaje puede hacer dos o tres rutas y despues volver al deposito. Hasta
+// ahora todo eso era UN solo par de horarios, asi que no habia forma de saber
+// cuanto duro cada ruta. Un tramo cerrado no se mueve mas.
+
+/** Los tramos de un viaje, en el orden en que se recorren, sacados de las
+ *  paradas. Un viaje de una sola ruta da un solo tramo, como fue siempre. */
+async function tramosDelViaje(tripId: number): Promise<string[]> {
+    const route = await prisma.route.findUnique({
+        where: { tripId },
+        select: { id: true, stops: { orderBy: { sequence: 'asc' }, select: { ruta: true, isReturnToBase: true } } }
+    });
+    if (!route) return [];
+    const orden: string[] = [];
+    for (const st of route.stops) {
+        const nombre = st.isReturnToBase ? TRAMO_VUELTA : String((st as any).ruta || '').trim();
+        if (!nombre) continue;
+        if (!orden.includes(nombre)) orden.push(nombre);
+    }
+    return orden;
+}
+
+/** Deja la fila del tramo creada si no estaba, sin pisar lo que ya tenga. */
+async function asegurarTramo(tripId: number, ruta: string, orden: number) {
+    const ya = await (prisma as any).tripLeg.findFirst({ where: { tripId, ruta } });
+    if (ya) return ya;
+    return (prisma as any).tripLeg.create({ data: { tripId, ruta, orden } });
+}
+
+/** Cierra un tramo y abre el siguiente en el MISMO instante, para que la suma
+ *  de los tramos de el total del viaje sin huecos. */
+async function cerrarTramo(opts: {
+    tripId: number; ruta: string; at: Date; motivo?: string | null; cerradoPor?: string | null;
+}) {
+    const { tripId, ruta, at } = opts;
+    const orden = await tramosDelViaje(tripId);
+    const i = orden.indexOf(ruta);
+    if (i < 0) throw new Error(`El viaje no tiene una ruta llamada "${ruta}"`);
+
+    // El primero arranca cuando arranco el viaje; si no hay hora todavia, se
+    // toma la marca mas vieja de sus paradas y, en ultima instancia, el cierre.
+    const route = await prisma.route.findUnique({
+        where: { tripId },
+        select: { actualStartTime: true, stops: { select: { actualArrival: true, actualDeparture: true } } }
+    });
+    let arranque = route?.actualStartTime ?? null;
+    if (!arranque) {
+        const ms: number[] = [];
+        for (const st of route?.stops || []) {
+            if (st.actualArrival) ms.push(new Date(st.actualArrival).getTime());
+            if (st.actualDeparture) ms.push(new Date(st.actualDeparture).getTime());
+        }
+        arranque = ms.length ? new Date(Math.min(...ms)) : at;
+    }
+
+    // Se crean todos los tramos de una, asi el informe los muestra aunque el
+    // viaje se corte por la mitad.
+    for (let k = 0; k < orden.length; k++) await asegurarTramo(tripId, orden[k], k + 1);
+
+    const previo = i > 0
+        ? await (prisma as any).tripLeg.findFirst({ where: { tripId, ruta: orden[i - 1] } })
+        : null;
+    const inicio = i === 0 ? arranque : (previo?.fin ?? arranque);
+
+    const cerrado = await (prisma as any).tripLeg.update({
+        where: { tripId_orden: { tripId, orden: i + 1 } },
+        data: {
+            inicio,
+            fin: at,
+            motivo: opts.motivo ?? null,
+            cerradoPor: opts.cerradoPor ?? null
+        }
+    });
+
+    // El siguiente arranca justo ahora: sin huecos entre tramo y tramo
+    if (i + 1 < orden.length) {
+        await (prisma as any).tripLeg.update({
+            where: { tripId_orden: { tripId, orden: i + 2 } },
+            data: { inicio: at }
+        }).catch(() => { /* si no existe, se crea al cerrarlo */ });
+    }
+    return { cerrado, orden, indice: i, esElUltimo: i === orden.length - 1 };
+}
+
+/** POST /api/v1/trips/:id/tramos/cerrar  { ruta, motivo?, at?, cerradoPor? }
+ *
+ *  Cierra UNA ruta sin terminar el viaje. Cerrar la ultima tampoco lo termina:
+ *  todavia falta la vuelta al deposito. */
+app.post('/api/v1/trips/:id/tramos/cerrar', async (req: any, res: any) => {
+    try {
+        const tripId = Number(req.params.id);
+        if (!Number.isFinite(tripId)) return res.status(400).json({ error: 'ID de viaje invalido' });
+        const { ruta, motivo, at, cerradoPor } = req.body || {};
+        if (!ruta) return res.status(400).json({ error: 'Falta la ruta a cerrar' });
+
+        const orden = await tramosDelViaje(tripId);
+        if (!orden.length) return res.status(400).json({ error: 'El viaje no tiene rutas cargadas en sus paradas' });
+
+        // Solo se cierra la primera abierta: saltear dejaria huecos en las horas
+        const abiertos = await (prisma as any).tripLeg.findMany({ where: { tripId, fin: null } });
+        const cerrados = new Set(
+            (await (prisma as any).tripLeg.findMany({ where: { tripId, NOT: { fin: null } } }))
+                .map((l: any) => l.ruta)
+        );
+        const primeraAbierta = orden.find((r) => !cerrados.has(r));
+        if (primeraAbierta && primeraAbierta !== String(ruta)) {
+            return res.status(400).json({
+                error: `Primero hay que cerrar "${primeraAbierta}"`,
+                siguiente: primeraAbierta
+            });
+        }
+        if (!primeraAbierta) return res.status(400).json({ error: 'Ya estan todas las rutas cerradas' });
+
+        // La hora la manda el celular: con poca senal el pedido puede llegar
+        // mucho despues de que el chofer apreto.
+        const cuando = at ? new Date(at) : new Date();
+        if (!Number.isFinite(cuando.getTime())) return res.status(400).json({ error: 'Hora invalida' });
+
+        const r = await cerrarTramo({
+            tripId, ruta: String(ruta), at: cuando,
+            motivo: motivo ? String(motivo).slice(0, 300) : null,
+            cerradoPor: cerradoPor ? String(cerradoPor).slice(0, 80) : (req.headers['x-actor-name'] || null)
+        });
+        await logAction(req, 'UPDATE', 'Trip', tripId, `Ruta "${ruta}" cerrada`, null,
+            { ruta, motivo: motivo || null, at: cuando.toISOString() });
+
+        io.emit('trip:updated', { tripId, hint: 'tramo_cerrado' });
+        const tramos = await (prisma as any).tripLeg.findMany({ where: { tripId }, orderBy: { orden: 'asc' } });
+        res.json({ ok: true, cerrado: r.cerrado, esElUltimo: r.esElUltimo, siguiente: r.orden[r.indice + 1] || null, tramos });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'No se pudo cerrar la ruta' });
+    }
+});
+
+/** POST /api/v1/trips/:id/finalizar  { motivo?, at? }
+ *
+ *  Termina el viaje donde sea que este el chofer, sin pasar por el deposito.
+ *  Escribe lo mismo que el cierre por la parada base, returnTime incluido, que
+ *  es lo que levanta el Motor de Costos. */
+app.post('/api/v1/trips/:id/finalizar', async (req: any, res: any) => {
+    try {
+        const tripId = Number(req.params.id);
+        if (!Number.isFinite(tripId)) return res.status(400).json({ error: 'ID de viaje invalido' });
+        const { motivo, at } = req.body || {};
+        const cuando = at ? new Date(at) : new Date();
+        if (!Number.isFinite(cuando.getTime())) return res.status(400).json({ error: 'Hora invalida' });
+
+        const route = await prisma.route.findUnique({
+            where: { tripId },
+            select: { id: true, actualStartTime: true, actualEndTime: true, stops: { select: { id: true, status: true, actualArrival: true, actualDeparture: true } } }
+        });
+        if (!route) return res.status(404).json({ error: 'El viaje no tiene recorrido' });
+        if (route.actualEndTime) return res.status(400).json({ error: 'El viaje ya estaba finalizado' });
+
+        // Cuantas quedaron sin marcar: si hay alguna, el motivo es obligatorio
+        const sinMarcar = route.stops.filter((st) => {
+            const e = String(st.status || '').toUpperCase();
+            return e !== 'COMPLETED' && e !== 'UNDELIVERABLE';
+        });
+        if (sinMarcar.length > 0 && !String(motivo || '').trim()) {
+            return res.status(400).json({
+                error: `Quedan ${sinMarcar.length} parada(s) sin marcar. Decí por qué cerrás el viaje así.`,
+                code: 'MOTIVO_REQUERIDO',
+                paradasSinMarcar: sinMarcar.length
+            });
+        }
+
+        let arranque = route.actualStartTime;
+        if (!arranque) {
+            const ms: number[] = [];
+            for (const st of route.stops) {
+                if (st.actualArrival) ms.push(new Date(st.actualArrival).getTime());
+                if (st.actualDeparture) ms.push(new Date(st.actualDeparture).getTime());
+            }
+            arranque = ms.length ? new Date(Math.min(...ms)) : cuando;
+        }
+
+        // Los tramos que quedaron abiertos se cierran ahora, en cadena
+        const orden = await tramosDelViaje(tripId);
+        const cerrados = new Set(
+            (await (prisma as any).tripLeg.findMany({ where: { tripId, NOT: { fin: null } } })).map((l: any) => l.ruta)
+        );
+        for (const r of orden) {
+            if (cerrados.has(r)) continue;
+            await cerrarTramo({
+                tripId, ruta: r, at: cuando,
+                motivo: String(motivo || '').trim() || null,
+                cerradoPor: String(req.headers['x-actor-name'] || '').trim() || null
+            });
+        }
+
+        await prisma.route.update({
+            where: { id: route.id },
+            data: { actualStartTime: arranque, actualEndTime: cuando, status: 'COMPLETED' }
+        });
+        await prisma.trip.update({
+            where: { id: tripId },
+            // returnTime es lo que levanta el Motor de Costos: los tres caminos
+            // de cierre tienen que escribirlo.
+            data: {
+                status: 'COMPLETED', completedAt: cuando, returnTime: cuando,
+                ...(String(motivo || '').trim() ? { driverComments: String(motivo).slice(0, 500) } : {})
+            }
+        });
+        await prisma.deviceLocation.updateMany({
+            where: { routeId: route.id, isActive: true }, data: { isActive: false }
+        });
+
+        await logAction(req, 'UPDATE', 'Trip', tripId,
+            `Viaje finalizado${sinMarcar.length ? ` con ${sinMarcar.length} parada(s) sin marcar` : ''}`,
+            null, { at: cuando.toISOString(), motivo: motivo || null });
+
+        io.emit('route:updated', { routeId: route.id, tripId, type: 'driver_finished' });
+        io.emit('trip:updated', { tripId, hint: 'finalizado' });
+
+        const tramos = await (prisma as any).tripLeg.findMany({ where: { tripId }, orderBy: { orden: 'asc' } });
+        res.json({ ok: true, finalizadoA: cuando.toISOString(), paradasSinMarcar: sinMarcar.length, tramos });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'No se pudo finalizar el viaje' });
+    }
+});
+
+/** GET /api/v1/trips/:id/tramos — las horas de cada ruta del viaje. */
+app.get('/api/v1/trips/:id/tramos', async (req: any, res: any) => {
+    try {
+        const tripId = Number(req.params.id);
+        if (!Number.isFinite(tripId)) return res.status(400).json({ error: 'ID de viaje invalido' });
+        const tramos = await (prisma as any).tripLeg.findMany({ where: { tripId }, orderBy: { orden: 'asc' } });
+        const conHoras = tramos.map((t: any) => ({
+            ...t,
+            horas: t.inicio && t.fin
+                ? Math.round(((new Date(t.fin).getTime() - new Date(t.inicio).getTime()) / 3600000) * 100) / 100
+                : null
+        }));
+        const total = conHoras.reduce((a: number, t: any) => a + (t.horas || 0), 0);
+        res.json({ tripId, tramos: conHoras, totalHoras: Math.round(total * 100) / 100 });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 // Guarda los parametros del Motor de Costos de UN mes (sin recalcular viajes).
 // Mezcla sobre costs_data para no pisar los otros meses si dos usuarios guardan a la vez.
 app.post('/api/v1/costs/params', async (req: any, res: any) => {
@@ -9868,13 +10109,25 @@ type ResultadoParadas =
  *  marcadas), asi que tener dos copias era pedir que se separen con el tiempo.
  *
  *  forzar = el operador ya confirmo que quiere tocar un viaje en curso. */
+/** El tramo final del viaje: la vuelta al deposito.
+ *
+ *  No es una ruta de reparto, pero tiene sus horas igual que las otras y va en
+ *  linea aparte en el informe, que es como lo pidio el operador. */
+const TRAMO_VUELTA = 'VUELTA AL DEPOSITO';
+
 async function guardarParadasDelViaje(
     tripId: number,
     clientIdsEntrada: string[],
-    opts: { forzar: boolean }
+    opts: { forzar: boolean; rutas?: (string | null)[] }
 ): Promise<ResultadoParadas> {
     try {
         const clientIds: string[] = clientIdsEntrada.map((x: unknown) => String(x)).filter(Boolean);
+        // De que ruta es cada parada, en el mismo orden que clientIds. Sin esto
+        // no hay forma de cerrar las rutas de a una: la web tenia el dato y lo
+        // perdia al guardar.
+        const rutasEntrada: (string | null)[] = Array.isArray(opts.rutas)
+            ? opts.rutas.map((r) => { const v = String(r ?? '').trim(); return v || null; })
+            : [];
         const tenantId = 'default-tenant';
 
         const trip = await prisma.trip.findUnique({ where: { id: tripId } });
@@ -9984,6 +10237,7 @@ async function guardarParadasDelViaje(
                 baseClientId = base.id;
                 if (clientIds[clientIds.length - 1] !== base.id) {
                     clientIds.push(base.id);
+                    rutasEntrada.push(TRAMO_VUELTA);
                 }
             }
         }
@@ -10009,7 +10263,7 @@ async function guardarParadasDelViaje(
                 actualArrival: true, actualDeparture: true, observations: true,
                 reasonCode: true, proofPhotoUrl: true, deliveryWithoutIssues: true,
                 signatureUrl: true, plannedSequence: true, plannedEta: true,
-                isReturnToBase: true
+                isReturnToBase: true, ruta: true
             }
         });
 
@@ -10041,15 +10295,20 @@ async function guardarParadasDelViaje(
             // Solo la ULTIMA parada lleva el flag de retorno a base: si el
             // deposito figura tambien al medio (recarga), esa no cierra el viaje.
             const isBase = baseClientId != null && clientId === baseClientId && idx === clientIds.length - 1;
+            // La vuelta al deposito es su propio tramo aunque no lo manden
+            const ruta = isBase ? TRAMO_VUELTA : (rutasEntrada[idx] ?? null);
             const candidates = byClient.get(clientId) || [];
             const existing = candidates.find((s) => !usedIds.has(s.id));
             if (existing) {
                 // REUTILIZAR la parada existente. Solo actualizamos su sequence.
                 usedIds.add(existing.id);
-                if (existing.sequence !== idx + 1 || existing.isReturnToBase !== isBase) {
+                // Si no vino ruta en el request, se conserva la que ya tenia: un
+                // guardado viejo no tiene por que borrar el agrupado.
+                const rutaFinal = ruta ?? existing.ruta ?? null;
+                if (existing.sequence !== idx + 1 || existing.isReturnToBase !== isBase || existing.ruta !== rutaFinal) {
                     ops.push(prisma.stop.update({
                         where: { id: existing.id },
-                        data: { sequence: idx + 1, isReturnToBase: isBase }
+                        data: { sequence: idx + 1, isReturnToBase: isBase, ruta: rutaFinal }
                     }));
                 }
             } else {
@@ -10060,7 +10319,8 @@ async function guardarParadasDelViaje(
                         clientId,
                         sequence: idx + 1,
                         status: 'PENDING',
-                        isReturnToBase: isBase
+                        isReturnToBase: isBase,
+                        ruta
                     }
                 }));
             }
@@ -10144,7 +10404,7 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
     if (!Number.isFinite(tripId)) return res.status(400).json({ error: 'ID invalido' });
     const clientIds = Array.isArray(req.body?.clientIds) ? req.body.clientIds : [];
     const forzar = String(req.headers['x-force-replace'] || '').toLowerCase() === 'true';
-    const r = await guardarParadasDelViaje(tripId, clientIds, { forzar });
+    const r = await guardarParadasDelViaje(tripId, clientIds, { forzar, rutas: req.body?.rutas });
     if (!r.ok) return res.status(r.status).json(r.body);
     res.json({ routeId: r.routeId, stopCount: r.stopCount });
 });
@@ -10287,7 +10547,7 @@ app.post('/api/v1/trips/stops-bulk', async (req, res) => {
     if (items.length > 500) return res.status(400).json({ error: 'Maximo 500 viajes por tanda' });
 
     try {
-        const limpios: { tripId: number; clientIds: string[] }[] = [];
+        const limpios: { tripId: number; clientIds: string[]; rutas?: (string | null)[] }[] = [];
         const fallaron: any[] = [];
         for (const it of items) {
             const tripId = parseInt(it?.tripId, 10);
@@ -10295,7 +10555,12 @@ app.post('/api/v1/trips/stops-bulk', async (req, res) => {
                 fallaron.push({ tripId: it?.tripId ?? null, status: 400, error: 'ID invalido' });
                 continue;
             }
-            limpios.push({ tripId, clientIds: Array.isArray(it?.clientIds) ? it.clientIds.map(String).filter(Boolean) : [] });
+            limpios.push({
+                tripId,
+                clientIds: Array.isArray(it?.clientIds) ? it.clientIds.map(String).filter(Boolean) : [],
+                // De que ruta es cada parada, en el mismo orden
+                rutas: Array.isArray(it?.rutas) ? it.rutas : undefined
+            });
         }
 
         // Quienes ya tienen ruta NO entran al camino rapido: ahi puede haber
@@ -10314,7 +10579,7 @@ app.post('/api/v1/trips/stops-bulk', async (req, res) => {
         fallaron.push(...r1.fallaron);
 
         for (const it of resto) {
-            const r = await guardarParadasDelViaje(it.tripId, it.clientIds, { forzar: false });
+            const r = await guardarParadasDelViaje(it.tripId, it.clientIds, { forzar: false, rutas: it.rutas });
             if (r.ok) ok.push({ tripId: r.tripId, routeId: r.routeId, stopCount: r.stopCount });
             else fallaron.push({ tripId: r.tripId, status: r.status, ...r.body });
         }
