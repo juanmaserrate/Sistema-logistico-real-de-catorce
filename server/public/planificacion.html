@@ -130,7 +130,6 @@
                         <div class="nav-menu-panel" role="menu">
                             <a href="#routes" id="btn-routes" class="nav-menu-item" role="menuitem"><i data-lucide="route"></i> <span>Rutas Predefinidas</span></a>
                             <a href="#budget" id="btn-budget" class="nav-menu-item" role="menuitem"><i data-lucide="calculator"></i> <span>Presupuestar</span></a>
-                            <a href="#maintenance" id="btn-maintenance" class="nav-menu-item" role="menuitem"><i data-lucide="settings"></i> <span>Mantenimiento</span></a>
                         </div>
                     </div>
                     <div class="nav-menu" id="nav-menu-administracion" data-menu="administracion">
@@ -1428,113 +1427,6 @@
                     </table>
                 </div>
             </div>
-            <!-- VIEW: MAPA Y RUTEO (Google Maps) -->
-            <div id="view-maintenance" class="hidden view-animate space-y-8">
-                <div class="card-dark p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div>
-                        <h3 class="text-2xl font-bold text-[#1B2559]">Gestión de Mantenimiento</h3>
-                        <p class="text-sm text-[#A3AED0] font-medium">Control técnico y reparaciones de flota</p>
-                    </div>
-                    <div class="flex items-center gap-4 flex-1 max-w-xl relative">
-                        <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3AED0]"></i>
-                        <input type="text" id="maintenance-search" oninput="filterMaintenanceVehicles()" placeholder="Buscar por patente, chofer o modelo..." class="w-full bg-[#F4F7FE] border-0 rounded-xl py-2.5 pl-10 pr-3 text-xs font-medium text-[#1B2559] outline-none">
-                    </div>
-                </div>
-
-                <!-- 1. Historial de Reparaciones (primero) -->
-                <div id="maintenance-records" class="card-dark p-8 space-y-8 w-full min-w-0 overflow-hidden">
-                    <div class="flex flex-col md:flex-row justify-between items-center gap-6">
-                        <div>
-                            <h3 class="text-xl font-bold text-[#1B2559]">Historial de Reparaciones</h3>
-                            <p id="maintenance-selected-vehicle" class="text-sm text-[#A3AED0] font-medium">Histórico acumulado de gastos técnicos</p>
-                        </div>
-                        <div class="flex flex-wrap gap-3 items-center">
-                            <select id="maintenance-filter-plate" onchange="renderMaintenanceRecords()" class="bg-[#F4F7FE] border-0 rounded-2xl px-5 py-3 text-xs font-bold text-[#1B2559] outline-none">
-                                <option value="">Todas las Patentes</option>
-                            </select>
-                            <label class="flex items-center gap-2 bg-[#F4F7FE] rounded-2xl px-4 py-2.5 cursor-pointer" title="Filtrar reparaciones por mes y año">
-                                <span class="text-[10px] font-black text-[#A3AED0] uppercase whitespace-nowrap">Mes</span>
-                                <input type="month" id="maintenance-filter-period" onchange="renderMaintenanceRecords()" oninput="renderMaintenanceRecords()" class="bg-transparent border-0 text-xs font-bold text-[#1B2559] outline-none min-w-[9.5rem]">
-                                <button type="button" onclick="exportarMantenimiento()"
-                                        title="Baja a Excel exactamente lo que estas viendo, con los filtros puestos"
-                                        class="px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black uppercase tracking-wide shadow-lg shadow-emerald-100 flex items-center gap-2 whitespace-nowrap">
-                                    <i data-lucide="download" class="w-4 h-4"></i> Exportar
-                                </button>
-                            </label>
-                            <button type="button" onclick="clearMaintenancePeriodFilter()" class="px-5 py-3 rounded-2xl text-xs font-bold bg-white border border-[#E3E8F4] text-[#A3AED0] hover:bg-[#F4F7FE] transition-all">Todos los meses</button>
-                            <button onclick="openAddRepairModal()" class="px-6 py-4 bg-indigo-600 text-white rounded-2xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center gap-2">
-                                <i data-lucide="plus" class="w-4 h-4"></i> NUEVA REPARACIÓN
-                            </button>
-                        </div>
-                    </div>
-                    <div id="maintenance-records-list" class="w-full min-w-0">
-                        <p class="text-[#A3AED0] text-sm font-medium">Seleccione un vehículo para ver detalles...</p>
-                    </div>
-                    <div id="maintenance-total" class="mt-8 pt-6 border-t border-[#F4F7FE] hidden space-y-4">
-                        <div class="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-[#F4F7FE] p-6 rounded-2xl">
-                            <div>
-                                <span class="text-sm font-bold text-[#A3AED0] uppercase tracking-widest">Total costo (vista filtrada)</span>
-                                <p id="maintenance-total-meta" class="text-xs text-[#A3AED0] mt-2 font-medium"></p>
-                            </div>
-                            <span id="maintenance-total-value" class="text-2xl font-extrabold text-[#1B2559]">$ 0</span>
-                        </div>
-                        <div id="maintenance-totals-by-cat-wrap" class="hidden rounded-2xl border border-[#F4F7FE] bg-white p-5">
-                            <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-3">Totales por categoría</p>
-                            <div id="maintenance-totals-by-cat-body" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-sm"></div>
-                        </div>
-                    </div>
-                </div>
-
-                <!-- 2. Documentación y Ficha Técnica -->
-                <div class="table-container">
-                    <div class="p-6 border-b border-[#F4F7FE] flex items-center justify-between">
-                        <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Documentación y Ficha Técnica</h4>
-                    </div>
-                    <div class="overflow-x-auto custom-scrollbar">
-                        <table class="w-full min-w-[920px] text-left whitespace-nowrap">
-                            <thead>
-                                <tr>
-                                    <th>Patente</th>
-                                    <th>Chofer</th>
-                                    <th>Marca</th>
-                                    <th>KM Actual</th>
-                                    <th>Modelo</th>
-                                    <th>Año</th>
-                                    <th>VTV</th>
-                                    <th>Broma.</th>
-                                    <th>Senasa</th>
-                                    <th>Seguro</th>
-                                    <th>Licencia</th>
-                                    <th>Motor</th>
-                                    <th>Chasis</th>
-                                    <th class="text-center">Acciones</th>
-                                </tr>
-                            </thead>
-                            <tbody id="maintenance-vehicle-table-body" class="divide-y divide-[#F4F7FE]">
-                                <!-- Dynamic rows -->
-                            </tbody>
-                        </table>
-                    </div>
-                </div>
-
-                <!-- 3. Alertas de Vencimientos -->
-                <div id="maint-expiry-alerts" class="card-dark p-6 hidden">
-                    <div class="flex items-center justify-between mb-4">
-                        <div class="flex items-center gap-3">
-                            <div class="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center">
-                                <i data-lucide="alert-triangle" class="w-5 h-5 text-rose-600"></i>
-                            </div>
-                            <div>
-                                <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest">Alertas de Vencimientos</h4>
-                                <p class="text-[11px] text-[#A3AED0] font-medium">Documentación próxima a vencer o ya vencida</p>
-                            </div>
-                        </div>
-                        <span id="maint-expiry-count" class="text-xs font-black text-rose-600 bg-rose-50 px-3 py-1.5 rounded-xl">0</span>
-                    </div>
-                    <div id="maint-expiry-list" class="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar"></div>
-                </div>
-            </div>
-
             <!-- VIEW: EMPLEADOS (Contenedor unificado) -->
             <div id="view-employees" class="hidden view-animate space-y-8">
 
@@ -1789,39 +1681,6 @@
                 </div>
             </div>
 
-            <!-- Modal: Nueva/Editar Reparación -->
-            <div id="modal-repair" class="fixed inset-0 z-50 hidden flex items-center justify-center p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);" onclick="if(event.target===this)closeRepairModal()">
-                <div class="modal-content w-full max-w-lg p-8 bg-white rounded-3xl shadow-2xl" onclick="event.stopPropagation()">
-                    <h3 class="text-xl font-bold text-[#1B2559] mb-6" id="modal-repair-title">Nueva Reparación</h3>
-                    <form id="repair-form" class="space-y-4">
-                        <input type="hidden" id="repair-id">
-                        <div class="grid grid-cols-2 gap-4">
-                            <div class="col-span-2">
-                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Patente *</label>
-                                <select id="repair-plate" required class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-indigo-600">
-                                    <option value="">-- Seleccionar Unidad --</option>
-                                </select>
-                            </div>
-                            <div class="col-span-2">
-                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Categoría</label>
-                                <!-- Las opciones las llena openAddRepairModal() desde CATEGORIAS_FLOTA -->
-                                <select id="repair-category" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></select>
-                            </div>
-                            <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Fecha *</label><input type="date" id="repair-date" required class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
-                            <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Kilometraje</label><input type="text" inputmode="numeric" id="repair-mileage" oninput="sanitizeNumericInput(this,false)" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
-                            <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Taller</label><input type="text" id="repair-workshop" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
-                            <div class="col-span-2"><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Trabajo Realizado *</label><textarea id="repair-work" rows="3" required class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></textarea></div>
-                            <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Costo ($)</label><input type="text" inputmode="decimal" id="repair-cost" oninput="sanitizeNumericInput(this,true)" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
-                            <div><label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Notas</label><input type="text" id="repair-notes" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm"></div>
-                        </div>
-                        <div class="flex gap-3 pt-4">
-                            <button type="button" onclick="saveRepair()" class="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-bold hover:bg-indigo-700 flex items-center justify-center gap-2 shadow-lg shadow-indigo-200"><i data-lucide="save" class="w-4 h-4"></i> Guardar</button>
-                            <button type="button" onclick="closeRepairModal()" class="px-6 py-3 border border-[#E0E5F2] rounded-xl font-bold text-[#1B2559] hover:bg-[#F4F7FE]">Cancelar</button>
-                        </div>
-                    </form>
-                </div>
-            </div>
-
             <!-- Modal: Elegir rol al desbloquear usuario -->
             <div id="modal-unblock-role" class="fixed inset-0 z-[120] hidden flex items-center justify-center p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);" onclick="if(event.target===this)resolveUnblockRole(null)">
                 <div class="modal-content w-full max-w-md p-8 bg-white rounded-3xl shadow-2xl" onclick="event.stopPropagation()">
@@ -1999,7 +1858,7 @@
                 <div class="card-dark p-8 flex flex-col lg:flex-row lg:items-center justify-between gap-6">
                     <div>
                         <h3 class="text-2xl font-bold text-[#1B2559]">Gastos de Flota</h3>
-                        <p class="text-sm text-[#A3AED0] font-medium max-w-2xl">Cada gasto del cami&oacute;n con su fecha, su patente y su comprobante: combustible, lavados, seguros, patentes, licencias, multas y taller. De ac&aacute; sale, por rubro, lo que el Motor de Costos tiene que sumar.</p>
+                        <p class="text-sm text-[#A3AED0] font-medium max-w-2xl">Todo lo de la flota en un solo lugar: cada gasto del cami&oacute;n con su fecha, su patente y su comprobante, m&aacute;s la ficha t&eacute;cnica de cada unidad y el vencimiento de sus papeles.</p>
                     </div>
                     <div class="flex items-center gap-3 flex-wrap">
                         <select id="flota-anio" onchange="renderFleetCosts()" class="bg-[#F4F7FE] border-0 rounded-2xl px-5 py-3 text-xs font-bold text-[#1B2559] outline-none"></select>
@@ -2048,6 +1907,59 @@
                     <p id="flota-aviso-sin-fecha" class="hidden text-[11px] font-bold text-amber-600 leading-snug"></p>
                     <div id="flota-lista" class="w-full min-w-0"></div>
                     <div id="flota-resumen" class="hidden pt-6 border-t border-[#F4F7FE] space-y-4"></div>
+                </div>
+
+                <!-- 2. Documentación y Ficha Técnica -->
+                <div class="table-container">
+                    <div class="p-6 border-b border-[#F4F7FE] flex items-center justify-between">
+                        <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Documentación y ficha técnica</h4>
+                        <div class="relative w-full max-w-sm">
+                            <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3AED0]"></i>
+                            <input type="text" id="maintenance-search" oninput="filterMaintenanceVehicles()" placeholder="Buscar por patente, chofer o modelo…" class="w-full bg-[#F4F7FE] border-0 rounded-xl py-2.5 pl-10 pr-3 text-xs font-medium text-[#1B2559] outline-none">
+                        </div>
+                    </div>
+                    <div class="overflow-x-auto custom-scrollbar">
+                        <table class="w-full min-w-[920px] text-left whitespace-nowrap">
+                            <thead>
+                                <tr>
+                                    <th>Patente</th>
+                                    <th>Chofer</th>
+                                    <th>Marca</th>
+                                    <th>KM Actual</th>
+                                    <th>Modelo</th>
+                                    <th>Año</th>
+                                    <th>VTV</th>
+                                    <th>Broma.</th>
+                                    <th>Senasa</th>
+                                    <th>Seguro</th>
+                                    <th>Licencia</th>
+                                    <th>Motor</th>
+                                    <th>Chasis</th>
+                                    <th class="text-center">Acciones</th>
+                                </tr>
+                            </thead>
+                            <tbody id="maintenance-vehicle-table-body" class="divide-y divide-[#F4F7FE]">
+                                <!-- Dynamic rows -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <!-- 3. Alertas de Vencimientos -->
+                <div id="maint-expiry-alerts" class="card-dark p-6 hidden">
+                    <div class="flex items-center justify-between mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 bg-rose-50 rounded-xl flex items-center justify-center">
+                                <i data-lucide="alert-triangle" class="w-5 h-5 text-rose-600"></i>
+                            </div>
+                            <div>
+                                <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest">Alertas de Vencimientos</h4>
+                                <p class="text-[11px] text-[#A3AED0] font-medium">Documentación próxima a vencer o ya vencida</p>
+                            </div>
+                        </div>
+                        <span id="maint-expiry-count" class="text-xs font-black text-rose-600 bg-rose-50 px-3 py-1.5 rounded-xl">0</span>
+                    </div>
+                    <div id="maint-expiry-list" class="space-y-2 max-h-[400px] overflow-y-auto custom-scrollbar"></div>
                 </div>
             </div>
 
@@ -3321,7 +3233,7 @@
             // Vehicles
             (maintenanceVehicles || []).filter(v => (v.plate + ' ' + (v.driverName || '') + ' ' + (v.model || '')).toLowerCase().includes(qn)).slice(0, 4).forEach(v => _gsResults.push({
                 icon: 'truck', label: v.plate, sub: `${v.driverName || ''} · ${v.model || ''}`, tag: 'Vehículo', color: 'emerald',
-                action: () => { showSection('maintenance'); setTimeout(() => { document.getElementById('maintenance-search').value = v.plate; filterMaintenanceVehicles(); selectMaintenanceVehicle(v.plate); }, 300); }
+                action: () => { showSection('fleet-costs'); setTimeout(() => { document.getElementById('maintenance-search').value = v.plate; filterMaintenanceVehicles(); selectMaintenanceVehicle(v.plate); }, 300); }
             }));
             // Trips
             (planningData || []).filter(t => (t.route + ' ' + (t.vehicle || '') + ' ' + (t.driver || '')).toLowerCase().includes(qn)).slice(0, 4).forEach(t => _gsResults.push({
@@ -4397,8 +4309,8 @@
 
         // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
         const ACCESS_PROFILES = {
-            SUPERADMIN: ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'],
-            TRAFICO: ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','fleet-costs','tarifas','budget','fleets','maintenance','routes','users','ajustes','employees','schools','reports','incidents','historial'],
+            SUPERADMIN: ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'],
+            TRAFICO: ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','employees','schools','reports','incidents','historial'],
             RRHH: ['salaries','employees'],
             ADMINISTRACION: ['weekly','payments','dashboard','tarifas','budget','salaries','schools','reports']
         };
@@ -4432,9 +4344,15 @@
             } else {
                 currentUserModules = ACCESS_PROFILES[profile] || ACCESS_PROFILES.SUPERADMIN;
             }
+            // Mantenimiento se fusiono con Gastos de Flota. Los permisos ya
+            // guardados nombran al modulo viejo, asi que se traducen al vuelo:
+            // si no, el que tenia Mantenimiento se quedaba sin nada.
+            if (currentUserModules.includes('maintenance') && !currentUserModules.includes('fleet-costs')) {
+                currentUserModules = [...currentUserModules, 'fleet-costs'];
+            }
 
             // Hide/show nav buttons based on access
-            const allSections = ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
+            const allSections = ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
             allSections.forEach(sec => {
                 const btn = document.getElementById('btn-' + sec);
                 if (btn) {
@@ -4652,7 +4570,7 @@
             return { ...stored, ...hardcoded };
         }
 
-        const ALL_MODULES = ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','maintenance','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
+        const ALL_MODULES = ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
 
         function renderProfileAssignments() {
             const tbody = document.getElementById('profile-assignments-body');
@@ -4759,6 +4677,9 @@
         }
 
         function showSection(id) {
+            // Mantenimiento se fusiono con Gastos de Flota. Los enlaces viejos,
+            // los favoritos y la ultima pantalla guardada siguen funcionando.
+            if (id === 'maintenance') id = 'fleet-costs';
             // Access control check
             if (currentUserModules.length > 0 && !currentUserModules.includes(id)) {
                 if (typeof addNotification === 'function') addNotification('warning', 'Acceso denegado', 'No tenés permiso para acceder a este módulo.');
@@ -4789,7 +4710,6 @@
                 costs: 'Motor de Costos Operativos',
                 'fleet-costs': 'Gastos de Flota',
                 tarifas: 'Choferes y tarifas',
-                maintenance: 'Mantenimiento de Flota',
                 employees: 'Gestión de Personal',
                 users: 'Gestión de Usuarios',
                 ajustes: 'Ajustes del sistema',
@@ -4813,9 +4733,8 @@
                 payments: 'Resumen de viajes tercerizados a pagar agrupados por proveedor, unidad y reparto',
                 dashboard: 'Costos propio vs tercerizado y distribución por unidad, zona y localidad',
                 costs: 'Motor financiero para el cálculo de rentabilidad y gastos fijos/variables',
-                'fleet-costs': 'Lo que gasta la flota, cargado gasto por gasto con fecha, patente y comprobante',
+                'fleet-costs': 'Gastos de la flota cargados uno por uno, ficha técnica de cada unidad y vencimiento de sus papeles',
                 tarifas: 'Quién es propio y quién tercerizado, con qué proveedor y a qué tarifa. Define el valor de los viajes tercerizados',
-                maintenance: 'Seguimiento técnico preventivo y correctivo de la flota propia',
                 employees: 'Acceso unificado a legajos de choferes, auxiliares y liquidaciones',
                 users: 'Administración manual de credenciales para choferes y administradores',
                 ajustes: 'Cómo se comporta el sistema: reglas por reparto y campos del formulario de viaje',
@@ -4850,8 +4769,7 @@
             if(id === 'schools') loadSchools();
             if(id === 'salaries') loadSalariesTable();
             if(id === 'employees') { loadProvidersList(); loadEmployeesSection(); loadSalariesTable(); }
-            if(id === 'maintenance') { loadMaintenanceData(); checkExpiryAlerts(); }
-            if(id === 'fleet-costs') { cargarGastosDeFlota(); }
+            if(id === 'fleet-costs') { cargarGastosDeFlota(); checkExpiryAlerts(); }
             if(id === 'control') {
                 checkExpiryAlerts();
                 setTimeout(() => {
@@ -19377,11 +19295,20 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             lucide.createIcons();
         }
 
+        /** Elegir una unidad filtra los gastos cargados por esa patente, que es
+         *  lo que uno quiere ver cuando mira un camion. Antes solo marcaba la
+         *  unidad para el alta rapida de la tabla que ya no existe. */
         function selectMaintenanceVehicle(plate) {
             selectedMaintenancePlate = plate;
-            const lbl = document.getElementById('maintenance-selected-vehicle');
-            if (lbl) lbl.innerText = `Unidad sugerida para alta rápida: ${plate}`;
-            renderMaintenanceRecords();
+            const filtro = document.getElementById('flota-filtro-patente');
+            if (filtro) {
+                const p = String(plate || '').toUpperCase();
+                if ([...filtro.options].some(o => o.value === p)) {
+                    filtro.value = p;
+                    if (typeof renderFleetCosts === 'function') renderFleetCosts();
+                    document.getElementById('flota-lista')?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                }
+            }
             renderMaintenanceVehicleList();
             lucide.createIcons();
         }
@@ -19499,12 +19426,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             return '';
         }
 
-        function clearMaintenancePeriodFilter() {
-            const el = document.getElementById('maintenance-filter-period');
-            if (el) el.value = '';
-            renderMaintenanceRecords();
-        }
-
         /** Devuelve las filas de mantenimiento filtradas por los filtros activos
          *  (patente y período). Comparte la lógica con renderMaintenanceRecords()
          *  para poder refrescar los totales sin re-renderizar la tabla (re-render
@@ -19564,7 +19485,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         function renderMaintenanceRecords() {
+            // La tabla de reparaciones se fusiono con la de Gastos de Flota. La
+            // funcion sigue existiendo porque la llaman guardar y borrar, pero
+            // ya no tiene donde dibujar.
             const list = document.getElementById('maintenance-records-list');
+            if (!list) return;
             const totalDiv = document.getElementById('maintenance-total');
             const totalVal = document.getElementById('maintenance-total-value');
             const metaEl = document.getElementById('maintenance-total-meta');
@@ -19697,30 +19622,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             lucide.createIcons();
         }
 
-        function addRepairRow() {
-            const targetPlate = selectedMaintenancePlate || maintenanceVehicles[0]?.plate;
-            if (!targetPlate) {
-                // Antes salia sin hacer nada y el boton parecia roto
-                alert('Todavía no hay ningún vehículo en la lista, así que no hay a quién cargarle la reparación. Cargá la unidad en Datos > Flotas y volvé a entrar a Mantenimiento.');
-                return;
-            }
-            const data = getMaintenanceData();
-            if (!data.records[targetPlate]) data.records[targetPlate] = [];
-            data.records[targetPlate].push({
-                id: 'r' + Date.now(),
-                month: '',
-                date: '',
-                mileage: null,
-                workDone: '',
-                workshop: '',
-                cost: null,
-                notes: ''
-            });
-            setMaintenanceData(data);
-            selectedMaintenancePlate = targetPlate;
-            renderMaintenanceRecords();
-        }
-
         /** Filtra un input numerico mientras se tipea: deja pasar digitos, puntos
          *  y comas, que es como se escribe la plata aca ("1.234.567,89").
          *
@@ -19832,68 +19733,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
         }
 
-        function openAddRepairModal(editId) {
-            if (!editId && !(maintenanceVehicles || []).length) {
-                alert('Todavía no hay ninguna unidad en la lista, así que no hay a quién cargarle la reparación. Cargá la unidad en Datos > Flotas y volvé a entrar a Mantenimiento.');
-                return;
-            }
-            document.getElementById('modal-repair').classList.remove('hidden');
-            document.getElementById('modal-repair-title').innerText = editId ? 'Editar Reparación' : 'Nueva Reparación';
-            document.getElementById('repair-id').value = editId || '';
-            
-            // Populate Plate Dropdown in modal
-            const plateSel = document.getElementById('repair-plate');
-            const data = getMaintenanceData();
-            const plateSet = new Set();
-            maintenanceVehicles.forEach(v => { if (v.plate) plateSet.add(v.plate); });
-            plateSel.innerHTML = '<option value="">-- Seleccionar Unidad --</option>' + 
-                [...plateSet].sort().map(p => `<option value="${p}">${p}</option>`).join('');
-
-            // Las categorias salen de CATEGORIAS_FLOTA, que es la misma lista que
-            // usa Gastos de Flota. Se llena siempre, no solo al editar: si no, el
-            // desplegable de una reparacion nueva quedaba vacio.
-            document.getElementById('repair-category').innerHTML = opcionesDeCategoria('');
-
-            if (editId) {
-                // Find record across all plates
-                let rec = null;
-                let foundPlate = null;
-                Object.entries(data.records || {}).forEach(([p, rows]) => {
-                    const r = rows.find(row => row.id === editId);
-                    if (r) { rec = r; foundPlate = p; }
-                });
-
-                if (rec) {
-                    plateSel.value = foundPlate || '';
-                    document.getElementById('repair-category').innerHTML = opcionesDeCategoria(rec.category);
-                    document.getElementById('repair-date').value = rec.date ? (String(rec.date).split('T')[0]) : '';
-                    document.getElementById('repair-mileage').value = rec.mileage || '';
-                    document.getElementById('repair-workshop').value = rec.workshop || '';
-                    document.getElementById('repair-work').value = rec.workDone || '';
-                    document.getElementById('repair-cost').value = rec.cost || '';
-                    document.getElementById('repair-notes').value = rec.notes || '';
-                }
-            } else {
-                document.getElementById('repair-form').reset();
-                document.getElementById('repair-id').value = '';
-                if (selectedMaintenancePlate) plateSel.value = selectedMaintenancePlate;
-                // Arranca con la fecha de hoy: es lo que se carga el 99% de las veces
-                const hoy = new Date();
-                const iso = hoy.getFullYear() + '-' + String(hoy.getMonth() + 1).padStart(2, '0') + '-' + String(hoy.getDate()).padStart(2, '0');
-                document.getElementById('repair-date').value = iso;
-                setTimeout(() => document.getElementById('repair-work')?.focus(), 80);
-            }
-            lucide.createIcons();
-        }
-
-        function closeRepairModal() {
-            document.getElementById('modal-repair').classList.add('hidden');
-        }
-
-        function editRepair(id) {
-            openAddRepairModal(id);
-        }
-
         async function deleteRepair(plate, id) {
             if (!confirm('¿Eliminar esta reparación?')) return;
             
@@ -19936,62 +19775,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             } catch (e) {
                 console.error("Error deleting repair", e);
                 addNotification('critical', 'Error', 'Falla de conexión al intentar eliminar.');
-            }
-        }
-
-        async function saveRepair() {
-            if (!confirm('¿Desea guardar esta reparación?')) return;
-            const plate = document.getElementById('repair-plate').value;
-            const work = document.getElementById('repair-work').value.trim();
-            const date = document.getElementById('repair-date').value;
-            const id = document.getElementById('repair-id').value || null;
-
-            if (!plate) {
-                addNotification('warning', 'Campo requerido', 'Debe seleccionar una Patente.');
-                return;
-            }
-            
-            const _toNum = (v) => {
-                const clean = String(v || '').trim().replace(',', '.');
-                const num = parseFloat(clean);
-                return clean === '' ? null : (Number.isFinite(num) ? num : null);
-            };
-            const payload = {
-                plate: plate,
-                category: document.getElementById('repair-category').value,
-                date: date,
-                mileage: _toNum(document.getElementById('repair-mileage').value),
-                workshop: document.getElementById('repair-workshop').value,
-                workDone: work,
-                cost: _toNum(document.getElementById('repair-cost').value),
-                notes: document.getElementById('repair-notes').value
-            };
-
-            const isUpdate = !!id && !String(id).startsWith('r');
-            if (isUpdate) payload.id = id;
-
-            const url = isUpdate ? `${API_URL}/maintenance/${id}` : `${API_URL}/maintenance`;
-            const method = isUpdate ? 'PATCH' : 'POST';
-
-            try {
-                const res = await fetch(url, {
-                    method: method,
-                    headers: getActorHeaders(),
-                    body: JSON.stringify(payload)
-                });
-                
-                if (res.ok) {
-                    await loadMaintenanceData();
-                    closeRepairModal();
-                    renderMaintenanceRecords();
-                    addNotification('info', 'Guardado', 'Reparación registrada correctamente.');
-                } else {
-                    const err = await res.json();
-                    addNotification('critical', 'Error', `Error del servidor: ${err.error || 'Falla al guardar'}`);
-                }
-            } catch (e) {
-                console.error("Error saving repair", e);
-                addNotification('critical', 'Error', 'Falla al conectar con el servidor.');
             }
         }
 
@@ -20599,25 +20382,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 'Notas': r.notes || ''
             }));
             bajarExcel(filas, 'Gastos de Flota', `gastos-flota-${selloDeHoy()}.xlsx`);
-        }
-
-        function exportarMantenimiento() {
-            const data = getMaintenanceData();
-            const todas = [];
-            Object.entries(data.records || {}).forEach(([clave, rows]) => {
-                (rows || []).forEach(r => todas.push({ ...r, plate: r.plate || clave }));
-            });
-            const filas = getMaintenanceFilteredRows(todas).map(r => ({
-                'Fecha': (r.date || '').split('T')[0],
-                'Patente': r.plate || '',
-                'Categoria': r.category || '',
-                'Trabajo realizado': r.workDone || '',
-                'Taller': r.workshop || '',
-                'Kilometraje': r.mileage == null ? '' : Number(r.mileage),
-                'Costo': Number(r.cost) || 0,
-                'Notas': r.notes || ''
-            }));
-            bajarExcel(filas, 'Mantenimiento', `mantenimiento-${selloDeHoy()}.xlsx`);
         }
 
         // ──────── TRAER LOS GASTOS AL CUADRO ANUAL (los 12 meses) ────────
@@ -27344,12 +27108,12 @@ async function renderHdrMap(detail) {
     window.__r14ModalFixInstalled = true;
 
     // BUG FIX: el selector original solo cubria ids TERMINADOS en "-modal".
-    // Los modales modal-salary-edit, modal-unblock-role y modal-repair (que
-    // EMPIEZAN con "modal-") quedaban afuera: sin ESC, sin click-afuera y sin
-    // elevacion de z-index al superponerse. Por eso "habia X que no cerraban".
+    // Los modales que EMPIEZAN con "modal-" quedaban afuera: sin ESC, sin
+    // click-afuera y sin elevacion de z-index al superponerse. Por eso "habia X
+    // que no cerraban".
     // OJO: ids explicitos (no prefijo "modal-") porque hay elementos INTERNOS
     // como modal-body o modal-unblock-role-admin que NO son overlays.
-    const MODAL_SELECTOR = '[id$="-modal"], #modal-salary-edit, #modal-unblock-role, #modal-repair, .modal-overlay';
+    const MODAL_SELECTOR = '[id$="-modal"], #modal-salary-edit, #modal-unblock-role, #modal-gasto-flota, #modal-traer-flota, .modal-overlay';
 
     // Formularios largos: un click al costado cerraba el modal y se perdia todo
     // lo cargado. Estos solo se cierran con la X o con Cancelar.

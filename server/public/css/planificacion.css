@@ -883,14 +883,14 @@ tfoot tr.payments-total-row span,
     to   { opacity: 1; }
 }
 [id$="-modal"]:not(.hidden),
-#modal-salary-edit:not(.hidden), #modal-unblock-role:not(.hidden), #modal-repair:not(.hidden),
+#modal-salary-edit:not(.hidden), #modal-unblock-role:not(.hidden), #modal-gasto-flota:not(.hidden), #modal-traer-flota:not(.hidden),
 .modal-overlay:not(.hidden) {
     animation: r14BackdropIn 0.15s ease-out;
 }
 [id$="-modal"]:not(.hidden) > div:first-of-type,
 #modal-salary-edit:not(.hidden) > div:first-of-type,
 #modal-unblock-role:not(.hidden) > div:first-of-type,
-#modal-repair:not(.hidden) > div:first-of-type,
+#modal-gasto-flota:not(.hidden) > div:first-of-type, #modal-traer-flota:not(.hidden) > div:first-of-type,
 .modal-overlay:not(.hidden) > div:first-of-type {
     animation: r14ModalPop 0.2s cubic-bezier(0.2, 0.8, 0.3, 1);
 }
@@ -931,10 +931,10 @@ input, select, textarea { transition: box-shadow 0.15s ease, background-color 0.
 /* Respetar usuarios con animaciones reducidas */
 @media (prefers-reduced-motion: reduce) {
     [id$="-modal"]:not(.hidden) > div:first-of-type,
-    #modal-salary-edit:not(.hidden) > div:first-of-type, #modal-unblock-role:not(.hidden) > div:first-of-type, #modal-repair:not(.hidden) > div:first-of-type,
+    #modal-salary-edit:not(.hidden) > div:first-of-type, #modal-unblock-role:not(.hidden) > div:first-of-type, #modal-gasto-flota:not(.hidden) > div:first-of-type, #modal-traer-flota:not(.hidden) > div:first-of-type,
     .modal-overlay:not(.hidden) > div:first-of-type,
     [id$="-modal"]:not(.hidden),
-    #modal-salary-edit:not(.hidden), #modal-unblock-role:not(.hidden), #modal-repair:not(.hidden),
+    #modal-salary-edit:not(.hidden), #modal-unblock-role:not(.hidden), #modal-gasto-flota:not(.hidden), #modal-traer-flota:not(.hidden),
     .modal-overlay:not(.hidden),
     .view-animate { animation: none !important; }
     button { transition: none; }
