@@ -3515,7 +3515,7 @@
          *
          *  Devuelve el valor. `vacio` dice que forma tiene cuando no hay nada
          *  (un array o un objeto). */
-        async function traerDelServidorConRespaldo(claveServidor, claveLocal, vacio) {
+        async function traerDelServidorConRespaldo(claveServidor, claveLocal, vacio, unir) {
             const deLocal = () => {
                 try {
                     const raw = localStorage.getItem(claveLocal);
@@ -3542,8 +3542,66 @@
                 await guardarEnElServidor(claveServidor, claveLocal, locales, true);
                 return locales;
             }
+            // Si los dos tienen algo y el dato se puede unir, se une: antes el
+            // navegador que entraba segundo no subia lo suyo y se perdia.
+            if (unir && tieneAlgo(delServidor) && tieneAlgo(locales)) {
+                const unido = unir(delServidor, locales);
+                if (JSON.stringify(unido) !== JSON.stringify(delServidor)) {
+                    await guardarEnElServidor(claveServidor, claveLocal, unido, true);
+                    if (typeof addNotification === 'function') {
+                        addNotification('info', 'Datos de esta computadora',
+                            'Lo que ten\u00edas guardado ac\u00e1 se sum\u00f3 a lo que ya hab\u00eda en el servidor.');
+                    }
+                }
+                try { localStorage.setItem(claveLocal, JSON.stringify(unido)); } catch (_) {}
+                return unido;
+            }
             try { localStorage.setItem(claveLocal, JSON.stringify(delServidor)); } catch (_) {}
             return delServidor;
+        }
+
+        /** Lee del servidor, une con lo de aca, y recien ahi escribe.
+         *
+         *  Escribir la lista entera de una es lo que hacia que, si dos personas
+         *  guardaban casi al mismo tiempo, la ultima borrara el trabajo de la
+         *  primera sin que nadie se enterara.
+         *
+         *  `unir(delServidor, local)` sabe como combinarlos segun la forma del
+         *  dato: por id en una lista, por clave en un mapa. */
+        async function guardarUniendo(claveServidor, claveLocal, local, unir) {
+            let delServidor = null;
+            try {
+                const res = await fetch(`${API_URL}/settings/${claveServidor}`, { cache: 'no-store' });
+                if (res.ok) {
+                    const d = await res.json();
+                    if (d && typeof d === 'object') delServidor = d;
+                }
+            } catch (_) { /* sin respuesta se guarda lo que hay aca */ }
+            const final = delServidor ? unir(delServidor, local) : local;
+            await guardarEnElServidor(claveServidor, claveLocal, final);
+            return final;
+        }
+
+        /** Para lo que NO se puede unir: pregunta antes de pisar si otro lo
+         *  cambio desde que se abrio la pantalla. Un orden es un orden, no la
+         *  mezcla de dos.
+         *
+         *  `visto` es lo que habia en el servidor al abrir, como texto. */
+        async function guardarPreguntando(claveServidor, claveLocal, valor, visto, queEs) {
+            let actual = null;
+            try {
+                const res = await fetch(`${API_URL}/settings/${claveServidor}`, { cache: 'no-store' });
+                if (res.ok) {
+                    const d = await res.json();
+                    if (d && typeof d === 'object') actual = d;
+                }
+            } catch (_) { /* sin respuesta se guarda igual */ }
+            const loCambiaron = actual && visto != null && JSON.stringify(actual) !== visto;
+            if (loCambiaron && !confirm(`${queEs} lo cambi\u00f3 otra persona desde que abriste esta pantalla.\n\n\u00bfLo reemplaz\u00e1s con lo tuyo?`)) {
+                return { guardado: false, actual };
+            }
+            await guardarEnElServidor(claveServidor, claveLocal, valor);
+            return { guardado: true, actual };
         }
 
         /** Guarda en los dos lados. Si el servidor falla, avisa: lo peor seria
@@ -8214,16 +8272,35 @@
             return _aliasCache;
         }
         async function cargarAliasDelServidor() {
-            const d = await traerDelServidorConRespaldo('stop_aliases', ALIAS_KEY, {});
+            const d = await traerDelServidorConRespaldo('stop_aliases', ALIAS_KEY, {},
+                (serv, loc) => unirAlias(serv, loc));
             _aliasCache = (d && typeof d === 'object') ? d : {};
             return _aliasCache;
         }
         function setStopAlias(stopName, clientId) {
+            const clave = norm(stopName);
             const aliases = getStopAliases();
-            if (clientId) aliases[norm(stopName)] = clientId;
-            else delete aliases[norm(stopName)];
+            if (clientId) aliases[clave] = clientId;
+            else delete aliases[clave];
             _aliasCache = aliases;
-            guardarEnElServidor('stop_aliases', ALIAS_KEY, aliases);
+            guardarAliasUniendo(clientId ? null : clave);
+        }
+
+        /** Une por clave con lo que haya en el servidor, asi el trabajo de otro
+         *  no se borra. Si la misma parada apunta a clientes distintos en los
+         *  dos lados no hay forma de saber cual esta bien: queda el de aca y se
+         *  avisa, que es lo unico honesto. */
+        async function guardarAliasUniendo(quitado) {
+            const choques = [];
+            const final = await guardarUniendo('stop_aliases', ALIAS_KEY, _aliasCache || {},
+                (serv, loc) => unirAlias(serv, loc, quitado, choques));
+            if (final && typeof final === 'object') _aliasCache = final;
+            if (choques.length && typeof addNotification === 'function') {
+                addNotification('warning', 'Alias de paradas',
+                    `${choques.length} alias apuntaban a otro cliente en el servidor y quedaron con el tuyo: `
+                    + choques.slice(0, 5).join(', ') + (choques.length > 5 ? '\u2026' : ''));
+            }
+            return final;
         }
         function resolveStopToClient(stopName) {
             // 1. Direct name match
@@ -8416,6 +8493,7 @@
         // acomoda una persona, y tambien lo veia una sola.
         const RT_ORDER_KEY = 'r14_route_templates_order';
         let _rtOrderCache = null;
+        let _rtOrderVisto = null;   // lo que habia en el servidor al abrir la pantalla
 
         function _getRtOrder() {
             if (_rtOrderCache === null) {
@@ -8429,11 +8507,25 @@
         async function cargarOrdenDeRutasDelServidor() {
             const d = await traerDelServidorConRespaldo('route_templates_order', RT_ORDER_KEY, []);
             _rtOrderCache = Array.isArray(d) ? d : [];
+            _rtOrderVisto = JSON.stringify(_rtOrderCache);
             return _rtOrderCache;
         }
-        function _setRtOrder(arr) {
+        async function _setRtOrder(arr) {
+            const previo = _rtOrderCache;
             _rtOrderCache = arr;
-            guardarEnElServidor('route_templates_order', RT_ORDER_KEY, arr);
+            const r = await guardarPreguntando('route_templates_order', RT_ORDER_KEY, arr,
+                _rtOrderVisto, 'El orden de las rutas');
+            if (!r.guardado) {
+                // Se respeta el del otro y se vuelve a pintar con ese
+                _rtOrderCache = Array.isArray(r.actual) ? r.actual : previo;
+                _rtOrderVisto = JSON.stringify(_rtOrderCache);
+                if (typeof loadRouteTemplates === 'function') loadRouteTemplates();
+                if (typeof addNotification === 'function') {
+                    addNotification('info', 'Rutas', 'Se mantuvo el orden que dej\u00f3 la otra persona.');
+                }
+                return;
+            }
+            _rtOrderVisto = JSON.stringify(arr);
         }
         function _applyRtOrder(list) {
             const order = _getRtOrder();
@@ -9242,14 +9334,52 @@
         }
 
         async function presupuestosCargarDelServidor() {
-            const lista = await traerDelServidorConRespaldo('budgets_saved', BUD_KEY, []);
+            const lista = await traerDelServidorConRespaldo('budgets_saved', BUD_KEY, [],
+                (serv, loc) => unirPresupuestos(serv, loc));
             _presupuestosCache = Array.isArray(lista) ? lista : [];
             return _presupuestosCache;
         }
 
-        function presupuestosGuardar(lista) {
-            _presupuestosCache = lista;
-            guardarEnElServidor('budgets_saved', BUD_KEY, lista);
+        /** Como se unen dos listas de presupuestos: por id.
+         *
+         *  Vive aparte porque la usan los dos momentos -- la subida inicial y
+         *  cada guardado -- y si cada uno tuviera su copia se podrian
+         *  desincronizar. */
+        function unirPresupuestos(serv, loc, quitados) {
+            const fuera = new Set((quitados || []).map(String));
+            const porId = new Map();
+            (Array.isArray(serv) ? serv : []).forEach(p => { if (p && p.id != null) porId.set(String(p.id), p); });
+            // Lo de esta pantalla manda si el mismo id esta en los dos lados
+            (Array.isArray(loc) ? loc : []).forEach(p => { if (p && p.id != null) porId.set(String(p.id), p); });
+            fuera.forEach(id => porId.delete(id));
+            return [...porId.values()].sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+        }
+
+        /** Como se unen dos mapas de alias: por clave. Los que apuntan a
+         *  clientes distintos se devuelven en `choques` para poder avisarlos. */
+        function unirAlias(serv, loc, quitado, choques) {
+            const out = { ...(serv && typeof serv === 'object' ? serv : {}) };
+            Object.entries(loc || {}).forEach(([k, v]) => {
+                if (out[k] && out[k] !== v && choques) choques.push(k);
+                out[k] = v;
+            });
+            if (quitado) delete out[quitado];
+            return out;
+        }
+
+        /** Guarda uniendo por id con lo que haya en el servidor.
+         *
+         *  `quitados` son los ids que se borraron a proposito: sin eso, unir los
+         *  resucitaria en el guardado siguiente. */
+        async function presupuestosGuardar(lista, quitados) {
+            _presupuestosCache = lista;               // la pantalla responde al toque
+            const final = await guardarUniendo('budgets_saved', BUD_KEY, lista,
+                (serv, loc) => unirPresupuestos(serv, loc, quitados));
+            if (Array.isArray(final)) _presupuestosCache = final;
+            // Pueden haber aparecido presupuestos de otra persona
+            if (typeof budgetUpdateHistoryCount === 'function') budgetUpdateHistoryCount();
+            if (typeof budgetRenderHistory === 'function') budgetRenderHistory();
+            return _presupuestosCache;
         }
         const BUD_DEFAULT_KEY = 'r14_budget_defaults';
 
@@ -10070,9 +10200,12 @@
         /** Los valores por defecto del cotizador (combustible, cargas sociales,
          *  overhead, margen, sueldo y viatico del chofer) son decisiones de
          *  negocio, no preferencias: tienen que ser los mismos para todos. */
+        let _budgetDefaultsVisto = null;   // lo que habia en el servidor al abrir
+
         async function budgetLoadDefaults() {
             try {
                 const d = await traerDelServidorConRespaldo('budget_defaults', BUD_DEFAULT_KEY, {});
+                _budgetDefaultsVisto = JSON.stringify(d || {});
                 Object.entries(d || {}).forEach(([id, val]) => {
                     const el = document.getElementById(id);
                     if (el) el.value = val;
@@ -10088,7 +10221,30 @@
                          'bud-overhead-pct','bud-margin-pct','bud-wait-per-stop'];
             const obj = {};
             ids.forEach(id => { const el = document.getElementById(id); if (el) obj[id] = el.value; });
-            guardarEnElServidor('budget_defaults', BUD_DEFAULT_KEY, obj, true);
+            guardarDefaultsAvisando(obj);
+        }
+
+        /** Los valores por defecto no se pueden unir -- un precio de combustible
+         *  es uno solo -- pero se guardan en CADA calculo, asi que preguntar en
+         *  cada uno seria insoportable. Se avisa y se sigue. */
+        async function guardarDefaultsAvisando(obj) {
+            let actual = null;
+            try {
+                const res = await fetch(`${API_URL}/settings/budget_defaults`, { cache: 'no-store' });
+                if (res.ok) {
+                    const d = await res.json();
+                    if (d && typeof d === 'object') actual = d;
+                }
+            } catch (_) { /* sin respuesta se guarda igual */ }
+            const loCambiaron = actual && _budgetDefaultsVisto != null
+                && JSON.stringify(actual) !== _budgetDefaultsVisto
+                && JSON.stringify(actual) !== JSON.stringify(obj);
+            if (loCambiaron && typeof addNotification === 'function') {
+                addNotification('warning', 'Presupuestar',
+                    'Otra persona hab\u00eda cambiado los valores por defecto del cotizador. Los tuyos los reemplazaron.');
+            }
+            await guardarEnElServidor('budget_defaults', BUD_DEFAULT_KEY, obj, true);
+            _budgetDefaultsVisto = JSON.stringify(obj);
         }
 
         // ── TABS (Calculadora / Historial) ─────────────────────────────────
@@ -11694,7 +11850,8 @@
                 saved = [];
             }
             try {
-                presupuestosGuardar(saved);
+                // Se dice cual se borro: unir sin esto lo traeria de vuelta
+                presupuestosGuardar(saved, [id]);
             } catch (e) {
                 addNotification('warning', 'Almacenamiento lleno', 'No se pudo guardar — limpiá presupuestos viejos.');
             }
