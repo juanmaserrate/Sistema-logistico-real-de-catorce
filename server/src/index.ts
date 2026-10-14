@@ -6111,6 +6111,34 @@ app.get('/api/admin/maintenance-dump', async (req: any, res: any) => {
     }
 });
 
+/** Le pone categoria a gastos de flota que no la tienen.
+ *  POST /api/admin/maintenance-set-category { key, ids: [...], category, dryRun? }
+ *  Sin categoria, el gasto no entra en ningun rubro del Motor de Costos y su
+ *  plata no se suma a ningun lado. */
+app.post('/api/admin/maintenance-set-category', async (req: any, res: any) => {
+    const { key, ids, category, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Faltan ids' });
+    if (!category || typeof category !== 'string') return res.status(400).json({ error: 'Falta category' });
+    try {
+        const antes = await prisma.maintenanceRecord.findMany({ where: { id: { in: ids.map(String) } } });
+        if (dryRun) {
+            return res.json({
+                dryRun: true,
+                encontrados: antes.length,
+                cambios: antes.map((m) => ({ id: m.id, plate: m.plate, workDone: m.workDone, cost: m.cost, de: m.category, a: category }))
+            });
+        }
+        const r = await prisma.maintenanceRecord.updateMany({
+            where: { id: { in: ids.map(String) } },
+            data: { category }
+        });
+        res.json({ actualizados: r.count, category });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Carga sueldos de un mes en lote (crea o actualiza por mes + apellido).
  *  POST /api/admin/salaries-bulk { key, month, dryRun?, rows: [{ Apellido, Nombre, 'Tipo Puesto', Bruto, Jornal }] } */
 app.post('/api/admin/salaries-bulk', async (req: any, res: any) => {

@@ -1455,6 +1455,11 @@
                             <label class="flex items-center gap-2 bg-[#F4F7FE] rounded-2xl px-4 py-2.5 cursor-pointer" title="Filtrar reparaciones por mes y año">
                                 <span class="text-[10px] font-black text-[#A3AED0] uppercase whitespace-nowrap">Mes</span>
                                 <input type="month" id="maintenance-filter-period" onchange="renderMaintenanceRecords()" oninput="renderMaintenanceRecords()" class="bg-transparent border-0 text-xs font-bold text-[#1B2559] outline-none min-w-[9.5rem]">
+                                <button type="button" onclick="exportarMantenimiento()"
+                                        title="Baja a Excel exactamente lo que estas viendo, con los filtros puestos"
+                                        class="px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black uppercase tracking-wide shadow-lg shadow-emerald-100 flex items-center gap-2 whitespace-nowrap">
+                                    <i data-lucide="download" class="w-4 h-4"></i> Exportar
+                                </button>
                             </label>
                             <button type="button" onclick="clearMaintenancePeriodFilter()" class="px-5 py-3 rounded-2xl text-xs font-bold bg-white border border-[#E3E8F4] text-[#A3AED0] hover:bg-[#F4F7FE] transition-all">Todos los meses</button>
                             <button onclick="openAddRepairModal()" class="px-6 py-4 bg-indigo-600 text-white rounded-2xl font-bold text-xs hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-100 flex items-center gap-2">
@@ -1966,6 +1971,11 @@
                         </div>
                         <div class="flex items-center gap-2 flex-wrap">
                             <span id="costs-anual-estado" class="text-[11px] font-bold text-[#A3AED0]"></span>
+                            <button type="button" id="btn-traer-flota-anual" onclick="abrirTraerDeFlotaAnual()"
+                                    title="Trae de Gastos de Flota los doce meses de una. Lo que trae queda escrito en el cuadro y se puede corregir antes de guardar."
+                                    class="px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-black uppercase shadow-lg shadow-sky-100 flex items-center gap-2">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i> Traer de Gastos de Flota
+                            </button>
                             <button type="button" onclick="cargarVistaAnual()"
                                     class="px-4 py-2.5 rounded-xl bg-white border border-[#E0E5F2] text-[11px] font-black text-[#1B2559] uppercase hover:bg-[#F4F7FE]">Recargar</button>
                             <button type="button" id="btn-guardar-anual" onclick="guardarVistaAnual()"
@@ -2026,6 +2036,11 @@
                             <select id="flota-filtro-mes" onchange="renderFleetCosts()" class="bg-[#F4F7FE] border-0 rounded-2xl px-5 py-3 text-xs font-bold text-[#1B2559] outline-none"></select>
                             <select id="flota-filtro-patente" onchange="renderFleetCosts()" class="bg-[#F4F7FE] border-0 rounded-2xl px-5 py-3 text-xs font-bold text-[#1B2559] outline-none"></select>
                             <select id="flota-filtro-categoria" onchange="renderFleetCosts()" class="bg-[#F4F7FE] border-0 rounded-2xl px-5 py-3 text-xs font-bold text-[#1B2559] outline-none"></select>
+                            <button type="button" onclick="exportarGastosDeFlota()"
+                                    title="Baja a Excel exactamente lo que estas viendo, con los filtros puestos"
+                                    class="px-5 py-3 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black uppercase tracking-wide shadow-lg shadow-emerald-100 flex items-center gap-2 whitespace-nowrap">
+                                <i data-lucide="download" class="w-4 h-4"></i> Exportar
+                            </button>
                         </div>
                     </div>
                     <p id="flota-aviso-sin-fecha" class="hidden text-[11px] font-bold text-amber-600 leading-snug"></p>
@@ -18976,8 +18991,24 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             { cat: 'Seguros',                           rubro: 'seguros',     grupo: 'gasto'  },
             { cat: 'Patentes',                          rubro: 'patentes',    grupo: 'gasto'  },
             { cat: 'Licencias y certificados',          rubro: 'licencias',   grupo: 'gasto'  },
+            // Dos categorias mas que van al MISMO rubro que Licencias, porque la
+            // planilla de Gastos Logistica las tiene en esa unica linea. Estaban
+            // cargadas como gastos sin categoria y su plata no entraba a ningun
+            // rubro: $430.561 de septiembre que no se sumaban a ningun lado.
+            { cat: 'Verificaci\u00f3n t\u00e9cnica (VTV)',      rubro: 'licencias',   grupo: 'gasto'  },
+            { cat: 'Bromatolog\u00eda y habilitaciones', rubro: 'licencias',   grupo: 'gasto'  },
             { cat: 'Multas',                            rubro: 'multas',      grupo: 'gasto'  }
         ];
+
+        /** Las categorias que alimentan un rubro del Motor.
+         *
+         *  Un rubro puede recibir varias: la categoria es el detalle con el que
+         *  carga el operador ("Verificacion tecnica (VTV)"), el rubro es la linea
+         *  de la planilla ("Licencias y certificados"). Se muestra en pantalla
+         *  para que no haya que adivinar donde cae cada gasto. */
+        function categoriasDelRubro(rubroId) {
+            return CATEGORIAS_FLOTA.filter(x => x.rubro === rubroId).map(x => x.cat);
+        }
 
         /** Los ids de rubro que son de FLOTA: los que tienen una categoria de
          *  gasto cargable. La nomina queda afuera a proposito, y es justamente
@@ -20249,6 +20280,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 return true;
             }).sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
 
+            // Lo que esta a la vista, para que Exportar baje exactamente eso
+            _flotaFilasALaVista = filas;
+
             const metaEl = document.getElementById('flota-lista-meta');
             if (metaEl) {
                 const partes = [filas.length + ' gasto' + (filas.length === 1 ? '' : 's'), 'a\u00f1o ' + anio];
@@ -20474,6 +20508,186 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 + '</tbody>';
         }
 
+
+        // ───────────────── EXPORTAR A EXCEL ─────────────────
+        // Baja lo que esta en pantalla, con los filtros puestos: si en la pantalla
+        // se ven 14 gastos de septiembre, el Excel trae esos 14 y nada mas.
+
+        /** Arma y descarga un .xlsx con una hoja. */
+        function bajarExcel(filas, hoja, archivo) {
+            if (!filas.length) {
+                alert('No hay nada para exportar con los filtros que tenes puestos.');
+                return;
+            }
+            const ws = XLSX.utils.json_to_sheet(filas);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, hoja);
+            XLSX.writeFile(wb, archivo);
+            if (typeof addNotification === 'function') {
+                addNotification('success', hoja, `${filas.length} fila(s) exportadas a ${archivo}.`);
+            }
+        }
+
+        /** El nombre del archivo lleva la fecha, asi no se pisan entre si. */
+        function selloDeHoy() {
+            const h = nowBuenosAires();
+            return `${h.year}-${String(h.month + 1).padStart(2, '0')}-${String(h.day).padStart(2, '0')}`;
+        }
+
+        function exportarGastosDeFlota() {
+            const filas = (_flotaFilasALaVista || []).map(r => ({
+                'Fecha': (r.date || '').split('T')[0],
+                'Patente': r.plate || '',
+                'Categoria': r.category || '',
+                'Rubro del Motor': nombreDelRubro(rubroDeCategoria(r.category)) || 'SIN RUBRO',
+                'Importe': Number(r.cost) || 0,
+                'Proveedor o taller': r.workshop || '',
+                'Detalle': r.workDone || '',
+                'Kilometraje': r.mileage == null ? '' : Number(r.mileage),
+                'Notas': r.notes || ''
+            }));
+            bajarExcel(filas, 'Gastos de Flota', `gastos-flota-${selloDeHoy()}.xlsx`);
+        }
+
+        function exportarMantenimiento() {
+            const data = getMaintenanceData();
+            const todas = [];
+            Object.entries(data.records || {}).forEach(([clave, rows]) => {
+                (rows || []).forEach(r => todas.push({ ...r, plate: r.plate || clave }));
+            });
+            const filas = getMaintenanceFilteredRows(todas).map(r => ({
+                'Fecha': (r.date || '').split('T')[0],
+                'Patente': r.plate || '',
+                'Categoria': r.category || '',
+                'Trabajo realizado': r.workDone || '',
+                'Taller': r.workshop || '',
+                'Kilometraje': r.mileage == null ? '' : Number(r.mileage),
+                'Costo': Number(r.cost) || 0,
+                'Notas': r.notes || ''
+            }));
+            bajarExcel(filas, 'Mantenimiento', `mantenimiento-${selloDeHoy()}.xlsx`);
+        }
+
+        // ──────── TRAER LOS GASTOS AL CUADRO ANUAL (los 12 meses) ────────
+        // El boton de arriba llena el mes que esta abierto. Este llena el cuadro
+        // anual entero, que es la planilla de Gastos Logistica.
+        //
+        // Misma regla que el otro: un rubro sin gastos cargados NO se pone en
+        // cero, y no guarda nada — deja el cuadro escrito y marcado como "sin
+        // guardar" para que se revise y se corrija antes de apretar Guardar.
+
+        let _traerFlotaAnualPendiente = null;
+
+        async function abrirTraerDeFlotaAnual() {
+            const btn = document.getElementById('btn-traer-flota-anual');
+            if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+            try { await loadMaintenanceData(); } catch (e) { console.error('flota', e); }
+            finally { if (btn) { btn.disabled = false; btn.style.opacity = ''; } }
+
+            const anio = String(nowBuenosAires().year);
+            const cargado = flotaPorMesYRubro(anio);
+            const ids = rubrosDeFlota();
+            const plata = (n) => Number(n) ? '$ ' + Math.round(n).toLocaleString('es-AR') : '\u2014';
+
+            const filas = MESES_COSTOS.map(mes => {
+                // Lo que hay escrito HOY en el cuadro, no lo guardado: puede haber
+                // cambios a mano sin guardar y pisarlos a ciegas seria perderlos.
+                let enPantalla = 0;
+                ids.forEach(id => {
+                    const i = document.querySelector(`[data-anual-mes="${mes}"][data-anual-id="${id}"]`);
+                    if (i) enPantalla += parseFloat(i.value) || 0;
+                });
+                const trae = ids.reduce((a, id) => a + (cargado[mes][id] || 0), 0);
+                const cuantos = ids.filter(id => cargado[mes][id] > 0).length;
+                return { mes, enPantalla, trae, cuantos };
+            });
+
+            _traerFlotaAnualPendiente = { anio, cargado, filas };
+
+            const conGastos = filas.filter(f => f.cuantos > 0);
+            const sub = document.getElementById('traer-flota-sub');
+            if (sub) {
+                sub.textContent = `A\u00f1o ${anio} \u00b7 ${conGastos.length} mes(es) con gastos cargados por un total de `
+                    + plata(conGastos.reduce((a, f) => a + f.trae, 0))
+                    + '. Nada se guarda todav\u00eda: queda escrito en el cuadro para que lo revises.';
+            }
+
+            const cuerpo = document.getElementById('traer-flota-cuerpo');
+            const aplicar = document.getElementById('traer-flota-aplicar');
+            if (!conGastos.length) {
+                cuerpo.innerHTML = `<div class="rounded-2xl border border-amber-200 bg-amber-50 p-6 text-sm font-bold text-amber-700 leading-relaxed">
+                        No hay ning\u00fan gasto cargado en ${anio} en Gastos de Flota, as\u00ed que no hay nada que traer.</div>`;
+                if (aplicar) { aplicar.disabled = true; aplicar.style.opacity = '0.4'; }
+            } else {
+                if (aplicar) { aplicar.disabled = false; aplicar.style.opacity = ''; }
+                const fila = (f) => {
+                    const dif = f.trae - f.enPantalla;
+                    let aviso;
+                    if (!f.enPantalla) aviso = '<span class="text-emerald-600 font-bold">estaba vac\u00edo</span>';
+                    else if (Math.abs(dif) < 1) aviso = '<span class="text-emerald-600 font-bold">igual</span>';
+                    else aviso = `<span class="text-rose-600 font-black">${dif > 0 ? '+' : '\u2212'}$ ${Math.abs(Math.round(dif)).toLocaleString('es-AR')}</span>`;
+                    return `<tr class="border-t border-[#F4F7FE]">
+                        <td class="px-3 py-2 font-bold text-[#2B3674] capitalize">${escapeHtml(f.mes)}</td>
+                        <td class="px-3 py-2 text-center text-[#A3AED0] font-bold">${f.cuantos}</td>
+                        <td class="px-3 py-2 text-right text-[#A3AED0] font-bold">${plata(f.enPantalla)}</td>
+                        <td class="px-3 py-2 text-right text-[#1B2559] font-black">${plata(f.trae)}</td>
+                        <td class="px-3 py-2 text-right">${aviso}</td>
+                    </tr>`;
+                };
+                cuerpo.innerHTML = `
+                    <div class="overflow-x-auto border border-[#F4F7FE] rounded-2xl">
+                        <table class="w-full text-xs border-collapse">
+                            <thead class="bg-[#F8FAFF] text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">
+                                <tr>
+                                    <th class="px-3 py-3 text-left">Mes</th>
+                                    <th class="px-3 py-3 text-center">Rubros</th>
+                                    <th class="px-3 py-3 text-right">Lo que hay ahora</th>
+                                    <th class="px-3 py-3 text-right">Lo que trae</th>
+                                    <th class="px-3 py-3 text-right">Diferencia</th>
+                                </tr>
+                            </thead>
+                            <tbody class="bg-white">${conGastos.map(fila).join('')}</tbody>
+                        </table>
+                    </div>
+                    <p class="mt-4 text-[11px] font-bold text-[#A3AED0] leading-snug">
+                        Solo se escriben los rubros que tienen gastos cargados en ese mes. Un rubro sin gastos no se
+                        pone en cero: eso borrar\u00eda lo que ya est\u00e1 escrito. El <b>Costo Chofer / N\u00f3mina</b> nunca se toca.</p>
+                    <p class="mt-2 text-[11px] font-bold text-sky-700 leading-snug">
+                        Despu\u00e9s de aplicar, los meses quedan marcados como <b>sin guardar</b>: pod\u00e9s corregir cualquier
+                        casillero a mano y reci\u00e9n ah\u00ed tocar <b>Guardar los meses tocados</b>.</p>`;
+            }
+
+            document.getElementById('modal-traer-flota').classList.remove('hidden');
+            // El Aplicar del modal sirve para los dos botones; se avisa cual pidio
+            document.getElementById('traer-flota-aplicar').setAttribute('data-modo', 'anual');
+            lucide.createIcons();
+        }
+
+        function aplicarTraerDeFlotaAnual() {
+            const p = _traerFlotaAnualPendiente;
+            if (!p) return cerrarTraerDeFlota();
+            const ids = rubrosDeFlota();
+            let meses = 0, casilleros = 0;
+            MESES_COSTOS.forEach(mes => {
+                let tocado = false;
+                ids.forEach(id => {
+                    const monto = p.cargado[mes][id] || 0;
+                    if (!monto) return;                       // sin gastos: no se toca
+                    const i = document.querySelector(`[data-anual-mes="${mes}"][data-anual-id="${id}"]`);
+                    if (!i) return;
+                    i.value = Math.round(monto);
+                    casilleros++;
+                    tocado = true;
+                });
+                if (tocado) { tocarVistaAnual(mes); meses++; }
+            });
+            cerrarTraerDeFlota();
+            if (typeof addNotification === 'function') {
+                addNotification('success', 'Gastos log\u00edstica',
+                    `${casilleros} casillero(s) de ${meses} mes(es) escritos. Revisalos y toc\u00e1 "Guardar los meses tocados".`);
+            }
+        }
+
         /** Cambiar la categoria cambia el rubro del Motor, asi que la fila se
          *  vuelve a pintar para que se vea a donde fue a parar. */
         function cambiarCategoriaDelGasto(clave, id, valor) {
@@ -20613,8 +20827,18 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         /** Arma las filas del formulario del mes desde RUBROS_COSTOS. */
         function pintarRubrosDelMes() {
             const fila = (r) => `
-                <div class="flex items-center justify-between">
-                    <label class="text-sm font-bold text-[#2B3674]">${escapeHtml(r.nombre)}</label>
+                <div class="flex items-center justify-between gap-4">
+                    <label class="text-sm font-bold text-[#2B3674] min-w-0">${escapeHtml(r.nombre)}
+                        ${(() => {
+                            // De que categorias de Gastos de Flota se llena este rubro.
+                            // Solo se dice cuando hay mas de una: con una sola, el
+                            // nombre del rubro ya lo explica.
+                            const cats = (typeof categoriasDelRubro === 'function' ? categoriasDelRubro(r.id) : []);
+                            return cats.length > 1
+                                ? `<span class="block text-[10px] font-bold text-[#A3AED0] leading-snug mt-0.5">${escapeHtml(cats.join(' \u00b7 '))}</span>`
+                                : '';
+                        })()}
+                    </label>
                     <div class="flex gap-4 items-center">
                         <input type="number" data-cost-type="${r.tipo}" data-id="${r.id}" oninput="calculateCosts()"
                                class="cost-input w-32 bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559] text-right outline-none focus:ring-2 focus:ring-indigo-500/20">
@@ -20785,9 +21009,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         //  - La nomina nunca se toca: no es un gasto de flota.
         //  - No guarda: deja el formulario cargado y el usuario revisa y guarda.
 
+        let _flotaFilasALaVista = [];      // lo que se esta viendo, para exportarlo
         let _traerFlotaPendiente = null;   // lo calculado, esperando el Aplicar
 
         async function abrirTraerDeFlota() {
+            document.getElementById('traer-flota-aplicar')?.removeAttribute('data-modo');
             const btn = document.getElementById('btn-traer-flota');
             const mes = document.getElementById('costs-month-select').value;
             const anio = String(nowBuenosAires().year);
@@ -20884,10 +21110,16 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         function cerrarTraerDeFlota() {
             document.getElementById('modal-traer-flota').classList.add('hidden');
+            document.getElementById('traer-flota-aplicar')?.removeAttribute('data-modo');
             _traerFlotaPendiente = null;
+            _traerFlotaAnualPendiente = null;
         }
 
         function aplicarTraerDeFlota() {
+            // El mismo modal lo usan los dos botones: el del mes de arriba y el
+            // del cuadro anual. El atributo dice cual lo abrio.
+            const boton = document.getElementById('traer-flota-aplicar');
+            if (boton && boton.getAttribute('data-modo') === 'anual') return aplicarTraerDeFlotaAnual();
             const p = _traerFlotaPendiente;
             if (!p) return cerrarTraerDeFlota();
             // El mes pudo cambiar entre que se abrio el modal y que se aplico
