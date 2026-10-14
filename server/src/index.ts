@@ -6083,6 +6083,34 @@ app.get('/api/admin/salaries-dump', async (req: any, res: any) => {
     }
 });
 
+/** Volcado de los gastos de flota cargados, para revisarlos sin iniciar sesion.
+ *  GET /api/admin/maintenance-dump?key=... [&anio=2026]
+ *  Devuelve el resumen por categoria (que es lo que decide a que rubro del Motor
+ *  entra cada gasto) y las filas. */
+app.get('/api/admin/maintenance-dump', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const anio = String(req.query.anio || '').trim();
+        const todos = await prisma.maintenanceRecord.findMany({ orderBy: [{ date: 'asc' }] });
+        const regs = anio ? todos.filter((m) => String(m.date || '').startsWith(anio)) : todos;
+        const porCategoria: Record<string, { n: number; total: number }> = {};
+        for (const m of regs) {
+            const c = String(m.category || '').trim() || '(sin categoria)';
+            if (!porCategoria[c]) porCategoria[c] = { n: 0, total: 0 };
+            porCategoria[c].n++;
+            porCategoria[c].total += Number(m.cost) || 0;
+        }
+        res.json({
+            total: regs.length,
+            sinFecha: regs.filter((m) => !m.date).length,
+            porCategoria,
+            registros: regs
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Carga sueldos de un mes en lote (crea o actualiza por mes + apellido).
  *  POST /api/admin/salaries-bulk { key, month, dryRun?, rows: [{ Apellido, Nombre, 'Tipo Puesto', Bruto, Jornal }] } */
 app.post('/api/admin/salaries-bulk', async (req: any, res: any) => {
