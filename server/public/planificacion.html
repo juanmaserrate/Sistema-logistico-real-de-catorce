@@ -20260,7 +20260,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         function flotaAniosDisponibles() {
-            const s = new Set([String(nowBuenosAires().year)]);
+            // Una ventana alrededor del anio actual mas los anios que ya tienen
+            // algo cargado: asi se puede mirar o empezar un anio que todavia no
+            // tiene ningun gasto, sin tener que cargar uno primero para que
+            // aparezca en la lista.
+            const hoy = nowBuenosAires().year;
+            const s = new Set();
+            for (let a = hoy - 3; a <= hoy + 1; a++) s.add(String(a));
             flotaFilasTodas().forEach(r => { const p = flotaPeriodo(r); if (p) s.add(p.anio); });
             return [...s].sort().reverse();
         }
