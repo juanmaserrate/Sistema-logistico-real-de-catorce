@@ -9563,9 +9563,19 @@ async function tramosDelViaje(tripId: number): Promise<string[]> {
         select: { id: true, stops: { orderBy: { sequence: 'asc' }, select: { ruta: true, isReturnToBase: true } } }
     });
     if (!route) return [];
+    // Los viajes de siempre no tienen ruta en las paradas: todas son del reparto
+    // del viaje. Sin este respaldo, un viaje viejo daria un unico tramo llamado
+    // "vuelta al deposito", que no es lo que hizo.
+    const trip = await prisma.trip.findUnique({
+        where: { id: tripId },
+        select: { reparto: true, tripType: true }
+    });
+    const porDefecto = String(trip?.reparto || trip?.tripType || 'RUTA').trim() || 'RUTA';
     const orden: string[] = [];
     for (const st of route.stops) {
-        const nombre = st.isReturnToBase ? TRAMO_VUELTA : String((st as any).ruta || '').trim();
+        const nombre = st.isReturnToBase
+            ? TRAMO_VUELTA
+            : (String((st as any).ruta || '').trim() || porDefecto);
         if (!nombre) continue;
         if (!orden.includes(nombre)) orden.push(nombre);
     }
