@@ -9634,12 +9634,26 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
         const startDate = new Date(year, monthNum, 1);
         const endDate = new Date(year, monthNum + 1, 0, 23, 59, 59);
 
-        const trips = await prisma.trip.findMany({
+        // Se pide el recorrido junto con el viaje. Sin esto, el calculo no veia
+        // las horas REALES del GPS -- solo el horario cargado a mano -- y a todo
+        // viaje sin ese horario le asignaba las 8 horas por defecto.
+        //
+        // El problema es que el boton "Traer horas del mes" SI mira el GPS. Las
+        // dos mitades del mismo motor contaban distinto el mismo viaje: en
+        // septiembre el divisor daba 721 h y lo repartido 1200 h, asi que cada
+        // viaje propio salia un 66% mas caro de lo que costo.
+        const trips = (await prisma.trip.findMany({
             where: {
                 contractType: { equals: 'Propio', mode: 'insensitive' },
                 date: { gte: startDate, lte: endDate }
-            }
-        });
+            },
+            include: { linkedRoute: { select: { actualStartTime: true, actualEndTime: true } } }
+        })).map((t: any) => ({
+            ...t,
+            // Los nombres que espera parseTripDurationHrs, que mira el GPS primero
+            routeActualStart: t.linkedRoute?.actualStartTime ?? null,
+            routeActualEnd: t.linkedRoute?.actualEndTime ?? null
+        }));
 
         if (trips.length === 0) return res.json({ updated: 0, trips: [], message: 'No hay viajes propios en ese mes' });
 
@@ -10370,7 +10384,8 @@ app.patch('/api/v1/trips/:tripId/recorrido-operador', async (req, res) => {
             });
             await prisma.trip.update({
                 where: { id: tripId },
-                data: { status: 'COMPLETED', completedAt: now }
+                // returnTime tambien: los otros dos caminos de cierre lo escriben y el Motor de Costos lo usa cuando el viaje no tiene GPS.
+                data: { status: 'COMPLETED', completedAt: now, returnTime: now }
             });
             io.emit('route:updated', { routeId: route.id, tripId, type: 'operator_finished' });
             io.emit('trip:updated', { tripId });
@@ -10382,7 +10397,8 @@ app.patch('/api/v1/trips/:tripId/recorrido-operador', async (req, res) => {
         });
         await prisma.trip.update({
             where: { id: tripId },
-            data: { status: 'COMPLETED', completedAt: now }
+            // returnTime tambien: los otros dos caminos de cierre lo escriben y el Motor de Costos lo usa cuando el viaje no tiene GPS.
+            data: { status: 'COMPLETED', completedAt: now, returnTime: now }
         });
         // El chofer marco la llegada al deposito y el operador cerro el viaje antes
         // de que tocara "Finalizar": la parada quedaba "En la parada" para siempre.
