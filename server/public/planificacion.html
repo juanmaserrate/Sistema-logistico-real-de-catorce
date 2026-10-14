@@ -20311,7 +20311,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 const anios = flotaAniosDisponibles();
                 const previo = anioSel.value;
                 anioSel.innerHTML = anios.map(a => `<option value="${a}">${a}</option>`).join('');
-                anioSel.value = anios.includes(previo) ? previo : anios[0];
+                // Al abrir la pantalla se para en el anio EN CURSO. La lista esta
+                // ordenada de mayor a menor y arranca un anio adelante, asi que
+                // tomar el primero dejaba la pantalla vacia en un anio futuro.
+                const actual = String(nowBuenosAires().year);
+                anioSel.value = anios.includes(previo) ? previo
+                    : (anios.includes(actual) ? actual : anios[0]);
             }
             const patSel = document.getElementById('flota-filtro-patente');
             if (patSel) {
