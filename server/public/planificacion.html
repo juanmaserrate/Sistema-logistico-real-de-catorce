@@ -9528,12 +9528,16 @@
          *  no tiene nada y este navegador si, las sube: asi no se pierde lo que
          *  ya estaba cargado. */
         async function fleetsCargarDelServidor() {
+            // null = el servidor no contesto. [] = contesto y no tiene nada.
+            // No es lo mismo: con la clave todavia sin crear el servidor devuelve
+            // null con estado 200, y tomarlo por "no contesto" dejaba la subida
+            // inicial sin dispararse nunca.
             let delServidor = null;
             try {
                 const res = await fetch(`${API_URL}/settings/fleets_data`, { cache: 'no-store' });
                 if (res.ok) {
                     const d = await res.json();
-                    if (Array.isArray(d)) delServidor = d;
+                    delServidor = Array.isArray(d) ? d : [];
                 }
             } catch (e) { console.error('fleets_data', e); }
 
