@@ -43,6 +43,7 @@ import {
   pingServer,
 } from '../api';
 import StopDeliveryModal from '../components/StopDeliveryModal';
+import MotivoModal from '../components/MotivoModal';
 import CratesModal from '../components/CratesModal';
 import { resumenPorTipo } from '../components/CajonesPorTipo';
 import IncidentModal from '../components/IncidentModal';
@@ -697,114 +698,77 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     setTracking(true);
   };
 
-  /** Cierra una ruta sin terminar el viaje. */
-  const onCerrarRuta = useCallback(async (ruta: string) => {
-    if (!selected?.trip?.id) return;
-    const tripId = selected.trip.id;
-    const pendientes = (selected.stops || []).filter((st) => {
-      const mia = isBaseStop(st) ? TRAMO_VUELTA : String(st.ruta || '').trim();
-      if (mia !== ruta) return false;
+  /** Lo que se esta por cerrar cuando hace falta un motivo. Se usa un modal
+   *  propio y no Alert.prompt porque ese es SOLO de iOS: en Android, que es lo
+   *  que usan los choferes, no habria donde escribir. */
+  const [pedirMotivo, setPedirMotivo] = useState<
+    { tipo: 'ruta' | 'viaje'; ruta?: string; pendientes: number } | null
+  >(null);
+
+  /** Manda el cierre de una ruta. La parte que escribe, separada de la que
+   *  pregunta, para que la pueda llamar tanto el boton como el modal del motivo. */
+  const cerrarRutaAhora = useCallback(async (ruta: string, motivo?: string | null) => {
+    const tripId = selected?.trip?.id;
+    if (!tripId) return;
+    const r = await cerrarRutaDelViaje(tripId, ruta, motivo ?? null);
+    if (r.error) { Alert.alert('No se pudo cerrar', r.error); return; }
+    Alert.alert(
+      r.enviado ? 'Ruta cerrada' : 'Guardado sin señal',
+      r.enviado
+        ? `Terminaste ${ruta}. El viaje sigue abierto.`
+        : `Terminaste ${ruta}. Se va a mandar solo cuando vuelva la señal, con la hora de ahora.`
+    );
+    await loadRoutes({ silent: true });
+  }, [selected, loadRoutes]);
+
+  /** Lo mismo para el viaje entero. */
+  const finalizarViajeAhora = useCallback(async (motivo?: string | null) => {
+    const tripId = selected?.trip?.id;
+    if (!tripId) return;
+    const r = await finalizarViaje(tripId, motivo ?? null);
+    if (r.error) { Alert.alert('No se pudo finalizar', r.error); return; }
+    Alert.alert(
+      r.enviado ? 'VIAJE FINALIZADO' : 'Guardado sin señal',
+      r.enviado
+        ? 'Listo, el viaje quedó cerrado.'
+        : 'El viaje se va a cerrar solo cuando vuelva la señal, con la hora de ahora.'
+    );
+    await loadRoutes({ silent: true });
+  }, [selected, loadRoutes]);
+
+  /** Cuantas paradas de esa ruta quedaron sin marcar. */
+  const pendientesDe = useCallback((ruta?: string) => {
+    return (selected?.stops || []).filter((st) => {
+      if (ruta) {
+        const mia = isBaseStop(st) ? TRAMO_VUELTA : String(st.ruta || '').trim();
+        if (mia !== ruta) return false;
+      }
       const e = String(st.status || '').toUpperCase();
       return e !== 'COMPLETED' && e !== 'UNDELIVERABLE';
-    });
+    }).length;
+  }, [selected]);
 
-    const cerrar = async (motivo?: string) => {
-      const r = await cerrarRutaDelViaje(tripId, ruta, motivo ?? null);
-      if (r.error) { Alert.alert('No se pudo cerrar', r.error); return; }
-      Alert.alert(
-        r.enviado ? 'Ruta cerrada' : 'Guardado sin señal',
-        r.enviado
-          ? `Terminaste ${ruta}. El viaje sigue abierto.`
-          : `Terminaste ${ruta}. Se va a mandar solo cuando vuelva la señal, con la hora de ahora.`
-      );
-      await loadRoutes({ silent: true });
-    };
-
-    if (pendientes.length > 0) {
-      // Cerrar con paradas sin marcar se puede, pero con motivo
-      Alert.prompt?.(
-        `Te quedan ${pendientes.length} parada(s)`,
-        `¿Por qué cerrás ${ruta} así? Queda anotado.`,
-        [
-          { text: 'Volver', style: 'cancel' },
-          {
-            text: 'Cerrar igual',
-            onPress: (texto?: string) => {
-              const m = String(texto || '').trim();
-              if (!m) { Alert.alert('Falta el motivo', 'Escribí por qué la cerrás con paradas sin marcar.'); return; }
-              cerrar(m);
-            },
-          },
-        ],
-        'plain-text'
-      ) ?? Alert.alert(
-        `Te quedan ${pendientes.length} parada(s)`,
-        `¿Cerrás ${ruta} igual?`,
-        [
-          { text: 'Volver', style: 'cancel' },
-          { text: 'Cerrar igual', onPress: () => cerrar('Cerrada con paradas sin marcar') },
-        ]
-      );
-      return;
-    }
+  /** Cierra una ruta sin terminar el viaje. Con paradas sin marcar pide motivo. */
+  const onCerrarRuta = useCallback((ruta: string) => {
+    if (!selected?.trip?.id) return;
+    const pendientes = pendientesDe(ruta);
+    if (pendientes > 0) { setPedirMotivo({ tipo: 'ruta', ruta, pendientes }); return; }
     Alert.alert(`Terminar ${ruta}`, '¿Terminaste esta ruta? El viaje sigue abierto.', [
       { text: 'Todavía no', style: 'cancel' },
-      { text: 'Sí, terminé', onPress: () => cerrar() },
+      { text: 'Sí, terminé', onPress: () => cerrarRutaAhora(ruta) },
     ]);
-  }, [selected, loadRoutes]);
+  }, [selected, pendientesDe, cerrarRutaAhora]);
 
   /** Termina el viaje donde sea que este el chofer, sin pasar por el deposito. */
-  const onFinalizarViaje = useCallback(async () => {
+  const onFinalizarViaje = useCallback(() => {
     if (!selected?.trip?.id) return;
-    const tripId = selected.trip.id;
-    const pendientes = (selected.stops || []).filter((st) => {
-      const e = String(st.status || '').toUpperCase();
-      return e !== 'COMPLETED' && e !== 'UNDELIVERABLE';
-    });
-
-    const finalizar = async (motivo?: string) => {
-      const r = await finalizarViaje(tripId, motivo ?? null);
-      if (r.error) { Alert.alert('No se pudo finalizar', r.error); return; }
-      Alert.alert(
-        r.enviado ? 'VIAJE FINALIZADO' : 'Guardado sin señal',
-        r.enviado
-          ? 'Listo, el viaje quedó cerrado.'
-          : 'El viaje se va a cerrar solo cuando vuelva la señal, con la hora de ahora.'
-      );
-      await loadRoutes({ silent: true });
-    };
-
-    if (pendientes.length > 0) {
-      Alert.prompt?.(
-        `Te quedan ${pendientes.length} parada(s)`,
-        '¿Por qué finalizás el viaje así? Queda anotado.',
-        [
-          { text: 'Volver', style: 'cancel' },
-          {
-            text: 'Finalizar igual',
-            onPress: (texto?: string) => {
-              const m = String(texto || '').trim();
-              if (!m) { Alert.alert('Falta el motivo', 'Escribí por qué finalizás con paradas sin marcar.'); return; }
-              finalizar(m);
-            },
-          },
-        ],
-        'plain-text'
-      ) ?? Alert.alert(
-        `Te quedan ${pendientes.length} parada(s)`,
-        '¿Finalizás el viaje igual?',
-        [
-          { text: 'Volver', style: 'cancel' },
-          { text: 'Finalizar igual', onPress: () => finalizar('Finalizado con paradas sin marcar') },
-        ]
-      );
-      return;
-    }
+    const pendientes = pendientesDe();
+    if (pendientes > 0) { setPedirMotivo({ tipo: 'viaje', pendientes }); return; }
     Alert.alert('Finalizar viaje', '¿Terminaste el viaje?', [
       { text: 'Todavía no', style: 'cancel' },
-      { text: 'Sí, finalizar', onPress: () => finalizar() },
+      { text: 'Sí, finalizar', onPress: () => finalizarViajeAhora() },
     ]);
-  }, [selected, loadRoutes]);
+  }, [selected, pendientesDe, finalizarViajeAhora]);
 
   /** Fichar salida es el momento natural para cerrar el viaje: el chofer ya
    *  volvió y lo hace por costumbre. Si terminó todas las entregas y solo le
@@ -1353,6 +1317,24 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         </View>
       </View>
 
+      <MotivoModal
+        visible={!!pedirMotivo}
+        titulo={`Te quedan ${pedirMotivo?.pendientes ?? 0} parada(s) sin marcar`}
+        detalle={
+          pedirMotivo?.tipo === 'ruta'
+            ? `¿Por qué cerrás ${pedirMotivo?.ruta} así? Queda anotado y lo ve la oficina.`
+            : '¿Por qué finalizás el viaje así? Queda anotado y lo ve la oficina.'
+        }
+        textoBoton={pedirMotivo?.tipo === 'ruta' ? 'Cerrar igual' : 'Finalizar igual'}
+        onCancelar={() => setPedirMotivo(null)}
+        onConfirmar={(motivo) => {
+          const p = pedirMotivo;
+          setPedirMotivo(null);
+          if (!p) return;
+          if (p.tipo === 'ruta' && p.ruta) cerrarRutaAhora(p.ruta, motivo);
+          else finalizarViajeAhora(motivo);
+        }}
+      />
       <StopDeliveryModal
         visible={deliveryModalStop != null}
         stop={deliveryModalStop}
