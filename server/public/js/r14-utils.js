@@ -67,6 +67,51 @@ function formatDurationFromMs(diffMs) {
     return `${hh} h ${mm} min`;
 }
 
+/** Un numero como se escribe en Argentina: punto para los miles y coma para los
+ *  decimales. 3784043.78 -> "3.784.043,78", 1000000 -> "1.000.000".
+ *
+ *  Sin `dec` no fuerza decimales: los muestra solo si los tiene, hasta dos. */
+function numeroAR(v, dec) {
+    const n = Number(v);
+    if (!Number.isFinite(n)) return '';
+    const opciones = (dec === undefined)
+        ? { minimumFractionDigits: 0, maximumFractionDigits: 2 }
+        : { minimumFractionDigits: dec, maximumFractionDigits: dec };
+    return n.toLocaleString('es-AR', opciones);
+}
+
+/** Lo contrario: lee un numero escrito a mano y devuelve el valor.
+ *
+ *  Aguanta "1.234.567,89", "1234567.89", "1.000", "721,5" y "$ 1.000".
+ *  Hace falta porque parseFloat("1.234.567,89") devuelve 1.234: los campos de
+ *  plata se muestran con puntos de miles, y leerlos con parseFloat perdia casi
+ *  todo el numero sin avisar. */
+function leerNumeroAR(txt) {
+    if (typeof txt === 'number') return Number.isFinite(txt) ? txt : 0;
+    let t = String(txt == null ? '' : txt).trim().replace(/[\s$]/g, '');
+    if (!t) return 0;
+    const negativo = /^-/.test(t);
+    t = t.replace(/^[-+]/, '');
+    const hayPunto = t.includes('.');
+    const hayComa = t.includes(',');
+    if (hayPunto && hayComa) {
+        // El separador que va ultimo es el decimal; el otro son los miles
+        t = (t.lastIndexOf(',') > t.lastIndexOf('.'))
+            ? t.replace(/\./g, '').replace(',', '.')
+            : t.replace(/,/g, '');
+    } else if (hayComa) {
+        if (/^\d{1,3}(,\d{3})+$/.test(t)) t = t.replace(/,/g, '');   // miles al reves
+        else { const i = t.lastIndexOf(','); t = t.slice(0, i).replace(/,/g, '') + '.' + t.slice(i + 1); }
+    } else if (hayPunto) {
+        // Solo puntos: son miles si vienen de a tres ("1.234", "12.345.678").
+        // Si no, es un decimal escrito a la inglesa ("721.5").
+        if (/^\d{1,3}(\.\d{3})+$/.test(t)) t = t.replace(/\./g, '');
+    }
+    const n = parseFloat(t.replace(/[^0-9.]/g, ''));
+    if (!Number.isFinite(n)) return 0;
+    return negativo ? -n : n;
+}
+
 /** Escapa HTML para inserción segura en innerHTML */
 function escapeHtml(str) {
     if (str == null) return '';

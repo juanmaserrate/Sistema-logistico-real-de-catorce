@@ -1041,3 +1041,76 @@ input, select, textarea { transition: box-shadow 0.15s ease, background-color 0.
 }
 #view-payments tbody tr.pg-chofer { background: var(--pg-chofer) !important; }
 #view-payments tbody tr.pg-chofer:hover { background: var(--pg-chofer-hover) !important; }
+
+/* ---------- GASTOS DE FLOTA, MANTENIMIENTO Y CUADROS DE COSTOS ------------ */
+/* La misma pinta que Log Semanal:
+   1. Las filas se alternan de color, como un cuaderno rayado.
+   2. Al pasar el mouse NO se iluminan: el rayado ya separa una fila de otra.
+   3. Los campos editables no muestran las flechitas de los inputs de numero.
+
+   El rayado lo marca el JS con una clase y no con :nth-child, porque estas
+   tablas mezclan filas de datos con separadores y totales, y contar filas con
+   CSS pintaria la que no es. Cada tipo de fila tiene su clase y su color, y el
+   :hover entra en el mismo selector: asi la regla general de la app, que
+   ilumina cualquier fila al pasar el mouse, no tiene nada que pisar. */
+
+:root {
+    --r14-grupo: #eef1f8;
+    --r14-total: #1b2559;
+    --r14-control: #f8faff;
+}
+[data-theme="dark"] {
+    --r14-grupo: var(--surface-container);
+    --r14-total: #11047a;
+    --r14-control: var(--surface-container-low);
+}
+
+/* El rayado general de la app no manda en estas pantallas */
+#view-fleet-costs tbody tr:nth-child(even),
+#view-maintenance tbody tr:nth-child(even),
+#view-costs tbody tr:nth-child(even) { background: transparent; }
+
+/* Filas de datos. El `td.sticky` es la primera columna, que queda fija al
+   scrollear y necesita fondo propio para que no se le vea el texto por debajo. */
+tr.r14-fila,
+tr.r14-fila:hover,
+tr.r14-fila > td.sticky { background: var(--wk-fila) !important; }
+
+tr.r14-fila-alt,
+tr.r14-fila-alt:hover,
+tr.r14-fila-alt > td.sticky { background: var(--wk-fila-alt) !important; }
+
+/* Separadores ("Estructura fija"), totales y filas de control */
+tr.r14-fila-grupo,
+tr.r14-fila-grupo:hover,
+tr.r14-fila-grupo > td.sticky { background: var(--r14-grupo) !important; }
+
+tr.r14-fila-total,
+tr.r14-fila-total:hover,
+tr.r14-fila-total > td.sticky { background: var(--r14-total) !important; }
+
+tr.r14-fila-control,
+tr.r14-fila-control:hover,
+tr.r14-fila-control > td.sticky { background: var(--r14-control) !important; }
+
+/* Sin transicion de color: no hay a que hacerle transicion */
+tr.r14-fila, tr.r14-fila-alt, tr.r14-fila-grupo,
+tr.r14-fila-total, tr.r14-fila-control { transition: none; }
+
+/* Campos de numero sin flechitas. Los de plata ya son type="text" para poder
+   mostrar los puntos de miles; esto cubre los que quedaron como number. */
+#view-fleet-costs input[type="number"],
+#view-maintenance input[type="number"],
+#view-costs input[type="number"] {
+    -moz-appearance: textfield;
+    appearance: textfield;
+}
+#view-fleet-costs input[type="number"]::-webkit-outer-spin-button,
+#view-fleet-costs input[type="number"]::-webkit-inner-spin-button,
+#view-maintenance input[type="number"]::-webkit-outer-spin-button,
+#view-maintenance input[type="number"]::-webkit-inner-spin-button,
+#view-costs input[type="number"]::-webkit-outer-spin-button,
+#view-costs input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}

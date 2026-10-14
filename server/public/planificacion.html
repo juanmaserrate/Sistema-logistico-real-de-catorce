@@ -1868,7 +1868,7 @@
                         </select>
                         <div class="flex items-center gap-3 bg-indigo-50 px-6 py-4 rounded-2xl">
                             <span class="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Horas Reales:</span>
-                            <input type="number" id="cost-horas-reales" oninput="calculateCosts()" class="w-20 bg-transparent border-none text-sm font-extrabold text-indigo-700 outline-none">
+                            <input type="text" inputmode="decimal" id="cost-horas-reales" oninput="calculateCosts()" onblur="formatearMontoAR(this); calculateCosts()" class="w-20 bg-transparent border-none text-sm font-extrabold text-indigo-700 outline-none">
                         </div>
                         <div class="flex items-center gap-3 bg-amber-50 px-6 py-4 rounded-2xl" title="Horas que se asumen para un viaje propio cuando no tiene horario de salida/llegada cargado ni GPS. Antes era fijo en 8.">
                             <span class="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Hs viaje sin horario:</span>
@@ -2089,7 +2089,7 @@
                             </div>
                             <div>
                                 <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Importe ($) *</label>
-                                <input type="text" inputmode="decimal" id="gf-cost" oninput="sanitizeNumericInput(this,true)" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm">
+                                <input type="text" inputmode="decimal" id="gf-cost" oninput="sanitizeNumericInput(this,true)" onblur="formatearMontoAR(this)" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm text-right">
                             </div>
                             <div>
                                 <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Proveedor / Taller</label>
@@ -3566,11 +3566,13 @@
         function costsReadForm() {
             const p = {
                 fijo: {}, variable: {},
-                horas_reales: parseFloat(document.getElementById('cost-horas-reales')?.value) || 0,
-                fallback_hours: parseFloat(document.getElementById('cost-fallback-hours')?.value) || 8
+                // leerNumeroAR y no parseFloat: los campos muestran "1.234.567,89"
+                // y parseFloat se queda con 1.234 sin avisar de nada.
+                horas_reales: leerNumeroAR(document.getElementById('cost-horas-reales')?.value),
+                fallback_hours: leerNumeroAR(document.getElementById('cost-fallback-hours')?.value) || 8
             };
             document.querySelectorAll('[data-cost-type]').forEach(inp => {
-                p[inp.getAttribute('data-cost-type')][inp.getAttribute('data-id')] = parseFloat(inp.value) || 0;
+                p[inp.getAttribute('data-cost-type')][inp.getAttribute('data-id')] = leerNumeroAR(inp.value);
             });
             return p;
         }
@@ -3657,11 +3659,11 @@
             }
             const monthData = getCostsDatabase()[month];
             const hsEl = document.getElementById('cost-horas-reales');
-            if (hsEl) hsEl.value = monthData?.horas_reales || '';
+            if (hsEl) hsEl.value = monthData?.horas_reales ? numeroAR(monthData.horas_reales) : '';
             const fbEl = document.getElementById('cost-fallback-hours');
             if (fbEl) fbEl.value = monthData?.fallback_hours || 8;
             document.querySelectorAll('.cost-input').forEach(input => {
-                input.value = monthData?.[input.dataset.costType]?.[input.dataset.id] || 0;
+                input.value = numeroAR(monthData?.[input.dataset.costType]?.[input.dataset.id] || 0);
             });
             costsFormMonth = month;
             calculateCosts(false);
@@ -3679,13 +3681,13 @@
             try {
                 const detail = document.getElementById('horas-auto-detail');
                 if (detail) {
-                    const fb = parseFloat(document.getElementById('cost-fallback-hours')?.value) || 8;
+                    const fb = leerNumeroAR(document.getElementById('cost-fallback-hours')?.value) || 8;
                     const year = nowBuenosAires().year;
                     fetch(`${API_URL}/costs/month-hours?month=${encodeURIComponent(month)}&year=${year}&fallback=${fb}`, { headers: getActorHeaders() })
                         .then(r => r.ok ? r.json() : null)
                         .then(d => {
                             if (!d) return;
-                            const cur = parseFloat(document.getElementById('cost-horas-reales')?.value) || 0;
+                            const cur = leerNumeroAR(document.getElementById('cost-horas-reales')?.value);
                             const diff = Math.abs(cur - d.hoursFromTrips) > 1
                                 ? ` <span class="text-amber-700 font-bold">(cargado: ${cur} h — difiere)</span>`
                                 : ' <span class="text-emerald-700 font-bold">(coincide con lo cargado)</span>';
@@ -19469,7 +19471,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 (rows || []).forEach(r => allRows.push({ ...r, plate }));
             });
             const rows = getMaintenanceFilteredRows(allRows);
-            const fmtCur = (n) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(n) || 0);
+            const fmtCur = (n) => '$ ' + numeroAR(Number(n) || 0);
             const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
             totalVal.innerText = fmtCur(rows.reduce((s, r) => s + (Number(r.cost) || 0), 0));
             if (catWrap && catBody) {
@@ -19502,7 +19504,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 (rows || []).forEach(r => allRows.push({ ...r, plate }));
             });
 
-            const fmtCur = (n) => new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(n) || 0);
+            const fmtCur = (n) => '$ ' + numeroAR(Number(n) || 0);
             const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
 
             if (allRows.length === 0) {
@@ -19558,8 +19560,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 bg-white">
-                            ${rows.map(r => `
-                                <tr>
+                            ${rows.map((r, i) => `
+                                <tr class="r14-fila${i % 2 ? '-alt' : ''}">
                                     <td class="px-3 py-2">
                                         <select onchange="updateRepairField('${r.plate}','${r.id}','plate', this.value)" class="bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs font-bold">
                                             <option value="${r.plate}">${r.plate}</option>
@@ -19570,10 +19572,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                         <select onchange="updateRepairField('${r.plate}','${r.id}','category', this.value)" class="bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs">${opcionesDeCategoria(r.category)}</select>
                                     </td>
                                     <td class="px-3 py-2"><input type="date" value="${esc((r.date || '').split('T')[0])}" oninput="updateRepairField('${r.plate}','${r.id}','date', this.value)" class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
-                                    <td class="px-3 py-2"><input type="text" inputmode="numeric" autocomplete="off" value="${esc(r.mileage)}" oninput="sanitizeNumericInput(this,false); updateRepairField('${r.plate}','${r.id}','mileage', this.value)" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
+                                    <td class="px-3 py-2"><input type="text" inputmode="numeric" autocomplete="off" value="${r.mileage == null ? '' : numeroAR(r.mileage)}" oninput="updateRepairField('${r.plate}','${r.id}','mileage', this.value)" onblur="formatearMontoAR(this); updateRepairField('${r.plate}','${r.id}','mileage', this.value)" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
                                     <td class="px-3 py-2"><input type="text" value="${esc(r.workDone)}" oninput="updateRepairField('${r.plate}','${r.id}','workDone', this.value)" class="w-64 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
                                     <td class="px-3 py-2"><input type="text" value="${esc(r.workshop)}" oninput="updateRepairField('${r.plate}','${r.id}','workshop', this.value)" class="w-44 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
-                                    <td class="px-3 py-2"><input type="text" inputmode="decimal" autocomplete="off" value="${esc(r.cost)}" oninput="sanitizeNumericInput(this,true); updateRepairField('${r.plate}','${r.id}','cost', this.value)" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
+                                    <td class="px-3 py-2"><input type="text" inputmode="decimal" autocomplete="off" value="${r.cost == null ? '' : numeroAR(r.cost)}" oninput="sanitizeNumericInput(this,true); updateRepairField('${r.plate}','${r.id}','cost', this.value)" onblur="formatearMontoAR(this); updateRepairField('${r.plate}','${r.id}','cost', this.value)" class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs text-right"></td>
                                     <td class="px-3 py-2"><input type="text" value="${esc(r.notes)}" oninput="updateRepairField('${r.plate}','${r.id}','notes', this.value)" class="w-52 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
                                     <td class="px-3 py-2 text-right">
                                         <button onclick="saveRepairRow('${r.plate}','${r.id}')" class="p-2 rounded-lg bg-indigo-50 text-indigo-600 hover:bg-indigo-100 mr-1 shadow-sm"><i data-lucide="save" class="w-4 h-4"></i></button>
@@ -19646,22 +19648,29 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             renderMaintenanceRecords();
         }
 
-        /** Filtra un input numérico al momento de tipear: deja solo dígitos y, si
-         *  allowDecimal, un único separador (punto o coma). Con type="text" el campo
-         *  no muestra las flechitas de los inputs type="number". */
+        /** Filtra un input numerico mientras se tipea: deja pasar digitos, puntos
+         *  y comas, que es como se escribe la plata aca ("1.234.567,89").
+         *
+         *  Antes dejaba un solo separador, asi que al escribir el punto de los
+         *  miles se borraba el anterior y no se podia tipear un numero largo.
+         *  Lo que el campo termina valiendo lo decide leerNumeroAR, que entiende
+         *  las dos formas. */
         function sanitizeNumericInput(el, allowDecimal) {
             if (!el) return;
-            let v = el.value.replace(/[^0-9.,]/g, '');
-            if (allowDecimal) {
-                const m = v.match(/[.,]/);
-                if (m && m.index >= 0) {
-                    const sep = v[m.index];
-                    v = v.slice(0, m.index) + sep + v.slice(m.index + 1).replace(/[.,]/g, '');
-                }
-            } else {
-                v = v.replace(/[.,]/g, '');
-            }
+            const v = allowDecimal
+                ? el.value.replace(/[^0-9.,-]/g, '')
+                : el.value.replace(/[^0-9-]/g, '');
             if (v !== el.value) el.value = v;
+        }
+
+        /** Acomoda el numero del campo al salir de el: 1234567.89 -> 1.234.567,89.
+         *  Se hace al salir y no al tipear para no pelearse con el cursor. */
+        function formatearMontoAR(el) {
+            if (!el) return;
+            const txt = String(el.value || '').trim();
+            if (!txt) { el.value = ''; return; }
+            const n = leerNumeroAR(txt);
+            el.value = n ? numeroAR(n) : '';
         }
 
         function updateRepairField(plate, id, field, value) {
@@ -19672,9 +19681,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const rec = records[recIdx];
 
             if (field === 'mileage' || field === 'cost') {
-                const clean = String(value).trim().replace(/\s+/g, '').replace(',', '.');
-                const num = parseFloat(clean);
-                rec[field] = clean === '' ? null : (Number.isFinite(num) ? num : null);
+                // leerNumeroAR entiende "1.234.567,89"; parseFloat se quedaba
+                // con 1.234 y el gasto se guardaba mil veces mas chico.
+                const clean = String(value).trim();
+                rec[field] = clean === '' ? null : leerNumeroAR(clean);
             } else if (field === 'plate') {
                 const newPlate = value.trim().toUpperCase();
                 if (newPlate && newPlate !== plate) {
@@ -20214,7 +20224,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         function renderFleetCosts() {
             const lista = document.getElementById('flota-lista');
             if (!lista) return;
-            const plata = (n) => '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+            const plata = (n) => '$ ' + numeroAR(Math.round(Number(n) || 0));
 
             // ── Los desplegables se arman con lo que hay cargado ──
             const anioSel = document.getElementById('flota-anio');
@@ -20324,8 +20334,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                             </tr>
                         </thead>
                         <tbody class="divide-y divide-slate-100 bg-white">
-                            ${filas.map(r => `
-                                <tr>
+                            ${filas.map((r, i) => `
+                                <tr class="r14-fila${i % 2 ? '-alt' : ''}">
                                     <td class="px-3 py-2"><input type="date" value="${escapeHtml((r.date || '').split('T')[0])}"
                                         oninput="updateRepairField('${r._clave}','${r.id}','date', this.value)"
                                         class="w-36 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
@@ -20335,8 +20345,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                                 class="bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs">${opcionesDeCategoria(r.category)}</select>
                                     </td>
                                     <td class="px-3 py-2">${chipRubro(r.category)}</td>
-                                    <td class="px-3 py-2 text-right"><input type="text" inputmode="decimal" autocomplete="off" value="${escapeHtml(r.cost)}"
+                                    <td class="px-3 py-2 text-right"><input type="text" inputmode="decimal" autocomplete="off" value="${r.cost == null ? '' : numeroAR(r.cost)}"
                                         oninput="sanitizeNumericInput(this,true); updateRepairField('${r._clave}','${r.id}','cost', this.value)"
+                                        onblur="formatearMontoAR(this); updateRepairField('${r._clave}','${r.id}','cost', this.value)"
                                         class="w-28 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs text-right"></td>
                                     <td class="px-3 py-2"><input type="text" value="${escapeHtml(r.workshop)}"
                                         oninput="updateRepairField('${r._clave}','${r.id}','workshop', this.value)"
@@ -20344,8 +20355,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                     <td class="px-3 py-2"><input type="text" value="${escapeHtml(r.workDone)}"
                                         oninput="updateRepairField('${r._clave}','${r.id}','workDone', this.value)"
                                         class="w-64 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
-                                    <td class="px-3 py-2"><input type="text" inputmode="numeric" autocomplete="off" value="${escapeHtml(r.mileage)}"
-                                        oninput="sanitizeNumericInput(this,false); updateRepairField('${r._clave}','${r.id}','mileage', this.value)"
+                                    <td class="px-3 py-2"><input type="text" inputmode="numeric" autocomplete="off" value="${r.mileage == null ? '' : numeroAR(r.mileage)}"
+                                        oninput="updateRepairField('${r._clave}','${r.id}','mileage', this.value)"
+                                        onblur="formatearMontoAR(this); updateRepairField('${r._clave}','${r.id}','mileage', this.value)"
                                         class="w-24 bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs"></td>
                                     <td class="px-3 py-2 text-right whitespace-nowrap">
                                         <button onclick="guardarGastoDeFlota('${r._clave}','${r.id}')" title="Guardar los cambios de esta fila"
@@ -20439,7 +20451,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (!tabla) return;
             const anio = flotaAnioElegido();
             const cargado = flotaPorMesYRubro(anio);
-            const plata = (n) => Number(n) ? '$ ' + Math.round(n).toLocaleString('es-AR') : '\u2014';
+            const plata = (n) => Number(n) ? '$ ' + numeroAR(Math.round(n)) : '\u2014';
 
             // Los rubros de flota en el mismo orden que el Motor, agrupados igual
             const ids = rubrosDeFlota();
@@ -20452,20 +20464,21 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     <th class="px-3 py-2 font-black text-[#1B2559] uppercase bg-[#EEF1F8]">A\u00f1o</th>
                 </tr></thead>`;
 
+            let _nFila = 0;
             const filaRubro = (r) => {
                 const anual = MESES_COSTOS.reduce((a, m) => a + (cargado[m][r.id] || 0), 0);
-                return `<tr class="border-t border-[#F4F7FE]">
-                    <td class="px-3 py-1.5 font-bold text-[#2B3674] sticky left-0 bg-white">${escapeHtml(r.nombre)}</td>
+                return `<tr class="border-t border-[#F4F7FE] r14-fila${(_nFila++) % 2 ? '-alt' : ''}">
+                    <td class="px-3 py-1.5 font-bold text-[#2B3674] sticky left-0">${escapeHtml(r.nombre)}</td>
                     ${MESES_COSTOS.map(m => `<td class="px-2 py-1.5 text-right ${cargado[m][r.id] ? 'text-[#1B2559] font-bold' : 'text-[#D0D6E8]'}">${plata(cargado[m][r.id])}</td>`).join('')}
                     <td class="px-3 py-1.5 text-right font-black text-[#1B2559] bg-[#F8FAFF]">${plata(anual)}</td>
                 </tr>`;
             };
 
-            const separador = (t) => `<tr class="bg-[#EEF1F8]"><td class="px-3 py-1 font-black text-[9px] text-[#A3AED0] uppercase tracking-widest sticky left-0 bg-[#EEF1F8]" colspan="14">${t}</td></tr>`;
+            const separador = (t) => `<tr class="r14-fila-grupo"><td class="px-3 py-1 font-black text-[9px] text-[#A3AED0] uppercase tracking-widest sticky left-0" colspan="14">${t}</td></tr>`;
 
             const totalAnio = MESES_COSTOS.reduce((a, m) => a + cargado[m]._total, 0);
-            const filaTotal = `<tr class="bg-[#1B2559] text-white">
-                    <td class="px-3 py-2 font-black uppercase tracking-wider sticky left-0 bg-[#1B2559]">Total cargado</td>
+            const filaTotal = `<tr class="r14-fila-total text-white">
+                    <td class="px-3 py-2 font-black uppercase tracking-wider sticky left-0">Total cargado</td>
                     ${MESES_COSTOS.map(m => `<td class="px-2 py-2 text-right font-black">${plata(cargado[m]._total)}</td>`).join('')}
                     <td class="px-3 py-2 text-right font-black bg-[#11047A]">${plata(totalAnio)}</td>
                 </tr>`;
@@ -20474,8 +20487,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const motor = {};
             MESES_COSTOS.forEach(m => { motor[m] = flotaEnElMotor(m); });
             const motorAnio = MESES_COSTOS.reduce((a, m) => a + motor[m].total, 0);
-            const filaMotor = `<tr class="border-t-2 border-[#E0E5F2] bg-[#F8FAFF]">
-                    <td class="px-3 py-2 font-black text-[#1B2559] sticky left-0 bg-[#F8FAFF]">Cargado a mano en el Motor</td>
+            const filaMotor = `<tr class="border-t-2 border-[#E0E5F2] r14-fila-control">
+                    <td class="px-3 py-2 font-black text-[#1B2559] sticky left-0">Cargado a mano en el Motor</td>
                     ${MESES_COSTOS.map(m => `<td class="px-2 py-2 text-right font-bold ${motor[m].total ? 'text-[#2B3674]' : 'text-[#D0D6E8]'}">${plata(motor[m].total)}</td>`).join('')}
                     <td class="px-3 py-2 text-right font-black text-[#1B2559] bg-[#EEF1F8]">${plata(motorAnio)}</td>
                 </tr>`;
@@ -20491,10 +20504,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 if (d === null) return '<td class="px-2 py-2 text-right text-[#D0D6E8]">\u2014</td>';
                 if (Math.abs(d) < 1) return '<td class="px-2 py-2 text-right font-bold text-emerald-600" title="Cierran">=</td>';
                 const signo = d > 0 ? '+' : '\u2212';
-                return `<td class="px-2 py-2 text-right font-black text-rose-600" title="Lo cargado por evento menos lo escrito a mano">${signo}$ ${Math.abs(Math.round(d)).toLocaleString('es-AR')}</td>`;
+                return `<td class="px-2 py-2 text-right font-black text-rose-600" title="Lo cargado por evento menos lo escrito a mano">${signo}$ ${numeroAR(Math.abs(Math.round(d)))}</td>`;
             };
-            const filaDif = `<tr class="border-t border-[#F4F7FE]">
-                    <td class="px-3 py-2 font-black text-[#1B2559] sticky left-0 bg-white">Diferencia</td>
+            const filaDif = `<tr class="border-t border-[#F4F7FE] r14-fila-control">
+                    <td class="px-3 py-2 font-black text-[#1B2559] sticky left-0">Diferencia</td>
                     ${MESES_COSTOS.map(m => celdaDif(m)).join('')}
                     <td class="px-3 py-2 text-right text-[#A3AED0] bg-[#F8FAFF]"></td>
                 </tr>`;
@@ -20587,7 +20600,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const anio = String(nowBuenosAires().year);
             const cargado = flotaPorMesYRubro(anio);
             const ids = rubrosDeFlota();
-            const plata = (n) => Number(n) ? '$ ' + Math.round(n).toLocaleString('es-AR') : '\u2014';
+            const plata = (n) => Number(n) ? '$ ' + numeroAR(Math.round(n)) : '\u2014';
 
             const filas = MESES_COSTOS.map(mes => {
                 // Lo que hay escrito HOY en el cuadro, no lo guardado: puede haber
@@ -20595,7 +20608,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 let enPantalla = 0;
                 ids.forEach(id => {
                     const i = document.querySelector(`[data-anual-mes="${mes}"][data-anual-id="${id}"]`);
-                    if (i) enPantalla += parseFloat(i.value) || 0;
+                    if (i) enPantalla += leerNumeroAR(i.value);
                 });
                 const trae = ids.reduce((a, id) => a + (cargado[mes][id] || 0), 0);
                 const cuantos = ids.filter(id => cargado[mes][id] > 0).length;
@@ -20625,7 +20638,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     let aviso;
                     if (!f.enPantalla) aviso = '<span class="text-emerald-600 font-bold">estaba vac\u00edo</span>';
                     else if (Math.abs(dif) < 1) aviso = '<span class="text-emerald-600 font-bold">igual</span>';
-                    else aviso = `<span class="text-rose-600 font-black">${dif > 0 ? '+' : '\u2212'}$ ${Math.abs(Math.round(dif)).toLocaleString('es-AR')}</span>`;
+                    else aviso = `<span class="text-rose-600 font-black">${dif > 0 ? '+' : '\u2212'}$ ${numeroAR(Math.abs(Math.round(dif)))}</span>`;
                     return `<tr class="border-t border-[#F4F7FE]">
                         <td class="px-3 py-2 font-bold text-[#2B3674] capitalize">${escapeHtml(f.mes)}</td>
                         <td class="px-3 py-2 text-center text-[#A3AED0] font-bold">${f.cuantos}</td>
@@ -20675,7 +20688,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     if (!monto) return;                       // sin gastos: no se toca
                     const i = document.querySelector(`[data-anual-mes="${mes}"][data-anual-id="${id}"]`);
                     if (!i) return;
-                    i.value = Math.round(monto);
+                    i.value = numeroAR(Math.round(monto));
                     casilleros++;
                     tocado = true;
                 });
@@ -20760,10 +20773,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const plate = String(document.getElementById('gf-plate').value || '').trim().toUpperCase();
             const category = String(document.getElementById('gf-cat').value || '').trim();
             const date = String(document.getElementById('gf-date').value || '').trim();
-            const costRaw = String(document.getElementById('gf-cost').value || '').trim().replace(',', '.');
-            const cost = parseFloat(costRaw);
-            const kmRaw = String(document.getElementById('gf-km').value || '').trim().replace(',', '.');
-            const mileage = kmRaw === '' ? null : (parseFloat(kmRaw) || null);
+            const cost = leerNumeroAR(document.getElementById('gf-cost').value);
+            const kmRaw = String(document.getElementById('gf-km').value || '').trim();
+            const mileage = kmRaw === '' ? null : (leerNumeroAR(kmRaw) || null);
 
             if (!plate) return decir('Falta la patente.');
             if (!category) return decir('Falta la categor\u00eda: es la que decide a qu\u00e9 rubro del Motor entra el gasto.');
@@ -20789,7 +20801,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 await cargarGastosDeFlota();
                 if (typeof addNotification === 'function') {
                     addNotification('success', 'Gastos de Flota',
-                        `${category} de ${plate}: $${Math.round(cost).toLocaleString('es-AR')} guardado.`);
+                        `${category} de ${plate}: $${numeroAR(Math.round(cost))} guardado.`);
                 }
             } catch (e) {
                 decir('No se pudo guardar: ' + (e.message || e));
@@ -20840,7 +20852,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         })()}
                     </label>
                     <div class="flex gap-4 items-center">
-                        <input type="number" data-cost-type="${r.tipo}" data-id="${r.id}" oninput="calculateCosts()"
+                        <input type="text" inputmode="decimal" data-cost-type="${r.tipo}" data-id="${r.id}"
+                               oninput="calculateCosts()" onblur="formatearMontoAR(this); calculateCosts()"
                                class="cost-input w-32 bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559] text-right outline-none focus:ring-2 focus:ring-indigo-500/20">
                         <span class="text-xs font-bold text-[#A3AED0] w-24 text-right" id="hs-${r.tipo === 'fijo' ? 'fijo' : 'var'}-${r.id}">$ 0</span>
                     </div>
@@ -20883,35 +20896,43 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     ${MESES_COSTOS.map(m => `<th class="px-2 py-2 font-black text-[#1B2559] uppercase">${m.slice(0,3)}</th>`).join('')}
                 </tr></thead>`;
 
-            const filaRubro = (r) => `<tr class="border-t border-[#F4F7FE]">
-                    <td class="px-3 py-1.5 font-bold text-[#2B3674] sticky left-0 bg-white">${escapeHtml(r.nombre)}</td>
+            let _nFila = 0;
+            const filaRubro = (r) => `<tr class="border-t border-[#F4F7FE] r14-fila${(_nFila++) % 2 ? '-alt' : ''}">
+                    <td class="px-3 py-1.5 font-bold text-[#2B3674] sticky left-0">${escapeHtml(r.nombre)}
+                        ${(() => {
+                            const cats = (typeof categoriasDelRubro === 'function' ? categoriasDelRubro(r.id) : []);
+                            return cats.length > 1
+                                ? `<span class="block text-[9px] font-bold text-[#A3AED0] leading-tight">${escapeHtml(cats.join(' \u00b7 '))}</span>`
+                                : '';
+                        })()}
+                    </td>
                     ${MESES_COSTOS.map(m => `<td class="px-1 py-1">
-                        <input type="number" data-anual-mes="${m}" data-anual-tipo="${r.tipo}" data-anual-id="${r.id}"
-                               oninput="tocarVistaAnual('${m}')"
-                               value="${Number((db[m] && db[m][r.tipo] && db[m][r.tipo][r.id]) || 0) || ''}"
+                        <input type="text" inputmode="decimal" data-anual-mes="${m}" data-anual-tipo="${r.tipo}" data-anual-id="${r.id}"
+                               oninput="tocarVistaAnual('${m}')" onblur="formatearMontoAR(this); tocarVistaAnual('${m}')"
+                               value="${numeroAR((db[m] && db[m][r.tipo] && db[m][r.tipo][r.id]) || 0) === '0' ? '' : numeroAR((db[m] && db[m][r.tipo] && db[m][r.tipo][r.id]) || 0)}"
                                class="w-24 bg-[#F4F7FE] border-0 rounded-lg px-2 py-1.5 text-[11px] font-bold text-right outline-none focus:ring-2 focus:ring-indigo-500/20">
                     </td>`).join('')}
                 </tr>`;
 
-            const filaHoras = `<tr class="border-t-2 border-[#E0E5F2] bg-[#F8FAFF]">
-                    <td class="px-3 py-1.5 font-black text-[#1B2559] sticky left-0 bg-[#F8FAFF]">Horas trabajadas</td>
+            const filaHoras = `<tr class="border-t-2 border-[#E0E5F2] r14-fila-control">
+                    <td class="px-3 py-1.5 font-black text-[#1B2559] sticky left-0">Horas trabajadas</td>
                     ${MESES_COSTOS.map(m => `<td class="px-1 py-1">
-                        <input type="number" data-anual-mes="${m}" data-anual-horas="1"
-                               oninput="tocarVistaAnual('${m}')"
-                               value="${Number((db[m] && db[m].horas_reales) || 0) || ''}"
+                        <input type="text" inputmode="decimal" data-anual-mes="${m}" data-anual-horas="1"
+                               oninput="tocarVistaAnual('${m}')" onblur="formatearMontoAR(this); tocarVistaAnual('${m}')"
+                               value="${numeroAR((db[m] && db[m].horas_reales) || 0) === '0' ? '' : numeroAR((db[m] && db[m].horas_reales) || 0)}"
                                class="w-24 bg-white border border-[#E0E5F2] rounded-lg px-2 py-1.5 text-[11px] font-bold text-right outline-none focus:ring-2 focus:ring-indigo-500/20">
                     </td>`).join('')}
                 </tr>`;
 
-            const filaTotal = `<tr class="bg-[#1B2559] text-white">
-                    <td class="px-3 py-2 font-black uppercase tracking-wider sticky left-0 bg-[#1B2559]">Total</td>
+            const filaTotal = `<tr class="r14-fila-total text-white">
+                    <td class="px-3 py-2 font-black uppercase tracking-wider sticky left-0">Total</td>
                     ${MESES_COSTOS.map(m => `<td class="px-2 py-2 text-right font-black" id="anual-total-${m}">$ 0</td>`).join('')}
                 </tr>`;
 
             tabla.innerHTML = cab + '<tbody>'
-                + `<tr class="bg-[#EEF1F8]"><td class="px-3 py-1 font-black text-[9px] text-[#A3AED0] uppercase tracking-widest sticky left-0 bg-[#EEF1F8]" colspan="13">Estructura fija</td></tr>`
+                + `<tr class="r14-fila-grupo"><td class="px-3 py-1 font-black text-[9px] text-[#A3AED0] uppercase tracking-widest sticky left-0" colspan="13">Estructura fija</td></tr>`
                 + rubrosDe('fijo').map(filaRubro).join('')
-                + `<tr class="bg-[#EEF1F8]"><td class="px-3 py-1 font-black text-[9px] text-[#A3AED0] uppercase tracking-widest sticky left-0 bg-[#EEF1F8]" colspan="13">Estructura variable</td></tr>`
+                + `<tr class="r14-fila-grupo"><td class="px-3 py-1 font-black text-[9px] text-[#A3AED0] uppercase tracking-widest sticky left-0" colspan="13">Estructura variable</td></tr>`
                 + rubrosDe('variable').map(filaRubro).join('')
                 + filaHoras + filaTotal + '</tbody>';
 
@@ -20924,9 +20945,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             for (const m of MESES_COSTOS) {
                 let t = 0;
                 document.querySelectorAll(`[data-anual-mes="${m}"][data-anual-id]`)
-                    .forEach(i => { t += parseFloat(i.value) || 0; });
+                    .forEach(i => { t += leerNumeroAR(i.value); });
                 const celda = document.getElementById(`anual-total-${m}`);
-                if (celda) celda.textContent = t ? '$ ' + Math.round(t).toLocaleString('es-AR') : '\u2014';
+                if (celda) celda.textContent = t ? '$ ' + numeroAR(Math.round(t)) : '\u2014';
             }
         }
 
@@ -20966,10 +20987,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     fallback_hours: Number(previo.fallback_hours) || 8
                 };
                 document.querySelectorAll(`[data-anual-mes="${m}"][data-anual-id]`).forEach(i => {
-                    p[i.getAttribute('data-anual-tipo')][i.getAttribute('data-anual-id')] = parseFloat(i.value) || 0;
+                    p[i.getAttribute('data-anual-tipo')][i.getAttribute('data-anual-id')] = leerNumeroAR(i.value);
                 });
                 const hs = document.querySelector(`[data-anual-mes="${m}"][data-anual-horas]`);
-                if (hs) p.horas_reales = parseFloat(hs.value) || 0;
+                if (hs) p.horas_reales = leerNumeroAR(hs.value);
                 try {
                     const res = await fetch(`${API_URL}/costs/params`, {
                         method: 'POST', headers: getActorHeaders(),
@@ -21033,14 +21054,14 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
             const filas = deFlota.map(r => {
                 const input = document.querySelector(`.cost-input[data-id="${r.id}"][data-cost-type="${r.tipo}"]`);
-                const ahora = input ? (parseFloat(input.value) || 0) : 0;
+                const ahora = input ? leerNumeroAR(input.value) : 0;
                 const trae = Number(delMes[r.id]) || 0;
                 return { id: r.id, tipo: r.tipo, nombre: r.nombre, ahora, trae, cambia: trae > 0 };
             });
 
             _traerFlotaPendiente = { mes, anio, filas };
 
-            const plata = (n) => '$ ' + Math.round(Number(n) || 0).toLocaleString('es-AR');
+            const plata = (n) => '$ ' + numeroAR(Math.round(Number(n) || 0));
             const conGastos = filas.filter(f => f.cambia);
             const sinGastos = filas.filter(f => !f.cambia);
 
@@ -21133,7 +21154,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             p.filas.filter(f => f.cambia).forEach(f => {
                 const input = document.querySelector(`.cost-input[data-id="${f.id}"][data-cost-type="${f.tipo}"]`);
                 if (!input) return;
-                input.value = Math.round(f.trae);
+                input.value = numeroAR(Math.round(f.trae));
                 aplicados++;
             });
 
@@ -21149,35 +21170,37 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         function calculateCosts(fromUser) {
             const month = document.getElementById('costs-month-select').value;
-            const horasReales = parseFloat(document.getElementById('cost-horas-reales').value) || 1;
+            const horasReales = leerNumeroAR(document.getElementById('cost-horas-reales').value) || 1;
             
             let totalFijo = 0;
             let totalVar = 0;
 
             document.querySelectorAll('[data-cost-type="fijo"]').forEach(input => {
-                const val = parseFloat(input.value) || 0;
+                // leerNumeroAR y no parseFloat: el campo dice "1.234.567,89" y
+                // parseFloat se quedaba con 1.234 sin avisar de nada.
+                const val = leerNumeroAR(input.value);
                 totalFijo += val;
                 const id = input.getAttribute('data-id');
                 const hsEl = document.getElementById(`hs-fijo-${id}`);
-                if (hsEl) hsEl.innerText = `$ ${Math.round(val / horasReales).toLocaleString()}`;
+                if (hsEl) hsEl.innerText = `$ ${numeroAR(Math.round(val / horasReales))}`;
             });
 
             document.querySelectorAll('[data-cost-type="variable"]').forEach(input => {
-                const val = parseFloat(input.value) || 0;
+                const val = leerNumeroAR(input.value);
                 totalVar += val;
                 const id = input.getAttribute('data-id');
                 const hsEl = document.getElementById(`hs-var-${id}`);
-                if (hsEl) hsEl.innerText = `$ ${Math.round(val / horasReales).toLocaleString()}`;
+                if (hsEl) hsEl.innerText = `$ ${numeroAR(Math.round(val / horasReales))}`;
             });
 
-            document.getElementById('total-fijo-mes').innerText = `$ ${totalFijo.toLocaleString()}`;
-            document.getElementById('total-fijo-hs').innerText = `$ ${Math.round(totalFijo / horasReales).toLocaleString()}`;
-            document.getElementById('total-var-mes').innerText = `$ ${totalVar.toLocaleString()}`;
-            document.getElementById('total-var-hs').innerText = `$ ${Math.round(totalVar / horasReales).toLocaleString()}`;
+            document.getElementById('total-fijo-mes').innerText = `$ ${numeroAR(totalFijo)}`;
+            document.getElementById('total-fijo-hs').innerText = `$ ${numeroAR(Math.round(totalFijo / horasReales))}`;
+            document.getElementById('total-var-mes').innerText = `$ ${numeroAR(totalVar)}`;
+            document.getElementById('total-var-hs').innerText = `$ ${numeroAR(Math.round(totalVar / horasReales))}`;
             
             const totalMes = totalFijo + totalVar;
-            document.getElementById('total-final-mes').innerText = `$ ${totalMes.toLocaleString()}`;
-            document.getElementById('total-final-hs').innerText = `$ ${Math.round(totalMes / horasReales).toLocaleString()}`;
+            document.getElementById('total-final-mes').innerText = `$ ${numeroAR(totalMes)}`;
+            document.getElementById('total-final-hs').innerText = `$ ${numeroAR(Math.round(totalMes / horasReales))}`;
 
             // Solo al cargar desde el servidor (fromUser === false) no hay cambios que registrar
             if (fromUser === false) return;
@@ -21188,12 +21211,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             // Sync back to database for current session
             if (!globalCostsDatabase[month]) globalCostsDatabase[month] = { fijo: {}, variable: {}, horas_reales: horasReales };
             globalCostsDatabase[month].horas_reales = horasReales;
-            const _fbSync = parseFloat(document.getElementById('cost-fallback-hours')?.value);
+            const _fbSync = leerNumeroAR(document.getElementById('cost-fallback-hours')?.value);
             if (Number.isFinite(_fbSync) && _fbSync > 0) globalCostsDatabase[month].fallback_hours = _fbSync;
             document.querySelectorAll('[data-cost-type]').forEach(input => {
                 const type = input.getAttribute('data-cost-type');
                 const id = input.getAttribute('data-id');
-                globalCostsDatabase[month][type][id] = parseFloat(input.value) || 0;
+                globalCostsDatabase[month][type][id] = leerNumeroAR(input.value);
             });
             
             // No auto-save: se guardan con "Guardar" o con "CALCULAR COSTOS DEL MES"
@@ -21206,7 +21229,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const btn = document.getElementById('btn-auto-horas');
             const month = document.getElementById('costs-month-select').value;
             const year = nowBuenosAires().year;
-            const fb = parseFloat(document.getElementById('cost-fallback-hours')?.value) || 8;
+            const fb = leerNumeroAR(document.getElementById('cost-fallback-hours')?.value) || 8;
             const detail = document.getElementById('horas-auto-detail');
             if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
             if (detail) detail.textContent = 'Sumando horas de los viajes del mes...';
@@ -21218,7 +21241,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 // Solo cargamos las horas REALES (viajes con horario). Los viajes
                 // sin horario se muestran como info para que el usuario decida
                 // si los suma a mano — asumir 8h por viaje inflaba el total.
-                if (el) el.value = d.hoursFromTrips;
+                if (el) el.value = numeroAR(d.hoursFromTrips);
                 if (detail) {
                     const sinHorario = d.tripsWithoutHours > 0
                         ? ` &nbsp;·&nbsp; <span class="text-amber-700 font-bold">⚠ ${d.tripsWithoutHours} viajes SIN horario NO sumados (serían ~${d.hoursAssumed} h a ${d.fallbackHours} h c/u si querés agregarlas a mano)</span>`
@@ -21257,7 +21280,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 const type = inp.getAttribute('data-cost-type');
                 const id = inp.getAttribute('data-id');
                 const v = prevData[type]?.[id];
-                if (v != null) { inp.value = v; copied++; }
+                if (v != null) { inp.value = numeroAR(v); copied++; }
             });
             // Horas NO se copian a proposito: cada mes tiene sus horas propias.
             // El fallback si (es una preferencia, no un dato del mes).
@@ -21274,7 +21297,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         async function calcularCostosDelMes() {
             const btn = document.getElementById('btn-calcular-mes');
             const month = document.getElementById('costs-month-select').value;
-            const horasReales = parseFloat(document.getElementById('cost-horas-reales').value) || 0;
+            const horasReales = leerNumeroAR(document.getElementById('cost-horas-reales').value);
 
             if (!horasReales) {
                 alert('Ingresá las horas reales del mes antes de calcular.');
@@ -21282,13 +21305,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
 
             // Recopilar parámetros del formulario
-            const fallbackHours = parseFloat(document.getElementById('cost-fallback-hours')?.value) || 8;
+            const fallbackHours = leerNumeroAR(document.getElementById('cost-fallback-hours')?.value) || 8;
             const costsParams = { fijo: {}, variable: {}, horas_reales: horasReales, fallback_hours: fallbackHours };
             document.querySelectorAll('[data-cost-type="fijo"]').forEach(inp => {
-                costsParams.fijo[inp.getAttribute('data-id')] = parseFloat(inp.value) || 0;
+                costsParams.fijo[inp.getAttribute('data-id')] = leerNumeroAR(inp.value);
             });
             document.querySelectorAll('[data-cost-type="variable"]').forEach(inp => {
-                costsParams.variable[inp.getAttribute('data-id')] = parseFloat(inp.value) || 0;
+                costsParams.variable[inp.getAttribute('data-id')] = leerNumeroAR(inp.value);
             });
 
             // Obtener salaries del mes desde la base en memoria
