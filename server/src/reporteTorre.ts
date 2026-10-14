@@ -140,6 +140,24 @@ export function mesDeFecha(f: Date | null): string {
     return f ? MESES_LIBRO[new Date(f).getUTCMonth()] : '';
 }
 
+/** "R8 2:10 - R12 1:45 - vuelta 0:35".
+ *
+ *  Vacio cuando el viaje hizo una sola ruta: ahi la columna "Duracion horas",
+ *  que es el total, ya lo dice todo. */
+function detalleDeTramos(tramos: any[]): string {
+    const lista = (tramos || []).filter((t) => t.inicio && t.fin);
+    const rutas = lista.filter((t) => t.ruta !== 'VUELTA AL DEPOSITO');
+    if (rutas.length < 2) return '';
+    const hm = (t: any) => {
+        const min = Math.round((new Date(t.fin).getTime() - new Date(t.inicio).getTime()) / 60000);
+        if (min <= 0) return '0:00';
+        return `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
+    };
+    return lista
+        .map((t) => `${t.ruta === 'VUELTA AL DEPOSITO' ? 'vuelta' : t.ruta} ${hm(t)}`)
+        .join(' · ');
+}
+
 async function filasViajesDe(prisma: Prisma, where: any) {
     const viajes = await prisma.trip.findMany({
         where,
@@ -150,7 +168,9 @@ async function filasViajesDe(prisma: Prisma, where: any) {
                     vehicle: { select: { plate: true } },
                     stops: { select: { status: true, isReturnToBase: true } }
                 }
-            }
+            },
+            // Las horas de cada ruta del viaje, para la columna del detalle
+            tramos: { orderBy: { orden: 'asc' } }
         },
         orderBy: { date: 'asc' }
     });
@@ -192,7 +212,11 @@ async function filasViajesDe(prisma: Prisma, where: any) {
             'Km recorridos': numero(r?.totalKm),
             'Costo': numero(t.value),
             'Estado de pago': t.paymentStatus || '',
-            'Fecha de pago': soloFecha(t.paymentDate)
+            'Fecha de pago': soloFecha(t.paymentDate),
+            // Al FINAL y nunca en el medio: la plantilla tiene una tabla dinamica
+            // que referencia los campos por numero de posicion, asi que insertar
+            // una columna en el medio desalinea el informe entero.
+            'Horas por ruta': detalleDeTramos(t.tramos)
         };
     });
 }
@@ -386,7 +410,8 @@ const COLUMNAS: Record<string, string[]> = {
     viajes: ['ID viaje', 'Fecha', 'Reparto', 'Localidad', 'Subzona', 'Unidad de negocio', 'Contrato', 'Proveedor',
         'Chofer', 'Auxiliar 1', 'Auxiliar 2', 'Auxiliar 3', 'Patente', 'Tipo de vehiculo', 'Vuelta', 'Refrigerado',
         'Temperatura', 'Estado', 'Salida deposito', 'Llegada deposito', 'Duracion real', 'Duracion horas', 'Paradas planificadas',
-        'Paradas entregadas', 'Paradas no entregadas', 'Km recorridos', 'Costo', 'Estado de pago', 'Fecha de pago'],
+        'Paradas entregadas', 'Paradas no entregadas', 'Km recorridos', 'Costo', 'Estado de pago', 'Fecha de pago',
+        'Horas por ruta'],
     cajones: ['Fecha', 'ID viaje', 'Reparto', 'Unidad de negocio', 'Chofer', 'Establecimiento', 'Direccion',
         'Localidad', 'Partido', 'Orden de parada', 'Tipo de movimiento', 'Tipo de envase', 'Cantidad', 'Hora de la parada',
         'Ultima carga de envases'],

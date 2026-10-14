@@ -15310,7 +15310,10 @@
         async function weeklyStopsSave(tripId) {
             const rows = weeklyTripStopsBuffers[tripId] || [];
             try {
-                const guardado = await putTripDeliveryStops(tripId, rows.map((r) => r.clientId));
+                const guardado = await putTripDeliveryStops(
+                    tripId,
+                    rows.map((r) => r.clientId),
+                    rows.map((r) => r.ruta || null));
                 if (!guardado) return;
                 if (typeof addNotification === 'function') {
                     addNotification('success', 'Paradas', 'Orden y paradas guardados para el viaje #' + tripId);
@@ -15353,6 +15356,66 @@
             }
         }
 
+
+        // ═══════════ LAS HORAS DE CADA RUTA DEL VIAJE ═══════════
+        // Un viaje puede hacer dos o tres rutas y despues volver al deposito.
+        // Hasta ahora solo se sabia cuanto duro todo junto.
+
+        /** El nombre del tramo final, igual que en el servidor. */
+        const TRAMO_VUELTA = 'VUELTA AL DEPOSITO';
+
+        /** "2:10" a partir de horas decimales. Con menos de una hora, minutos. */
+        function horasYMinutos(h) {
+            if (!h || h <= 0) return '—';
+            const total = Math.round(h * 60);
+            const hh = Math.floor(total / 60), mm = total % 60;
+            return hh === 0 ? `${mm} min` : `${hh}:${String(mm).padStart(2, '0')}`;
+        }
+
+        /** Trae los tramos del viaje y los pinta. No muestra nada si el viaje
+         *  hizo una sola ruta: ahi el total ya lo dice todo y seria ruido. */
+        async function cargarTramosDelViaje(tripId, contenedorId) {
+            const caja = document.getElementById(contenedorId);
+            if (!caja) return;
+            let d = null;
+            try {
+                const res = await fetch(`${API_URL}/trips/${tripId}/tramos`, { headers: getActorHeaders(), cache: 'no-store' });
+                if (!res.ok) return;
+                d = await res.json();
+            } catch (_) { return; }
+
+            const tramos = (d?.tramos || []).filter(t => t.inicio || t.fin);
+            const rutas = tramos.filter(t => t.ruta !== TRAMO_VUELTA);
+            if (rutas.length < 2) { caja.innerHTML = ''; return; }   // una sola ruta: no aporta
+
+            const fila = (t) => {
+                const esVuelta = t.ruta === TRAMO_VUELTA;
+                return `<tr class="border-t border-[#F4F7FE]">
+                    <td class="px-3 py-1.5 font-bold ${esVuelta ? 'text-[#A3AED0]' : 'text-[#2B3674]'}">
+                        ${esVuelta ? 'Vuelta al depósito' : escapeHtml(t.ruta)}
+                        ${t.motivo ? `<span class="block text-[9px] font-bold text-amber-600 leading-tight">cerrada con motivo: ${escapeHtml(t.motivo)}</span>` : ''}
+                    </td>
+                    <td class="px-3 py-1.5 text-right font-black text-[#1B2559] whitespace-nowrap">${horasYMinutos(t.horas)}</td>
+                </tr>`;
+            };
+
+            caja.innerHTML = `
+                <div class="mb-3 rounded-xl border border-[#E0E5F2] overflow-hidden bg-white">
+                    <div class="px-3 py-2 bg-[#F8FAFF] text-[9px] font-black text-[#A3AED0] uppercase tracking-widest">
+                        Horas por ruta
+                    </div>
+                    <table class="w-full text-[11px] border-collapse">
+                        <tbody>${tramos.map(fila).join('')}</tbody>
+                        <tfoot>
+                            <tr class="bg-[#1B2559]">
+                                <td class="px-3 py-2 font-black uppercase tracking-wider text-white text-[10px]">Total del viaje</td>
+                                <td class="px-3 py-2 text-right font-black text-white whitespace-nowrap">${horasYMinutos(d.totalHoras)}</td>
+                            </tr>
+                        </tfoot>
+                    </table>
+                </div>`;
+        }
+
         function renderWeeklyTripStopsPanel(tripId) {
             const wrap = document.getElementById('weekly-stops-wrap-' + tripId);
             if (!wrap) return;
@@ -15386,7 +15449,8 @@
                             Viaje finalizado · solo lectura
                         </span>
                         <span class="text-[10px] text-emerald-700">${rows.length} paradas</span>
-                    </div>` : `
+                    </div>
+                    <div id="weekly-tramos-${tripId}"></div>` : `
                     <div class="flex flex-wrap items-center gap-2 mb-3 p-2 rounded-xl bg-amber-50 border border-amber-200">
                         <i data-lucide="lock" class="w-4 h-4 text-amber-700"></i>
                         <span class="text-[10px] font-black uppercase tracking-wider text-amber-800">
@@ -15396,7 +15460,10 @@
                             ${rows.length} paradas — el chofer ya empezó el reparto
                         </span>
                         <span id="weekly-signal-${tripId}" class="text-[10px] font-bold ml-auto"></span>
-                    </div>`;
+                    </div>
+                    <div id="weekly-tramos-${tripId}"></div>`;
+                // Las horas de cada ruta, si el viaje hizo mas de una
+                cargarTramosDelViaje(tripId, `weekly-tramos-${tripId}`);
                 // Async: completar el indicador de senial del telefono del chofer.
                 // Verde = reportando; ambar = sin senial hace rato (puede tener
                 // paradas marcadas sin sincronizar en el telefono).
@@ -24811,11 +24878,15 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
          *  operador y se reintenta en modo seguro: las paradas ya marcadas quedan
          *  intactas y solo se agregan o reordenan las pendientes.
          *  Devuelve false si el operador cancelo. */
-        async function putTripDeliveryStops(tripId, clientIds) {
+        /** `rutas` dice de que ruta es cada parada, en el mismo orden que
+         *  clientIds. El servidor lo necesita para poder cerrar las rutas de a
+         *  una desde el celular; antes la web tenia el dato y lo perdia al
+         *  guardar. Si no se manda, cada parada conserva la ruta que ya tenia. */
+        async function putTripDeliveryStops(tripId, clientIds, rutas) {
             const enviar = (forzar) => fetch(`${API_URL}/trips/${tripId}/delivery-stops`, {
                 method: 'PUT',
                 headers: { ...getActorHeaders(), ...(forzar ? { 'X-Force-Replace': 'true' } : {}) },
-                body: JSON.stringify({ clientIds })
+                body: JSON.stringify({ clientIds, ...(Array.isArray(rutas) ? { rutas } : {}) })
             });
             let res = await enviar(false);
             let data = await res.json().catch(() => ({}));
@@ -24871,7 +24942,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         async function saveTripDeliveryStops(tripId) {
-            return putTripDeliveryStops(tripId, tripDeliveryRows.map((r) => r.clientId));
+            return putTripDeliveryStops(
+                tripId,
+                tripDeliveryRows.map((r) => r.clientId),
+                tripDeliveryRows.map((r) => r.ruta || null));
         }
 
         /** Minutos desde la ultima senial GPS del telefono asignado a un viaje.

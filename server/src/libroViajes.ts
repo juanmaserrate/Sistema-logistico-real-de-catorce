@@ -25,7 +25,10 @@ const HOJA_DATOS = 'xl/worksheets/sheet2.xml';
 const HOJA_CONTEO = 'xl/worksheets/sheet3.xml';
 const CACHE_DINAMICA = 'xl/pivotCache/pivotCacheDefinition1.xml';
 
-const ULTIMA_COLUMNA = 'AF';
+// AG y no AF: entro "Horas por ruta" al final. Va al final y nunca en el medio
+// porque la tabla dinamica de la plantilla referencia los campos por numero de
+// posicion, y correrlos desalinea el informe entero.
+const ULTIMA_COLUMNA = 'AG';
 const ULTIMA_COLUMNA_CONTEO = 'N';
 
 /** Las columnas de la hoja "Viajes", en orden. Coinciden con la plantilla. */
@@ -36,7 +39,8 @@ export const COLUMNAS_LIBRO = [
     'Patente', 'Tipo de vehiculo', 'Vuelta', 'Refrigerado', 'Temperatura', 'Estado',
     'Salida deposito', 'Llegada deposito', 'Duracion horas', 'Paradas planificadas',
     'Paradas entregadas', 'Paradas no entregadas', 'Km recorridos', 'Costo',
-    'Estado de pago', 'Fecha de pago'
+    'Estado de pago', 'Fecha de pago',
+    'Horas por ruta'
 ];
 
 const MESES_CORTOS = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
