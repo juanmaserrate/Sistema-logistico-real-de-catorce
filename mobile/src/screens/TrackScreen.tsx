@@ -35,6 +35,9 @@ import {
   flushPhotoQueue,
   flushPunchQueue,
   flushRetryQueue,
+  flushTramoQueue,
+  cerrarRutaDelViaje,
+  finalizarViaje,
   getPendingTotalCount,
   getPendingLocationCount,
   pingServer,
@@ -68,6 +71,9 @@ function isConcluded(r: Route): boolean {
   return ts === 'COMPLETED' || ts === 'RETURNED';
 }
 
+/** El tramo final del viaje, igual que en el servidor. */
+const TRAMO_VUELTA = 'VUELTA AL DEPOSITO';
+
 /** Parada de retorno al depósito. El flag lo pone el backend; el fallback por
  *  nombre cubre las rutas creadas antes de que existiera el campo. */
 function isBaseStop(st: Stop): boolean {
@@ -75,7 +81,9 @@ function isBaseStop(st: Stop): boolean {
   const n = (st.client?.name || '')
     .normalize('NFD').replace(/\p{Diacritic}/gu, '')
     .toUpperCase().trim();
-  return /^(REAL\s*(DE\s*)?(14|CATORCE))\b/.test(n) || /^DEPOSITO\b/.test(n);
+  // "R14" tambien: el servidor ya lo reconocia y el celular no, asi que la
+  // misma parada se veia como deposito de un lado y como cliente del otro.
+  return /^(REAL\s*(DE\s*)?(14|CATORCE))\b/.test(n) || /^DEPOSITO\b/.test(n) || /^R\s*14\b/.test(n);
 }
 
 /** Que rutas ve el chofer:
@@ -228,6 +236,39 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       return st !== 'COMPLETED' && st !== 'UNDELIVERABLE';
     });
   }, [selected]);
+
+  /** Las rutas del viaje, en el orden en que se recorren, sacadas de las
+   *  paradas. La vuelta al deposito es su propio tramo. */
+  const tramosDelViaje = useMemo(() => {
+    if (!selected?.stops?.length) return [] as string[];
+    const orden: string[] = [];
+    [...selected.stops].sort((a, b) => a.sequence - b.sequence).forEach((st) => {
+      const nombre = isBaseStop(st) ? TRAMO_VUELTA : String(st.ruta || '').trim();
+      if (nombre && !orden.includes(nombre)) orden.push(nombre);
+    });
+    return orden;
+  }, [selected]);
+
+  /** Las que ya se cerraron. */
+  const tramosCerrados = useMemo(() => {
+    const set = new Set<string>();
+    (selected?.trip?.tramos || []).forEach((t) => { if (t.fin) set.add(t.ruta); });
+    return set;
+  }, [selected]);
+
+  /** La primera sin cerrar: es la unica que se puede cerrar. */
+  const tramoAbierto = useMemo(
+    () => tramosDelViaje.find((r) => !tramosCerrados.has(r)) || null,
+    [tramosDelViaje, tramosCerrados]
+  );
+
+  /** Si el viaje hace UNA sola ruta no aparece ningun boton de cerrar ruta:
+   *  funciona igual que siempre, con FINALIZAR VIAJE agregado. Es la enorme
+   *  mayoria de los viajes y no hay por que agregarles un paso. */
+  const tieneVariasRutas = useMemo(
+    () => tramosDelViaje.filter((r) => r !== TRAMO_VUELTA).length >= 2,
+    [tramosDelViaje]
+  );
 
   const routeStopsSorted = useMemo(() => {
     if (!selected?.stops?.length) return [];
@@ -407,6 +448,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           // El fichaje va PRIMERO: si el chofer ficho entrada sin señal, el
           // operador tiene que ver el viaje en curso antes que las entregas.
           await flushPunchQueue();
+          await flushTramoQueue();
           // Los pospuestos ANTES que las paradas: reordenan el recorrido, y las
           // marcas de entrega tienen que caer sobre el orden ya corregido.
           await flushRetryQueue();
@@ -433,6 +475,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         loadRoutes({ silent: true });
         void (async () => {
           await flushPunchQueue().catch(() => 0);
+          await flushTramoQueue().catch(() => 0);
           await flushRetryQueue().catch(() => 0);
           await flushStopQueue().catch(() => 0);
           await flushIncidentQueue().catch(() => {});
@@ -654,6 +697,115 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     setTracking(true);
   };
 
+  /** Cierra una ruta sin terminar el viaje. */
+  const onCerrarRuta = useCallback(async (ruta: string) => {
+    if (!selected?.trip?.id) return;
+    const tripId = selected.trip.id;
+    const pendientes = (selected.stops || []).filter((st) => {
+      const mia = isBaseStop(st) ? TRAMO_VUELTA : String(st.ruta || '').trim();
+      if (mia !== ruta) return false;
+      const e = String(st.status || '').toUpperCase();
+      return e !== 'COMPLETED' && e !== 'UNDELIVERABLE';
+    });
+
+    const cerrar = async (motivo?: string) => {
+      const r = await cerrarRutaDelViaje(tripId, ruta, motivo ?? null);
+      if (r.error) { Alert.alert('No se pudo cerrar', r.error); return; }
+      Alert.alert(
+        r.enviado ? 'Ruta cerrada' : 'Guardado sin señal',
+        r.enviado
+          ? `Terminaste ${ruta}. El viaje sigue abierto.`
+          : `Terminaste ${ruta}. Se va a mandar solo cuando vuelva la señal, con la hora de ahora.`
+      );
+      await loadRoutes({ silent: true });
+    };
+
+    if (pendientes.length > 0) {
+      // Cerrar con paradas sin marcar se puede, pero con motivo
+      Alert.prompt?.(
+        `Te quedan ${pendientes.length} parada(s)`,
+        `¿Por qué cerrás ${ruta} así? Queda anotado.`,
+        [
+          { text: 'Volver', style: 'cancel' },
+          {
+            text: 'Cerrar igual',
+            onPress: (texto?: string) => {
+              const m = String(texto || '').trim();
+              if (!m) { Alert.alert('Falta el motivo', 'Escribí por qué la cerrás con paradas sin marcar.'); return; }
+              cerrar(m);
+            },
+          },
+        ],
+        'plain-text'
+      ) ?? Alert.alert(
+        `Te quedan ${pendientes.length} parada(s)`,
+        `¿Cerrás ${ruta} igual?`,
+        [
+          { text: 'Volver', style: 'cancel' },
+          { text: 'Cerrar igual', onPress: () => cerrar('Cerrada con paradas sin marcar') },
+        ]
+      );
+      return;
+    }
+    Alert.alert(`Terminar ${ruta}`, '¿Terminaste esta ruta? El viaje sigue abierto.', [
+      { text: 'Todavía no', style: 'cancel' },
+      { text: 'Sí, terminé', onPress: () => cerrar() },
+    ]);
+  }, [selected, loadRoutes]);
+
+  /** Termina el viaje donde sea que este el chofer, sin pasar por el deposito. */
+  const onFinalizarViaje = useCallback(async () => {
+    if (!selected?.trip?.id) return;
+    const tripId = selected.trip.id;
+    const pendientes = (selected.stops || []).filter((st) => {
+      const e = String(st.status || '').toUpperCase();
+      return e !== 'COMPLETED' && e !== 'UNDELIVERABLE';
+    });
+
+    const finalizar = async (motivo?: string) => {
+      const r = await finalizarViaje(tripId, motivo ?? null);
+      if (r.error) { Alert.alert('No se pudo finalizar', r.error); return; }
+      Alert.alert(
+        r.enviado ? 'VIAJE FINALIZADO' : 'Guardado sin señal',
+        r.enviado
+          ? 'Listo, el viaje quedó cerrado.'
+          : 'El viaje se va a cerrar solo cuando vuelva la señal, con la hora de ahora.'
+      );
+      await loadRoutes({ silent: true });
+    };
+
+    if (pendientes.length > 0) {
+      Alert.prompt?.(
+        `Te quedan ${pendientes.length} parada(s)`,
+        '¿Por qué finalizás el viaje así? Queda anotado.',
+        [
+          { text: 'Volver', style: 'cancel' },
+          {
+            text: 'Finalizar igual',
+            onPress: (texto?: string) => {
+              const m = String(texto || '').trim();
+              if (!m) { Alert.alert('Falta el motivo', 'Escribí por qué finalizás con paradas sin marcar.'); return; }
+              finalizar(m);
+            },
+          },
+        ],
+        'plain-text'
+      ) ?? Alert.alert(
+        `Te quedan ${pendientes.length} parada(s)`,
+        '¿Finalizás el viaje igual?',
+        [
+          { text: 'Volver', style: 'cancel' },
+          { text: 'Finalizar igual', onPress: () => finalizar('Finalizado con paradas sin marcar') },
+        ]
+      );
+      return;
+    }
+    Alert.alert('Finalizar viaje', '¿Terminaste el viaje?', [
+      { text: 'Todavía no', style: 'cancel' },
+      { text: 'Sí, finalizar', onPress: () => finalizar() },
+    ]);
+  }, [selected, loadRoutes]);
+
   /** Fichar salida es el momento natural para cerrar el viaje: el chofer ya
    *  volvió y lo hace por costumbre. Si terminó todas las entregas y solo le
    *  falta marcar la vuelta al depósito, se lo ofrecemos acá — sin esto el
@@ -857,6 +1009,21 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
             </Pressable>
           )}
 
+          {/* FINALIZAR VIAJE: siempre a la vista, no depende de ninguna parada.
+              Antes el viaje solo se cerraba marcando el deposito: si el chofer
+              no pasaba por ahi, quedaba abierto para siempre. */}
+          {selected && !selConcluded ? (
+            <Pressable style={styles.finalizarViajeBtn} onPress={onFinalizarViaje}>
+              <Text style={styles.finalizarViajeTxt}>FINALIZAR VIAJE</Text>
+              <Text style={styles.finalizarViajeSub}>Donde estes, sin pasar por el deposito</Text>
+            </Pressable>
+          ) : null}
+          {selected && selConcluded ? (
+            <View style={styles.viajeFinalizadoCard}>
+              <Text style={styles.viajeFinalizadoTxt}>VIAJE FINALIZADO</Text>
+            </View>
+          ) : null}
+
           {/* Botón incidencia */}
           <Pressable style={styles.incidentBtn} onPress={() => setIncidentModalOpen(true)}>
             <Text style={styles.incidentBtnTxt}>⚠️  Reportar incidencia</Text>
@@ -966,6 +1133,21 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
               ) : null}
               {filteredStops.map((st, idx) => {
                 const isLast = idx === filteredStops.length - 1;
+                // Con varias rutas, las paradas se ven agrupadas: encabezado al
+                // empezar cada una y boton de cerrar al terminarla. Con una sola
+                // ruta no aparece nada de esto.
+                const miTramo = isBaseStop(st) ? TRAMO_VUELTA : String(st.ruta || '').trim();
+                const anterior = idx > 0 ? filteredStops[idx - 1] : null;
+                const tramoAnterior = anterior
+                  ? (isBaseStop(anterior) ? TRAMO_VUELTA : String(anterior.ruta || '').trim())
+                  : null;
+                const siguiente = idx + 1 < filteredStops.length ? filteredStops[idx + 1] : null;
+                const tramoSiguiente = siguiente
+                  ? (isBaseStop(siguiente) ? TRAMO_VUELTA : String(siguiente.ruta || '').trim())
+                  : null;
+                const abreTramo = tieneVariasRutas && !!miTramo && miTramo !== tramoAnterior;
+                const cierraTramo = tieneVariasRutas && !!miTramo && miTramo !== tramoSiguiente;
+                const yaCerrado = tramosCerrados.has(miTramo);
                 const isActive = st.status === 'ARRIVED';
                 const isDone = st.status === 'COMPLETED';
                 const isFailed = st.status === 'UNDELIVERABLE';
@@ -975,7 +1157,16 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                 // con esa hora, así que se avisa claramente antes de tocarla.
                 const isBase = isBaseStop(st);
                 return (
-                <View key={st.id} style={styles.tlRow}>
+                <React.Fragment key={st.id}>
+                {abreTramo ? (
+                  <View style={styles.tramoHead}>
+                    <Text style={styles.tramoHeadTxt}>
+                      {miTramo === TRAMO_VUELTA ? 'VUELTA AL DEPÓSITO' : miTramo}
+                    </Text>
+                    {yaCerrado ? <Text style={styles.tramoHeadOk}>✓ terminada</Text> : null}
+                  </View>
+                ) : null}
+                <View style={styles.tlRow}>
                   {/* Timeline left: dot + line */}
                   <View style={styles.tlLeft}>
                     <View style={[
@@ -1111,6 +1302,21 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                     ) : null}
                   </View>
                 </View>
+                {cierraTramo && miTramo !== TRAMO_VUELTA && !yaCerrado && !selConcluded ? (
+                  <Pressable
+                    style={[styles.cerrarTramoBtn, tramoAbierto !== miTramo && styles.cerrarTramoBtnOff]}
+                    disabled={tramoAbierto !== miTramo}
+                    onPress={() => onCerrarRuta(miTramo)}
+                  >
+                    <Text style={styles.cerrarTramoTxt}>
+                      {tramoAbierto === miTramo ? `TERMINE ${miTramo}` : `Primero termina ${tramoAbierto}`}
+                    </Text>
+                    {tramoAbierto === miTramo ? (
+                      <Text style={styles.cerrarTramoSub}>El viaje sigue abierto</Text>
+                    ) : null}
+                  </Pressable>
+                ) : null}
+                </React.Fragment>
                 );
               })}
             </View>
@@ -1518,6 +1724,57 @@ const styles = StyleSheet.create({
     ...shadow.md,
   },
   ficharSalidaTxt: { fontWeight: font.black, color: colors.textInverse, fontSize: font['2xl'] + 2, letterSpacing: 0.5 },
+
+  // ── Rutas del viaje y cierre ─────────────────────────────────────
+  // Solo aparecen cuando el viaje hace mas de una ruta.
+  tramoHead: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: spacing.lg,
+    marginBottom: spacing.sm,
+    paddingVertical: spacing.sm,
+    paddingHorizontal: spacing.md,
+    backgroundColor: colors.primaryLight,
+    borderRadius: radius.md,
+  },
+  tramoHeadTxt: { fontWeight: font.black, color: colors.primary, fontSize: font.lg, letterSpacing: 0.5 },
+  tramoHeadOk: { fontWeight: font.black, color: colors.success, fontSize: font.sm },
+  cerrarTramoBtn: {
+    marginTop: spacing.sm,
+    marginBottom: spacing.md,
+    backgroundColor: colors.primary,
+    paddingVertical: spacing.lg,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.full,
+    alignItems: 'center',
+    ...shadow.md,
+  },
+  cerrarTramoBtnOff: { backgroundColor: colors.border },
+  cerrarTramoTxt: { fontWeight: font.black, color: colors.textInverse, fontSize: font.xl, letterSpacing: 0.5 },
+  cerrarTramoSub: { color: colors.textInverse, opacity: 0.85, fontSize: font.sm, marginTop: 2 },
+
+  finalizarViajeBtn: {
+    marginTop: spacing.md,
+    backgroundColor: '#065f46',
+    paddingVertical: spacing.xl + 4,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.full,
+    alignItems: 'center',
+    ...shadow.md,
+  },
+  finalizarViajeTxt: { fontWeight: font.black, color: colors.textInverse, fontSize: font['2xl'], letterSpacing: 0.5 },
+  finalizarViajeSub: { color: colors.textInverse, opacity: 0.85, fontSize: font.sm, marginTop: 2 },
+  viajeFinalizadoCard: {
+    marginTop: spacing.md,
+    backgroundColor: colors.successBg,
+    borderWidth: 2,
+    borderColor: colors.successBorder,
+    paddingVertical: spacing.xl,
+    borderRadius: radius.full,
+    alignItems: 'center',
+  },
+  viajeFinalizadoTxt: { fontWeight: font.black, color: colors.success, fontSize: font['2xl'], letterSpacing: 1 },
 
   /* ── Offline / incident ────────────────────────── */
   offlineBanner: {

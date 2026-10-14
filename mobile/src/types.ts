@@ -51,7 +51,20 @@ export interface Stop {
   retryCount?: number;
   /** Motivo del último intento fallido (derivado de retryLog en el server). */
   retryReason?: string | null;
+  /** De qué ruta del viaje es esta parada ("R8", "R12"). Un viaje puede hacer
+   *  varias rutas y después volver al depósito. null = viaje de una sola ruta. */
+  ruta?: string | null;
   client: Client;
+}
+
+/** Las horas de un tramo del viaje: una ruta, o la vuelta al depósito. */
+export interface TripLeg {
+  id: string;
+  orden: number;
+  ruta: string;
+  inicio?: string | null;
+  fin?: string | null;
+  motivo?: string | null;
 }
 
 export interface Route {
@@ -70,6 +83,10 @@ export interface Route {
     zone?: string | null;
     status?: string | null;
     completedAt?: string | null;
+    /** Las rutas del viaje, en orden: ["R8","R12"]. */
+    rutas?: string[] | null;
+    /** Las que ya se cerraron, con sus horas. */
+    tramos?: TripLeg[] | null;
   } | null;
   /** Justificación del chofer al reordenar paradas */
   reorderReason?: string | null;

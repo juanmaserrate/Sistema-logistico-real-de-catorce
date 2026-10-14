@@ -656,6 +656,139 @@ export function flushPunchQueue(): Promise<number> {
   return _punchQueueFlushing;
 }
 
+// ── Cerrar una ruta y finalizar el viaje ─────────────────────────────────
+// Hasta ahora el viaje lo cerraba la parada del deposito: si el chofer no la
+// marcaba, quedaba abierto para siempre. Y un viaje de dos o tres rutas no
+// tenia forma de cerrar la primera sin terminar todo.
+//
+// La hora que se guarda es la del momento en que el chofer APRETO, no la que
+// llega al servidor. Sin eso, un cierre hecho en un sotano quedaria con la hora
+// en que el telefono recupero senal, que puede ser dos horas despues.
+
+interface OfflineTramoAction {
+  tripId: number;
+  /** 'cerrar' = una ruta; 'finalizar' = todo el viaje. */
+  tipo: 'cerrar' | 'finalizar';
+  ruta?: string;
+  motivo?: string | null;
+  at: string;
+}
+
+const TRAMO_QUEUE_MAX = 200;
+
+async function readTramoQueue(): Promise<OfflineTramoAction[]> {
+  try {
+    const raw = await AsyncStorage.getItem(STORAGE_KEYS.offlineTramoQueue);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch { return []; }
+}
+
+async function writeTramoQueue(q: OfflineTramoAction[]): Promise<void> {
+  await AsyncStorage.setItem(STORAGE_KEYS.offlineTramoQueue, JSON.stringify(q.slice(-TRAMO_QUEUE_MAX)));
+}
+
+export async function getPendingTramoCount(): Promise<number> {
+  return (await readTramoQueue()).length;
+}
+
+async function encolarTramo(accion: OfflineTramoAction): Promise<void> {
+  const q = await readTramoQueue();
+  q.push(accion);
+  await writeTramoQueue(q);
+}
+
+async function enviarTramo(a: OfflineTramoAction): Promise<Response> {
+  const url = a.tipo === 'cerrar'
+    ? apiUrl(`/api/v1/trips/${a.tripId}/tramos/cerrar`)
+    : apiUrl(`/api/v1/trips/${a.tripId}/finalizar`);
+  const body = a.tipo === 'cerrar'
+    ? { ruta: a.ruta, motivo: a.motivo ?? null, at: a.at }
+    : { motivo: a.motivo ?? null, at: a.at };
+  return fetchWithTimeout(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...(await authHeaders()) },
+    body: JSON.stringify(body),
+    timeout: 10000,
+  });
+}
+
+/** Cierra una ruta del viaje sin terminarlo. Si no hay senal, queda en cola. */
+export async function cerrarRutaDelViaje(
+  tripId: number, ruta: string, motivo?: string | null
+): Promise<{ enviado: boolean; error?: string }> {
+  const accion: OfflineTramoAction = { tripId, tipo: 'cerrar', ruta, motivo: motivo ?? null, at: new Date().toISOString() };
+  try {
+    const res = await enviarTramo(accion);
+    if (res.ok) return { enviado: true };
+    // 4xx = el servidor lo rechazo por un motivo concreto (saltear una ruta,
+    // hora imposible). Reintentarlo no lo va a arreglar: se avisa y listo.
+    if (httpDisposition(res.status) === 'discard') {
+      const d = await res.json().catch(() => ({} as any));
+      return { enviado: false, error: d?.error || 'El servidor rechazo el cierre' };
+    }
+    await encolarTramo(accion);
+    return { enviado: false };
+  } catch {
+    await encolarTramo(accion);
+    return { enviado: false };
+  }
+}
+
+/** Finaliza el viaje este donde este el chofer. Si no hay senal, queda en cola. */
+export async function finalizarViaje(
+  tripId: number, motivo?: string | null
+): Promise<{ enviado: boolean; error?: string; code?: string }> {
+  const accion: OfflineTramoAction = { tripId, tipo: 'finalizar', motivo: motivo ?? null, at: new Date().toISOString() };
+  try {
+    const res = await enviarTramo(accion);
+    if (res.ok) return { enviado: true };
+    if (httpDisposition(res.status) === 'discard') {
+      const d = await res.json().catch(() => ({} as any));
+      return { enviado: false, error: d?.error || 'El servidor rechazo el cierre', code: d?.code };
+    }
+    await encolarTramo(accion);
+    return { enviado: false };
+  } catch {
+    await encolarTramo(accion);
+    return { enviado: false };
+  }
+}
+
+let _tramoQueueFlushing: Promise<number> | null = null;
+export function flushTramoQueue(): Promise<number> {
+  if (_tramoQueueFlushing) return _tramoQueueFlushing;
+  _tramoQueueFlushing = (async (): Promise<number> => {
+    try {
+      const queue = await readTramoQueue();
+      if (!queue.length) return 0;
+      const stillPending: OfflineTramoAction[] = [];
+      let sent = 0;
+      let networkBroke = false;
+      for (const item of queue) {
+        if (networkBroke) { stillPending.push(item); continue; }
+        try {
+          const res = await enviarTramo(item);
+          // Un rechazo del servidor no se reintenta eternamente: si la ruta ya
+          // estaba cerrada o el viaje ya termino, la accion ya no tiene sentido.
+          if (res.ok || httpDisposition(res.status) === 'discard') sent++;
+          else { stillPending.push(item); networkBroke = true; }
+        } catch {
+          stillPending.push(item);
+          networkBroke = true;
+        }
+      }
+      if (stillPending.length === 0) await AsyncStorage.removeItem(STORAGE_KEYS.offlineTramoQueue);
+      else await writeTramoQueue(stillPending);
+      return sent;
+    } finally {
+      _tramoQueueFlushing = null;
+    }
+  })();
+  return _tramoQueueFlushing;
+}
+
 // ── Posponer una parada ("no pude, vuelvo más tarde") ─────────────────────────
 // El chofer llega, el local está cerrado, y piensa pasar de nuevo al final del
 // recorrido. Antes solo podía marcar "No entregado" (definitivo, aunque después

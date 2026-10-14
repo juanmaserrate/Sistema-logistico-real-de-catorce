@@ -115,6 +115,11 @@ export default function ReorderModal({ visible, routeId, stops, driverName, onCl
     setOrderedStops((prev) => {
       const to = index + delta;
       if (to < 0 || to >= prev.length) return prev;
+      // Una parada no se puede mover a OTRA ruta: si una del R12 se mete entre
+      // las del R8, cerrar el R8 la daria por terminada sin haber pasado, y el
+      // agrupado de la pantalla deja de significar nada.
+      const rutaDe = (x: Stop) => String((x as any).ruta || '').trim();
+      if (rutaDe(prev[index]) !== rutaDe(prev[to])) return prev;
       const next = [...prev];
       [next[index], next[to]] = [next[to], next[index]];
       return next;
