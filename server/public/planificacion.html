@@ -19674,6 +19674,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     } catch (_) {
                         trips = [];
                     }
+                    // Cuando el servidor contesta un error, el cuerpo es un
+                    // objeto con JSON valido: el catch no salta y despues
+                    // reventaba el .reduce de abajo, tirando abajo la ficha de
+                    // los camiones y las alertas de vencimiento enteras.
+                    if (!Array.isArray(trips)) trips = [];
                 }
 
                 const fromTrips = Object.values((trips || []).reduce((acc, t) => {
