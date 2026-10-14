@@ -1963,6 +1963,26 @@
                 </div>
             </div>
 
+            <!-- Modal: vista previa de "Traer datos reales" de una unidad -->
+            <div id="modal-flota-reales" class="fixed inset-0 z-[210] hidden flex items-center justify-center p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);" onclick="if(event.target===this)cerrarDatosRealesDeFlota()">
+                <div class="modal-content w-full max-w-2xl p-8 bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+                    <h3 class="text-xl font-bold text-[#1B2559] mb-1">Datos reales de la unidad</h3>
+                    <p id="flota-reales-sub" class="text-xs text-[#A3AED0] font-medium mb-6"></p>
+                    <div id="flota-reales-cuerpo"></div>
+                    <div class="flex flex-col sm:flex-row gap-3 pt-6">
+                        <button type="button" id="flota-reales-acumulado" onclick="aplicarDatosRealesDeFlota('acumulado')"
+                                class="flex-1 bg-sky-600 text-white py-3 rounded-xl font-bold hover:bg-sky-700 shadow-lg shadow-sky-200">
+                            Usar lo gastado
+                        </button>
+                        <button type="button" id="flota-reales-proyectado" onclick="aplicarDatosRealesDeFlota('proyectado')"
+                                class="flex-1 bg-white border border-sky-300 text-sky-700 py-3 rounded-xl font-bold hover:bg-sky-50">
+                            Usar el proyectado a 12 meses
+                        </button>
+                        <button type="button" onclick="cerrarDatosRealesDeFlota()" class="px-6 py-3 border border-[#E0E5F2] rounded-xl font-bold text-[#1B2559] hover:bg-[#F4F7FE]">Cancelar</button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Modal: vista previa de "Traer de Gastos de Flota" -->
             <!-- No se pisa nada sin mostrarlo primero: lo que esta escrito a mano
                  puede ser el dato bueno y el cargado por evento el incompleto. -->
@@ -2426,9 +2446,26 @@
                         <button onclick="fleetsCloseEditor()" class="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl bg-white hover:bg-rose-50 hover:text-rose-600 text-[#A3AED0] transition-colors text-2xl font-black leading-none" aria-label="Cerrar">×</button>
                     </div>
                     <div class="p-6 space-y-4 overflow-y-auto custom-scrollbar">
-                        <div>
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Nombre / Patente</label>
-                            <input id="fleet-name" type="text" placeholder="Ej: Iveco Daily AC123XY" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Unidad</label>
+                                <!-- Antes era texto libre y no se podia cruzar con los gastos reales -->
+                                <select id="fleet-plate" onchange="flotaElegidaEnEditor()" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-indigo-600"></select>
+                            </div>
+                            <div>
+                                <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block tracking-widest">Nombre</label>
+                                <input id="fleet-name" type="text" placeholder="Ej: Iveco Daily AC123XY" class="w-full bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559]">
+                            </div>
+                        </div>
+                        <div class="rounded-2xl border border-sky-200 bg-sky-50 p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                            <p class="text-[11px] font-bold text-sky-800 leading-snug">
+                                Mantenimiento, cubiertas y seguro no hace falta estimarlos: el sistema sabe lo que
+                                esta unidad gast&oacute; de verdad.
+                            </p>
+                            <button type="button" id="btn-flota-reales" onclick="abrirDatosRealesDeFlota()"
+                                    class="px-5 py-3 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-black uppercase tracking-wide shadow-lg shadow-sky-100 flex items-center gap-2 whitespace-nowrap">
+                                <i data-lucide="download" class="w-4 h-4"></i> Traer datos reales
+                            </button>
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                             <div>
@@ -4794,7 +4831,14 @@
             if(id === 'users') { loadUsers(); renderProfileAssignments(); }
             if(id === 'reports') initReportFilters();
             if(id === 'budget') { budgetInit(); }
-            if(id === 'fleets') { if (typeof fleetsLoadList === 'function') fleetsLoadList(); }
+            if(id === 'fleets') {
+                // Las flotas viven en el servidor: se piden al entrar, y tambien
+                // se cargan los camiones para poder elegir la unidad real.
+                if (typeof fleetsCargarDelServidor === 'function') {
+                    fleetsCargarDelServidor().then(() => { if (typeof fleetsLoadList === 'function') fleetsLoadList(); });
+                } else if (typeof fleetsLoadList === 'function') { fleetsLoadList(); }
+                if (typeof loadMaintenanceData === 'function' && !(maintenanceVehicles || []).length) loadMaintenanceData();
+            }
             if(id === 'incidents') loadIncidents();
             if(id === 'ajustes') cargarVistaAjustes();
             if(id === 'control-carga') { prepararFechasControlDeCarga(); cargarControlDeCarga(); }
@@ -9456,19 +9500,83 @@
         // ════════════════════════════════════════════════════════
         // MODULO FLOTAS — datos reutilizables de cada vehículo
         // ════════════════════════════════════════════════════════
-        const FLEETS_KEY = 'r14_fleets_v1';
+        const FLEETS_KEY = 'r14_fleets_v1';     // copia local, por si el servidor no contesta
 
-        function fleetsGetAll() {
+        /** Las flotas viven en el SERVIDOR.
+         *
+         *  Antes vivian solo en el navegador: si alguien lo limpiaba se perdian,
+         *  desde otra computadora no estaban, y lo que cargaba uno no lo veia el
+         *  resto. Es el mismo problema que ya se arreglo con los papeles de los
+         *  camiones. El localStorage queda como copia, para que la pantalla
+         *  tenga algo que mostrar mientras llega la respuesta del servidor. */
+        let _fleetsCache = null;
+
+        function _fleetsDeLocal() {
             try {
                 const raw = localStorage.getItem(FLEETS_KEY);
-                if (!raw) return [];
-                const arr = JSON.parse(raw);
+                const arr = raw ? JSON.parse(raw) : [];
                 return Array.isArray(arr) ? arr : [];
             } catch { return []; }
         }
+
+        function fleetsGetAll() {
+            if (_fleetsCache === null) _fleetsCache = _fleetsDeLocal();
+            return _fleetsCache;
+        }
+
+        /** Trae las flotas del servidor. La primera vez, si el servidor todavia
+         *  no tiene nada y este navegador si, las sube: asi no se pierde lo que
+         *  ya estaba cargado. */
+        async function fleetsCargarDelServidor() {
+            let delServidor = null;
+            try {
+                const res = await fetch(`${API_URL}/settings/fleets_data`, { cache: 'no-store' });
+                if (res.ok) {
+                    const d = await res.json();
+                    if (Array.isArray(d)) delServidor = d;
+                }
+            } catch (e) { console.error('fleets_data', e); }
+
+            const locales = _fleetsDeLocal();
+            if (delServidor === null) {
+                // Sin respuesta del servidor se sigue con la copia local
+                _fleetsCache = locales;
+                return _fleetsCache;
+            }
+            if (delServidor.length === 0 && locales.length > 0) {
+                _fleetsCache = locales;
+                await fleetsGuardarEnServidor(locales);
+                if (typeof addNotification === 'function') {
+                    addNotification('info', 'Flotas', `${locales.length} flota(s) que estaban solo en esta computadora quedaron guardadas en el servidor.`);
+                }
+                return _fleetsCache;
+            }
+            _fleetsCache = delServidor;
+            try { localStorage.setItem(FLEETS_KEY, JSON.stringify(delServidor)); } catch (_) {}
+            return _fleetsCache;
+        }
+
+        async function fleetsGuardarEnServidor(list) {
+            try {
+                const res = await fetch(`${API_URL}/settings`, {
+                    method: 'POST', headers: getActorHeaders(),
+                    body: JSON.stringify({ key: 'fleets_data', value: list })
+                });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                return true;
+            } catch (e) {
+                if (typeof addNotification === 'function') {
+                    addNotification('warning', 'Flotas', 'Se guardo en esta computadora pero NO en el servidor: los demas no lo van a ver.');
+                }
+                return false;
+            }
+        }
+
         function fleetsSaveAll(list) {
+            _fleetsCache = list;
             try { localStorage.setItem(FLEETS_KEY, JSON.stringify(list)); }
-            catch (e) { addNotification('warning', 'Almacenamiento lleno', 'No se pudo guardar la flota'); }
+            catch (e) { addNotification('warning', 'Almacenamiento lleno', 'No se pudo guardar la copia local'); }
+            fleetsGuardarEnServidor(list);
         }
         function fleetsLoadList() {
             const box = document.getElementById('fleets-list');
@@ -9515,6 +9623,7 @@
             const title = document.getElementById('fleet-editor-title');
             if (!modal) return;
             // Limpiar / cargar
+            pintarUnidadesDelEditorDeFlota();
             const fields = ['fleet-name','fleet-truck-value','fleet-life-km','fleet-consumption',
                 'fleet-max-kg','fleet-max-pallets',
                 'fleet-tires-cost','fleet-tires-km','fleet-maint-year','fleet-km-year',
@@ -9526,6 +9635,8 @@
                 const fleet = fleetsGetAll().find(f => f.id === id);
                 if (fleet) {
                     title.textContent = `Editar: ${fleet.name || ''}`;
+                    const selP = document.getElementById('fleet-plate');
+                    if (selP) selP.value = fleet.plate || '';
                     document.getElementById('fleet-name').value = fleet.name || '';
                     document.getElementById('fleet-truck-value').value = fleet.truckValue || '';
                     document.getElementById('fleet-life-km').value = fleet.lifeKm || '';
@@ -9561,6 +9672,9 @@
             const obj = {
                 id: _editingFleetId || ('fl_' + Date.now()),
                 name,
+                // La patente real: es lo que permite cruzar esta flota con lo
+                // que la unidad gasto de verdad.
+                plate: (document.getElementById('fleet-plate')?.value || '').toUpperCase(),
                 truckValue: Number(document.getElementById('fleet-truck-value').value) || 0,
                 lifeKm: Number(document.getElementById('fleet-life-km').value) || 0,
                 consumption: Number(document.getElementById('fleet-consumption').value) || 0,
@@ -9587,6 +9701,187 @@
             fleetsLoadList();
             addNotification('success', 'Flota guardada', obj.name);
         }
+
+        // ═════════ FLOTAS ATADAS A LA UNIDAD REAL ═════════
+        // La hoja de supuestos del cotizador pedia a mano cuatro numeros que el
+        // sistema ya conoce. Con la patente puesta se pueden traer de verdad.
+
+        /** El desplegable de unidades del editor de flotas. */
+        function pintarUnidadesDelEditorDeFlota() {
+            const sel = document.getElementById('fleet-plate');
+            if (!sel) return;
+            const previo = sel.value;
+            const pats = (typeof flotaPatentesDisponibles === 'function') ? flotaPatentesDisponibles() : [];
+            sel.innerHTML = '<option value="">\u2014 Sin unidad asignada \u2014</option>'
+                + pats.map(p => `<option value="${escapeHtml(p)}">${escapeHtml(p)}</option>`).join('');
+            if (previo && pats.includes(previo)) sel.value = previo;
+        }
+
+        /** Al elegir la unidad se propone un nombre, si todavia no tiene. */
+        function flotaElegidaEnEditor() {
+            const plate = document.getElementById('fleet-plate')?.value || '';
+            const nombre = document.getElementById('fleet-name');
+            if (!plate || !nombre || nombre.value.trim()) return;
+            const v = (maintenanceVehicles || []).find(x => String(x.plate).toUpperCase() === plate);
+            nombre.value = [v?.brand, v?.model, plate].filter(Boolean).join(' ').trim();
+        }
+
+        /** Lo que esa unidad gasto DE VERDAD en el anio, con la forma que pide
+         *  el cotizador.
+         *
+         *  Las cubiertas van aparte porque el cotizador no quiere el gasto del
+         *  anio sino el precio de UN juego: se usa el ultimo que se cargo. */
+        function datosRealesDeLaUnidad(plate, anio) {
+            const P = String(plate || '').toUpperCase();
+            const delAnio = flotaFilasTodas().filter(r => {
+                if (String(r.plate || '').toUpperCase() !== P) return false;
+                const p = flotaPeriodo(r);
+                return p && p.anio === String(anio);
+            });
+            const rubroDe = (r) => rubroDeCategoria(r.category);
+            const mantenimiento = delAnio
+                .filter(r => ['prev', 'refrig', 'lubricantes'].includes(rubroDe(r)))
+                .reduce((a, r) => a + (Number(r.cost) || 0), 0);
+            const cubiertas = delAnio
+                .filter(r => rubroDe(r) === 'cubiertas')
+                .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')))[0] || null;
+            const meses = new Set(delAnio.map(r => flotaPeriodo(r).mesNum));
+            return {
+                registros: delAnio.length,
+                mesesConMovimiento: meses.size,
+                mantenimiento,
+                cubiertas: cubiertas ? { monto: Number(cubiertas.cost) || 0, fecha: String(cubiertas.date || '').slice(0, 10) } : null
+            };
+        }
+
+        /** El fijo mensual por unidad (seguro + patente + VTV y licencias).
+         *
+         *  Sale del Motor de Costos, que lo tiene para TODA la flota junta, y se
+         *  reparte entre las unidades: no hay forma de saber cuanto paga cada
+         *  camion por separado mientras eso se cargue como un total del mes. */
+        function fijoMensualPorUnidad(anio) {
+            const ids = ['seguros', 'patentes', 'licencias'];
+            let total = 0, meses = 0;
+            MESES_COSTOS.forEach(m => {
+                const g = costosDelMes(m, anio) || {};
+                const s = ids.reduce((a, k) => a + (Number((g.fijo || {})[k]) || 0), 0);
+                if (s > 0) { total += s; meses++; }
+            });
+            const unidades = Math.max(1, (flotaPatentesDisponibles() || []).length);
+            return { total, meses, unidades, porUnidadPorMes: meses ? total / meses / unidades : 0 };
+        }
+
+        let _flotaRealesPendiente = null;
+
+        async function abrirDatosRealesDeFlota() {
+            const plate = document.getElementById('fleet-plate')?.value || '';
+            if (!plate) {
+                alert('Primero eleg\u00ed la unidad: sin patente no hay con qu\u00e9 cruzar los gastos.');
+                return;
+            }
+            const btn = document.getElementById('btn-flota-reales');
+            if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
+            try {
+                await loadMaintenanceData();
+                const res = await fetch(`${API_URL}/settings/costs_data`, { cache: 'no-store' });
+                if (res.ok) {
+                    const d = await res.json();
+                    if (d && typeof d === 'object') globalCostsDatabase = d;
+                }
+            } catch (e) { console.error('reales', e); }
+            finally { if (btn) { btn.disabled = false; btn.style.opacity = ''; } }
+
+            const anio = String(nowBuenosAires().year);
+            const u = datosRealesDeLaUnidad(plate, anio);
+            const fijo = fijoMensualPorUnidad(anio);
+            const meses = Math.max(1, u.mesesConMovimiento);
+            const proyectado = u.mantenimiento * 12 / meses;
+
+            _flotaRealesPendiente = { plate, anio, u, fijo, proyectado };
+
+            const plata = (n) => '$ ' + numeroAR(Math.round(Number(n) || 0));
+            const sub = document.getElementById('flota-reales-sub');
+            if (sub) {
+                sub.textContent = `${plate} \u00b7 a\u00f1o ${anio} \u00b7 ${u.registros} gasto(s) cargado(s) en ${u.mesesConMovimiento} mes(es).`;
+            }
+
+            const filas = [];
+            filas.push([
+                'Mantenimiento ($/a\u00f1o)',
+                'Preventivo + refrigeraci\u00f3n + lubricantes de esta unidad',
+                plata(u.mantenimiento) + (u.mesesConMovimiento < 12
+                    ? `<br><span class="text-[10px] text-[#A3AED0] font-bold">proyectado a 12 meses: ${plata(proyectado)}</span>` : '')
+            ]);
+            filas.push([
+                'Cubiertas set ($)',
+                u.cubiertas ? `\u00daltimo juego cargado, ${u.cubiertas.fecha}` : 'Esta unidad no tiene gastos de cubiertas cargados',
+                u.cubiertas ? plata(u.cubiertas.monto) : '<span class="text-[#A3AED0]">no se toca</span>'
+            ]);
+            filas.push([
+                'Seguro + Pat + VTV ($/mes)',
+                `Promedio de la flota: ${plata(fijo.total)} en ${fijo.meses} mes(es), repartido entre ${fijo.unidades} unidades`,
+                fijo.porUnidadPorMes ? plata(fijo.porUnidadPorMes) : '<span class="text-[#A3AED0]">no se toca</span>'
+            ]);
+
+            document.getElementById('flota-reales-cuerpo').innerHTML = `
+                <div class="overflow-x-auto border border-[#F4F7FE] rounded-2xl">
+                    <table class="w-full text-xs border-collapse">
+                        <thead class="bg-[#F8FAFF] text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">
+                            <tr><th class="px-3 py-3 text-left">Campo</th><th class="px-3 py-3 text-left">De d\u00f3nde sale</th><th class="px-3 py-3 text-right">Valor</th></tr>
+                        </thead>
+                        <tbody class="bg-white">
+                            ${filas.map(f => `<tr class="border-t border-[#F4F7FE]">
+                                <td class="px-3 py-2 font-bold text-[#2B3674] whitespace-nowrap">${f[0]}</td>
+                                <td class="px-3 py-2 text-[#A3AED0] font-medium">${f[1]}</td>
+                                <td class="px-3 py-2 text-right font-black text-[#1B2559] whitespace-nowrap">${f[2]}</td>
+                            </tr>`).join('')}
+                        </tbody>
+                    </table>
+                </div>
+                <p class="mt-4 text-[11px] font-bold text-amber-700 leading-snug">
+                    <b>Km al a\u00f1o no se puede traer.</b> Hace falta el kilometraje en cada carga de taller para
+                    saber cu\u00e1nto anduvo la unidad, y hoy casi ninguna lo tiene. Si el operador lo empieza a cargar,
+                    este campo se llena solo.</p>
+                <p class="mt-2 text-[11px] font-bold text-[#A3AED0] leading-snug">
+                    Nada se guarda ac\u00e1: los valores quedan escritos en el formulario y despu\u00e9s toc\u00e1s
+                    <b>Guardar flota</b>. Lo que no tenga dato real no se toca.</p>`;
+
+            const bP = document.getElementById('flota-reales-proyectado');
+            if (bP) {
+                const sirve = u.mantenimiento > 0 && u.mesesConMovimiento < 12;
+                bP.style.display = sirve ? '' : 'none';
+            }
+            document.getElementById('modal-flota-reales').classList.remove('hidden');
+            lucide.createIcons();
+        }
+
+        function cerrarDatosRealesDeFlota() {
+            document.getElementById('modal-flota-reales').classList.add('hidden');
+            _flotaRealesPendiente = null;
+        }
+
+        /** Escribe en el formulario. `modo` dice si el mantenimiento va como se
+         *  gasto o proyectado a doce meses. */
+        function aplicarDatosRealesDeFlota(modo) {
+            const p = _flotaRealesPendiente;
+            if (!p) return cerrarDatosRealesDeFlota();
+            const poner = (id, valor) => {
+                if (!valor) return 0;                      // sin dato real no se toca
+                const el = document.getElementById(id);
+                if (!el) return 0;
+                el.value = Math.round(valor);
+                return 1;
+            };
+            let n = 0;
+            n += poner('fleet-maint-year', modo === 'proyectado' ? p.proyectado : p.u.mantenimiento);
+            n += poner('fleet-tires-cost', p.u.cubiertas ? p.u.cubiertas.monto : 0);
+            n += poner('fleet-fixed-month', p.fijo.porUnidadPorMes);
+            cerrarDatosRealesDeFlota();
+            if (typeof addNotification === 'function') {
+                addNotification('success', 'Flotas', `${n} campo(s) completados con datos reales de ${p.plate}. Revisalos y toc\u00e1 Guardar flota.`);
+            }
+        }
+
         function fleetsDelete(id) {
             if (!confirm('¿Eliminar esta flota? No se puede deshacer.')) return;
             const list = fleetsGetAll().filter(f => f.id !== id);
@@ -21557,13 +21852,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             hdr:             () => loadHdrList(),
             payments:        () => loadPaymentsView(),
             dashboard:       () => refreshLogisticsDashboard(),
-            maintenance:     () => loadMaintenanceData(),
+            'fleet-costs':   () => cargarGastosDeFlota(),
             employees:       () => Promise.all([loadProvidersList(), loadEmployeesSection(), loadSalariesTable()]),
             salaries:        () => loadSalariesTable(),
             users:           () => { loadUsers(); renderProfileAssignments(); },
             schools:         () => loadSchools(),
             routes:          () => loadRouteTemplates(),
-            fleets:          () => fleetsLoadList(),
+            fleets:          () => fleetsCargarDelServidor().then(fleetsLoadList),
             incidents:       () => loadIncidents(),
             audit:           () => loadAuditLog(),
             historial:       () => loadHistorial(),
@@ -27113,7 +27408,7 @@ async function renderHdrMap(detail) {
     // que no cerraban".
     // OJO: ids explicitos (no prefijo "modal-") porque hay elementos INTERNOS
     // como modal-body o modal-unblock-role-admin que NO son overlays.
-    const MODAL_SELECTOR = '[id$="-modal"], #modal-salary-edit, #modal-unblock-role, #modal-gasto-flota, #modal-traer-flota, .modal-overlay';
+    const MODAL_SELECTOR = '[id$="-modal"], #modal-salary-edit, #modal-unblock-role, #modal-gasto-flota, #modal-traer-flota, #modal-flota-reales, .modal-overlay';
 
     // Formularios largos: un click al costado cerraba el modal y se perdia todo
     // lo cargado. Estos solo se cierran con la X o con Cancelar.
