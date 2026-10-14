@@ -9624,6 +9624,23 @@ async function cerrarTramo(opts: {
         : null;
     const inicio = i === 0 ? arranque : (previo?.fin ?? arranque);
 
+    // El cierre no puede ser anterior al arranque del tramo. Con poca senal el
+    // celular manda la hora en que el chofer apreto, y una hora corrida o un
+    // reloj mal puesto dejarian el tramo en negativo y romperian el total.
+    if (inicio && at.getTime() < new Date(inicio).getTime()) {
+        const e: any = new Error(
+            `La hora de cierre (${at.toISOString()}) es anterior al arranque del tramo (${new Date(inicio).toISOString()}).`
+        );
+        e.codigo = 'CIERRE_ANTERIOR_AL_INICIO';
+        throw e;
+    }
+    // Un tramo de mas de 24 h es casi siempre una fecha equivocada
+    if (inicio && (at.getTime() - new Date(inicio).getTime()) > 24 * 3600 * 1000) {
+        const e: any = new Error('Ese cierre da mas de 24 h de tramo. Revisa la fecha.');
+        e.codigo = 'TRAMO_DEMASIADO_LARGO';
+        throw e;
+    }
+
     const cerrado = await (prisma as any).tripLeg.update({
         where: { tripId_orden: { tripId, orden: i + 1 } },
         data: {
@@ -9690,7 +9707,9 @@ app.post('/api/v1/trips/:id/tramos/cerrar', async (req: any, res: any) => {
         const tramos = await (prisma as any).tripLeg.findMany({ where: { tripId }, orderBy: { orden: 'asc' } });
         res.json({ ok: true, cerrado: r.cerrado, esElUltimo: r.esElUltimo, siguiente: r.orden[r.indice + 1] || null, tramos });
     } catch (e: any) {
-        res.status(500).json({ error: e?.message || 'No se pudo cerrar la ruta' });
+        // Una hora imposible es error del que llama, no del servidor
+        const esDeLaHora = e?.codigo === 'CIERRE_ANTERIOR_AL_INICIO' || e?.codigo === 'TRAMO_DEMASIADO_LARGO';
+        res.status(esDeLaHora ? 400 : 500).json({ error: e?.message || 'No se pudo cerrar la ruta', code: e?.codigo });
     }
 });
 
