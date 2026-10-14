@@ -1114,3 +1114,29 @@ tr.r14-fila-total, tr.r14-fila-control { transition: none; }
     -webkit-appearance: none;
     margin: 0;
 }
+
+/* La fila del total va en fondo oscuro, asi que su letra tiene que ser blanca.
+   El `text-white` de Tailwind se le pone al <tr>, pero la regla `td { color }`
+   de mas arriba le gana a la herencia y los numeros quedaban negros sobre
+   azul marino: no se leia nada. */
+tr.r14-fila-total,
+tr.r14-fila-total > td,
+tr.r14-fila-total > td * { color: #ffffff !important; }
+
+/* Los dos cuadros de doce meses: todas las columnas del mismo ancho.
+   Sin esto, los meses sin datos se achicaban hasta casi desaparecer y parecia
+   que faltaban meses en la tabla. */
+#costs-anual-tabla th,
+#costs-anual-tabla td,
+#flota-anual-tabla th,
+#flota-anual-tabla td {
+    min-width: 104px;
+    white-space: nowrap;
+}
+#costs-anual-tabla th:first-child,
+#costs-anual-tabla td:first-child,
+#flota-anual-tabla th:first-child,
+#flota-anual-tabla td:first-child {
+    min-width: 240px;
+    white-space: normal;
+}

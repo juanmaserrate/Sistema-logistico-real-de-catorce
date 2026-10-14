@@ -1852,19 +1852,21 @@
                         <p class="text-sm text-[#A3AED0] font-medium">Desglose financiero por unidad y período</p>
                     </div>
                     <div class="flex items-center gap-4">
+                        <!-- El anio ya no va escrito en el nombre del mes: se elige aparte -->
+                        <select id="costs-year-select" onchange="cambiarAnioDeCostos()" class="bg-[#F4F7FE] border-0 rounded-2xl px-5 py-4 text-xs font-black text-[#1B2559] outline-none"></select>
                         <select id="costs-month-select" onchange="loadCostsData()" class="bg-[#F4F7FE] border-0 rounded-2xl px-6 py-4 text-xs font-bold text-[#1B2559] outline-none">
-                            <option value="enero">Enero 2026</option>
-                            <option value="febrero">Febrero 2026</option>
-                            <option value="marzo">Marzo 2026</option>
-                            <option value="abril">Abril 2026</option>
-                            <option value="mayo">Mayo 2026</option>
-                            <option value="junio">Junio 2026</option>
-                            <option value="julio">Julio 2026</option>
-                            <option value="agosto">Agosto 2026</option>
-                            <option value="septiembre">Septiembre 2026</option>
-                            <option value="octubre">Octubre 2026</option>
-                            <option value="noviembre">Noviembre 2026</option>
-                            <option value="diciembre">Diciembre 2026</option>
+                            <option value="enero">Enero</option>
+                            <option value="febrero">Febrero</option>
+                            <option value="marzo">Marzo</option>
+                            <option value="abril">Abril</option>
+                            <option value="mayo">Mayo</option>
+                            <option value="junio">Junio</option>
+                            <option value="julio">Julio</option>
+                            <option value="agosto">Agosto</option>
+                            <option value="septiembre">Septiembre</option>
+                            <option value="octubre">Octubre</option>
+                            <option value="noviembre">Noviembre</option>
+                            <option value="diciembre">Diciembre</option>
                         </select>
                         <div class="flex items-center gap-3 bg-indigo-50 px-6 py-4 rounded-2xl">
                             <span class="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Horas Reales:</span>
@@ -1966,7 +1968,7 @@
                 <div class="card-dark overflow-hidden">
                     <div class="p-6 border-b border-[#F4F7FE] flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                         <div>
-                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Gastos logística — año completo</h4>
+                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Gastos logística — <span id="costs-anual-anio">año completo</span></h4>
                             <p class="text-[11px] text-[#A3AED0] font-medium mt-1">Los mismos rubros de arriba, con los doce meses a la vez. Escribí en cualquier casillero y después guardá.</p>
                         </div>
                         <div class="flex items-center gap-2 flex-wrap">
@@ -2015,7 +2017,7 @@
                 <div class="card-dark overflow-hidden">
                     <div class="p-6 border-b border-[#F4F7FE] flex flex-col lg:flex-row lg:items-center justify-between gap-4">
                         <div>
-                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Gastos de flota — año completo</h4>
+                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Gastos de flota — <span id="flota-anual-anio">año completo</span></h4>
                             <p class="text-[11px] text-[#A3AED0] font-medium mt-1 max-w-3xl">Sale solo de los gastos cargados acá abajo: no se escribe nada en esta tabla. Es la flota sola, sin sueldos. Abajo de cada mes está lo que el Motor de Costos tiene escrito a mano, para poder compararlos.</p>
                         </div>
                         <button type="button" onclick="cargarGastosDeFlota()"
@@ -3559,6 +3561,74 @@
             return globalCostsDatabase;
         }
 
+        /** Los meses guardados sin anio son de 2026: es el unico anio que se
+         *  cargo antes de que la clave llevara el anio. */
+        const ANIO_COSTOS_LEGADO = '2026';
+
+        /** La clave con la que se guarda cada mes dentro de costs_data.
+         *
+         *  Antes era solo el nombre del mes, asi que enero de 2025 y enero de
+         *  2026 eran la misma celda y el segundo pisaba al primero sin avisar. */
+        function claveCostos(mes, anio) {
+            return `${anio || anioCostos()}-${String(mes).toLowerCase()}`;
+        }
+
+        /** El anio con el que esta trabajando la pantalla del Motor de Costos. */
+        function anioCostos() {
+            const el = document.getElementById('costs-year-select');
+            return String((el && el.value) || nowBuenosAires().year);
+        }
+
+        /** Los datos de un mes, aceptando tambien la clave vieja sin anio. */
+        function costosDelMes(mes, anio) {
+            const db = getCostsDatabase() || {};
+            const a = String(anio || anioCostos());
+            const m = String(mes || '').toLowerCase();
+            return db[claveCostos(m, a)]
+                || (a === ANIO_COSTOS_LEGADO ? db[m] : null)
+                || null;
+        }
+
+        /** Los anios que se pueden elegir: los que ya tienen algo cargado, mas
+         *  una ventana alrededor del actual para poder empezar uno nuevo. */
+        function aniosDeCostos() {
+            const hoy = nowBuenosAires().year;
+            const s = new Set();
+            for (let a = hoy - 3; a <= hoy + 1; a++) s.add(String(a));
+            Object.keys(getCostsDatabase() || {}).forEach(k => {
+                const m = String(k).match(/^(\d{4})-/);
+                if (m) s.add(m[1]);
+            });
+            s.add(ANIO_COSTOS_LEGADO);
+            return [...s].sort().reverse();
+        }
+
+        /** Arma el desplegable de anio. No pisa lo que ya estaba elegido. */
+        function pintarAniosDeCostos() {
+            const el = document.getElementById('costs-year-select');
+            if (!el) return;
+            const anios = aniosDeCostos();
+            const previo = el.value;
+            el.innerHTML = anios.map(a => `<option value="${a}">${a}</option>`).join('');
+            el.value = anios.includes(previo) ? previo : String(nowBuenosAires().year);
+        }
+
+        /** Cambiar de anio es cambiar de planilla entera: se recarga el mes y el
+         *  cuadro de los doce meses. */
+        function cambiarAnioDeCostos() {
+            if (costsDirtyMonth && !confirm(`Ten\u00e9s cambios sin guardar en ${costsFormMonth}. \u00bfLos descart\u00e1s y cambi\u00e1s de a\u00f1o?`)) {
+                const el = document.getElementById('costs-year-select');
+                if (el) el.value = _anioCostosPrevio;
+                return;
+            }
+            costsDirtyMonth = null;
+            _anioCostosPrevio = anioCostos();
+            _anualTocados.clear();
+            loadCostsData();
+            if (typeof cargarVistaAnual === 'function') cargarVistaAnual();
+        }
+        let _anioCostosPrevio = String(nowBuenosAires().year);
+
         // Cambios sin guardar en el form del Motor de Costos (mes al que pertenecen)
         let costsDirtyMonth = null;
         let costsFormMonth = null;
@@ -3585,7 +3655,7 @@
                 el.innerHTML = '<span class="text-amber-600">● Cambios sin guardar — tocá "Guardar" para que los vean los demás usuarios</span>';
                 return;
             }
-            const d = globalCostsDatabase[month];
+            const d = costosDelMes(month);
             if (d && d.savedAt) {
                 const f = new Date(d.savedAt).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
                 el.innerHTML = `<span class="text-emerald-600">✓ Guardado</span> el ${f}${d.savedBy ? ` por <b>${escapeHtml(d.savedBy)}</b>` : ''}`;
@@ -3612,11 +3682,11 @@
                 const res = await fetch(`${API_URL}/costs/params`, {
                     method: 'POST',
                     headers: getActorHeaders(),
-                    body: JSON.stringify({ month, costsParams })
+                    body: JSON.stringify({ month, year: Number(anioCostos()), costsParams })
                 });
                 const d = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(d.error || 'Error del servidor');
-                globalCostsDatabase[month] = d.data;
+                globalCostsDatabase[d.key || claveCostos(month)] = d.data;
                 costsDirtyMonth = null;
                 renderCostsSaveStatus();
                 if (typeof addNotification === 'function') addNotification('success', 'Motor de Costos', `Datos de ${month} guardados para todos los usuarios.`);
@@ -3629,6 +3699,7 @@
         }
 
         async function loadCostsData() {
+            if (typeof pintarAniosDeCostos === 'function') pintarAniosDeCostos();
             const monthSelect = document.getElementById('costs-month-select');
             const month = monthSelect ? monthSelect.value : 'enero';
             if (costsDirtyMonth && costsFormMonth && month !== costsFormMonth) {
@@ -3648,7 +3719,7 @@
 
             // Si hay cambios sin guardar de este mismo mes, no los pisamos
             if (costsDirtyMonth === month) {
-                globalCostsDatabase[month] = { ...(globalCostsDatabase[month] || {}), ...costsReadForm() };
+                globalCostsDatabase[claveCostos(month)] = { ...(costosDelMes(month) || {}), ...costsReadForm() };
                 renderCostsSaveStatus();
                 return;
             }
@@ -3657,7 +3728,7 @@
             if (typeof pintarRubrosDelMes === 'function' && !document.querySelector('#costs-fijo-rows [data-cost-type]')) {
                 pintarRubrosDelMes();
             }
-            const monthData = getCostsDatabase()[month];
+            const monthData = costosDelMes(month);
             const hsEl = document.getElementById('cost-horas-reales');
             if (hsEl) hsEl.value = monthData?.horas_reales ? numeroAR(monthData.horas_reales) : '';
             const fbEl = document.getElementById('cost-fallback-hours');
@@ -3682,7 +3753,7 @@
                 const detail = document.getElementById('horas-auto-detail');
                 if (detail) {
                     const fb = leerNumeroAR(document.getElementById('cost-fallback-hours')?.value) || 8;
-                    const year = nowBuenosAires().year;
+                    const year = Number(anioCostos());
                     fetch(`${API_URL}/costs/month-hours?month=${encodeURIComponent(month)}&year=${year}&fallback=${fb}`, { headers: getActorHeaders() })
                         .then(r => r.ok ? r.json() : null)
                         .then(d => {
@@ -14200,13 +14271,13 @@
 
         // Horas que hizo cada auxiliar en el mes. Cache que se rearma si cambian los viajes.
         let _auxHorasCache = { len: -1, mapa: new Map() };
-        function horasDelAuxEnElMes(name, monthKey) {
+        function horasDelAuxEnElMes(name, monthKey, anio) {
             const len = (planningData || []).length;
             if (_auxHorasCache.len !== len) _auxHorasCache = { len, mapa: new Map() };
-            const clave = `${monthKey}|${String(name).toLowerCase()}`;
+            const clave = `${anio || ''}|${monthKey}|${String(name).toLowerCase()}`;
             if (_auxHorasCache.mapa.has(clave)) return _auxHorasCache.mapa.get(clave);
             const objetivo = String(name).toLowerCase();
-            const db = getCostsDatabase()[monthKey];
+            const db = costosDelMes(monthKey, anio);
             const fb = parseFloat(db?.fallback_hours) > 0 ? parseFloat(db.fallback_hours) : 8;
             let horas = 0;
             for (const x of (planningData || [])) {
@@ -14256,8 +14327,10 @@
             if (t.contractType !== 'Propio') return Number(t.value) || 0;
             
             const monthKey = getMonthKeyFromDate(t.date);
-            const db = getCostsDatabase();
-            const minData = db[monthKey] || db['enero'];
+            // Los costos son de un mes DE UN ANIO: el del viaje, no el que este
+            // elegido en la pantalla del Motor.
+            const anioDelViaje = String(new Date(t.date).getFullYear() || nowBuenosAires().year);
+            const minData = costosDelMes(monthKey, anioDelViaje) || costosDelMes('enero', anioDelViaje);
             
             if (!minData) return 0;
             
@@ -14282,7 +14355,7 @@
                     if (esPrimerViajeDelDiaDelAux(t, name)) tripTotal += jornal;
                 } else {
                     // Mensualizado: el sueldo se reparte entre las horas que hizo ese mes
-                    const hrsAux = horasDelAuxEnElMes(name, monthKey) || durationHrs || 1;
+                    const hrsAux = horasDelAuxEnElMes(name, monthKey, anioDelViaje) || durationHrs || 1;
                     tripTotal += (bruto / hrsAux) * durationHrs;
                 }
             });
@@ -20430,8 +20503,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         /** Lo que el Motor de Costos tiene escrito a mano para la FLOTA de ese
          *  mes (los mismos rubros, sin la nomina). */
-        function flotaEnElMotor(mes) {
-            const d = (globalCostsDatabase || {})[mes] || {};
+        function flotaEnElMotor(mes, anio) {
+            const d = (typeof costosDelMes === 'function' ? costosDelMes(mes, anio) : null) || {};
             const ids = rubrosDeFlota();
             let total = 0;
             const porRubro = {};
@@ -20450,6 +20523,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const tabla = document.getElementById('flota-anual-tabla');
             if (!tabla) return;
             const anio = flotaAnioElegido();
+            const rotulo = document.getElementById('flota-anual-anio');
+            if (rotulo) rotulo.textContent = 'a\u00f1o ' + anio;
             const cargado = flotaPorMesYRubro(anio);
             const plata = (n) => Number(n) ? '$ ' + numeroAR(Math.round(n)) : '\u2014';
 
@@ -20485,7 +20560,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
             // El control: lo mismo, pero tipeado a mano en el Motor de Costos
             const motor = {};
-            MESES_COSTOS.forEach(m => { motor[m] = flotaEnElMotor(m); });
+            MESES_COSTOS.forEach(m => { motor[m] = flotaEnElMotor(m, anio); });
             const motorAnio = MESES_COSTOS.reduce((a, m) => a + motor[m].total, 0);
             const filaMotor = `<tr class="border-t-2 border-[#E0E5F2] r14-fila-control">
                     <td class="px-3 py-2 font-black text-[#1B2559] sticky left-0">Cargado a mano en el Motor</td>
@@ -20597,7 +20672,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             try { await loadMaintenanceData(); } catch (e) { console.error('flota', e); }
             finally { if (btn) { btn.disabled = false; btn.style.opacity = ''; } }
 
-            const anio = String(nowBuenosAires().year);
+            const anio = anioCostos();
             const cargado = flotaPorMesYRubro(anio);
             const ids = rubrosDeFlota();
             const plata = (n) => Number(n) ? '$ ' + numeroAR(Math.round(n)) : '\u2014';
@@ -20870,7 +20945,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
          *  muestra. El servidor los suma igual al costo, asi que callarlos
          *  hacia que el total no cerrara con lo que se ve. */
         function avisarRubrosViejos(month) {
-            const d = (globalCostsDatabase || {})[month] || {};
+            const d = costosDelMes(month) || {};
             for (const tipo of ['fijo', 'variable']) {
                 const caja = document.getElementById(tipo === 'fijo' ? 'costs-fijo-otros' : 'costs-var-otros');
                 if (!caja) continue;
@@ -20891,7 +20966,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         function cargarVistaAnual() {
             const tabla = document.getElementById('costs-anual-tabla');
             if (!tabla) return;
-            const db = globalCostsDatabase || {};
+            const anio = anioCostos();
             const plata = (n) => Number(n || 0).toLocaleString('es-AR');
             const cab = `<thead><tr class="bg-[#F8FAFF]">
                     <th class="text-left px-3 py-2 font-black text-[#1B2559] uppercase tracking-wider sticky left-0 bg-[#F8FAFF] min-w-[220px]">Gastos log\u00edstica</th>
@@ -20911,7 +20986,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     ${MESES_COSTOS.map(m => `<td class="px-1 py-1">
                         <input type="text" inputmode="decimal" data-anual-mes="${m}" data-anual-tipo="${r.tipo}" data-anual-id="${r.id}"
                                oninput="tocarVistaAnual('${m}')" onblur="formatearMontoAR(this); tocarVistaAnual('${m}')"
-                               value="${numeroAR((db[m] && db[m][r.tipo] && db[m][r.tipo][r.id]) || 0) === '0' ? '' : numeroAR((db[m] && db[m][r.tipo] && db[m][r.tipo][r.id]) || 0)}"
+                               value="${(() => { const g = costosDelMes(m, anio) || {}; const v = (g[r.tipo] || {})[r.id] || 0; return v ? numeroAR(v) : ''; })()}"
                                class="w-24 bg-[#F4F7FE] border-0 rounded-lg px-2 py-1.5 text-[11px] font-bold text-right outline-none focus:ring-2 focus:ring-indigo-500/20">
                     </td>`).join('')}
                 </tr>`;
@@ -20921,7 +20996,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     ${MESES_COSTOS.map(m => `<td class="px-1 py-1">
                         <input type="text" inputmode="decimal" data-anual-mes="${m}" data-anual-horas="1"
                                oninput="tocarVistaAnual('${m}')" onblur="formatearMontoAR(this); tocarVistaAnual('${m}')"
-                               value="${numeroAR((db[m] && db[m].horas_reales) || 0) === '0' ? '' : numeroAR((db[m] && db[m].horas_reales) || 0)}"
+                               value="${(() => { const g = costosDelMes(m, anio) || {}; return g.horas_reales ? numeroAR(g.horas_reales) : ''; })()}"
                                class="w-24 bg-white border border-[#E0E5F2] rounded-lg px-2 py-1.5 text-[11px] font-bold text-right outline-none focus:ring-2 focus:ring-indigo-500/20">
                     </td>`).join('')}
                 </tr>`;
@@ -20938,6 +21013,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 + rubrosDe('variable').map(filaRubro).join('')
                 + filaHoras + filaTotal + '</tbody>';
 
+            const rotuloAnio = document.getElementById('costs-anual-anio');
+            if (rotuloAnio) rotuloAnio.textContent = 'a\u00f1o ' + anio;
             recalcularTotalesAnuales();
             _anualTocados.clear();
             pintarEstadoAnual();
@@ -20981,7 +21058,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             for (const m of meses) {
                 // Se arranca de lo que YA tenia guardado el mes, asi no se borra
                 // ningun rubro viejo que la pantalla no muestre.
-                const previo = (globalCostsDatabase || {})[m] || {};
+                const previo = costosDelMes(m) || {};
                 const p = {
                     fijo: { ...(previo.fijo || {}) },
                     variable: { ...(previo.variable || {}) },
@@ -20996,11 +21073,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 try {
                     const res = await fetch(`${API_URL}/costs/params`, {
                         method: 'POST', headers: getActorHeaders(),
-                        body: JSON.stringify({ month: m, costsParams: p })
+                        body: JSON.stringify({ month: m, year: Number(anioCostos()), costsParams: p })
                     });
                     const d = await res.json().catch(() => ({}));
                     if (!res.ok) throw new Error(d.error || ('HTTP ' + res.status));
-                    globalCostsDatabase[m] = d.data;
+                    globalCostsDatabase[d.key || claveCostos(m)] = d.data;
                     ok.push(m);
                 } catch (e) {
                     console.error(m, e);
@@ -21039,7 +21116,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             document.getElementById('traer-flota-aplicar')?.removeAttribute('data-modo');
             const btn = document.getElementById('btn-traer-flota');
             const mes = document.getElementById('costs-month-select').value;
-            const anio = String(nowBuenosAires().year);
+            const anio = anioCostos();
             if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
             try {
                 // La pantalla del Motor no carga la flota, asi que se pide ahora
@@ -21211,14 +21288,16 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             renderCostsSaveStatus();
 
             // Sync back to database for current session
-            if (!globalCostsDatabase[month]) globalCostsDatabase[month] = { fijo: {}, variable: {}, horas_reales: horasReales };
-            globalCostsDatabase[month].horas_reales = horasReales;
+            const _clave = claveCostos(month);
+            if (!globalCostsDatabase[_clave]) globalCostsDatabase[_clave] = { fijo: {}, variable: {}, horas_reales: horasReales };
+            globalCostsDatabase[_clave].horas_reales = horasReales;
             const _fbSync = leerNumeroAR(document.getElementById('cost-fallback-hours')?.value);
-            if (Number.isFinite(_fbSync) && _fbSync > 0) globalCostsDatabase[month].fallback_hours = _fbSync;
+            if (Number.isFinite(_fbSync) && _fbSync > 0) globalCostsDatabase[_clave].fallback_hours = _fbSync;
             document.querySelectorAll('[data-cost-type]').forEach(input => {
                 const type = input.getAttribute('data-cost-type');
                 const id = input.getAttribute('data-id');
-                globalCostsDatabase[month][type][id] = leerNumeroAR(input.value);
+                if (!globalCostsDatabase[_clave][type]) globalCostsDatabase[_clave][type] = {};
+                globalCostsDatabase[_clave][type][id] = leerNumeroAR(input.value);
             });
             
             // No auto-save: se guardan con "Guardar" o con "CALCULAR COSTOS DEL MES"
@@ -21230,7 +21309,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         async function autoFillHorasReales() {
             const btn = document.getElementById('btn-auto-horas');
             const month = document.getElementById('costs-month-select').value;
-            const year = nowBuenosAires().year;
+            const year = Number(anioCostos());
             const fb = leerNumeroAR(document.getElementById('cost-fallback-hours')?.value) || 8;
             const detail = document.getElementById('horas-auto-detail');
             if (btn) { btn.disabled = true; btn.style.opacity = '0.6'; }
@@ -21266,15 +21345,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const months = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
             const idx = months.indexOf(sel?.value);
             if (idx < 0) return;
-            if (idx === 0) {
-                addNotification('warning', 'Costos', 'Enero no tiene mes anterior en este año. Cargalo a mano.');
-                return;
-            }
-            const prev = months[idx - 1];
-            const db = (typeof getCostsDatabase === 'function') ? getCostsDatabase() : {};
-            const prevData = db[prev];
+            // Enero ahora si tiene mes anterior: diciembre del anio pasado.
+            const prev = months[(idx + 11) % 12];
+            const anioPrev = idx === 0 ? String(Number(anioCostos()) - 1) : anioCostos();
+            const prevData = costosDelMes(prev, anioPrev);
             if (!prevData || (!prevData.fijo && !prevData.variable)) {
-                addNotification('warning', 'Costos', `No hay costos guardados de ${prev}. Calculá ese mes primero.`);
+                addNotification('warning', 'Costos', `No hay costos guardados de ${prev} de ${anioPrev}. Cargá ese mes primero.`);
                 return;
             }
             let copied = 0;
@@ -21292,7 +21368,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
             calculateCosts();
             if (typeof addNotification === 'function') {
-                addNotification('success', 'Costos', `${copied} valores copiados de ${prev}. Ajusta lo que cambio, traete las horas del mes y calcula.`);
+                addNotification('success', 'Costos', `${copied} valores copiados de ${prev} de ${anioPrev}. Ajusta lo que cambio, traete las horas del mes y calcula.`);
             }
         }
 
@@ -21329,13 +21405,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 const res = await fetch(`${API_URL}/costs/calculate-month`, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
-                    body: JSON.stringify({ month, costsParams, salariesData })
+                    body: JSON.stringify({ month, year: Number(anioCostos()), costsParams, salariesData })
                 });
                 const data = await res.json();
                 if (!res.ok) throw new Error(data.error || 'Error en servidor');
 
                 costsDirtyMonth = null;
-                globalCostsDatabase[month] = { ...costsParams, savedAt: new Date().toISOString(), savedBy: localStorage.getItem('r14.loggedUser') || null };
+                globalCostsDatabase[claveCostos(month)] = { ...costsParams, savedAt: new Date().toISOString(), savedBy: localStorage.getItem('r14.loggedUser') || null };
                 renderCostsSaveStatus();
 
                 // Recargar tabla de planificación para mostrar nuevos precios

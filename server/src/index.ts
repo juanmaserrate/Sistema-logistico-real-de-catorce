@@ -6083,6 +6083,36 @@ app.get('/api/admin/salaries-dump', async (req: any, res: any) => {
     }
 });
 
+/** Les pone el anio a los meses del Motor de Costos que quedaron guardados sin el.
+ *  POST /api/admin/costs-migrar-anio { key, anio?, dryRun? }
+ *  "septiembre" pasa a ser "2026-septiembre". Si el destino ya existe no se pisa. */
+app.post('/api/admin/costs-migrar-anio', async (req: any, res: any) => {
+    const { key, anio, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const year = Number(anio) > 0 ? Number(anio) : ANIO_COSTOS_LEGADO;
+    try {
+        const fila = await prisma.appSettings.findUnique({ where: { key: 'costs_data' } });
+        if (!fila) return res.json({ movidos: 0, mensaje: 'No hay costs_data todavia' });
+        let todos: Record<string, any> = {};
+        try { todos = JSON.parse(fila.value) || {}; } catch { return res.status(500).json({ error: 'costs_data no es JSON valido' }); }
+
+        const movidos: string[] = [], chocaron: string[] = [];
+        for (const k of Object.keys(todos)) {
+            if (MONTH_TO_NUM[k.toLowerCase()] === undefined) continue;   // ya tiene anio
+            const destino = claveCostos(k, year);
+            if (todos[destino]) { chocaron.push(k); continue; }
+            if (!dryRun) { todos[destino] = todos[k]; delete todos[k]; }
+            movidos.push(`${k} -> ${destino}`);
+        }
+        if (!dryRun && movidos.length) {
+            await prisma.appSettings.update({ where: { key: 'costs_data' }, data: { value: JSON.stringify(todos) } });
+        }
+        res.json({ dryRun: !!dryRun, movidos, chocaron, claves: Object.keys(todos).sort() });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Volcado de los gastos de flota cargados, para revisarlos sin iniciar sesion.
  *  GET /api/admin/maintenance-dump?key=... [&anio=2026]
  *  Devuelve el resumen por categoria (que es lo que decide a que rubro del Motor
@@ -9448,6 +9478,24 @@ app.get('/api/v1/costs/month-hours', async (req: any, res: any) => {
     }
 });
 
+/** Los meses que quedaron guardados sin anio son de 2026: es el unico anio que
+ *  se cargo antes de que la clave llevara el anio. */
+const ANIO_COSTOS_LEGADO = 2026;
+
+/** La clave con la que se guarda un mes dentro de costs_data.
+ *
+ *  Antes era solo el nombre del mes, asi que septiembre de 2025 y septiembre de
+ *  2026 eran la misma celda y el segundo pisaba al primero sin avisar. */
+function claveCostos(mes: string, anio: number): string {
+    return `${anio}-${String(mes).toLowerCase()}`;
+}
+
+/** Lee un mes de costs_data aceptando tambien la clave vieja sin anio. */
+function leerMesDeCostos(todos: Record<string, any>, mes: string, anio: number): any {
+    const m = String(mes).toLowerCase();
+    return todos[claveCostos(m, anio)] ?? (anio === ANIO_COSTOS_LEGADO ? todos[m] : undefined);
+}
+
 // Guarda los parametros del Motor de Costos de UN mes (sin recalcular viajes).
 // Mezcla sobre costs_data para no pisar los otros meses si dos usuarios guardan a la vez.
 app.post('/api/v1/costs/params', async (req: any, res: any) => {
@@ -9455,6 +9503,9 @@ app.post('/api/v1/costs/params', async (req: any, res: any) => {
         const { month, costsParams } = req.body || {};
         if (!month || MONTH_TO_NUM[String(month).toLowerCase()] === undefined) return res.status(400).json({ error: 'Mes inválido' });
         if (!costsParams || typeof costsParams !== 'object') return res.status(400).json({ error: 'Faltan costsParams' });
+        // Sin anio se asume el del servidor, para no romper una pantalla vieja
+        // que todavia no lo mande.
+        const anio = Number(req.body.year) > 0 ? Number(req.body.year) : new Date().getFullYear();
         const num = (v: any) => { const n = parseFloat(v); return Number.isFinite(n) && n >= 0 ? n : 0; };
         const clean: any = { fijo: {}, variable: {}, horas_reales: num(costsParams.horas_reales), fallback_hours: num(costsParams.fallback_hours) || 8 };
         for (const t of ['fijo', 'variable']) {
@@ -9466,13 +9517,14 @@ app.post('/api/v1/costs/params', async (req: any, res: any) => {
         const existing = await prisma.appSettings.findUnique({ where: { key: 'costs_data' } });
         let all: Record<string, any> = {};
         if (existing) { try { all = JSON.parse(existing.value) || {}; } catch {} }
-        all[String(month).toLowerCase()] = clean;
+        const clave = claveCostos(String(month), anio);
+        all[clave] = clean;
         await prisma.appSettings.upsert({
             where: { key: 'costs_data' },
             update: { value: JSON.stringify(all) },
             create: { key: 'costs_data', value: JSON.stringify(all) }
         });
-        res.json({ ok: true, month: String(month).toLowerCase(), data: clean });
+        res.json({ ok: true, key: clave, month: String(month).toLowerCase(), year: anio, data: clean });
     } catch (e: any) {
         res.status(500).json({ error: 'No se pudo guardar: ' + (e?.message || e) });
     }
@@ -9491,7 +9543,8 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
         const existingSetting = dryRun ? null : await prisma.appSettings.findUnique({ where: { key: 'costs_data' } });
         let allCosts: Record<string, any> = {};
         if (existingSetting) { try { allCosts = JSON.parse(existingSetting.value); } catch {} }
-        if (!dryRun) allCosts[month] = {
+        const anioDelCalculo = Number(yearArg) > 0 ? Number(yearArg) : new Date().getFullYear();
+        if (!dryRun) allCosts[claveCostos(month, anioDelCalculo)] = {
             ...costsParams,
             savedAt: new Date().toISOString(),
             savedBy: String(req.headers['x-actor-name'] || '').trim().slice(0, 80) || null,
@@ -9523,7 +9576,7 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
         // Bug fix: antes el año estaba hardcodeado a new Date().getFullYear() (año actual del server).
         // Eso impedía recalcular meses de años pasados y, peor, sobreescribia trip.value usando
         // el año equivocado. Ahora aceptamos `year` desde el body, con fallback al actual.
-        const year = Number(yearArg) > 0 ? Number(yearArg) : new Date().getFullYear();
+        const year = anioDelCalculo;
         const startDate = new Date(year, monthNum, 1);
         const endDate = new Date(year, monthNum + 1, 0, 23, 59, 59);
 
