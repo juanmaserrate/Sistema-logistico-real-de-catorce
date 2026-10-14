@@ -20344,7 +20344,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                         <select onchange="cambiarCategoriaDelGasto('${r._clave}','${r.id}', this.value)"
                                                 class="bg-[#F4F7FE] border border-[#E0E5F2] rounded-lg px-2 py-1 text-xs">${opcionesDeCategoria(r.category)}</select>
                                     </td>
-                                    <td class="px-3 py-2">${chipRubro(r.category)}</td>
+                                    <td class="px-3 py-2 whitespace-nowrap">${chipRubro(r.category)}</td>
                                     <td class="px-3 py-2 text-right"><input type="text" inputmode="decimal" autocomplete="off" value="${r.cost == null ? '' : numeroAR(r.cost)}"
                                         oninput="sanitizeNumericInput(this,true); updateRepairField('${r._clave}','${r.id}','cost', this.value)"
                                         onblur="formatearMontoAR(this); updateRepairField('${r._clave}','${r.id}','cost', this.value)"
