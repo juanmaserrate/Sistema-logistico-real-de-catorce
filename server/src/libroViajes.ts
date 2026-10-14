@@ -28,7 +28,13 @@ const CACHE_DINAMICA = 'xl/pivotCache/pivotCacheDefinition1.xml';
 // AG y no AF: entro "Horas por ruta" al final. Va al final y nunca en el medio
 // porque la tabla dinamica de la plantilla referencia los campos por numero de
 // posicion, y correrlos desalinea el informe entero.
+// La hoja llega hasta AG porque se agrego "Horas por ruta" al final. La tabla
+// dinamica, en cambio, sigue mirando hasta AF: su cache tiene definidos
+// exactamente esos 32 campos, y meterle una columna que no conoce hace que
+// Excel se queje al abrir el archivo. La columna nueva existe para leerla, no
+// para cruzarla en la dinamica.
 const ULTIMA_COLUMNA = 'AG';
+const ULTIMA_COLUMNA_DINAMICA = 'AF';
 const ULTIMA_COLUMNA_CONTEO = 'N';
 
 /** Las columnas de la hoja "Viajes", en orden. Coinciden con la plantilla. */
@@ -201,14 +207,27 @@ export function armarLibroViajes(filas: any[], titulo?: string, analisis?: FilaC
 
     const ultimaFila = Math.max(filas.length + 1, 2);
     const rango = `A1:${ULTIMA_COLUMNA}${ultimaFila}`;
-    hoja = hoja.replace(/<sheetData>[\s\S]*<\/sheetData>/, `<sheetData>${encabezado[0]}${cuerpo.join('')}</sheetData>`);
+    const rangoDinamica = `A1:${ULTIMA_COLUMNA_DINAMICA}${ultimaFila}`;
+
+    // El encabezado sale tal cual de la plantilla, asi que las columnas nuevas
+    // hay que escribirlas: agregar el nombre a COLUMNAS_LIBRO llena los datos
+    // pero deja la fila 1 sin titulo.
+    let filaEncabezado = encabezado[0];
+    COLUMNAS_LIBRO.forEach((nombre, i) => {
+        const ref = `${letra(i + 1)}1`;
+        if (filaEncabezado.includes(`r="${ref}"`)) return;
+        const celda = `<c r="${ref}" t="inlineStr"><is><t xml:space="preserve">${escapar(nombre)}</t></is></c>`;
+        filaEncabezado = filaEncabezado.replace('</row>', `${celda}</row>`);
+    });
+
+    hoja = hoja.replace(/<sheetData>[\s\S]*<\/sheetData>/, `<sheetData>${filaEncabezado}${cuerpo.join('')}</sheetData>`);
     hoja = hoja.replace(/<dimension ref="[^"]*"\/>/, `<dimension ref="${rango}"/>`);
     hoja = hoja.replace(/<autoFilter ref="[^"]*"\/>/, `<autoFilter ref="${rango}"/>`);
     zip[HOJA_DATOS] = enc.encode(hoja);
 
     // ── La dinamica mira exactamente las filas que hay ──────────────────────
     let cache = dec.decode(zip[CACHE_DINAMICA]);
-    cache = cache.replace(/<worksheetSource ref="[^"]*"/, `<worksheetSource ref="${rango}"`);
+    cache = cache.replace(/<worksheetSource ref="[^"]*"/, `<worksheetSource ref="${rangoDinamica}"`);
     if (!/refreshOnLoad="1"/.test(cache)) {
         cache = cache.replace('<pivotCacheDefinition ', '<pivotCacheDefinition refreshOnLoad="1" ');
     }
