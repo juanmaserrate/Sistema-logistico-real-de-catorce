@@ -3948,7 +3948,27 @@ app.patch('/api/v1/routes/:id/recorrido', async (req, res) => {
                 if (route.tripId) {
                     try {
                         const linkedTrip = await prisma.trip.findUnique({ where: { id: route.tripId }, select: { status: true, startedAt: true } });
-                        if (linkedTrip && (linkedTrip.status === 'PENDING' || !linkedTrip.startedAt)) {
+                        const yaTermino = linkedTrip
+                            && ['COMPLETED', 'RETURNED'].includes(String(linkedTrip.status || '').toUpperCase());
+                        if (yaTermino) {
+                            // EL VIAJE YA TERMINO: aca solo se completa la hora de
+                            // arranque si falta, NUNCA el estado.
+                            //
+                            // Esto es lo que reabria viajes ya cerrados. Cuando el
+                            // chofer no ficha entrada, el viaje cierra sin startedAt;
+                            // despues la cola offline reintenta el fichaje, entraba
+                            // por aca, y como "no tiene startedAt" lo devolvia a
+                            // OUT_OF_PLANT. En la pantalla aparecia como un segundo
+                            // viaje abierto del mismo chofer, con el recorrido ya
+                            // cerrado y returnTime puesto.
+                            if (!linkedTrip!.startedAt && (route.actualStartTime || now)) {
+                                await prisma.trip.update({
+                                    where: { id: route.tripId },
+                                    data: { startedAt: route.actualStartTime || now }
+                                });
+                                io.emit('trip:updated', { tripId: route.tripId });
+                            }
+                        } else if (linkedTrip && (linkedTrip.status === 'PENDING' || !linkedTrip.startedAt)) {
                             await prisma.trip.update({
                                 where: { id: route.tripId },
                                 data: {
