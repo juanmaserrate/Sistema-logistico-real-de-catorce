@@ -8278,11 +8278,15 @@ app.post('/api/admin/set-viajes', async (req: any, res: any) => {
     const contractType = req.body?.contractType ? String(req.body.contractType).trim() : null;
     const provider = req.body?.provider !== undefined ? String(req.body.provider || '').trim() : null;
     const valorSiCero = Number(req.body?.valorSiEstaEnCero) > 0 ? Number(req.body.valorSiEstaEnCero) : null;
+    const reparto = req.body?.reparto !== undefined ? String(req.body.reparto || '').trim() : null;
+    // Por defecto solo se completa el que esta vacio: pisar un reparto cargado
+    // a mano es otra cosa y tiene que pedirse a proposito.
+    const pisarReparto = req.body?.pisarReparto === true;
 
     try {
         const viajes = await prisma.trip.findMany({
             where: { id: { in: ids } },
-            select: { id: true, date: true, reparto: true, driver: true, contractType: true, provider: true, value: true }
+            select: { id: true, date: true, reparto: true, driver: true, contractType: true, provider: true, value: true, zone: true, locality: true, subzona: true }
         });
         const cambios: any[] = [];
         for (const t of viajes) {
@@ -8296,6 +8300,17 @@ app.post('/api/admin/set-viajes', async (req: any, res: any) => {
                 data.provider = provider;
                 detalle.proveedor = { antes: t.provider, despues: provider };
             }
+            if (reparto !== null && (pisarReparto || !String(t.reparto || '').trim()) && String(t.reparto || '') !== reparto) {
+                data.reparto = reparto;
+                detalle.reparto = { antes: t.reparto, despues: reparto };
+                // La subzona sale del reparto, asi que se recalcula sola: si no,
+                // el viaje queda con reparto nuevo y la subzona vieja (o vacia).
+                const nuevaSubzona = subzonaDelViaje(reparto, t.zone || t.locality, t.contractType);
+                if (String(t.subzona || '') !== String(nuevaSubzona || '')) {
+                    data.subzona = nuevaSubzona;
+                    detalle.subzona = { antes: t.subzona, despues: nuevaSubzona };
+                }
+            }
             if (valorSiCero && !(Number(t.value) > 0)) {
                 data.value = valorSiCero;
                 detalle.valor = { antes: Number(t.value) || 0, despues: valorSiCero };
@@ -8306,6 +8321,8 @@ app.post('/api/admin/set-viajes', async (req: any, res: any) => {
         }
         if (aplicar) {
             for (const c of cambios) await prisma.trip.update({ where: { id: c.tripId }, data: c.data });
+            await logAction(req, 'UPDATE', 'Trip', cambios.map((c) => c.tripId).join(','),
+                `${cambios.length} viaje(s) actualizados en lote`, null, { detalle: cambios });
         }
         res.json({
             aplicado: aplicar,
