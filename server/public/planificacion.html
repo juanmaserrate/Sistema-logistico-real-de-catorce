@@ -17752,6 +17752,17 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
                     // Preview antes de importar
                     const msg = `Se importarán ${trips.length} viajes.\n\nPrimeros 3:\n${trips.slice(0,3).map(t => `• ${t.driver || 'Sin chofer'} · ${t.zone || 'Sin zona'}`).join('\n')}\n\n¿Confirmar importación?`;
+                    // Las filas sin Reparto se avisan: la planilla puede no
+                    // traer esa columna y asi entraron 21 viajes seguidos de un
+                    // mismo chofer, que despues caen en "(sin reparto)".
+                    const sinReparto = trips.filter(t => !String(t.reparto || '').trim()).length;
+                    if (sinReparto && !confirm(
+                        sinReparto + ' de las ' + trips.length + ' filas vienen SIN Reparto.'
+                        + String.fromCharCode(10,10)
+                        + 'Esos viajes quedan fuera de los cortes por reparto y sin subzona.'
+                        + String.fromCharCode(10)
+                        + 'Revisa que la planilla tenga la columna "Reparto".'
+                        + String.fromCharCode(10,10) + 'Importar igual?')) return;
                     if (!confirm(msg)) return;
 
                     addNotification('info', 'Importando...', `Enviando ${trips.length} viajes al servidor`);
@@ -25859,6 +25870,15 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (!(document.getElementById('new-trip-bu').value || '').trim()) {
                 ntTab('datos');
                 return alert('Elegí la unidad de negocio del viaje.');
+            }
+            // El reparto tambien. De 960 viajes cargados, 31 quedaron sin el, y
+            // esos caen en "(sin reparto)" en todos los reportes y se quedan sin
+            // subzona, que sale justamente del reparto. Cuando el viaje no tiene
+            // ruta fija la opcion es LIBRE / OTRO: para eso esta en la lista.
+            if (!(document.getElementById('new-trip-reparto').value || '').trim()) {
+                ntTab('datos');
+                return alert('Elegí el Reparto / Ruta del viaje.' + String.fromCharCode(10,10)
+                    + 'Si no tiene una ruta fija, elegí "LIBRE / OTRO".');
             }
 
             const repartoValue = document.getElementById('new-trip-reparto').value || null;
