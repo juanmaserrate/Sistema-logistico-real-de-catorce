@@ -25397,9 +25397,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const auxNamesFromDb = auxFromDb
                 .map(u => (u.fullName || u.username || '').trim())
                 .filter(Boolean);
-            const repartoUserNames = repartoUsersFromDb
-                .map(u => (u.username || u.fullName || '').trim().toUpperCase())
-                .filter(Boolean);
 
             // SOLO el catálogo de personal. Antes se le sumaban los nombres que
             // aparecían escritos en los viejos viajes, y por eso seguían
@@ -25464,17 +25461,23 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             document.getElementById('new-trip-vehicle').innerHTML = '<option value="">Seleccionar Vehículo</option>' + uniqueVehicles.map(v => `<option value="${v}">${v}</option>`).join('');
             populateBusinessUnitSelect();
 
-            // Reparto / Ruta: combinamos plantillas de ruta y usuarios DRIVER.
-            // Solo sirve para cargar paradas predefinidas, no para asignar el chofer.
+            // Reparto / Ruta: SOLO las rutas predefinidas (Editor de Rutas).
+            //
+            // Antes a esta lista se le sumaban los nombres de todos los usuarios
+            // con app, y la operadora veia veinte choferes mezclados entre las
+            // rutas: elegir "DIEGO GUIDA" como reparto no cargaba ninguna parada
+            // (no es una ruta, no tiene paradas guardadas) y dejaba el viaje con
+            // un reparto que despues no cruza con nada en los reportes.
+            // Para un viaje sin ruta fija esta LIBRE / OTRO, que es lo correcto.
             const repartoSelect = document.getElementById('new-trip-reparto');
             if (repartoSelect) {
-                const templateNames = (routeTemplates || [])
-                    .map(rt => String(rt.name || '').trim().toUpperCase())
-                    .filter(Boolean);
-                const allRepartos = [...new Set([...repartoUserNames, ...templateNames])].sort();
-                const rtOptions = allRepartos.map(name => `<option value="${name}">${name}</option>`).join('');
-                const placeholder = allRepartos.length === 0
-                    ? '<option value="">⚠ No hay plantillas cargadas</option>'
+                // La misma lista que usa la pestana Paradas, para que las dos
+                // digan lo mismo. Ademas ordena R2 antes que R10, que con el
+                // sort normal salia al reves.
+                const templateNames = rutasDisponibles();
+                const rtOptions = templateNames.map(name => `<option value="${name}">${name}</option>`).join('');
+                const placeholder = templateNames.length === 0
+                    ? '<option value="">⚠ No hay rutas predefinidas cargadas</option>'
                     : '<option value="">Seleccionar Reparto / Ruta</option>';
                 repartoSelect.innerHTML = placeholder + rtOptions + '<option value="LIBRE">LIBRE / OTRO</option>';
             }
