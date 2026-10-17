@@ -1,0 +1,329 @@
+/* ==========================================================================
+   R14 MOTION — Capa de movimiento
+   Micro-interacciones del sistema. Vive aparte de planificacion.css a
+   proposito: si alguna vez molesta, se saca el <link> y el sistema queda
+   exactamente como estaba. No cambia ni un color ni un tamano, solo COMO
+   aparecen las cosas.
+
+   Reglas que respeta:
+   - Nada mas largo que 600ms. Lo que tarda se siente lento, no prolijo.
+   - Las filas de Gastos de Flota NO se iluminan al pasar el mouse (pedido
+     explicito): aca no se agrega ni un hover a las tablas.
+   - Si el sistema operativo pide menos animaciones, se apaga todo (seccion 8).
+   ========================================================================== */
+
+:root {
+    /* Curvas. La de "entrada" frena de golpe al final: se siente rapida. */
+    --r14-mov-entra: cubic-bezier(0.2, 0.8, 0.3, 1);
+    --r14-mov-suave: cubic-bezier(0.4, 0, 0.2, 1);
+    --r14-mov-rebote: cubic-bezier(0.2, 1.4, 0.3, 1);
+
+    /* Duraciones */
+    --r14-mov-pantalla: 0.3s;
+    --r14-mov-fila: 0.26s;
+    --r14-mov-chico: 0.16s;
+
+    /* Brillo del barrido de carga */
+    --r14-brillo: rgba(69, 30, 187, 0.09);
+    --r14-brillo-txt: rgba(69, 30, 187, 0.25);
+    --r14-ok: 5, 150, 105;
+    --r14-mal: 225, 29, 72;
+}
+
+[data-theme="dark"] {
+    --r14-brillo: rgba(180, 160, 240, 0.10);
+    --r14-brillo-txt: rgba(255, 255, 255, 0.55);
+}
+
+/* ==========================================================================
+   1. CAMBIO DE PANTALLA
+   Antes la pantalla nueva aparecia de golpe: .view-animate solo corria una
+   vez, al cargar la pagina. Ahora se vuelve a disparar en cada cambio.
+   ========================================================================== */
+@keyframes r14PantallaEntra {
+    from { opacity: 0; transform: translateY(10px); }
+    to   { opacity: 1; transform: none; }
+}
+.r14-pantalla-entra { animation: r14PantallaEntra var(--r14-mov-pantalla) var(--r14-mov-entra) both; }
+
+/* El titulo del header cambia junto con la pantalla */
+@keyframes r14TituloEntra {
+    from { opacity: 0; transform: translateX(-8px); }
+    to   { opacity: 1; transform: none; }
+}
+.r14-titulo-entra { animation: r14TituloEntra 0.28s var(--r14-mov-entra) both; }
+
+/* Paneles internos (pestanas dentro de una pantalla) */
+@keyframes r14PanelEntra {
+    from { opacity: 0; transform: translateY(5px); }
+    to   { opacity: 1; transform: none; }
+}
+.r14-panel-entra { animation: r14PanelEntra 0.2s var(--r14-mov-entra) both; }
+
+
+/* ==========================================================================
+   2. CASCADA DE FILAS
+   Las filas de una tabla entran una atras de la otra. Solo en tablas cortas:
+   con 200 filas la cascada se siente lenta, asi que ahi entra todo junto
+   (lo decide el JS).
+
+   Las filas animan SOLO opacidad, nunca transform: un transform en un <tr>
+   rompe las columnas congeladas (sticky) del Log Semanal.
+   ========================================================================== */
+@keyframes r14FilaEntra {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+}
+tbody.r14-cascada > tr { animation: r14FilaEntra var(--r14-mov-fila) var(--r14-mov-suave) both; }
+tbody.r14-cascada > tr:nth-child(1)  { animation-delay: 0ms; }
+tbody.r14-cascada > tr:nth-child(2)  { animation-delay: 22ms; }
+tbody.r14-cascada > tr:nth-child(3)  { animation-delay: 44ms; }
+tbody.r14-cascada > tr:nth-child(4)  { animation-delay: 66ms; }
+tbody.r14-cascada > tr:nth-child(5)  { animation-delay: 88ms; }
+tbody.r14-cascada > tr:nth-child(6)  { animation-delay: 110ms; }
+tbody.r14-cascada > tr:nth-child(7)  { animation-delay: 128ms; }
+tbody.r14-cascada > tr:nth-child(8)  { animation-delay: 146ms; }
+tbody.r14-cascada > tr:nth-child(9)  { animation-delay: 162ms; }
+tbody.r14-cascada > tr:nth-child(10) { animation-delay: 178ms; }
+tbody.r14-cascada > tr:nth-child(11) { animation-delay: 192ms; }
+tbody.r14-cascada > tr:nth-child(12) { animation-delay: 204ms; }
+tbody.r14-cascada > tr:nth-child(n+13) { animation-delay: 215ms; }
+
+/* Tabla larga: entra entera de una, sin cascada */
+tbody.r14-entra-junto { animation: r14FilaEntra 0.22s var(--r14-mov-suave) both; }
+
+/* Tarjetas en grilla (los KPI que se generan solos): esas SI pueden moverse */
+@keyframes r14TarjetaEntra {
+    from { opacity: 0; transform: translateY(10px) scale(0.985); }
+    to   { opacity: 1; transform: none; }
+}
+[data-r14-cascada].r14-cascada > * { animation: r14TarjetaEntra 0.32s var(--r14-mov-entra) both; }
+[data-r14-cascada].r14-cascada > :nth-child(1) { animation-delay: 0ms; }
+[data-r14-cascada].r14-cascada > :nth-child(2) { animation-delay: 45ms; }
+[data-r14-cascada].r14-cascada > :nth-child(3) { animation-delay: 90ms; }
+[data-r14-cascada].r14-cascada > :nth-child(4) { animation-delay: 130ms; }
+[data-r14-cascada].r14-cascada > :nth-child(5) { animation-delay: 165ms; }
+[data-r14-cascada].r14-cascada > :nth-child(6) { animation-delay: 195ms; }
+[data-r14-cascada].r14-cascada > :nth-child(n+7) { animation-delay: 220ms; }
+
+
+/* ==========================================================================
+   3. CARGA
+   Antes: la palabra "Cargando..." quieta, y la pantalla parecia colgada.
+   Ahora: barrido de luz sobre la fila + barra fina arriba de la pantalla
+   mientras el servidor contesta.
+   ========================================================================== */
+@keyframes r14Barrido {
+    from { background-position: 150% 0; }
+    to   { background-position: -50% 0; }
+}
+
+/* Fila de tabla que dice "Cargando..." */
+tr.r14-cargando > td {
+    background-image: linear-gradient(100deg,
+        transparent 20%, var(--r14-brillo) 42%, var(--r14-brillo) 50%, transparent 72%);
+    background-size: 250% 100%;
+    background-repeat: no-repeat;
+    animation: r14Barrido 1.4s linear infinite;
+}
+
+/* Texto suelto que dice "Cargando..." — la palabra brilla de izq. a der. */
+.r14-cargando-txt {
+    background-image: linear-gradient(90deg,
+        currentColor 0%, currentColor 35%, var(--r14-brillo-txt) 50%, currentColor 65%, currentColor 100%);
+    background-size: 250% 100%;
+    background-repeat: no-repeat;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    animation: r14Barrido 1.6s linear infinite;
+}
+
+/* Barra fina arriba de todo mientras hay pedidos al servidor en curso.
+   Aparece recien a los 250ms (lo maneja el JS): los pedidos rapidos no
+   alcanzan a mostrarla, asi no parpadea en cada click. */
+#r14-barra-carga {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    height: 3px;
+    z-index: 9999;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.2s ease;
+    overflow: hidden;
+    background: transparent;
+}
+#r14-barra-carga.visible { opacity: 1; }
+#r14-barra-carga::before {
+    content: "";
+    position: absolute;
+    top: 0; bottom: 0;
+    width: 40%;
+    border-radius: 0 3px 3px 0;
+    background: linear-gradient(90deg,
+        rgba(69, 30, 187, 0) 0%, #451ebb 35%, #5d3fd3 65%, rgba(93, 63, 211, 0) 100%);
+    animation: r14BarraCorre 1.1s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+}
+@keyframes r14BarraCorre {
+    from { transform: translateX(-100%); }
+    to   { transform: translateX(350%); }
+}
+[data-theme="dark"] #r14-barra-carga::before {
+    background: linear-gradient(90deg,
+        rgba(180, 160, 240, 0) 0%, #b4a0f0 35%, #8b6de8 65%, rgba(139, 109, 232, 0) 100%);
+}
+
+
+/* ==========================================================================
+   4. BOTONES
+   El click ya hacia scale(0.97). Lo que faltaba era saber si GUARDO:
+   - mientras el servidor contesta, el boton late
+   - cuando salio bien, un anillo verde sale del boton
+   - cuando fallo, el boton tiembla en rojo
+   Nada de esto cambia el texto del boton ni su tamano.
+   ========================================================================== */
+@keyframes r14Late {
+    50% { opacity: 0.52; }
+}
+button.r14-btn-trabajando {
+    cursor: progress;
+    animation: r14Late 1s var(--r14-mov-suave) infinite;
+}
+
+@keyframes r14AnilloOk {
+    from { box-shadow: 0 0 0 0 rgba(var(--r14-ok), 0.5); }
+    to   { box-shadow: 0 0 0 14px rgba(var(--r14-ok), 0); }
+}
+@keyframes r14Pop {
+    50% { transform: scale(1.06); }
+}
+button.r14-btn-ok {
+    animation: r14AnilloOk 0.8s ease-out, r14Pop 0.32s var(--r14-mov-rebote);
+}
+
+@keyframes r14Tiembla {
+    10%, 90% { transform: translateX(-2px); }
+    20%, 80% { transform: translateX(3px); }
+    30%, 50%, 70% { transform: translateX(-5px); }
+    40%, 60% { transform: translateX(5px); }
+}
+@keyframes r14AnilloMal {
+    from { box-shadow: 0 0 0 0 rgba(var(--r14-mal), 0.45); }
+    to   { box-shadow: 0 0 0 14px rgba(var(--r14-mal), 0); }
+}
+button.r14-btn-mal {
+    animation: r14Tiembla 0.42s var(--r14-mov-suave), r14AnilloMal 0.8s ease-out;
+}
+
+
+/* ==========================================================================
+   5. MENUS Y DESPLEGABLES
+   Antes aparecian de golpe (display: none -> block). Ahora bajan desde
+   arriba, desde la esquina del boton que los abrio.
+   ========================================================================== */
+@keyframes r14MenuEntra {
+    from { opacity: 0; transform: translateY(-7px) scale(0.975); }
+    to   { opacity: 1; transform: none; }
+}
+.nav-menu.is-open .nav-menu-panel {
+    transform-origin: top left;
+    animation: r14MenuEntra var(--r14-mov-chico) var(--r14-mov-entra);
+}
+.nav-menu.is-open .nav-menu-panel.align-right { transform-origin: top right; }
+
+/* Cualquier desplegable del sistema (#...-dropdown), mismo criterio que usa
+   planificacion.css con los modales (#...-modal). */
+[id$="-dropdown"]:not(.hidden) {
+    animation: r14MenuEntra var(--r14-mov-chico) var(--r14-mov-entra);
+}
+
+/* Flechitas de acordeon: giran en vez de saltar.
+   El JS les pone transform: rotate(180deg) a mano. */
+[id$="-chevron"], .r14-chevron {
+    transition: transform 0.2s var(--r14-mov-entra);
+}
+
+/* Secciones plegables */
+@keyframes r14AbreSeccion {
+    from { opacity: 0; transform: translateY(-6px); }
+    to   { opacity: 1; transform: none; }
+}
+.r14-abre { animation: r14AbreSeccion 0.2s var(--r14-mov-entra) both; }
+
+
+/* ==========================================================================
+   6. NUMEROS
+   Los KPI suben desde el valor anterior hasta el nuevo en vez de cambiar de
+   golpe. El conteo lo hace el JS; aca solo esta el golpecito final.
+   ========================================================================== */
+@keyframes r14NumeroPop {
+    0%   { transform: none; }
+    40%  { transform: scale(1.09); }
+    100% { transform: none; }
+}
+.r14-numero-pop {
+    display: inline-block;
+    animation: r14NumeroPop 0.34s var(--r14-mov-rebote);
+}
+/* Mientras cuenta, el numero no debe empujar lo que tiene al lado */
+.r14-contando { font-variant-numeric: tabular-nums; }
+
+
+/* ==========================================================================
+   7. BARRAS DE DATOS
+   Las barritas de porcentaje crecen desde cero en vez de aparecer llenas.
+   ========================================================================== */
+@keyframes r14BarraCrece {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+}
+.r14-barra-crece {
+    transform-origin: left center;
+    animation: r14BarraCrece 0.55s var(--r14-mov-entra) both;
+}
+
+
+/* ==========================================================================
+   8. APAGADO
+   Dos formas de apagar todo esto:
+   - el usuario pide menos animaciones en Windows/el navegador
+   - alguien pone data-r14-motion="off" en el <html>
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+    .r14-pantalla-entra, .r14-titulo-entra, .r14-panel-entra,
+    tbody.r14-cascada > tr, tbody.r14-entra-junto,
+    [data-r14-cascada].r14-cascada > *,
+    tr.r14-cargando > td, .r14-cargando-txt,
+    #r14-barra-carga::before,
+    button.r14-btn-trabajando, button.r14-btn-ok, button.r14-btn-mal,
+    .nav-menu.is-open .nav-menu-panel, [id$="-dropdown"]:not(.hidden),
+    .r14-abre, .r14-numero-pop, .r14-barra-crece {
+        animation: none !important;
+    }
+    .r14-cargando-txt {
+        -webkit-text-fill-color: currentColor;
+        background-image: none;
+    }
+}
+
+[data-r14-motion="off"] .r14-pantalla-entra,
+[data-r14-motion="off"] .r14-titulo-entra,
+[data-r14-motion="off"] .r14-panel-entra,
+[data-r14-motion="off"] tbody.r14-cascada > tr,
+[data-r14-motion="off"] tbody.r14-entra-junto,
+[data-r14-motion="off"] [data-r14-cascada].r14-cascada > *,
+[data-r14-motion="off"] tr.r14-cargando > td,
+[data-r14-motion="off"] button.r14-btn-trabajando,
+[data-r14-motion="off"] button.r14-btn-ok,
+[data-r14-motion="off"] button.r14-btn-mal,
+[data-r14-motion="off"] .r14-abre,
+[data-r14-motion="off"] .r14-numero-pop,
+[data-r14-motion="off"] .r14-barra-crece {
+    animation: none !important;
+}
+[data-r14-motion="off"] .r14-cargando-txt {
+    -webkit-text-fill-color: currentColor;
+    background-image: none;
+    animation: none !important;
+}
+[data-r14-motion="off"] #r14-barra-carga { display: none !important; }

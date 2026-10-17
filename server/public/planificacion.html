@@ -21,6 +21,10 @@
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
     <link rel="stylesheet" href="/css/planificacion.css?v=20261004b">
+    <!-- Capa de movimiento: solo COMO aparecen las cosas, nada de colores ni
+         tamanos. Sacando estas dos lineas (y el script de abajo) el sistema
+         queda exactamente como estaba. -->
+    <link rel="stylesheet" href="/css/r14-motion.css?v=20261017">
     <style>
       /* La parada que sigue late, para encontrarla sin buscarla */
       @keyframes r14PulsoParada {
@@ -33,6 +37,7 @@
     </style>
     <script src="/js/r14-utils.js"></script>
     <script src="/js/r14-notifications.js"></script>
+    <script src="/js/r14-motion.js?v=20261017"></script>
 </head>
 <body class="flex h-screen overflow-hidden flex-col">
 
@@ -5098,7 +5103,7 @@
                         <div class="w-full sm:w-32 shrink-0">
                             <p class="text-[11px] font-bold text-[#1B2559]">${r.stopsDone}/${r.stopsTotal} paradas</p>
                             <div class="h-1.5 bg-white/70 rounded-full mt-1 overflow-hidden">
-                                <div class="h-full bg-[#451ebb] rounded-full" style="width:${pct}%"></div>
+                                <div class="h-full bg-[#451ebb] rounded-full r14-barra-crece" style="width:${pct}%"></div>
                             </div>
                         </div>
                         <div class="flex flex-wrap gap-1 shrink-0">${chips.join(' ')}</div>
@@ -10754,7 +10759,7 @@
                             <span class="text-[11px] font-black text-[#1B2559]">Viaje ${i+1} · ${escapeHtml(b.truck.name)}</span>
                             <span class="text-[10px] font-bold ${fill >= 95 ? 'text-rose-600' : 'text-[#A3AED0]'}">${b.p ? Math.round(b.p*10)/10+' pal' : ''}${b.p&&b.k?' · ':''}${b.k?Math.round(b.k).toLocaleString('es-AR')+' kg':''} (${fill}%)</span>
                         </div>
-                        <div class="h-1.5 rounded-full bg-[#F4F7FE] overflow-hidden mb-1.5"><div class="h-full ${barColor}" style="width:${Math.min(fill,100)}%"></div></div>
+                        <div class="h-1.5 rounded-full bg-[#F4F7FE] overflow-hidden mb-1.5"><div class="h-full ${barColor} r14-barra-crece" style="width:${Math.min(fill,100)}%"></div></div>
                         <div class="flex flex-wrap">${stopsTxt}</div>
                     </div>`;
             }).join('');
