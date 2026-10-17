@@ -3,7 +3,6 @@ import {
   View,
   Text,
   ScrollView,
-  Pressable,
   StyleSheet,
   ActivityIndicator,
   Alert,
@@ -17,6 +16,11 @@ import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../navigation/types';
 import { StatusBar } from 'expo-status-bar';
+// Micro-interacciones. Es Animated de React Native, JavaScript puro: viaja por
+// aire con `eas update`, sin APK nuevo.
+import {
+  Aparece, BarraProgreso, BotonToque, Destello, Golpe, Late, useNumero,
+} from '../components/motion';
 
 // La pestaña "Mapa" fue dada de baja (jul-2026, pedido del usuario): los
 // choferes usan solo el listado de paradas; el mapa con trazado no se usaba
@@ -304,6 +308,14 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       : null;
     return { total, completed, undeliverable, pending, avgMin };
   }, [selected]);
+
+  // Los numeros del panel suben hasta el valor nuevo en vez de saltar: cuando
+  // el chofer marca una entrega ve el contador moverse, que es la unica
+  // confirmacion visual que tiene de que quedo registrada.
+  const nTotal = useNumero(todayStats?.total ?? 0);
+  const nHechas = useNumero(todayStats?.completed ?? 0);
+  const nFallidas = useNumero(todayStats?.undeliverable ?? 0);
+  const nPendientes = useNumero(todayStats?.pending ?? 0);
 
   const fmtStopTime = (iso: string | null | undefined) => {
     if (!iso) return '—';
@@ -892,12 +904,12 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
             </Text>
             <Text style={styles.panelSub}>{session.fullName}</Text>
           </View>
-          <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('History')}>
+          <BotonToque style={styles.iconBtn} onPress={() => navigation.navigate('History')}>
             <Text style={styles.iconBtnTxt}>📋</Text>
-          </Pressable>
-          <Pressable style={styles.iconBtn} onPress={() => navigation.navigate('Profile')}>
+          </BotonToque>
+          <BotonToque style={styles.iconBtn} onPress={() => navigation.navigate('Profile')}>
             <Text style={styles.iconBtnTxt}>👤</Text>
-          </Pressable>
+          </BotonToque>
         </View>
           {/* Toast: ruta actualizada por planificación */}
           {routeChangedToast ? (
@@ -929,21 +941,21 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
             <View style={styles.statsPanel}>
               <View style={styles.statsPanelRow}>
                 <View style={styles.statsPanelItem}>
-                  <Text style={styles.statsPanelVal}>{todayStats.total}</Text>
+                  <Text style={styles.statsPanelVal}>{nTotal}</Text>
                   <Text style={styles.statsPanelLbl}>Total</Text>
                 </View>
                 <View style={[styles.statsPanelItem, styles.statsPanelItemGreen]}>
-                  <Text style={[styles.statsPanelVal, { color: colors.success }]}>{todayStats.completed}</Text>
+                  <Text style={[styles.statsPanelVal, { color: colors.success }]}>{nHechas}</Text>
                   <Text style={styles.statsPanelLbl}>✓ Entregadas</Text>
                 </View>
                 {todayStats.undeliverable > 0 ? (
                   <View style={[styles.statsPanelItem, styles.statsPanelItemRed]}>
-                    <Text style={[styles.statsPanelVal, { color: colors.error }]}>{todayStats.undeliverable}</Text>
+                    <Text style={[styles.statsPanelVal, { color: colors.error }]}>{nFallidas}</Text>
                     <Text style={styles.statsPanelLbl}>✗ No entregadas</Text>
                   </View>
                 ) : null}
                 <View style={styles.statsPanelItem}>
-                  <Text style={[styles.statsPanelVal, { color: colors.accent }]}>{todayStats.pending}</Text>
+                  <Text style={[styles.statsPanelVal, { color: colors.accent }]}>{nPendientes}</Text>
                   <Text style={styles.statsPanelLbl}>Pendientes</Text>
                 </View>
                 {todayStats.avgMin !== null ? (
@@ -953,45 +965,46 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                   </View>
                 ) : null}
               </View>
-              {/* Barra de progreso */}
-              <View style={styles.statsPanelBar}>
-                <View style={[
-                  styles.statsPanelBarFill,
-                  { width: `${Math.round((todayStats.completed / todayStats.total) * 100)}%` as any }
-                ]} />
-              </View>
+              {/* Barra de progreso: crece hasta el valor nuevo */}
+              <BarraProgreso
+                porcentaje={Math.round((todayStats.completed / todayStats.total) * 100)}
+                alto={5}
+                color={colors.primary}
+                fondo={colors.border}
+                style={{ borderRadius: 3 }}
+              />
             </View>
           ) : null}
 
           {!tracking ? (
-            <Pressable style={styles.ficharEntrada} onPress={startTracking}>
+            <BotonToque style={styles.ficharEntrada} onPress={startTracking}>
               <Text style={styles.ficharEntradaTxt}>Fichar entrada</Text>
-            </Pressable>
+            </BotonToque>
           ) : (
-            <Pressable style={styles.ficharSalida} onPress={stopTracking}>
+            <BotonToque style={styles.ficharSalida} onPress={stopTracking}>
               <Text style={styles.ficharSalidaTxt}>Fichar salida</Text>
-            </Pressable>
+            </BotonToque>
           )}
 
           {/* FINALIZAR VIAJE: siempre a la vista, no depende de ninguna parada.
               Antes el viaje solo se cerraba marcando el deposito: si el chofer
               no pasaba por ahi, quedaba abierto para siempre. */}
           {selected && !selConcluded ? (
-            <Pressable style={styles.finalizarViajeBtn} onPress={onFinalizarViaje}>
+            <BotonToque style={styles.finalizarViajeBtn} onPress={onFinalizarViaje}>
               <Text style={styles.finalizarViajeTxt}>FINALIZAR VIAJE</Text>
               <Text style={styles.finalizarViajeSub}>Donde estes, sin pasar por el deposito</Text>
-            </Pressable>
+            </BotonToque>
           ) : null}
           {selected && selConcluded ? (
-            <View style={styles.viajeFinalizadoCard}>
+            <Golpe style={styles.viajeFinalizadoCard}>
               <Text style={styles.viajeFinalizadoTxt}>VIAJE FINALIZADO</Text>
-            </View>
+            </Golpe>
           ) : null}
 
           {/* Botón incidencia */}
-          <Pressable style={styles.incidentBtn} onPress={() => setIncidentModalOpen(true)}>
+          <BotonToque style={styles.incidentBtn} onPress={() => setIncidentModalOpen(true)}>
             <Text style={styles.incidentBtnTxt}>⚠️  Reportar incidencia</Text>
-          </Pressable>
+          </BotonToque>
 
           {err ? (
             errIsOffline ? (
@@ -1001,9 +1014,9 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                   No hay conexión con el sistema. Reintentando solo cada 8 segundos.
                   {'\n'}Si tenés viajes asignados, van a aparecer apenas vuelva la señal.
                 </Text>
-                <Pressable style={styles.loadFailBtn} onPress={() => void loadRoutes()}>
+                <BotonToque style={styles.loadFailBtn} onPress={() => void loadRoutes()}>
                   <Text style={styles.loadFailBtnTxt}>Reintentar ahora</Text>
-                </Pressable>
+                </BotonToque>
               </View>
             ) : (
               <Text style={styles.err}>{err}</Text>
@@ -1011,7 +1024,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           ) : null}
           {firstPendingClient ? (
             <View>
-              <Pressable style={styles.nextBox} onPress={openFirstDeliveryInMaps}>
+              <BotonToque style={styles.nextBox} onPress={openFirstDeliveryInMaps}>
                 <Text style={styles.nextLabel}>Próxima entrega</Text>
                 <Text style={styles.nextAddr} numberOfLines={2}>
                   {firstPendingClient.name}
@@ -1021,7 +1034,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                 <Text style={styles.nextTapHint}>
                   Te lleva desde donde estás al destino.
                 </Text>
-              </Pressable>
+              </BotonToque>
             </View>
           ) : null}
           {loading ? (
@@ -1037,7 +1050,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                 const isOn = selId === r.id;
                 const concluded = isConcluded(r);
                 return (
-                  <Pressable
+                  <BotonToque
                     key={r.id}
                     onPress={() => onChangeRoute(r.id)}
                     style={[styles.routeCard, isOn && styles.routeCardOn]}
@@ -1050,7 +1063,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                         Viaje concluido
                       </Text>
                     ) : null}
-                  </Pressable>
+                  </BotonToque>
                 );
               })}
             </View>
@@ -1080,9 +1093,9 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                 </View>
               ) : null}
               {hasPendingStops && !selConcluded ? (
-                <Pressable style={styles.reorderBtn} onPress={() => setReorderModalOpen(true)}>
+                <BotonToque style={styles.reorderBtn} onPress={() => setReorderModalOpen(true)}>
                   <Text style={styles.reorderBtnTxt}>↕ Reordenar paradas</Text>
-                </Pressable>
+                </BotonToque>
               ) : null}
               <Text style={styles.stopsSectionHint}>
                 Llegada y salida con horario; al finalizar entrega podés cargar observaciones, foto y marcar si fue
@@ -1121,7 +1134,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                 // con esa hora, así que se avisa claramente antes de tocarla.
                 const isBase = isBaseStop(st);
                 return (
-                <React.Fragment key={st.id}>
+                <Aparece key={st.id} retraso={Math.min(idx, 8) * 35}>
                 {abreTramo ? (
                   <View style={styles.tramoHead}>
                     <Text style={styles.tramoHeadTxt}>
@@ -1133,7 +1146,9 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                 <View style={styles.tlRow}>
                   {/* Timeline left: dot + line */}
                   <View style={styles.tlLeft}>
-                    <View style={[
+                    {/* La parada en la que esta parado late: se encuentra sin
+                        leer toda la lista, que es lo que pasa manejando. */}
+                    <Late activo={isActive} style={[
                       styles.tlDot,
                       isDone && styles.tlDotDone,
                       isActive && styles.tlDotActive,
@@ -1143,14 +1158,16 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                         : isFailed ? <Text style={styles.tlDotIcon}>✗</Text>
                         : isRetry ? <Text style={styles.tlDotIcon}>↻</Text>
                         : <Text style={styles.tlDotNum}>{st.sequence}</Text>}
-                    </View>
+                    </Late>
                     {!isLast && <View style={[
                       styles.tlLine,
                       isDone && styles.tlLineDone,
                     ]} />}
                   </View>
-                  {/* Timeline right: content */}
-                  <View style={[styles.tlContent, isActive && styles.tlContentActive, isBase && styles.tlContentBase]}>
+                  {/* Timeline right: content.
+                      El destello verde es el unico festejo que tiene el chofer
+                      cuando entrega: antes la fila cambiaba de color y listo. */}
+                  <Destello prendido={isDone} radio={radius.md} style={[styles.tlContent, isActive && styles.tlContentActive, isBase && styles.tlContentBase]}>
                     <View style={styles.tlHeader}>
                       <Text style={styles.tlName} numberOfLines={1}>
                         {isBase ? '🏠 ' : ''}{st.client?.name || 'Cliente'}
@@ -1227,12 +1244,12 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                       </View>
                     ) : null}
                     {(isDone || isFailed) && !isBase ? (
-                      <Pressable style={styles.tlBtnCrates} onPress={() => setCratesModalStop(st)}>
+                      <BotonToque style={styles.tlBtnCrates} onPress={() => setCratesModalStop(st)}>
                         <Text style={styles.tlBtnCratesTxt}>
                           📦 {(st.cratesDelivered != null || st.cratesRecovered != null) ? 'Corregir cajones' : 'Cargar cajones'}
                         </Text>
                         <Text style={styles.tlBtnCratesSub}>Podés cargarlos aunque el viaje ya esté cerrado</Text>
-                      </Pressable>
+                      </BotonToque>
                     ) : null}
                     {isBase && !isDone && !isFailed ? (
                       <Text style={styles.tlBaseHint}>
@@ -1245,14 +1262,14 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                       </Text>
                     ) : null}
                     {(st.status === 'PENDING' || isRetry) && !selConcluded ? (
-                      <Pressable style={styles.tlBtnArr} onPress={() => onMarkArrival(st)}>
+                      <BotonToque style={styles.tlBtnArr} onPress={() => onMarkArrival(st)}>
                         <Text style={styles.tlBtnArrTxt}>
                           {isBase ? 'Llegué al depósito' : isRetry ? 'Volví — registrar llegada' : 'Registrar llegada'}
                         </Text>
-                      </Pressable>
+                      </BotonToque>
                     ) : null}
                     {isActive && !selConcluded ? (
-                      <Pressable
+                      <BotonToque
                         style={[styles.tlBtnOut, isBase && styles.tlBtnBase]}
                         onPress={() => setDeliveryModalStop(st)}
                       >
@@ -1262,12 +1279,12 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                         <Text style={styles.tlBtnOutSub}>
                           {isBase ? 'Cierra el recorrido con la hora de ahora' : 'Entregado · No entregado · Obs · Foto'}
                         </Text>
-                      </Pressable>
+                      </BotonToque>
                     ) : null}
-                  </View>
+                  </Destello>
                 </View>
                 {cierraTramo && miTramo !== TRAMO_VUELTA && !yaCerrado && !selConcluded ? (
-                  <Pressable
+                  <BotonToque
                     style={[styles.cerrarTramoBtn, tramoAbierto !== miTramo && styles.cerrarTramoBtnOff]}
                     disabled={tramoAbierto !== miTramo}
                     onPress={() => onCerrarRuta(miTramo)}
@@ -1278,16 +1295,16 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                     {tramoAbierto === miTramo ? (
                       <Text style={styles.cerrarTramoSub}>El viaje sigue abierto</Text>
                     ) : null}
-                  </Pressable>
+                  </BotonToque>
                 ) : null}
-                </React.Fragment>
+                </Aparece>
                 );
               })}
             </View>
           ) : null}
-          <Pressable style={styles.refreshFull} onPress={() => loadRoutes({ silent: false })}>
+          <BotonToque style={styles.refreshFull} onPress={() => loadRoutes({ silent: false })}>
             <Text style={styles.refreshTxt}>Actualizar rutas</Text>
-          </Pressable>
+          </BotonToque>
           {tracking ? (
             <View style={styles.liveRow}>
               <View
