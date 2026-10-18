@@ -13860,7 +13860,12 @@
         }
 
         // Unidades de negocio disponibles para el selector del cliente (las del Excel del usuario).
-        const BU_UNIDADES = ['SAE', 'SAM', 'Patios', 'Proveedor', 'Panificado', 'CDI', 'SUMA', 'FRESCOS', 'Sistemas Alternativos'];
+        // SAE se dividio por partido (oct 2026). La ficha del cliente es de donde
+        // salen los viajes nuevos: si aca quedara "SAE" a secas, la division se
+        // desharia sola a los pocos dias. Las cuatro regiones son las mismas que
+        // ya usa el panel en trip-categories-config.json.
+        const BU_UNIDADES = ['SAE BROWN', 'SAE LOMAS', 'SAE LANUS', 'SAE QUILMES',
+            'SAM', 'Patios', 'Proveedor', 'Panificado', 'CDI', 'SUMA', 'FRESCOS', 'Sistemas Alternativos'];
 
         /** HTML de una fila "unidad de negocio + reparto" dentro del modal de cliente.
          *  El reparto es un input con datalist (escribís y sugiere repartos existentes). */
@@ -23667,7 +23672,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             (cfg.desarrollo?.fallback_bu || []).forEach(b => knownBUs.add(_norm(b)));
 
             // BUs que asumimos forman parte de SAE (Brown/Lomas/Quilmes/Lanus): DMC, SAE, etc.
-            ['DMC','SAE','DMC+SAM','DMC + SAM'].forEach(b => knownBUs.add(_norm(b)));
+            // Las cuatro SAE regionales van explicitas desde que se dividio SAE
+            // por partido: sin esto los 825 viajes aparecian como "sin clasificar",
+            // aunque el panel los cuenta bien (los agrupa por localidad, no por unidad).
+            ['DMC','SAE','SAE BROWN','SAE LOMAS','SAE LANUS','SAE QUILMES','DMC+SAM','DMC + SAM']
+                .forEach(b => knownBUs.add(_norm(b)));
             // Las que tienen fila propia en alguna region tampoco son "sin clasificar"
             for (const region of Object.values(cfg.regiones || {})) {
                 for (const unidades of Object.values(region.subzonas_por_bu || {})) {
