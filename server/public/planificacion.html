@@ -24057,12 +24057,59 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 .sort((a, b) => a.localeCompare(b, 'es', { numeric: true }));
         }
 
+        /** La unidad de negocio de una ruta predefinida ("R16" -> "SAE LANUS"). */
+        function unidadDeRuta(nombre) {
+            return normalizeBusinessUnit(_plantillaDeRuta(nombre)?.businessUnit || '');
+        }
+
+        /** Todas las unidades que hoy tiene alguna ruta predefinida. Se usa para
+         *  distinguir las unidades que vienen de una ruta (y por lo tanto se
+         *  sacan cuando la ruta se saca) de las que puso la operadora a mano
+         *  (RETIRO, EVENTO), que no hay que tocarle. */
+        function unidadesQueVienenDeRutas() {
+            return new Set((routeTemplates || [])
+                .map(rt => normalizeBusinessUnit(rt?.businessUnit || ''))
+                .filter(Boolean));
+        }
+
+        /** Pone en el viaje las unidades de sus rutas.
+         *
+         *  Un viaje que hace R16 y SAM 1 LUNES R16 queda con "SAE LANUS, SAM":
+         *  cada ruta trae la suya. Si se saca una ruta, su unidad se va con
+         *  ella; lo que la operadora agrego a mano se respeta.
+         *
+         *  Devuelve true si cambio algo, para poder avisarlo. */
+        function sincronizarUnidadesConRutas() {
+            // Abrir un viaje guardado NO le cambia la unidad. Las rutas mandan
+            // cuando el operador las toca, no cuando el modal se esta llenando:
+            // si no, abrir un viaje viejo y guardarlo le cambiaria la unidad
+            // sin que nadie lo haya pedido.
+            if (_cargandoViajeGuardado) return false;
+            const campo = document.getElementById('new-trip-bu');
+            if (!campo) return false;
+            const deRutas = [...new Set((tripRutas || []).map(unidadDeRuta).filter(Boolean))];
+            const deRutasPosibles = unidadesQueVienenDeRutas();
+            const aMano = unidadesDeNegocio(campo.value)
+                .filter(u => !deRutasPosibles.has(u));
+            const nuevas = [...new Set([...deRutas, ...aMano])];
+            const antes = unidadesDeNegocio(campo.value).join(', ');
+            const despues = nuevas.join(', ');
+            if (antes === despues) return false;
+            campo.value = despues;
+            populateBusinessUnitSelect(despues);
+            return true;
+        }
+
         function _plantillaDeRuta(nombre) {
             const n = String(nombre || '').trim().toUpperCase();
             return (routeTemplates || []).find(t => String(t.name || '').trim().toUpperCase() === n) || null;
         }
 
         /** Pinta la lista de rutas del viaje y el desplegable para sumar otra. */
+        /** true mientras openEditTripModal llena el formulario con un viaje ya
+         *  guardado. Ver sincronizarUnidadesConRutas. */
+        let _cargandoViajeGuardado = false;
+
         function renderTripRutas() {
             const ul = document.getElementById('trip-rutas-list');
             const sel = document.getElementById('trip-rutas-agregar');
@@ -24106,6 +24153,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         /** El viaje se guarda con el nombre de su PRIMERA ruta: es la que sale en
          *  la planilla semanal y en los filtros. Si hay mas de una, se avisa. */
         function sincronizarRepartoConRutas() {
+            // Las rutas mandan tambien la unidad de negocio del viaje
+            sincronizarUnidadesConRutas();
             const sel = document.getElementById('new-trip-reparto');
             const aviso = document.getElementById('new-trip-reparto-hint');
             if (sel && tripRutas.length) {
@@ -25774,6 +25823,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const trip = planningData.find(t => t.id === id);
             if (!trip) return;
 
+            // Mientras se llena el formulario, las rutas no le cambian la
+            // unidad de negocio al viaje: la que vale es la que esta guardada.
+            // Se levanta al final, asi que si despues el operador toca las
+            // rutas ahi si se sincroniza.
+            _cargandoViajeGuardado = true;
+            try {
             await openNewTripModal(); // This opens and populates dropdowns
             
             document.getElementById('new-trip-id').value = trip.id;
@@ -25867,6 +25922,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
             autoFillLocalidad();
             await loadTripDeliveryForEdit(trip.id, trip.tripType || trip.reparto || '', trip.rutas);
+            } finally {
+                // Desde aca, tocar las rutas SI cambia la unidad del viaje
+                _cargandoViajeGuardado = false;
+            }
         }
 
         function closeNewTripModal() {
