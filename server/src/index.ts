@@ -6391,6 +6391,57 @@ app.post('/api/admin/clients-set-bu', async (req: any, res: any) => {
     }
 });
 
+/** Auditoria en crudo, para diagnosticar. Sirve para contestar "esto que
+ *  guarde, llego al servidor?" sin tener que iniciar sesion.
+ *  GET /api/admin/auditoria?key=...&entity=settings&hours=48 */
+app.get('/api/admin/auditoria', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const horas = Math.min(Number(req.query.hours) || 24, 24 * 30);
+        const entity = String(req.query.entity || '').trim();
+        const logs = await prisma.auditLog.findMany({
+            where: {
+                createdAt: { gte: new Date(Date.now() - horas * 3600000) },
+                ...(entity ? { entity: { equals: entity, mode: 'insensitive' } } : {})
+            },
+            orderBy: { createdAt: 'desc' },
+            take: Math.min(Number(req.query.limit) || 40, 200)
+        });
+        res.json({ horas, entity: entity || '(todas)', total: logs.length, logs });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Guarda un catalogo de desplegable con la clave de admin.
+ *  El de la web (/api/v1/catalogos/guardar) pide sesion iniciada.
+ *  POST /api/admin/catalogo-guardar { key, campo, opciones, dryRun? } */
+app.post('/api/admin/catalogo-guardar', async (req: any, res: any) => {
+    const { key, campo, opciones, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const clave = ({ businessUnit: 'business_units', vehicleType: 'vehicle_types' } as Record<string, string>)[String(campo || '')];
+    if (!clave) return res.status(400).json({ error: 'Campo no editable' });
+    if (!Array.isArray(opciones)) return res.status(400).json({ error: 'Falta "opciones"' });
+    const limpia = [...new Set(
+        opciones.map((x: any) => String(x || '').trim().toUpperCase()).filter(Boolean)
+    )].sort((a: any, b: any) => String(a).localeCompare(String(b), 'es'));
+    try {
+        const fila = await prisma.appSettings.findUnique({ where: { key: clave } });
+        const antes = fila ? JSON.parse(fila.value) : null;
+        if (!dryRun) {
+            await prisma.appSettings.upsert({
+                where: { key: clave },
+                update: { value: JSON.stringify(limpia) },
+                create: { key: clave, value: JSON.stringify(limpia) }
+            });
+            await logAction(req, 'UPDATE', 'settings', 0, `catalogo ${clave} (admin)`, antes, limpia);
+        }
+        res.json({ dryRun: !!dryRun, clave, antes, despues: limpia, total: limpia.length });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Diagnostico: ultimos cambios de viajes (auditoria) + estado actual de sus rutas.
  *  GET /api/admin/recent-trip-changes?key=...&hours=6 */
 app.get('/api/admin/recent-trip-changes', async (req: any, res: any) => {

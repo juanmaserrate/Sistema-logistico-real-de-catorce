@@ -4030,11 +4030,29 @@
             localStorage.setItem(BUSINESS_UNIT_STORAGE_KEY, JSON.stringify(clean));
             // Persiste en la DB en background (no bloqueante). Por el endpoint
             // propio del catalogo: /settings ya no acepta esta clave.
+            //
+            // El resultado SE MIRA. Antes se mandaba y se ignoraba todo: si el
+            // servidor contestaba 401 porque la sesion se habia vencido, el
+            // cambio quedaba solo en este navegador y nadie se enteraba. En la
+            // pantalla se veia guardado y al dia siguiente estaba como antes.
             fetch(`${API_URL}/catalogos/guardar`, {
                 method: 'POST',
                 headers: getActorHeaders(),
                 body: JSON.stringify({ campo: 'businessUnit', opciones: clean })
-            }).catch(() => {});
+            }).then(res => {
+                if (res.ok) return;
+                if (typeof addNotification === 'function') {
+                    addNotification('warning', 'No se guardo la lista de unidades',
+                        res.status === 401
+                            ? 'Se vencio la sesion. Volve a entrar y hacelo de nuevo: por ahora el cambio quedo solo en esta computadora.'
+                            : `El servidor respondio ${res.status}. El cambio quedo solo en esta computadora.`);
+                }
+            }).catch(() => {
+                if (typeof addNotification === 'function') {
+                    addNotification('warning', 'No se guardo la lista de unidades',
+                        'No hubo respuesta del servidor. El cambio quedo solo en esta computadora.');
+                }
+            });
             return clean;
         }
 
