@@ -14,6 +14,7 @@
  * Torre compara periodos y necesita el historial completo.
  */
 import * as XLSX from 'xlsx';
+import { repartirHoras, unidadesDeTexto, mapaUnidadPorRuta, unidadDeParada } from './unidadesDelViaje';
 
 type Prisma = any;
 
@@ -166,7 +167,14 @@ async function filasViajesDe(prisma: Prisma, where: any) {
                 select: {
                     actualStartTime: true, actualEndTime: true, totalKm: true,
                     vehicle: { select: { plate: true } },
-                    stops: { select: { status: true, isReturnToBase: true } }
+                    // ruta y horarios: con eso se sabe de que unidad es cada
+                    // parada y cuantas horas le tocan
+                    stops: {
+                        select: {
+                            status: true, isReturnToBase: true, sequence: true,
+                            ruta: true, actualArrival: true, actualDeparture: true
+                        }
+                    }
                 }
             },
             // Las horas de cada ruta del viaje, para la columna del detalle
@@ -174,12 +182,13 @@ async function filasViajesDe(prisma: Prisma, where: any) {
         },
         orderBy: { date: 'asc' }
     });
-    return sinViajesDePrueba(viajes as any[]).map((t: any) => {
+    const unidadPorRuta = await mapaUnidadPorRuta(prisma as any);
+    return sinViajesDePrueba(viajes as any[]).flatMap((t: any) => {
         const r = t.linkedRoute;
         const paradas = (r?.stops || []).filter((s: any) => !s.isReturnToBase);
         const entregadas = paradas.filter((s: any) => String(s.status).toUpperCase() === 'COMPLETED').length;
         const noEntregadas = paradas.filter((s: any) => String(s.status).toUpperCase() === 'UNDELIVERABLE').length;
-        return {
+        const fila: any = {
             'ID viaje': t.id,
             'Fecha': soloFecha(t.date),
             'Reparto': t.reparto || '',
@@ -216,9 +225,64 @@ async function filasViajesDe(prisma: Prisma, where: any) {
             // Al FINAL y nunca en el medio: la plantilla tiene una tabla dinamica
             // que referencia los campos por numero de posicion, asi que insertar
             // una columna en el medio desalinea el informe entero.
-            'Horas por ruta': detalleDeTramos(t.tramos)
+            'Horas por ruta': detalleDeTramos(t.tramos),
+            'Unidades del viaje': '',
+            'Reparto de horas': ''
         };
+
+        // ── Un viaje que reparte para varias unidades sale en varias filas ──
+        const unidades = unidadesDeTexto(t.businessUnit);
+        if (unidades.length < 2) return [fila];
+
+        const inicio = r?.actualStartTime || t.startedAt;
+        const fin = r?.actualEndTime || t.completedAt;
+        const horasTotales = Number(fila['Duracion horas']) || 0;
+        const reparto = repartirHoras(
+            { businessUnit: t.businessUnit, stops: (r?.stops || []) as any, inicio, fin },
+            unidadPorRuta,
+            horasTotales
+        );
+
+        // Todo lo que se SUMA se reparte; si no, un viaje de dos unidades
+        // contaria el doble de costo, de km y de paradas en cualquier total.
+        const conUnidad = (s: any) => unidadDeParada(s, unidadPorRuta, unidades);
+        const deLaUnidad = (u: string) => paradas.filter((s: any) => conUnidad(s) === u);
+        const claves = Object.keys(reparto.horas).length
+            ? Object.keys(reparto.horas)
+            : unidades;
+
+        return claves.map((u) => {
+            const horas = reparto.horas[u] || 0;
+            const parte = horasTotales > 0 ? horas / horasTotales : 1 / claves.length;
+            const mias = deLaUnidad(u);
+            return {
+                ...fila,
+                'Unidad de negocio': u,
+                'Duracion real': hmDeHoras(horas),
+                'Duracion horas': redondear2(horas),
+                'Paradas planificadas': mias.length,
+                'Paradas entregadas': mias.filter((x: any) => String(x.status).toUpperCase() === 'COMPLETED').length,
+                'Paradas no entregadas': mias.filter((x: any) => String(x.status).toUpperCase() === 'UNDELIVERABLE').length,
+                'Km recorridos': fila['Km recorridos'] === '' ? '' : redondear2(Number(fila['Km recorridos'] || 0) * parte),
+                'Costo': fila['Costo'] === '' ? '' : redondear2(Number(fila['Costo'] || 0) * parte),
+                // Para poder ver de un vistazo que esta fila es una parte
+                'Unidades del viaje': t.businessUnit || '',
+                'Reparto de horas': reparto.metodo
+            };
+        });
     });
+}
+
+/** Horas decimales a "5:30", para la columna Duracion real de las filas
+ *  repartidas (la original sale de dos horarios, estas de un numero). */
+function hmDeHoras(h: number): string {
+    if (!Number.isFinite(h) || h <= 0) return '';
+    const min = Math.round(h * 60);
+    return `${Math.floor(min / 60)}:${String(min % 60).padStart(2, '0')}`;
+}
+
+function redondear2(n: number): number {
+    return Math.round((Number(n) || 0) * 100) / 100;
 }
 
 /** Los tipos de envase, en un solo lugar para que la app, los reportes y el
@@ -411,7 +475,7 @@ const COLUMNAS: Record<string, string[]> = {
         'Chofer', 'Auxiliar 1', 'Auxiliar 2', 'Auxiliar 3', 'Patente', 'Tipo de vehiculo', 'Vuelta', 'Refrigerado',
         'Temperatura', 'Estado', 'Salida deposito', 'Llegada deposito', 'Duracion real', 'Duracion horas', 'Paradas planificadas',
         'Paradas entregadas', 'Paradas no entregadas', 'Km recorridos', 'Costo', 'Estado de pago', 'Fecha de pago',
-        'Horas por ruta'],
+        'Horas por ruta', 'Unidades del viaje', 'Reparto de horas'],
     cajones: ['Fecha', 'ID viaje', 'Reparto', 'Unidad de negocio', 'Chofer', 'Establecimiento', 'Direccion',
         'Localidad', 'Partido', 'Orden de parada', 'Tipo de movimiento', 'Tipo de envase', 'Cantidad', 'Hora de la parada',
         'Ultima carga de envases'],
