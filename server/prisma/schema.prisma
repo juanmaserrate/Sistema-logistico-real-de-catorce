@@ -323,6 +323,11 @@ model TripLocation {
 model RouteTemplate {
   id        String              @id @default(uuid())
   name      String              @unique
+  /// La unidad de negocio a la que pertenece esta ruta ("SAE BROWN", "SAM").
+  /// Un viaje que carga varias rutas se queda con la union de sus unidades, y
+  /// cada parada sabe de cual es por la ruta de la que vino. De aca salen los
+  /// bloques de la lista de paradas y las horas de cada unidad.
+  businessUnit String?
   stops     RouteStopTemplate[]
   createdAt DateTime            @default(now())
   updatedAt DateTime            @updatedAt

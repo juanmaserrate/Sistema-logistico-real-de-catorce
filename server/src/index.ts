@@ -6391,6 +6391,42 @@ app.post('/api/admin/clients-set-bu', async (req: any, res: any) => {
     }
 });
 
+/** La unidad de negocio de varias rutas predefinidas, de una.
+ *  POST /api/admin/rutas-set-bu { key, cambios: [{ruta, businessUnit}], dryRun? } */
+app.post('/api/admin/rutas-set-bu', async (req: any, res: any) => {
+    const { key, cambios, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!Array.isArray(cambios) || !cambios.length) return res.status(400).json({ error: 'Falta "cambios"' });
+    try {
+        const todas = await (prisma as any).routeTemplate.findMany({ select: { id: true, name: true, businessUnit: true } });
+        const porNombre = new Map<string, any>();
+        for (const t of todas) porNombre.set(String(t.name || '').trim().toUpperCase(), t);
+
+        const hechos: any[] = [];
+        const noExisten: string[] = [];
+        for (const c of cambios) {
+            const nombre = String(c?.ruta || '').trim().toUpperCase();
+            const bu = String(c?.businessUnit || '').trim() || null;
+            const t = porNombre.get(nombre);
+            if (!t) { noExisten.push(nombre); continue; }
+            if (String(t.businessUnit || '') === String(bu || '')) continue;   // ya estaba
+            hechos.push({ id: t.id, ruta: t.name, antes: t.businessUnit, despues: bu });
+        }
+        if (!dryRun) {
+            for (const h of hechos) {
+                await (prisma as any).routeTemplate.update({ where: { id: h.id }, data: { businessUnit: h.despues } });
+            }
+            if (hechos.length) {
+                await logAction(req, 'UPDATE', 'route-template', hechos.map((h) => h.id).join(','),
+                    `unidad de negocio en ${hechos.length} ruta(s)`, null, { detalle: hechos });
+            }
+        }
+        res.json({ dryRun: !!dryRun, pedidos: cambios.length, cambian: hechos.length, noExisten, hechos });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Auditoria en crudo, para diagnosticar. Sirve para contestar "esto que
  *  guarde, llego al servidor?" sin tener que iniciar sesion.
  *  GET /api/admin/auditoria?key=...&entity=settings&hours=48 */
@@ -11881,8 +11917,10 @@ app.get('/api/v1/route-templates', async (req, res) => {
     }
 });
 
-async function upsertRouteTemplateByName(nameRaw: any, stopsRawInput: any) {
+async function upsertRouteTemplateByName(nameRaw: any, stopsRawInput: any, businessUnitRaw?: any) {
     const name = String(nameRaw || '').trim();
+    // undefined = no lo mandaron, no se toca. '' = lo quieren vacio.
+    const businessUnit = businessUnitRaw === undefined ? undefined : String(businessUnitRaw || '').trim();
     const stopsRaw = Array.isArray(stopsRawInput) ? stopsRawInput : [];
     if (!name) throw new Error('name es obligatorio');
     if (stopsRaw.length === 0) throw new Error('stops es obligatorio');
@@ -11897,12 +11935,14 @@ async function upsertRouteTemplateByName(nameRaw: any, stopsRawInput: any) {
 
     let templateId = existing?.id as string | undefined;
     if (!templateId) {
-        const created = await (prisma as any).routeTemplate.create({ data: { name } });
+        const created = await (prisma as any).routeTemplate.create({
+            data: { name, ...(businessUnit !== undefined ? { businessUnit } : {}) }
+        });
         templateId = created.id;
     } else {
         await (prisma as any).routeTemplate.update({
             where: { id: templateId },
-            data: { name }
+            data: { name, ...(businessUnit !== undefined ? { businessUnit } : {}) }
         });
     }
 
@@ -11920,7 +11960,7 @@ async function upsertRouteTemplateByName(nameRaw: any, stopsRawInput: any) {
 
 app.post('/api/v1/route-templates', async (req, res) => {
     try {
-        const saved = await upsertRouteTemplateByName(req.body?.name, req.body?.stops);
+        const saved = await upsertRouteTemplateByName(req.body?.name, req.body?.stops, req.body?.businessUnit);
         res.json(saved);
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error guardando plantilla' });
@@ -11930,7 +11970,7 @@ app.post('/api/v1/route-templates', async (req, res) => {
 // Alias admin para sincronización remota robusta (evita colisiones en proxies).
 app.post('/api/v1/admin/route-templates', async (req, res) => {
     try {
-        const saved = await upsertRouteTemplateByName(req.body?.name, req.body?.stops);
+        const saved = await upsertRouteTemplateByName(req.body?.name, req.body?.stops, req.body?.businessUnit);
         res.json(saved);
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error guardando plantilla' });
@@ -12006,7 +12046,7 @@ app.get('/api/v1/route-templates/resolve-for-trip', async (req, res) => {
 
 app.put('/api/v1/route-templates/:id', async (req, res) => {
     const { id } = req.params;
-    const { stops, name } = req.body; // Expected: array of strings or {name} objects, plus optional name
+    const { stops, name, businessUnit } = req.body; // array de strings o {name}, mas name y businessUnit opcionales
 
     try {
         // Update name if provided
@@ -12014,6 +12054,13 @@ app.put('/api/v1/route-templates/:id', async (req, res) => {
             await (prisma as any).routeTemplate.update({
                 where: { id },
                 data: { name: name.trim() }
+            });
+        }
+        // La unidad de negocio de la ruta. Mandar '' la deja sin unidad.
+        if (businessUnit !== undefined) {
+            await (prisma as any).routeTemplate.update({
+                where: { id },
+                data: { businessUnit: String(businessUnit || '').trim() || null }
             });
         }
 
@@ -12038,7 +12085,7 @@ app.put('/api/v1/route-templates/:id', async (req, res) => {
             where: { id },
             include: { stops: { orderBy: { sequence: 'asc' } } }
         });
-        await logAction(req, 'UPDATE', 'route-template', id, updated?.name, null, { name: updated?.name, stopsCount: updated?.stops?.length });
+        await logAction(req, 'UPDATE', 'route-template', id, updated?.name, null, { name: updated?.name, businessUnit: updated?.businessUnit, stopsCount: updated?.stops?.length });
         res.json(updated);
     } catch (e: any) {
         res.status(500).json({ error: e.message });
