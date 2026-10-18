@@ -1852,6 +1852,23 @@
                         <table class="w-full text-[11px] border-collapse" id="costs-anual-tabla"></table>
                     </div>
                 </div>
+
+                <!-- COSTO POR UNIDAD DE NEGOCIO -->
+                <div class="card-dark p-6">
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
+                        <div>
+                            <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-wider">Costo por unidad de negocio</h4>
+                            <p class="text-[11px] text-[#A3AED0] font-medium mt-0.5">
+                                El mismo costo del mes, abierto por quién lo gastó. Un viaje que reparte para
+                                dos unidades le deja a cada una sus horas: las partes suman el total, no lo repiten.
+                            </p>
+                        </div>
+                        <span id="costs-unidades-cuando" class="text-[10px] font-bold text-[#A3AED0]"></span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-[11px] border-collapse" id="costs-unidades-tabla"></table>
+                    </div>
+                </div>
             </div>
 
 
@@ -3813,6 +3830,9 @@
                 }
                 costsDirtyMonth = null;
             }
+            // La apertura por unidad del mes que se esta mirando. Por aca pasan
+            // las dos puertas: abrir la pantalla y cambiar de mes.
+            cargarCostosPorUnidad();
             try {
                 const res = await fetch(`${API_URL}/settings/costs_data`, { cache: 'no-store' });
                 if (res.ok) {
@@ -22137,6 +22157,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
                 // Recargar tabla de planificación para mostrar nuevos precios
                 await loadWeeklyData();
+                // Y la apertura por unidad, que el servidor acaba de guardar
+                await cargarCostosPorUnidad();
 
                 // Toast en lugar de alert(): no bloquea la pantalla del operador
                 if (typeof addNotification === 'function') {
@@ -22150,6 +22172,85 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             } finally {
                 if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="calculator" class="w-5 h-5"></i> CALCULAR COSTOS DEL MES'; lucide.createIcons(); }
             }
+        }
+
+        /** La apertura de costos por unidad del mes elegido.
+         *
+         *  Se LEE DEL SERVIDOR, no se calcula aca: la guarda el Motor cuando
+         *  corre "Calcular costos del mes". Asi la ve igual cualquiera que
+         *  entre, desde la computadora que entre, sin volver a calcular nada. */
+        async function cargarCostosPorUnidad() {
+            const tabla = document.getElementById('costs-unidades-tabla');
+            const cuando = document.getElementById('costs-unidades-cuando');
+            if (!tabla) return;
+            const mes = document.getElementById('costs-month-select')?.value || '';
+            if (!mes) { tabla.innerHTML = ''; return; }
+
+            tabla.innerHTML = '<tbody><tr><td class="py-4 text-[#A3AED0] font-bold">Cargando...</td></tr></tbody>';
+            let d = null;
+            try {
+                const res = await fetch(`${API_URL}/costs/unidades?month=${encodeURIComponent(mes)}&year=${encodeURIComponent(anioCostos())}`,
+                    { headers: getActorHeaders(), cache: 'no-store' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                d = await res.json();
+            } catch (_) {
+                tabla.innerHTML = '<tbody><tr><td class="py-4 text-rose-500 font-bold">No pude leer la apertura del servidor.</td></tr></tbody>';
+                if (cuando) cuando.textContent = '';
+                return;
+            }
+
+            const filas = d.unidades || [];
+            if (cuando) {
+                cuando.textContent = d.calculadoEl
+                    ? 'Calculado el ' + new Date(d.calculadoEl).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : '';
+            }
+            if (!filas.length) {
+                tabla.innerHTML = `<tbody><tr><td class="py-6 text-[#A3AED0] text-[11px] font-bold">
+                    Todavía no se calculó este mes. Apretá CALCULAR COSTOS DEL MES y la apertura se guarda sola.
+                </td></tr></tbody>`;
+                return;
+            }
+
+            const totH = filas.reduce((a, f) => a + (Number(f.horas) || 0), 0);
+            const totC = filas.reduce((a, f) => a + (Number(f.costo) || 0), 0);
+            const totV = filas.reduce((a, f) => a + (Number(f.viajes) || 0), 0);
+            const plata = (n) => '$ ' + numeroAR(Math.round(Number(n) || 0), 0);
+
+            tabla.innerHTML = `
+                <thead>
+                    <tr>
+                        <th class="px-3 py-2 text-left">Unidad de negocio</th>
+                        <th class="px-3 py-2 text-right">Viajes</th>
+                        <th class="px-3 py-2 text-right">Horas</th>
+                        <th class="px-3 py-2 text-right">Costo</th>
+                        <th class="px-3 py-2 text-right">% del mes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${filas.map((f, i) => {
+                        const sinUnidad = String(f.unidad).toUpperCase() === 'SIN UNIDAD';
+                        return `<tr class="r14-fila ${i % 2 ? 'r14-fila-alt' : ''}">
+                            <td class="px-3 py-2 font-bold ${sinUnidad ? 'text-amber-600' : 'text-[#1B2559]'}">
+                                ${escapeHtml(f.unidad)}
+                                ${sinUnidad ? '<span class="block text-[9px] font-bold text-amber-500 leading-tight">paradas sin ruta cargada: no se pueden atribuir</span>' : ''}
+                            </td>
+                            <td class="px-3 py-2 text-right text-[#2B3674]">${numeroAR(f.viajes, 0)}</td>
+                            <td class="px-3 py-2 text-right text-[#2B3674]">${numeroAR(f.horas, 1)}</td>
+                            <td class="px-3 py-2 text-right font-black text-[#1B2559]">${plata(f.costo)}</td>
+                            <td class="px-3 py-2 text-right text-[#A3AED0] font-bold">${totC > 0 ? numeroAR(100 * f.costo / totC, 1) : '0'}%</td>
+                        </tr>`;
+                    }).join('')}
+                </tbody>
+                <tfoot>
+                    <tr class="r14-fila r14-fila-total">
+                        <td class="px-3 py-2 font-black uppercase tracking-wider">Total del mes</td>
+                        <td class="px-3 py-2 text-right font-black">${numeroAR(totV, 0)}</td>
+                        <td class="px-3 py-2 text-right font-black">${numeroAR(totH, 1)}</td>
+                        <td class="px-3 py-2 text-right font-black">${plata(totC)}</td>
+                        <td class="px-3 py-2 text-right font-black">100%</td>
+                    </tr>
+                </tfoot>`;
         }
 
         const DASH_MONTH_MAP = {

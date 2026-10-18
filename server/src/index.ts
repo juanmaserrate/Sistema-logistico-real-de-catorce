@@ -1,6 +1,6 @@
 
 import express from 'express';
-import { mapaUnidadPorRuta, unidadDeParada, unidadesDeTexto } from './unidadesDelViaje';
+import { mapaUnidadPorRuta, unidadDeParada, unidadesDeTexto, repartirHoras, SIN_UNIDAD } from './unidadesDelViaje';
 import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail, limpiarTokenMail } from './mailer';
 import { armarReporte, filasViajesPorIds, mesDeFecha, esCuentaDePrueba, TIPOS_DE_ENVASE, sumaDeLosTipos, sinLocalidadPorUnidad, TEXTO_SIN_LOCALIDAD } from './reporteTorre';
 import { armarLibroViajes } from './libroViajes';
@@ -6430,6 +6430,25 @@ app.post('/api/admin/clients-set-bu', async (req: any, res: any) => {
     }
 });
 
+/** La apertura de costos por unidad de negocio de un mes, como la dejo el
+ *  ultimo "Calcular costos del mes". Se lee de la base: no se recalcula en el
+ *  navegador, asi la ve igual cualquiera que entre, desde donde entre.
+ *  GET /api/v1/costs/unidades?month=septiembre&year=2026 */
+app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
+    try {
+        const mes = String(req.query.month || '').toLowerCase();
+        if (!mes) return res.status(400).json({ error: 'Falta "month"' });
+        const anio = Number(req.query.year) > 0 ? Number(req.query.year) : new Date().getFullYear();
+        const clave = `costos_unidades_${claveCostos(mes, anio)}`;
+        const fila = await prisma.appSettings.findUnique({ where: { key: clave } });
+        if (!fila) return res.json({ mes, anio, calculadoEl: null, unidades: [] });
+        const d = JSON.parse(fila.value || '{}');
+        res.json({ mes, anio, calculadoEl: d?.calculadoEl ?? null, unidades: Array.isArray(d?.unidades) ? d.unidades : [] });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** La unidad de negocio de varias rutas predefinidas, de una.
  *  POST /api/admin/rutas-set-bu { key, cambios: [{ruta, businessUnit}], dryRun? } */
 app.post('/api/admin/rutas-set-bu', async (req: any, res: any) => {
@@ -10179,7 +10198,21 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
                 contractType: { equals: 'Propio', mode: 'insensitive' },
                 date: { gte: startDate, lte: endDate }
             },
-            include: { linkedRoute: { select: { actualStartTime: true, actualEndTime: true } } }
+            include: {
+                linkedRoute: {
+                    select: {
+                        actualStartTime: true, actualEndTime: true,
+                        // Con que ruta y a que hora se cerro cada parada se sabe
+                        // cuantas horas del viaje son de cada unidad de negocio.
+                        stops: {
+                            select: {
+                                sequence: true, ruta: true,
+                                actualArrival: true, actualDeparture: true
+                            }
+                        }
+                    }
+                }
+            }
         })).map((t: any) => ({
             ...t,
             // Los nombres que espera parseTripDurationHrs, que mira el GPS primero
@@ -10262,6 +10295,18 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
         }
 
         // 6. Calcular y guardar costo de cada viaje
+        // De paso se arma la apertura por unidad de negocio: un viaje que
+        // reparte para dos le deja a cada una SUS horas y la parte del costo
+        // que les corresponde. Las partes suman el costo del viaje, no lo
+        // repiten; por eso el total de la apertura da igual al del mes.
+        const mapaU = await unidadesPorRutaCacheado();
+        const porUnidad: Record<string, { horas: number; costo: number; viajes: number }> = {};
+        const sumarUnidad = (u: string, horas: number, costo: number) => {
+            if (!porUnidad[u]) porUnidad[u] = { horas: 0, costo: 0, viajes: 0 };
+            porUnidad[u].horas += horas;
+            porUnidad[u].costo += costo;
+            porUnidad[u].viajes += 1;
+        };
         const updates: any[] = [];
         // Cuantos viajes no tienen NI horario cargado ni GPS: a esos el calculo
         // les pone las horas por defecto, y son los que hacen que lo repartido
@@ -10297,6 +10342,29 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
             });
 
             const value = Math.round(tripCost);
+            // La apertura por unidad: el mismo costo, abierto por quien lo gasto
+            const reparto = repartirHoras(
+                {
+                    businessUnit: t.businessUnit,
+                    stops: (t.linkedRoute?.stops || []) as any,
+                    inicio: t.routeActualStart || t.exitTime,
+                    fin: t.routeActualEnd || t.returnTime
+                },
+                mapaU,
+                durHrs
+            );
+            const clavesU = [...new Set([
+                ...Object.keys(reparto.horas),
+                ...Object.keys(reparto.paradas)
+            ])];
+            if (clavesU.length) {
+                for (const u of clavesU) {
+                    const h = reparto.horas[u] || 0;
+                    sumarUnidad(u, h, durHrs > 0 ? value * (h / durHrs) : value / clavesU.length);
+                }
+            } else {
+                sumarUnidad(SIN_UNIDAD, durHrs, value);
+            }
             if (dryRun) {
                 updates.push({ id: t.id, value, durHrs: Math.round(durHrs * 100) / 100, auxiliares: auxList, valorActual: Number(t.value) || 0 });
                 continue;
@@ -10311,7 +10379,31 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
         // porque esa lista viene cortada en 300 y sumarla del lado del navegador
         // daria de menos justo en los meses mas grandes, que son los que importan.
         const horasRepartidas = Math.round(updates.reduce((a: number, u: any) => a + (Number(u.durHrs) || 0), 0) * 10) / 10;
+
+        // La apertura por unidad, ordenada de mayor a menor
+        const unidades = Object.entries(porUnidad)
+            .map(([unidad, v]) => ({
+                unidad,
+                viajes: v.viajes,
+                horas: Math.round(v.horas * 100) / 100,
+                costo: Math.round(v.costo)
+            }))
+            .sort((a, b) => b.costo - a.costo);
+
+        // Queda GUARDADA en la base, no solo en la pantalla. Asi la puede leer
+        // cualquiera que entre despues, desde otra computadora, sin tener que
+        // volver a correr el calculo.
+        if (!dryRun) {
+            const claveU = `costos_unidades_${claveCostos(String(month), anioDelCalculo)}`;
+            await prisma.appSettings.upsert({
+                where: { key: claveU },
+                update: { value: JSON.stringify({ calculadoEl: new Date().toISOString(), unidades }) },
+                create: { key: claveU, value: JSON.stringify({ calculadoEl: new Date().toISOString(), unidades }) }
+            });
+        }
+
         res.json({
+            unidades,
             dryRun: !!dryRun,
             updated: dryRun ? 0 : updates.length,
             simulados: dryRun ? updates.length : 0,
