@@ -247,9 +247,16 @@ async function filasViajesDe(prisma: Prisma, where: any) {
         // contaria el doble de costo, de km y de paradas en cualquier total.
         const conUnidad = (s: any) => unidadDeParada(s, unidadPorRuta, unidades);
         const deLaUnidad = (u: string) => paradas.filter((s: any) => conUnidad(s) === u);
-        const claves = Object.keys(reparto.horas).length
-            ? Object.keys(reparto.horas)
-            : unidades;
+        // Las filas tienen que cubrir TODAS las paradas del viaje. Si una
+        // parada no se puede atribuir (su ruta no tiene unidad cargada) cae en
+        // SIN UNIDAD, y esa fila tiene que existir igual: si no, esas paradas
+        // desaparecen del reporte sin que nadie se entere. Que se vea raro es
+        // justamente lo que avisa que falta cargar una unidad.
+        const claves = [...new Set([
+            ...Object.keys(reparto.horas),
+            ...Object.keys(reparto.paradas),
+            ...unidades
+        ])];
 
         return claves.map((u) => {
             const horas = reparto.horas[u] || 0;
