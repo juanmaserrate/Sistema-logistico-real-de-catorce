@@ -8269,7 +8269,7 @@ app.get('/api/v1/control-carga', async (req: any, res: any) => {
 
 /** Corrige un grupo de viajes puntuales: contrato, proveedor y/o valor.
  *  El valor solo se pone en los que estan en cero, para no pisar lo cargado.
- *  POST /api/admin/set-viajes { key, ids, contractType?, provider?, valorSiEstaEnCero?, aplicar } */
+ *  POST /api/admin/set-viajes { key, ids, contractType?, provider?, reparto?, businessUnit?, valorSiEstaEnCero?, aplicar } */
 app.post('/api/admin/set-viajes', async (req: any, res: any) => {
     if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     const ids: number[] = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Boolean) : [];
@@ -8279,6 +8279,9 @@ app.post('/api/admin/set-viajes', async (req: any, res: any) => {
     const provider = req.body?.provider !== undefined ? String(req.body.provider || '').trim() : null;
     const valorSiCero = Number(req.body?.valorSiEstaEnCero) > 0 ? Number(req.body.valorSiEstaEnCero) : null;
     const reparto = req.body?.reparto !== undefined ? String(req.body.reparto || '').trim() : null;
+    // La unidad de negocio guarda VARIAS separadas por coma ("SAE, RETIRO"),
+    // asi que se pasa el texto completo ya armado: quien llama decide que queda.
+    const businessUnit = req.body?.businessUnit !== undefined ? String(req.body.businessUnit || '').trim() : null;
     // Por defecto solo se completa el que esta vacio: pisar un reparto cargado
     // a mano es otra cosa y tiene que pedirse a proposito.
     const pisarReparto = req.body?.pisarReparto === true;
@@ -8286,7 +8289,7 @@ app.post('/api/admin/set-viajes', async (req: any, res: any) => {
     try {
         const viajes = await prisma.trip.findMany({
             where: { id: { in: ids } },
-            select: { id: true, date: true, reparto: true, driver: true, contractType: true, provider: true, value: true, zone: true, locality: true, subzona: true }
+            select: { id: true, date: true, reparto: true, driver: true, contractType: true, provider: true, value: true, zone: true, locality: true, subzona: true, businessUnit: true }
         });
         const cambios: any[] = [];
         for (const t of viajes) {
@@ -8310,6 +8313,10 @@ app.post('/api/admin/set-viajes', async (req: any, res: any) => {
                     data.subzona = nuevaSubzona;
                     detalle.subzona = { antes: t.subzona, despues: nuevaSubzona };
                 }
+            }
+            if (businessUnit !== null && String(t.businessUnit || '') !== businessUnit) {
+                data.businessUnit = businessUnit;
+                detalle.unidad = { antes: t.businessUnit, despues: businessUnit };
             }
             if (valorSiCero && !(Number(t.value) > 0)) {
                 data.value = valorSiCero;
