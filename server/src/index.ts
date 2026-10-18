@@ -6346,24 +6346,46 @@ app.post('/api/admin/clients-bulk-create', async (req: any, res: any) => {
  *  No borra las otras unidades que ya tenga cada uno.
  *  POST /api/admin/clients-set-bu { key, ids: [...], unidad, reparto, dryRun? } */
 app.post('/api/admin/clients-set-bu', async (req: any, res: any) => {
-    const { key, ids, unidad, reparto, dryRun } = req.body || {};
+    const { key, ids, unidad, reparto, dryRun, desde } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     const u = String(unidad || '').trim();
     const r = String(reparto ?? '').trim();
+    // Con "desde" se RENOMBRA la unidad que ya tiene (SAE -> SAE BROWN) en vez
+    // de agregar una nueva al lado. Sin esto, dividir SAE por partido dejaba a
+    // los clientes con las dos, y los viajes nuevos seguian saliendo como SAE.
+    // El reparto que ya tenia cargado se conserva: lo que cambia es el nombre.
+    const dsd = String(desde || '').trim();
     if (!u || !Array.isArray(ids) || !ids.length) return res.status(400).json({ error: 'Faltan ids o unidad' });
     try {
         const clientes = await prisma.client.findMany({ where: { id: { in: ids.map(String) } }, select: { id: true, name: true, businessUnits: true } });
         const hechos: any[] = [];
+        const saltados: any[] = [];
         for (const c of clientes) {
             let lista: any[] = [];
             try { const p = c.businessUnits ? JSON.parse(c.businessUnits) : []; if (Array.isArray(p)) lista = p; } catch {}
-            const idx = lista.findIndex((b) => normClientNameForMatch(b?.unidad) === normClientNameForMatch(u));
-            if (idx >= 0) lista[idx] = { ...lista[idx], unidad: u, reparto: r };
-            else lista.push({ unidad: u, reparto: r });
+            const antes = JSON.parse(JSON.stringify(lista));
+            if (dsd) {
+                const i = lista.findIndex((b) => normClientNameForMatch(b?.unidad) === normClientNameForMatch(dsd));
+                // Si no la tiene, no se toca: pedi renombrar algo que no esta.
+                if (i < 0) { saltados.push({ id: c.id, name: c.name, motivo: `no tiene "${dsd}"` }); continue; }
+                lista[i] = { ...lista[i], unidad: u, ...(reparto !== undefined ? { reparto: r } : {}) };
+                // Si ya tenia tambien la unidad destino, queda una sola
+                lista = lista.filter((b, k) => k === i
+                    || normClientNameForMatch(b?.unidad) !== normClientNameForMatch(u));
+            } else {
+                const idx = lista.findIndex((b) => normClientNameForMatch(b?.unidad) === normClientNameForMatch(u));
+                if (idx >= 0) lista[idx] = { ...lista[idx], unidad: u, reparto: r };
+                else lista.push({ unidad: u, reparto: r });
+            }
             if (!dryRun) await prisma.client.update({ where: { id: c.id }, data: { businessUnits: JSON.stringify(lista) } });
-            hechos.push({ id: c.id, name: c.name, businessUnits: lista });
+            hechos.push({ id: c.id, name: c.name, antes, businessUnits: lista });
         }
-        res.json({ dryRun: !!dryRun, actualizados: hechos.length, hechos });
+        if (!dryRun && hechos.length) {
+            await logAction(req, 'UPDATE', 'Client', hechos.map((h) => h.id).join(','),
+                dsd ? `${dsd} -> ${u} en ${hechos.length} cliente(s)` : `${u} en ${hechos.length} cliente(s)`,
+                null, { detalle: hechos });
+        }
+        res.json({ dryRun: !!dryRun, actualizados: hechos.length, saltados, hechos });
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error' });
     }
