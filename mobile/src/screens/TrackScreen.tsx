@@ -1125,6 +1125,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                 const abreTramo = tieneVariasRutas && !!miTramo && miTramo !== tramoAnterior;
                 const cierraTramo = tieneVariasRutas && !!miTramo && miTramo !== tramoSiguiente;
                 const yaCerrado = tramosCerrados.has(miTramo);
+                const unidadDelTramo = String(st.unidad || '').trim();
                 const isActive = st.status === 'ARRIVED';
                 const isDone = st.status === 'COMPLETED';
                 const isFailed = st.status === 'UNDELIVERABLE';
@@ -1140,6 +1141,13 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
                     <Text style={styles.tramoHeadTxt}>
                       {miTramo === TRAMO_VUELTA ? 'VUELTA AL DEPÓSITO' : miTramo}
                     </Text>
+                    {/* La unidad de negocio de este bloque. Un viaje puede
+                        repartir para dos (R16 es SAE LANUS y SAM 1 LUNES R16
+                        es SAM) y el chofer tiene que ver donde termina una y
+                        empieza la otra. */}
+                    {unidadDelTramo && miTramo !== TRAMO_VUELTA ? (
+                      <Text style={styles.tramoHeadUnidad}>{unidadDelTramo}</Text>
+                    ) : null}
                     {yaCerrado ? <Text style={styles.tramoHeadOk}>✓ terminada</Text> : null}
                   </View>
                 ) : null}
@@ -1738,6 +1746,17 @@ const styles = StyleSheet.create({
     borderRadius: radius.md,
   },
   tramoHeadTxt: { fontWeight: font.black, color: colors.primary, fontSize: font.lg, letterSpacing: 0.5 },
+  tramoHeadUnidad: {
+    fontSize: font.xs,
+    fontWeight: font.black,
+    color: colors.primary,
+    backgroundColor: colors.primaryLight,
+    paddingHorizontal: spacing.sm,
+    paddingVertical: 2,
+    borderRadius: radius.full,
+    overflow: 'hidden',
+    letterSpacing: 0.4,
+  },
   tramoHeadOk: { fontWeight: font.black, color: colors.success, fontSize: font.sm },
   cerrarTramoBtn: {
     marginTop: spacing.sm,

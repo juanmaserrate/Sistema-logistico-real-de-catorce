@@ -15528,10 +15528,26 @@
                                 ${rows.map((row, i) => {
                                     const m = meta[row.clientId] || {};
                                     const lbl = statusLabel(m.status);
+                                    // Un viaje puede repartir para varias unidades (R16 es
+                                    // SAE LANUS y SAM 1 LUNES R16 es SAM). La lista es una
+                                    // sola, pero con un renglon que separa cada bloque y
+                                    // dice de quien es. Con una sola unidad no aparece nada.
+                                    const uMia = String(m.unidad || '').trim();
+                                    const uAnt = i > 0 ? String((meta[rows[i-1].clientId] || {}).unidad || '').trim() : null;
+                                    const abre = uMia && uMia !== uAnt
+                                        && rows.some(x => String((meta[x.clientId] || {}).unidad || '').trim() !== uMia);
+                                    const encabezado = abre ? `
+                                    <tr class="bg-indigo-50/70">
+                                        <td colspan="7" class="px-2 py-1.5">
+                                            <span class="inline-block px-2.5 py-1 rounded-full bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest">
+                                                ${escapeHtmlWeekly(uMia)}
+                                            </span>
+                                        </td>
+                                    </tr>` : '';
                                     const photo = m.proofPhotoUrl
                                         ? `<a href="${m.proofPhotoUrl}" target="_blank" title="Ver foto"><i data-lucide="image" class="w-3.5 h-3.5 text-emerald-600 inline-block"></i></a>`
                                         : '—';
-                                    return `
+                                    return `${encabezado}
                                     <tr class="border-t border-[#F4F7FE] hover:bg-[#F8FAFF]">
                                         <td class="px-2 py-2 text-[#A3AED0] font-bold">${i + 1}</td>
                                         <td class="px-2 py-2 font-bold text-[#2B3674]">${escapeHtmlWeekly(row.name)}</td>

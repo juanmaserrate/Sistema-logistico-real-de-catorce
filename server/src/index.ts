@@ -1,5 +1,6 @@
 
 import express from 'express';
+import { mapaUnidadPorRuta, unidadDeParada, unidadesDeTexto } from './unidadesDelViaje';
 import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail, limpiarTokenMail } from './mailer';
 import { armarReporte, filasViajesPorIds, mesDeFecha, esCuentaDePrueba, TIPOS_DE_ENVASE, sumaDeLosTipos, sinLocalidadPorUnidad, TEXTO_SIN_LOCALIDAD } from './reporteTorre';
 import { armarLibroViajes } from './libroViajes';
@@ -3852,8 +3853,46 @@ app.get('/api/v1/routes', async (req, res) => {
     // Un viaje manual no va a ningun celular: se filtra cuando la consulta viene
     // de la app (pide por chofer). La web no manda driverId y los sigue viendo.
     const visibles = driverId ? routes.filter((r: any) => r.trip?.isManual !== true) : routes;
-    res.json(visibles.map(withRetryReason));
+    const mapaU = await unidadesPorRutaCacheado();
+    res.json(visibles.map((r: any) => conUnidadDeParada(withRetryReason(r), mapaU)));
 });
+
+/** El mapa ruta -> unidad de negocio, en memoria.
+ *
+ *  Lo piden todas las rutas de todos los choferes cada vez que abren la app,
+ *  y las plantillas cambian una vez cada tanto: leerlo de la base en cada
+ *  pedido seria pagar una consulta por gusto. Se refresca solo cada minuto.
+ */
+let _mapaUnidades: Map<string, string> = new Map();
+let _mapaUnidadesAl = 0;
+async function unidadesPorRutaCacheado(): Promise<Map<string, string>> {
+    if (Date.now() - _mapaUnidadesAl < 60000 && _mapaUnidades.size) return _mapaUnidades;
+    try {
+        _mapaUnidades = await mapaUnidadPorRuta(prisma as any);
+        _mapaUnidadesAl = Date.now();
+    } catch (e: any) {
+        console.error('unidadesPorRutaCacheado:', e?.message || e);
+    }
+    return _mapaUnidades;
+}
+
+/** Le pone a cada parada de que unidad de negocio es.
+ *
+ *  La parada sabe de que ruta vino y la ruta sabe su unidad. Con eso la app y
+ *  la web pueden mostrar la lista en bloques, con el nombre de la unidad arriba
+ *  de cada uno, sin tener que bajarse las plantillas.
+ */
+function conUnidadDeParada(route: any, mapa: Map<string, string>) {
+    if (!route?.stops) return route;
+    const unidades = unidadesDeTexto(route?.trip?.businessUnit);
+    return {
+        ...route,
+        stops: route.stops.map((s: any) => ({
+            ...s,
+            unidad: unidadDeParada(s, mapa, unidades)
+        }))
+    };
+}
 
 /** Expone el motivo del ULTIMO intento fallido como campo plano `retryReason`,
  *  para que la app y la web lo muestren sin tener que leer el JSON de la
@@ -10299,9 +10338,17 @@ app.get('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
         if (!Number.isFinite(tripId)) return res.status(400).json({ error: 'ID inválido' });
         const route = await prisma.route.findUnique({
             where: { tripId },
-            include: { stops: { orderBy: { sequence: 'asc' }, include: { client: true } } }
+            include: {
+                stops: { orderBy: { sequence: 'asc' }, include: { client: true } },
+                trip: { select: { businessUnit: true } }
+            }
         });
         if (!route) return res.json({ routeId: null, routeStatus: null, routeStarted: false, stops: [] });
+        // De que unidad de negocio es cada parada, para mostrar la lista en
+        // bloques. Sale de la ruta de la parada: la web no tiene por que saber
+        // que plantilla pertenece a que unidad.
+        const mapaU = await unidadesPorRutaCacheado();
+        const unidadesDelViaje = unidadesDeTexto((route as any).trip?.businessUnit);
         res.json({
             routeId: route.id,
             routeStatus: route.status,
@@ -10318,6 +10365,8 @@ app.get('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
                 longitude: s.client?.longitude ?? null,
                 // Progreso del chofer (campos clave que permiten saber si la parada se tocó)
                 status: s.status || 'PENDING',
+                ruta: (s as any).ruta ?? null,
+                unidad: unidadDeParada(s as any, mapaU, unidadesDelViaje),
                 actualArrival: s.actualArrival?.toISOString() ?? null,
                 actualDeparture: s.actualDeparture?.toISOString() ?? null,
                 observations: s.observations ?? null,

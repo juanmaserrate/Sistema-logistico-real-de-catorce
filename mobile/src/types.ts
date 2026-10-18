@@ -54,6 +54,10 @@ export interface Stop {
   /** De qué ruta del viaje es esta parada ("R8", "R12"). Un viaje puede hacer
    *  varias rutas y después volver al depósito. null = viaje de una sola ruta. */
   ruta?: string | null;
+  /** A qué unidad de negocio pertenece esta parada ("SAE LANUS", "SAM"). La
+   *  calcula el servidor con la ruta de la parada. Un mismo viaje puede
+   *  repartir para varias, y la lista se muestra agrupada por esto. */
+  unidad?: string | null;
   client: Client;
 }
 
