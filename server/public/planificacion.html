@@ -1859,8 +1859,9 @@
                         <div>
                             <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-wider">Costo por unidad de negocio</h4>
                             <p class="text-[11px] text-[#A3AED0] font-medium mt-0.5">
-                                El mismo costo del mes, abierto por quién lo gastó. Un viaje que reparte para
-                                dos unidades le deja a cada una sus horas: las partes suman el total, no lo repiten.
+                                El costo que los viajes tienen cargado hoy, abierto por quién lo gastó. Un viaje
+                                que reparte para dos unidades le deja a cada una sus horas: las partes suman el
+                                total, no lo repiten. Lo calcula el servidor, no esta pantalla.
                             </p>
                         </div>
                         <span id="costs-unidades-cuando" class="text-[10px] font-bold text-[#A3AED0]"></span>
@@ -22202,19 +22203,19 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const filas = d.unidades || [];
             if (cuando) {
                 cuando.textContent = d.calculadoEl
-                    ? 'Calculado el ' + new Date(d.calculadoEl).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-                    : '';
+                    ? 'Motor corrido el ' + new Date(d.calculadoEl).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
+                    : 'El Motor todavía no corrió este mes';
             }
             if (!filas.length) {
                 tabla.innerHTML = `<tbody><tr><td class="py-6 text-[#A3AED0] text-[11px] font-bold">
-                    Todavía no se calculó este mes. Apretá CALCULAR COSTOS DEL MES y la apertura se guarda sola.
+                    No hay viajes con costo cargado en este mes.
                 </td></tr></tbody>`;
                 return;
             }
 
-            const totH = filas.reduce((a, f) => a + (Number(f.horas) || 0), 0);
-            const totC = filas.reduce((a, f) => a + (Number(f.costo) || 0), 0);
-            const totV = filas.reduce((a, f) => a + (Number(f.viajes) || 0), 0);
+            const suma = (c) => filas.reduce((a, f) => a + (Number(f[c]) || 0), 0);
+            const totH = suma('horas'), totC = suma('costo'), totV = suma('viajes');
+            const totP = suma('propio'), totT = suma('tercerizado');
             const plata = (n) => '$ ' + numeroAR(Math.round(Number(n) || 0), 0);
 
             tabla.innerHTML = `
@@ -22223,7 +22224,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         <th class="px-3 py-2 text-left">Unidad de negocio</th>
                         <th class="px-3 py-2 text-right">Viajes</th>
                         <th class="px-3 py-2 text-right">Horas</th>
-                        <th class="px-3 py-2 text-right">Costo</th>
+                        <th class="px-3 py-2 text-right">Propio</th>
+                        <th class="px-3 py-2 text-right">Tercerizado</th>
+                        <th class="px-3 py-2 text-right">Total</th>
                         <th class="px-3 py-2 text-right">% del mes</th>
                     </tr>
                 </thead>
@@ -22237,6 +22240,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                             </td>
                             <td class="px-3 py-2 text-right text-[#2B3674]">${numeroAR(f.viajes, 0)}</td>
                             <td class="px-3 py-2 text-right text-[#2B3674]">${numeroAR(f.horas, 1)}</td>
+                            <td class="px-3 py-2 text-right text-[#2B3674]">${plata(f.propio)}</td>
+                            <td class="px-3 py-2 text-right text-[#2B3674]">${plata(f.tercerizado)}</td>
                             <td class="px-3 py-2 text-right font-black text-[#1B2559]">${plata(f.costo)}</td>
                             <td class="px-3 py-2 text-right text-[#A3AED0] font-bold">${totC > 0 ? numeroAR(100 * f.costo / totC, 1) : '0'}%</td>
                         </tr>`;
@@ -22247,6 +22252,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         <td class="px-3 py-2 font-black uppercase tracking-wider">Total del mes</td>
                         <td class="px-3 py-2 text-right font-black">${numeroAR(totV, 0)}</td>
                         <td class="px-3 py-2 text-right font-black">${numeroAR(totH, 1)}</td>
+                        <td class="px-3 py-2 text-right font-black">${plata(totP)}</td>
+                        <td class="px-3 py-2 text-right font-black">${plata(totT)}</td>
                         <td class="px-3 py-2 text-right font-black">${plata(totC)}</td>
                         <td class="px-3 py-2 text-right font-black">100%</td>
                     </tr>

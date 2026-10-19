@@ -2,7 +2,7 @@
 import express from 'express';
 import { mapaUnidadPorRuta, unidadDeParada, unidadesDeTexto, repartirHoras, SIN_UNIDAD } from './unidadesDelViaje';
 import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail, limpiarTokenMail } from './mailer';
-import { armarReporte, filasViajesPorIds, mesDeFecha, esCuentaDePrueba, TIPOS_DE_ENVASE, sumaDeLosTipos, sinLocalidadPorUnidad, TEXTO_SIN_LOCALIDAD } from './reporteTorre';
+import { armarReporte, filasViajesPorIds, mesDeFecha, esCuentaDePrueba, TIPOS_DE_ENVASE, sumaDeLosTipos, sinLocalidadPorUnidad, TEXTO_SIN_LOCALIDAD, sinViajesDePrueba } from './reporteTorre';
 import { armarLibroViajes } from './libroViajes';
 import { metricasDelMes } from './metricasDashboard';
 import { subirArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnosticoSharepoint, limpiarTokenSharepoint } from './sharepoint';
@@ -6430,21 +6430,96 @@ app.post('/api/admin/clients-set-bu', async (req: any, res: any) => {
     }
 });
 
-/** La apertura de costos por unidad de negocio de un mes, como la dejo el
- *  ultimo "Calcular costos del mes". Se lee de la base: no se recalcula en el
- *  navegador, asi la ve igual cualquiera que entre, desde donde entre.
+/** La apertura por unidad de negocio del costo de un mes.
+ *
+ *  Se calcula EN EL SERVIDOR sobre los costos que los viajes tienen cargados
+ *  hoy. A proposito no se lee de una foto guardada: una foto envejece apenas
+ *  alguien corrige un viaje, y entonces la tabla diria una cosa y la planilla
+ *  otra. Asi siempre dice lo mismo que el resto del sistema.
+ *
+ *  La foto igual se guarda cuando corre "Calcular costos del mes", y de ahi
+ *  sale `calculadoEl`: sirve para saber cuando fue la ultima vez.
+ *
  *  GET /api/v1/costs/unidades?month=septiembre&year=2026 */
 app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
     try {
         const mes = String(req.query.month || '').toLowerCase();
-        if (!mes) return res.status(400).json({ error: 'Falta "month"' });
+        const mesNum = MONTH_TO_NUM[mes];
+        if (!mesNum) return res.status(400).json({ error: 'Mes invalido' });
         const anio = Number(req.query.year) > 0 ? Number(req.query.year) : new Date().getFullYear();
-        const clave = `costos_unidades_${claveCostos(mes, anio)}`;
-        const fila = await prisma.appSettings.findUnique({ where: { key: clave } });
-        if (!fila) return res.json({ mes, anio, calculadoEl: null, unidades: [] });
-        const d = JSON.parse(fila.value || '{}');
-        res.json({ mes, anio, calculadoEl: d?.calculadoEl ?? null, unidades: Array.isArray(d?.unidades) ? d.unidades : [] });
+
+        const ini = new Date(Date.UTC(anio, mesNum - 1, 1, 0, 0, 0));
+        const fin = new Date(Date.UTC(anio, mesNum, 0, 23, 59, 59));
+        const viajes = await prisma.trip.findMany({
+            where: { date: { gte: ini, lte: fin } },
+            include: {
+                linkedRoute: {
+                    select: {
+                        actualStartTime: true, actualEndTime: true,
+                        stops: { select: { sequence: true, ruta: true, actualArrival: true, actualDeparture: true } }
+                    }
+                }
+            }
+        });
+
+        const mapaU = await unidadesPorRutaCacheado();
+        const acc: Record<string, { horas: number; propio: number; terc: number; viajes: number }> = {};
+        const sumar = (u: string, horas: number, monto: number, esPropio: boolean) => {
+            if (!acc[u]) acc[u] = { horas: 0, propio: 0, terc: 0, viajes: 0 };
+            acc[u].horas += horas;
+            acc[u][esPropio ? 'propio' : 'terc'] += monto;
+            acc[u].viajes += 1;
+        };
+
+        for (const t of sinViajesDePrueba(viajes as any[])) {
+            const r = (t as any).linkedRoute;
+            const conRuta: any = {
+                ...t,
+                routeActualStart: r?.actualStartTime ?? null,
+                routeActualEnd: r?.actualEndTime ?? null
+            };
+            const horas = parseTripDurationHrs(conRuta, 0);
+            const monto = Number((t as any).value) || 0;
+            const esPropio = String((t as any).contractType || '').toLowerCase() === 'propio';
+            const reparto = repartirHoras(
+                {
+                    businessUnit: (t as any).businessUnit,
+                    stops: (r?.stops || []) as any,
+                    inicio: r?.actualStartTime || (t as any).exitTime,
+                    fin: r?.actualEndTime || (t as any).returnTime
+                },
+                mapaU,
+                horas
+            );
+            const claves = [...new Set([...Object.keys(reparto.horas), ...Object.keys(reparto.paradas)])];
+            if (!claves.length) { sumar(SIN_UNIDAD, horas, monto, esPropio); continue; }
+            for (const u of claves) {
+                const h = reparto.horas[u] || 0;
+                const parte = horas > 0 ? h / horas : 1 / claves.length;
+                sumar(u, h, monto * parte, esPropio);
+            }
+        }
+
+        const unidades = Object.entries(acc)
+            .map(([unidad, v]) => ({
+                unidad,
+                viajes: v.viajes,
+                horas: Math.round(v.horas * 100) / 100,
+                propio: Math.round(v.propio),
+                tercerizado: Math.round(v.terc),
+                costo: Math.round(v.propio + v.terc)
+            }))
+            .sort((a, b) => b.costo - a.costo);
+
+        const foto = await prisma.appSettings.findUnique({
+            where: { key: `costos_unidades_${claveCostos(mes, anio)}` }
+        });
+        let calculadoEl: string | null = null;
+        try { calculadoEl = foto ? (JSON.parse(foto.value || '{}')?.calculadoEl ?? null) : null; } catch { /* */ }
+
+        res.json({ mes, anio, calculadoEl, unidades });
     } catch (e: any) {
+        console.error('costs/unidades:', e);
         res.status(500).json({ error: e?.message || 'Error' });
     }
 });
