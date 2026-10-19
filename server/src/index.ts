@@ -6444,12 +6444,17 @@ app.post('/api/admin/clients-set-bu', async (req: any, res: any) => {
 app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
     try {
         const mes = String(req.query.month || '').toLowerCase();
+        // MONTH_TO_NUM cuenta desde CERO (enero = 0), igual que los meses de
+        // JavaScript. Por eso se compara contra undefined y no con un if a
+        // secas: enero vale 0 y un `if (!mesNum)` lo tomaria por invalido.
         const mesNum = MONTH_TO_NUM[mes];
-        if (!mesNum) return res.status(400).json({ error: 'Mes invalido' });
+        if (mesNum === undefined) return res.status(400).json({ error: 'Mes invalido' });
         const anio = Number(req.query.year) > 0 ? Number(req.query.year) : new Date().getFullYear();
 
-        const ini = new Date(Date.UTC(anio, mesNum - 1, 1, 0, 0, 0));
-        const fin = new Date(Date.UTC(anio, mesNum, 0, 23, 59, 59));
+        // El mismo rango que usa calculate-month, para que las dos pantallas
+        // hablen exactamente del mismo mes.
+        const ini = new Date(anio, mesNum, 1);
+        const fin = new Date(anio, mesNum + 1, 0, 23, 59, 59);
         const viajes = await prisma.trip.findMany({
             where: { date: { gte: ini, lte: fin } },
             include: {
