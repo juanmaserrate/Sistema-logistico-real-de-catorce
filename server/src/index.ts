@@ -6582,6 +6582,112 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
     }
 });
 
+/** Las paradas de unos viajes, con sus horarios. Para poder reconstruir a que
+ *  hora empezo de verdad la segunda ruta de un viaje partido en dos.
+ *  GET /api/admin/paradas-de-viajes?key=...&ids=1,2,3 */
+app.get('/api/admin/paradas-de-viajes', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const ids = String(req.query.ids || '').split(',').map((x) => Number(x.trim())).filter(Number.isFinite);
+        if (!ids.length) return res.status(400).json({ error: 'Faltan ids' });
+        const viajes = await prisma.trip.findMany({
+            where: { id: { in: ids } },
+            select: {
+                id: true, date: true, reparto: true, driver: true, businessUnit: true,
+                exitTime: true, returnTime: true, contractType: true, value: true,
+                linkedRoute: {
+                    select: {
+                        actualStartTime: true, actualEndTime: true,
+                        stops: {
+                            orderBy: { sequence: 'asc' },
+                            select: {
+                                id: true, sequence: true, status: true, ruta: true,
+                                actualArrival: true, actualDeparture: true,
+                                client: { select: { name: true } }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        res.json({
+            viajes: viajes.map((t: any) => ({
+                id: t.id,
+                fecha: new Date(t.date).toISOString().slice(0, 10),
+                reparto: t.reparto, chofer: t.driver, unidad: t.businessUnit,
+                contrato: t.contractType, valor: Number(t.value) || 0,
+                exitTime: t.exitTime, returnTime: t.returnTime,
+                gpsInicio: t.linkedRoute?.actualStartTime ?? null,
+                gpsFin: t.linkedRoute?.actualEndTime ?? null,
+                paradas: (t.linkedRoute?.stops || []).map((p: any) => ({
+                    sec: p.sequence, nombre: p.client?.name || '', estado: p.status, ruta: p.ruta,
+                    llegada: p.actualArrival, salida: p.actualDeparture
+                }))
+            }))
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Corrige la hora de salida y/o de llegada de unos viajes.
+ *
+ *  Hace falta para separar los viajes que se cargaron partidos en dos (el R y
+ *  el SAM del mismo recorrido) y que hoy tienen los dos el horario completo
+ *  del deposito, asi que se pisan y sus horas se cuentan dos veces.
+ *
+ *  POST /api/admin/set-horarios { key, cambios: [{id, exitTime?, returnTime?}], dryRun? } */
+app.post('/api/admin/set-horarios', async (req: any, res: any) => {
+    const { key, cambios, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!Array.isArray(cambios) || !cambios.length) return res.status(400).json({ error: 'Falta "cambios"' });
+    const hhmm = /^([01]\d|2[0-3]):[0-5]\d$/;
+    try {
+        const ids = cambios.map((c: any) => Number(c?.id)).filter(Number.isFinite);
+        const viajes = await prisma.trip.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, date: true, reparto: true, driver: true, exitTime: true, returnTime: true }
+        });
+        const porId = new Map(viajes.map((t: any) => [t.id, t]));
+        const hechos: any[] = [];
+        const rechazados: any[] = [];
+        for (const c of cambios) {
+            const t: any = porId.get(Number(c?.id));
+            if (!t) { rechazados.push({ id: c?.id, motivo: 'no existe' }); continue; }
+            const data: any = {};
+            const detalle: any = {};
+            for (const campo of ['exitTime', 'returnTime']) {
+                if (c[campo] === undefined) continue;
+                const v = String(c[campo] || '').trim();
+                if (v && !hhmm.test(v)) { rechazados.push({ id: t.id, motivo: `${campo} invalido: ${v}` }); continue; }
+                if (String(t[campo] || '') === v) continue;
+                data[campo] = v || null;
+                detalle[campo] = { antes: t[campo], despues: v || null };
+            }
+            // Una salida posterior a la llegada deja el viaje con horas negativas
+            const sal = data.exitTime !== undefined ? data.exitTime : t.exitTime;
+            const lle = data.returnTime !== undefined ? data.returnTime : t.returnTime;
+            if (sal && lle && String(sal) >= String(lle)) {
+                rechazados.push({ id: t.id, motivo: `la salida (${sal}) no puede ser posterior a la llegada (${lle})` });
+                continue;
+            }
+            if (Object.keys(data).length) {
+                hechos.push({ id: t.id, fecha: new Date(t.date).toISOString().slice(0, 10), reparto: t.reparto, chofer: t.driver, data, detalle });
+            }
+        }
+        if (!dryRun) {
+            for (const h of hechos) await prisma.trip.update({ where: { id: h.id }, data: h.data });
+            if (hechos.length) {
+                await logAction(req, 'UPDATE', 'Trip', hechos.map((h) => h.id).join(','),
+                    `horarios corregidos en ${hechos.length} viaje(s)`, null, { detalle: hechos });
+            }
+        }
+        res.json({ dryRun: !!dryRun, cambian: hechos.length, rechazados, hechos });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** La unidad de negocio de varias rutas predefinidas, de una.
  *  POST /api/admin/rutas-set-bu { key, cambios: [{ruta, businessUnit}], dryRun? } */
 app.post('/api/admin/rutas-set-bu', async (req: any, res: any) => {
