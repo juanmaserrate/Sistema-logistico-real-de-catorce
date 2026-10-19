@@ -6194,6 +6194,35 @@ app.get('/api/admin/trip-people', async (req: any, res: any) => {
     }
 });
 
+/** El catalogo de personal con su contrato y proveedor.
+ *  Sirve para contestar "este auxiliar que no tiene sueldo cargado, es propio
+ *  o es de un tercero?": si es de un tercero no corresponde que este en la
+ *  nomina, y que falte no es un error.
+ *  GET /api/admin/personal?key=... */
+app.get('/api/admin/personal', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const users = await prisma.user.findMany({
+            where: { role: { in: ['CHOFER', 'AUXILIAR', 'DRIVER'] } },
+            select: {
+                id: true, username: true, fullName: true, role: true, active: true,
+                payType: true, contractType: true, providerId: true
+            },
+            orderBy: { fullName: 'asc' }
+        });
+        const provs = await prisma.provider.findMany({ select: { id: true, name: true } });
+        const nomProv = new Map(provs.map((p: any) => [p.id, p.name]));
+        res.json({
+            total: users.length,
+            personas: users.map((u: any) => ({
+                ...u, proveedor: u.providerId ? (nomProv.get(u.providerId) || u.providerId) : null
+            }))
+        });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Sueldos cargados, para auditar antes de tocar nada.
  *  GET /api/admin/salaries-dump?key=...&month=septiembre */
 app.get('/api/admin/salaries-dump', async (req: any, res: any) => {
