@@ -6611,6 +6611,114 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
     }
 });
 
+/** Les pone la ruta a las paradas viejas, mirando la plantilla del reparto.
+ *
+ *  Los viajes de antes de esta semana tienen las paradas sin ruta. Con una
+ *  sola unidad no molesta (la parada hereda la unica que hay), pero con dos el
+ *  sistema no sabe de quien es cada hora y las manda a SIN UNIDAD.
+ *
+ *  La idea, que es de juanma: una parada que esta en la ruta predefinida es
+ *  del reparto; una que NO esta es del otro trabajo. En los R6 la que sobra es
+ *  siempre la panaderia, en los R9 siempre Mi Cabania: son los retiros.
+ *
+ *  A las que estan se les pone el reparto; a las que no, el nombre de la otra
+ *  unidad del viaje. La vuelta al deposito no se toca.
+ *
+ *  POST /api/admin/paradas-rellenar-ruta { key, ids: [tripId], dryRun? } */
+app.post('/api/admin/paradas-rellenar-ruta', async (req: any, res: any) => {
+    const { key, ids, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const lista = Array.isArray(ids) ? ids.map(Number).filter(Number.isFinite) : [];
+    if (!lista.length) return res.status(400).json({ error: 'Faltan ids' });
+
+    const norm = (x: any) => String(x ?? '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/).filter(Boolean).join(' ');
+    const esBase = (n: any) => /^(REAL (DE )?(14|CATORCE)|DEPOSITO|R 14)/.test(norm(n));
+
+    try {
+        const plantillas = await (prisma as any).routeTemplate.findMany({
+            select: { name: true, businessUnit: true, stops: { select: { name: true } } }
+        });
+        const porNombre = new Map<string, { unidad: string; paradas: Set<string> }>();
+        for (const t of plantillas) {
+            porNombre.set(norm(t.name), {
+                unidad: norm(t.businessUnit),
+                paradas: new Set((t.stops || []).map((p: any) => norm(p.name)))
+            });
+        }
+
+        const viajes = await prisma.trip.findMany({
+            where: { id: { in: lista } },
+            select: {
+                id: true, date: true, reparto: true, businessUnit: true,
+                linkedRoute: {
+                    select: {
+                        stops: {
+                            orderBy: { sequence: 'asc' },
+                            select: { id: true, sequence: true, ruta: true, client: { select: { name: true } } }
+                        }
+                    }
+                }
+            }
+        });
+
+        const hechos: any[] = [];
+        const saltados: any[] = [];
+        for (const t of viajes as any[]) {
+            const rep = norm(t.reparto);
+            const plant = porNombre.get(rep);
+            if (!plant) { saltados.push({ id: t.id, reparto: t.reparto, motivo: 'el reparto no es una ruta predefinida' }); continue; }
+            const unidades = unidadesDeTexto(t.businessUnit);
+            // La "otra" unidad: la del viaje que no es la de la ruta
+            const otras = unidades.filter((u) => u !== plant.unidad);
+            if (otras.length !== 1) {
+                saltados.push({ id: t.id, reparto: t.reparto, motivo: `no hay UNA sola otra unidad (${t.businessUnit})` });
+                continue;
+            }
+            const otra = otras[0];
+
+            const cambios: any[] = [];
+            for (const p of (t.linkedRoute?.stops || [])) {
+                if (esBase(p.client?.name)) continue;
+                if (String(p.ruta || '').trim()) continue;         // ya tiene, no se pisa
+                const dentro = plant.paradas.has(norm(p.client?.name));
+                const ruta = dentro ? String(t.reparto).trim() : otra;
+                cambios.push({ stopId: p.id, parada: p.client?.name, dentroDeLaRuta: dentro, ruta });
+            }
+            if (!cambios.length) { saltados.push({ id: t.id, reparto: t.reparto, motivo: 'no hay paradas sin ruta' }); continue; }
+            hechos.push({
+                id: t.id, fecha: new Date(t.date).toISOString().slice(0, 10),
+                reparto: t.reparto, unidades: t.businessUnit,
+                delReparto: cambios.filter((c) => c.dentroDeLaRuta).length,
+                deLaOtra: cambios.filter((c) => !c.dentroDeLaRuta).map((c) => c.parada),
+                cambios
+            });
+        }
+
+        if (!dryRun) {
+            for (const h of hechos) {
+                for (const c of h.cambios) {
+                    await prisma.stop.update({ where: { id: c.stopId }, data: { ruta: c.ruta } });
+                }
+            }
+            if (hechos.length) {
+                await logAction(req, 'UPDATE', 'Stop', hechos.map((h: any) => h.id).join(','),
+                    `ruta rellenada en ${hechos.length} viaje(s)`, null, { detalle: hechos });
+            }
+        }
+        res.json({
+            dryRun: !!dryRun,
+            viajes: hechos.length,
+            paradas: hechos.reduce((a: number, h: any) => a + h.cambios.length, 0),
+            saltados, hechos
+        });
+    } catch (e: any) {
+        console.error('paradas-rellenar-ruta:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Las paradas de unos viajes, con sus horarios. Para poder reconstruir a que
  *  hora empezo de verdad la segunda ruta de un viaje partido en dos.
  *  GET /api/admin/paradas-de-viajes?key=...&ids=1,2,3 */

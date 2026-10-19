@@ -82,6 +82,12 @@ export function unidadDeParada(
     if (ruta) {
         const u = unidadPorRuta.get(ruta);
         if (u) return u;
+        // La parada puede traer directamente el nombre de la unidad en vez del
+        // de una ruta. Pasa con los trabajos que NO son una ruta: un retiro, un
+        // evento. No tienen plantilla, asi que no hay ruta que ponerles, pero
+        // igual hay que poder decir de quien son.
+        const comoUnidad = unidadesDelViaje.find((x) => x === ruta);
+        if (comoUnidad) return comoUnidad;
     }
     if (unidadesDelViaje.length === 1) return unidadesDelViaje[0];
     return SIN_UNIDAD;
