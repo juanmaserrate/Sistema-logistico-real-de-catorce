@@ -1864,7 +1864,15 @@
                                 total, no lo repiten. Lo calcula el servidor, no esta pantalla.
                             </p>
                         </div>
-                        <span id="costs-unidades-cuando" class="text-[10px] font-bold text-[#A3AED0]"></span>
+                        <div class="flex items-center gap-3">
+                            <div class="flex bg-[#F4F7FE] rounded-full p-1">
+                                <button type="button" id="btn-unidades-mes" onclick="verUnidades('mes')"
+                                        class="px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider">Mes</button>
+                                <button type="button" id="btn-unidades-anio" onclick="verUnidades('anio')"
+                                        class="px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider">Año</button>
+                            </div>
+                            <span id="costs-unidades-cuando" class="text-[10px] font-bold text-[#A3AED0]"></span>
+                        </div>
                     </div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-[11px] border-collapse" id="costs-unidades-tabla"></table>
@@ -22175,6 +22183,29 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
         }
 
+        /** Mensual o anual. Se recuerda, para no tener que volver a elegirla
+         *  cada vez que se entra a la pantalla. */
+        let _vistaUnidades = (() => {
+            try { return localStorage.getItem('r14.unidades_vista') === 'anio' ? 'anio' : 'mes'; }
+            catch (_) { return 'mes'; }
+        })();
+
+        function verUnidades(cual) {
+            _vistaUnidades = (cual === 'anio') ? 'anio' : 'mes';
+            try { localStorage.setItem('r14.unidades_vista', _vistaUnidades); } catch (_) {}
+            cargarCostosPorUnidad();
+        }
+
+        function pintarBotonesUnidades() {
+            const on = 'bg-indigo-600 text-white shadow-sm';
+            const off = 'text-[#A3AED0] hover:text-[#2B3674]';
+            const base = 'px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider ';
+            const bm = document.getElementById('btn-unidades-mes');
+            const ba = document.getElementById('btn-unidades-anio');
+            if (bm) bm.className = base + (_vistaUnidades === 'mes' ? on : off);
+            if (ba) ba.className = base + (_vistaUnidades === 'anio' ? on : off);
+        }
+
         /** La apertura de costos por unidad del mes elegido.
          *
          *  Se LEE DEL SERVIDOR, no se calcula aca: la guarda el Motor cuando
@@ -22184,6 +22215,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const tabla = document.getElementById('costs-unidades-tabla');
             const cuando = document.getElementById('costs-unidades-cuando');
             if (!tabla) return;
+            pintarBotonesUnidades();
+            if (_vistaUnidades === 'anio') return cargarCostosPorUnidadAnual();
+
             const mes = document.getElementById('costs-month-select')?.value || '';
             if (!mes) { tabla.innerHTML = ''; return; }
 
@@ -22258,6 +22292,69 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         <td class="px-3 py-2 text-right font-black">100%</td>
                     </tr>
                 </tfoot>`;
+        }
+
+        /** La misma apertura pero del ano entero: las unidades en filas y los
+         *  doce meses en columnas, igual que la planilla de gastos de arriba.
+         *  La calcula el servidor de una sola vez, no doce. */
+        async function cargarCostosPorUnidadAnual() {
+            const tabla = document.getElementById('costs-unidades-tabla');
+            const cuando = document.getElementById('costs-unidades-cuando');
+            if (!tabla) return;
+            tabla.innerHTML = '<tbody><tr><td class="py-4 text-[#A3AED0] font-bold">Cargando el año…</td></tr></tbody>';
+
+            let d = null;
+            try {
+                const res = await fetch(`${API_URL}/costs/unidades-anual?year=${encodeURIComponent(anioCostos())}`,
+                    { headers: getActorHeaders(), cache: 'no-store' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                d = await res.json();
+            } catch (_) {
+                tabla.innerHTML = '<tbody><tr><td class="py-4 text-rose-500 font-bold">No pude leer el año del servidor.</td></tr></tbody>';
+                if (cuando) cuando.textContent = '';
+                return;
+            }
+            if (cuando) cuando.textContent = 'año ' + d.anio;
+
+            const meses = d.meses || [];
+            const total = d.total || [];
+            if (!total.length) {
+                tabla.innerHTML = '<tbody><tr><td class="py-6 text-[#A3AED0] text-[11px] font-bold">No hay viajes con costo cargado en ' + d.anio + '.</td></tr></tbody>';
+                return;
+            }
+            // Los meses que no tienen NADA no ocupan una columna al pedo
+            const conDatos = meses.filter(m => (d.porMes[m] || []).length > 0);
+            const plata = (n) => Number(Math.round(n || 0)).toLocaleString('es-AR');
+            const buscar = (m, u) => (d.porMes[m] || []).find(x => x.unidad === u);
+
+            const cab = `<thead><tr class="bg-[#F8FAFF]">
+                    <th class="text-left px-3 py-2 font-black text-[#1B2559] uppercase tracking-wider sticky left-0 bg-[#F8FAFF] min-w-[200px]">Unidad de negocio</th>
+                    ${conDatos.map(m => `<th class="px-2 py-2 font-black text-[#1B2559] uppercase text-right">${m.slice(0,3)}</th>`).join('')}
+                    <th class="px-3 py-2 font-black text-[#1B2559] uppercase text-right">Año</th>
+                </tr></thead>`;
+
+            let n = 0;
+            const filas = total.map(u => {
+                const sinU = String(u.unidad).toUpperCase() === 'SIN UNIDAD';
+                return `<tr class="border-t border-[#F4F7FE] r14-fila${(n++) % 2 ? '-alt' : ''}">
+                    <td class="px-3 py-1.5 font-bold sticky left-0 ${sinU ? 'text-amber-600' : 'text-[#2B3674]'}">${escapeHtml(u.unidad)}</td>
+                    ${conDatos.map(m => {
+                        const f = buscar(m, u.unidad);
+                        return `<td class="px-2 py-1.5 text-right text-[11px] ${f ? 'text-[#2B3674]' : 'text-[#E0E5F2]'}">${f ? '$ ' + plata(f.costo) : '—'}</td>`;
+                    }).join('')}
+                    <td class="px-3 py-1.5 text-right font-black text-[#1B2559]">$ ${plata(u.costo)}</td>
+                </tr>`;
+            }).join('');
+
+            const totMes = (m) => (d.porMes[m] || []).reduce((a, x) => a + (x.costo || 0), 0);
+            const totAnio = total.reduce((a, x) => a + (x.costo || 0), 0);
+            const pie = `<tr class="r14-fila-total">
+                    <td class="px-3 py-2 font-black uppercase tracking-wider sticky left-0">Total</td>
+                    ${conDatos.map(m => `<td class="px-2 py-2 text-right font-black">$ ${plata(totMes(m))}</td>`).join('')}
+                    <td class="px-3 py-2 text-right font-black">$ ${plata(totAnio)}</td>
+                </tr>`;
+
+            tabla.innerHTML = cab + '<tbody>' + filas + pie + '</tbody>';
         }
 
         const DASH_MONTH_MAP = {

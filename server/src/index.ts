@@ -6430,6 +6430,104 @@ app.post('/api/admin/clients-set-bu', async (req: any, res: any) => {
     }
 });
 
+type AperturaUnidad = { horas: number; propio: number; terc: number; viajes: number };
+
+/** Reparte una lista de viajes entre sus unidades de negocio.
+ *
+ *  Un viaje que reparte para dos le deja a cada una SUS horas y la parte del
+ *  costo que les corresponde. Las partes suman el costo del viaje, no lo
+ *  repiten: por eso cualquier total de esta apertura da igual al del mes.
+ */
+function aperturaPorUnidad(viajes: any[], mapaU: Map<string, string>): Record<string, AperturaUnidad> {
+    const acc: Record<string, AperturaUnidad> = {};
+    const sumar = (u: string, horas: number, monto: number, esPropio: boolean) => {
+        if (!acc[u]) acc[u] = { horas: 0, propio: 0, terc: 0, viajes: 0 };
+        acc[u].horas += horas;
+        acc[u][esPropio ? 'propio' : 'terc'] += monto;
+        acc[u].viajes += 1;
+    };
+    for (const t of viajes) {
+        const r = t?.linkedRoute;
+        const horas = parseTripDurationHrs(
+            { ...t, routeActualStart: r?.actualStartTime ?? null, routeActualEnd: r?.actualEndTime ?? null } as any,
+            0
+        );
+        const monto = Number(t?.value) || 0;
+        const esPropio = String(t?.contractType || '').toLowerCase() === 'propio';
+        const reparto = repartirHoras(
+            {
+                businessUnit: t?.businessUnit,
+                stops: (r?.stops || []) as any,
+                inicio: r?.actualStartTime || t?.exitTime,
+                fin: r?.actualEndTime || t?.returnTime
+            },
+            mapaU,
+            horas
+        );
+        const claves = [...new Set([...Object.keys(reparto.horas), ...Object.keys(reparto.paradas)])];
+        if (!claves.length) { sumar(SIN_UNIDAD, horas, monto, esPropio); continue; }
+        for (const u of claves) {
+            const h = reparto.horas[u] || 0;
+            const parte = horas > 0 ? h / horas : 1 / claves.length;
+            sumar(u, h, monto * parte, esPropio);
+        }
+    }
+    return acc;
+}
+
+/** La apertura en filas listas para mostrar, de mayor a menor costo. */
+function aperturaEnFilas(acc: Record<string, AperturaUnidad>) {
+    return Object.entries(acc)
+        .map(([unidad, v]) => ({
+            unidad,
+            viajes: v.viajes,
+            horas: Math.round(v.horas * 100) / 100,
+            propio: Math.round(v.propio),
+            tercerizado: Math.round(v.terc),
+            costo: Math.round(v.propio + v.terc)
+        }))
+        .sort((a, b) => b.costo - a.costo);
+}
+
+/** La apertura por unidad de TODO un ano, mes por mes.
+ *
+ *  Una sola consulta para los doce meses: pedirlos de a uno serian doce
+ *  viajes a la base para dibujar una tabla.
+ *  GET /api/v1/costs/unidades-anual?year=2026 */
+app.get('/api/v1/costs/unidades-anual', async (req: any, res: any) => {
+    try {
+        const anio = Number(req.query.year) > 0 ? Number(req.query.year) : new Date().getFullYear();
+        const ini = new Date(anio, 0, 1);
+        const fin = new Date(anio, 11, 31, 23, 59, 59);
+        const viajes = await prisma.trip.findMany({
+            where: { date: { gte: ini, lte: fin } },
+            include: {
+                linkedRoute: {
+                    select: {
+                        actualStartTime: true, actualEndTime: true,
+                        stops: { select: { sequence: true, ruta: true, actualArrival: true, actualDeparture: true } }
+                    }
+                }
+            }
+        });
+        const mapaU = await unidadesPorRutaCacheado();
+        const limpios = sinViajesDePrueba(viajes as any[]);
+
+        // Los doce meses por separado, y ademas el ano entero
+        const porMes: Record<string, any[]> = {};
+        for (let m = 0; m < 12; m++) {
+            const delMes = limpios.filter((t: any) => new Date(t.date).getMonth() === m);
+            porMes[MESES_ES[m]] = aperturaEnFilas(aperturaPorUnidad(delMes, mapaU));
+        }
+        const total = aperturaEnFilas(aperturaPorUnidad(limpios, mapaU));
+
+        res.json({ anio, meses: MESES_ES, porMes, total });
+    } catch (e: any) {
+        console.error('costs/unidades-anual:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** La apertura por unidad de negocio del costo de un mes.
  *
  *  Se calcula EN EL SERVIDOR sobre los costos que los viajes tienen cargados
@@ -6468,53 +6566,8 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
         });
 
         const mapaU = await unidadesPorRutaCacheado();
-        const acc: Record<string, { horas: number; propio: number; terc: number; viajes: number }> = {};
-        const sumar = (u: string, horas: number, monto: number, esPropio: boolean) => {
-            if (!acc[u]) acc[u] = { horas: 0, propio: 0, terc: 0, viajes: 0 };
-            acc[u].horas += horas;
-            acc[u][esPropio ? 'propio' : 'terc'] += monto;
-            acc[u].viajes += 1;
-        };
-
-        for (const t of sinViajesDePrueba(viajes as any[])) {
-            const r = (t as any).linkedRoute;
-            const conRuta: any = {
-                ...t,
-                routeActualStart: r?.actualStartTime ?? null,
-                routeActualEnd: r?.actualEndTime ?? null
-            };
-            const horas = parseTripDurationHrs(conRuta, 0);
-            const monto = Number((t as any).value) || 0;
-            const esPropio = String((t as any).contractType || '').toLowerCase() === 'propio';
-            const reparto = repartirHoras(
-                {
-                    businessUnit: (t as any).businessUnit,
-                    stops: (r?.stops || []) as any,
-                    inicio: r?.actualStartTime || (t as any).exitTime,
-                    fin: r?.actualEndTime || (t as any).returnTime
-                },
-                mapaU,
-                horas
-            );
-            const claves = [...new Set([...Object.keys(reparto.horas), ...Object.keys(reparto.paradas)])];
-            if (!claves.length) { sumar(SIN_UNIDAD, horas, monto, esPropio); continue; }
-            for (const u of claves) {
-                const h = reparto.horas[u] || 0;
-                const parte = horas > 0 ? h / horas : 1 / claves.length;
-                sumar(u, h, monto * parte, esPropio);
-            }
-        }
-
-        const unidades = Object.entries(acc)
-            .map(([unidad, v]) => ({
-                unidad,
-                viajes: v.viajes,
-                horas: Math.round(v.horas * 100) / 100,
-                propio: Math.round(v.propio),
-                tercerizado: Math.round(v.terc),
-                costo: Math.round(v.propio + v.terc)
-            }))
-            .sort((a, b) => b.costo - a.costo);
+        const acc = aperturaPorUnidad(sinViajesDePrueba(viajes as any[]), mapaU);
+        const unidades = aperturaEnFilas(acc);
 
         const foto = await prisma.appSettings.findUnique({
             where: { key: `costos_unidades_${claveCostos(mes, anio)}` }
