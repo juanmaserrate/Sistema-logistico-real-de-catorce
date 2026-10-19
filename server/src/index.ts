@@ -8736,6 +8736,9 @@ app.post('/api/admin/set-viajes', async (req: any, res: any) => {
     const contractType = req.body?.contractType ? String(req.body.contractType).trim() : null;
     const provider = req.body?.provider !== undefined ? String(req.body.provider || '').trim() : null;
     const valorSiCero = Number(req.body?.valorSiEstaEnCero) > 0 ? Number(req.body.valorSiEstaEnCero) : null;
+    // El valor, pisando lo que haya. Sirve para sacar una tarifa de tercerizado
+    // escrita a mano en un viaje propio: se deja en cero y el Motor lo calcula.
+    const valor = req.body?.valor !== undefined ? Number(req.body.valor) : null;
     const reparto = req.body?.reparto !== undefined ? String(req.body.reparto || '').trim() : null;
     // La unidad de negocio guarda VARIAS separadas por coma ("SAE, RETIRO"),
     // asi que se pasa el texto completo ya armado: quien llama decide que queda.
@@ -8775,6 +8778,10 @@ app.post('/api/admin/set-viajes', async (req: any, res: any) => {
             if (businessUnit !== null && String(t.businessUnit || '') !== businessUnit) {
                 data.businessUnit = businessUnit;
                 detalle.unidad = { antes: t.businessUnit, despues: businessUnit };
+            }
+            if (valor !== null && Number.isFinite(valor) && Number(t.value) !== valor) {
+                data.value = valor;
+                detalle.valor = { antes: Number(t.value) || 0, despues: valor };
             }
             if (valorSiCero && !(Number(t.value) > 0)) {
                 data.value = valorSiCero;
