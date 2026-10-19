@@ -25,6 +25,9 @@
 /** Una parada, con lo minimo que hace falta para repartir las horas. */
 export interface ParadaParaReparto {
     sequence: number;
+    /** true = es la vuelta al deposito. Ver `esVueltaAlDeposito`. */
+    isReturnToBase?: boolean | null;
+    client?: { name?: string | null } | null;
     /** De que ruta del viaje es ("R16"). null = viaje de una sola ruta. */
     ruta?: string | null;
     actualArrival?: Date | string | null;
@@ -41,6 +44,16 @@ export interface ViajeParaReparto {
 }
 
 export const SIN_UNIDAD = 'SIN UNIDAD';
+
+/** La vuelta al deposito no es de ninguna unidad: el chofer vuelve una sola
+ *  vez, haya repartido para una o para tres. Su tiempo se prorratea entre
+ *  todas, no se le carga a la ultima que toco. */
+export function esVueltaAlDeposito(p: ParadaParaReparto): boolean {
+    if (p?.isReturnToBase) return true;
+    const n = String(p?.client?.name ?? '')
+        .normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
+    return /^(REAL\s*(DE\s*)?(14|CATORCE)|DEPOSITO|R\s*14)\b/.test(n);
+}
 
 function aFecha(v: Date | string | null | undefined): Date | null {
     if (!v) return null;
@@ -128,6 +141,7 @@ export function repartirHoras(
 
     const stops = [...(viaje.stops || [])];
     for (const p of stops) {
+        if (esVueltaAlDeposito(p)) continue;        // no es de nadie
         const u = unidadDeParada(p, unidadPorRuta, unidades);
         paradas[u] = (paradas[u] || 0) + 1;
     }
@@ -146,7 +160,12 @@ export function repartirHoras(
     const fin = aFecha(viaje.fin);
 
     // ── Camino bueno: hay horarios de parada ──
+    // La vuelta al deposito se saca del recorrido a proposito: su tramo pasa a
+    // ser parte de lo que sobra, y lo que sobra se reparte en proporcion. Si se
+    // dejara, ese tiempo se le cargaria entero a nadie (la parada del deposito
+    // no es de ninguna unidad) y terminaba en SIN UNIDAD.
     const conHorario = stops
+        .filter((p) => !esVueltaAlDeposito(p))
         .map((p) => ({ p, cierre: aFecha(p.actualDeparture) || aFecha(p.actualArrival) }))
         .filter((x) => x.cierre !== null) as Array<{ p: ParadaParaReparto; cierre: Date }>;
 

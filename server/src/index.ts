@@ -6534,7 +6534,7 @@ app.get('/api/v1/costs/unidades-anual', async (req: any, res: any) => {
                 linkedRoute: {
                     select: {
                         actualStartTime: true, actualEndTime: true,
-                        stops: { select: { sequence: true, ruta: true, actualArrival: true, actualDeparture: true } }
+                        stops: { select: { sequence: true, ruta: true, actualArrival: true, actualDeparture: true, isReturnToBase: true } }
                     }
                 }
             }
@@ -6588,7 +6588,7 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
                 linkedRoute: {
                     select: {
                         actualStartTime: true, actualEndTime: true,
-                        stops: { select: { sequence: true, ruta: true, actualArrival: true, actualDeparture: true } }
+                        stops: { select: { sequence: true, ruta: true, actualArrival: true, actualDeparture: true, isReturnToBase: true } }
                     }
                 }
             }
