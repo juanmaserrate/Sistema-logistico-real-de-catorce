@@ -6740,6 +6740,121 @@ app.post('/api/admin/set-horarios', async (req: any, res: any) => {
     }
 });
 
+/** Fusiona dos viajes que en realidad eran UNO con dos rutas.
+ *
+ *  Pasa cuando el chofer hace el R a la manana y el SAM despues, pero se
+ *  cargaron como dos viajes. Si ademas intercalo paradas de los dos, no hay
+ *  punto de corte posible: la unica forma de que cada unidad reciba SUS horas
+ *  es tenerlos en un solo viaje, donde cada parada sabe de que ruta es y el
+ *  reparto se hace parada por parada.
+ *
+ *  Que hace:
+ *    - le pone a cada parada la ruta de la que vino
+ *    - mueve las paradas del segundo a la ruta del primero, renumerando
+ *    - une las unidades de negocio y la lista de rutas
+ *    - estira la ventana del GPS para cubrir los dos
+ *    - borra el segundo viaje
+ *
+ *  La respuesta del dryRun trae TODO lo que se va a borrar, para poder
+ *  rehacerlo si hiciera falta.
+ *
+ *  POST /api/admin/fusionar-viajes { key, principal, secundario, dryRun? } */
+app.post('/api/admin/fusionar-viajes', async (req: any, res: any) => {
+    const { key, principal, secundario, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const idA = Number(principal), idB = Number(secundario);
+    if (!Number.isFinite(idA) || !Number.isFinite(idB) || idA === idB) {
+        return res.status(400).json({ error: 'Faltan principal y secundario, y tienen que ser distintos' });
+    }
+    try {
+        const sel = {
+            id: true, date: true, reparto: true, rutas: true, driver: true, businessUnit: true,
+            contractType: true, value: true, zone: true, locality: true, assignedMobileUser: true,
+            linkedRoute: {
+                select: {
+                    id: true, actualStartTime: true, actualEndTime: true, totalKm: true,
+                    stops: { orderBy: { sequence: 'asc' as const }, select: { id: true, sequence: true, ruta: true, clientId: true, status: true } }
+                }
+            }
+        };
+        const A: any = await prisma.trip.findUnique({ where: { id: idA }, select: sel });
+        const B: any = await prisma.trip.findUnique({ where: { id: idB }, select: sel });
+        if (!A || !B) return res.status(404).json({ error: 'Alguno de los dos viajes no existe' });
+        if (!A.linkedRoute) return res.status(400).json({ error: 'El principal no tiene ruta: no hay donde poner las paradas' });
+
+        const nom = (t: any) => String(t.reparto || '').trim().toUpperCase() || `VIAJE ${t.id}`;
+        const unidades = [...new Set([
+            ...unidadesDeTexto(A.businessUnit),
+            ...unidadesDeTexto(B.businessUnit)
+        ])];
+        const comoLista = (v: any) => Array.isArray(v) ? v.map((x) => String(x).trim().toUpperCase()).filter(Boolean) : [];
+        const rutas = [...new Set([
+            ...(comoLista(A.rutas).length ? comoLista(A.rutas) : [nom(A)]),
+            ...(comoLista(B.rutas).length ? comoLista(B.rutas) : [nom(B)])
+        ])];
+
+        const horas = [A.linkedRoute?.actualStartTime, B.linkedRoute?.actualStartTime].filter(Boolean).map((d: any) => new Date(d).getTime());
+        const fines = [A.linkedRoute?.actualEndTime, B.linkedRoute?.actualEndTime].filter(Boolean).map((d: any) => new Date(d).getTime());
+        const nuevoInicio = horas.length ? new Date(Math.min(...horas)) : null;
+        const nuevoFin = fines.length ? new Date(Math.max(...fines)) : null;
+
+        const paradasA = A.linkedRoute.stops || [];
+        const paradasB = B.linkedRoute?.stops || [];
+        const plan = {
+            principal: { id: A.id, reparto: A.reparto, paradas: paradasA.length },
+            secundario: { id: B.id, reparto: B.reparto, paradas: paradasB.length },
+            unidadNueva: unidades.join(', '),
+            rutasNuevas: rutas,
+            gpsNuevo: { inicio: nuevoInicio, fin: nuevoFin },
+            paradasQueSeMueven: paradasB.length,
+            // Todo lo del secundario, por si hubiera que rehacerlo
+            respaldoDelSecundario: B
+        };
+        if (dryRun) return res.json({ dryRun: true, plan });
+
+        await prisma.$transaction(async (tx: any) => {
+            // 1. cada parada con su ruta
+            for (const p of paradasA) {
+                if (!String(p.ruta || '').trim()) {
+                    await tx.stop.update({ where: { id: p.id }, data: { ruta: nom(A) } });
+                }
+            }
+            // 2. las del segundo se mudan, numeradas despues de las del primero
+            let orden = paradasA.length;
+            for (const p of paradasB) {
+                orden++;
+                await tx.stop.update({
+                    where: { id: p.id },
+                    data: { routeId: A.linkedRoute.id, sequence: orden, ruta: String(p.ruta || '').trim() || nom(B) }
+                });
+            }
+            // 3. el viaje principal se queda con todo
+            await tx.trip.update({
+                where: { id: A.id },
+                data: { businessUnit: unidades.join(', '), rutas: rutas as any }
+            });
+            if (nuevoInicio || nuevoFin) {
+                await tx.route.update({
+                    where: { id: A.linkedRoute.id },
+                    data: {
+                        ...(nuevoInicio ? { actualStartTime: nuevoInicio } : {}),
+                        ...(nuevoFin ? { actualEndTime: nuevoFin } : {})
+                    }
+                });
+            }
+            // 4. chau el segundo (su ruta se va con el, ya sin paradas)
+            await tx.trip.delete({ where: { id: B.id } });
+        });
+
+        await logAction(req, 'DELETE', 'Trip', String(B.id),
+            `viaje ${B.id} fusionado dentro del ${A.id}`, plan.respaldoDelSecundario, plan);
+        res.json({ fusionado: true, plan });
+    } catch (e: any) {
+        console.error('fusionar-viajes:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** La unidad de negocio de varias rutas predefinidas, de una.
  *  POST /api/admin/rutas-set-bu { key, cambios: [{ruta, businessUnit}], dryRun? } */
 app.post('/api/admin/rutas-set-bu', async (req: any, res: any) => {
