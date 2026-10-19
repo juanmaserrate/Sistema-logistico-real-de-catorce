@@ -2023,6 +2023,38 @@
                 </div>
             </div>
 
+            <!-- Modal: auxiliares del mes sin sueldo cargado -->
+            <div id="modal-aux-sin-sueldo" class="fixed inset-0 z-[221] hidden flex items-center justify-center p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);" onclick="if(event.target===this)cerrarAvisoDeAuxiliares()">
+                <div class="modal-content w-full max-w-2xl p-8 bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+                    <div class="flex items-center gap-4 mb-5">
+                        <div class="w-12 h-12 rounded-2xl bg-amber-50 flex items-center justify-center shrink-0">
+                            <i data-lucide="user-x" class="w-6 h-6 text-amber-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold text-[#1B2559]">Hay auxiliares sin sueldo cargado</h3>
+                            <p id="aux-aviso-sub" class="text-xs text-[#A3AED0] font-medium"></p>
+                        </div>
+                    </div>
+                    <p class="text-[13px] text-[#44474a] leading-relaxed mb-5">
+                        El c&aacute;lculo le suma a cada viaje la parte del sueldo del auxiliar que fue.
+                        A estos no los encuentra en la n&oacute;mina del mes, as&iacute; que les suma
+                        <strong>cero</strong>: esos viajes van a quedar m&aacute;s baratos de lo que costaron,
+                        y nada lo va a avisar despu&eacute;s.
+                    </p>
+                    <div id="aux-aviso-cuerpo" class="rounded-xl border border-[#E0E5F2] overflow-hidden"></div>
+                    <div class="flex flex-col sm:flex-row gap-3 pt-6">
+                        <button type="button" onclick="irACargarSueldos()"
+                                class="flex-1 bg-[#1B2559] text-white py-3 rounded-xl font-bold hover:bg-[#2B3674] shadow-lg">
+                            Ir a cargar los sueldos
+                        </button>
+                        <button type="button" onclick="calcularIgualSinSueldos()"
+                                class="px-6 py-3 border border-amber-300 text-amber-700 rounded-xl font-bold hover:bg-amber-50">
+                            Calcular igual
+                        </button>
+                    </div>
+                </div>
+            </div>
+
             <!-- Modal: vista previa de "Traer datos reales" de una unidad -->
             <div id="modal-flota-reales" class="fixed inset-0 z-[210] hidden flex items-center justify-center p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);" onclick="if(event.target===this)cerrarDatosRealesDeFlota()">
                 <div class="modal-content w-full max-w-2xl p-8 bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
@@ -22035,6 +22067,16 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 if (btn) { btn.disabled = false; btn.style.opacity = ''; }
             }
 
+            // Los auxiliares sin sueldo se avisan ANTES que lo de las horas:
+            // es un dato que falta, no un desvio. Si el costo del auxiliar se
+            // suma en cero, el viaje queda barato y no lo nota nadie.
+            const sinSueldo = Array.isArray(d.auxiliaresSinSueldo) ? d.auxiliaresSinSueldo : [];
+            if (sinSueldo.length) {
+                _avisoDeAuxPendiente = { month, sinSueldo };
+                abrirAvisoDeAuxiliares();
+                return 'frenar';
+            }
+
             const cargadas = Number(costsParams.horas_reales) || 0;
             const repartidas = Number(d.horasRepartidas) || 0;
             if (!cargadas || !repartidas) return 'seguir';
@@ -22044,6 +22086,63 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             _avisoDeHorasPendiente = { month, d, cargadas, repartidas, desvio };
             abrirAvisoDeHoras();
             return 'frenar';
+        }
+
+        let _avisoDeAuxPendiente = null;
+
+        /** Avisa que hay auxiliares del mes sin sueldo cargado.
+         *
+         *  El Motor le suma a cada viaje la parte del sueldo del auxiliar que
+         *  fue. Si no lo encuentra suma CERO y sigue sin decir nada: el viaje
+         *  queda barato y el mes cierra igual. Paso en septiembre con tres
+         *  auxiliares, y se encontro de casualidad semanas despues. */
+        function abrirAvisoDeAuxiliares() {
+            const p = _avisoDeAuxPendiente;
+            if (!p) return;
+            const sub = document.getElementById('aux-aviso-sub');
+            if (sub) sub.textContent = `${p.month} ${anioCostos()} \u00b7 ${p.sinSueldo.length} auxiliar(es) sin sueldo`;
+
+            const cuerpo = document.getElementById('aux-aviso-cuerpo');
+            if (cuerpo) {
+                cuerpo.innerHTML = `
+                    <table class="w-full text-[12px] border-collapse">
+                        <thead>
+                            <tr class="bg-[#F8FAFF]">
+                                <th class="text-left px-3 py-2 font-black text-[#1B2559] uppercase tracking-wider">Auxiliar</th>
+                                <th class="text-right px-3 py-2 font-black text-[#1B2559] uppercase tracking-wider">Viajes</th>
+                                <th class="text-right px-3 py-2 font-black text-[#1B2559] uppercase tracking-wider">D\u00edas</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${p.sinSueldo.map((a, i) => `
+                                <tr class="r14-fila ${i % 2 ? 'r14-fila-alt' : ''}">
+                                    <td class="px-3 py-2 font-bold text-[#1B2559]">${escapeHtml(a.nombre)}</td>
+                                    <td class="px-3 py-2 text-right text-[#2B3674]">${numeroAR(a.viajes, 0)}</td>
+                                    <td class="px-3 py-2 text-right text-[#2B3674]">${numeroAR(a.dias, 0)}</td>
+                                </tr>`).join('')}
+                        </tbody>
+                    </table>`;
+            }
+            document.getElementById('modal-aux-sin-sueldo')?.classList.remove('hidden');
+        }
+
+        function cerrarAvisoDeAuxiliares() {
+            document.getElementById('modal-aux-sin-sueldo')?.classList.add('hidden');
+            _avisoDeAuxPendiente = null;
+        }
+
+        /** "Calcular igual": se acepta que esos viajes queden sin el costo del
+         *  auxiliar. La bandera dura un solo calculo. */
+        function calcularIgualSinSueldos() {
+            cerrarAvisoDeAuxiliares();
+            _calcularIgualAunqueNoCierre = true;
+            calcularCostosDelMes();
+        }
+
+        /** Lleva a Liquidaci\u00f3n de Sueldos para cargarlos. */
+        function irACargarSueldos() {
+            cerrarAvisoDeAuxiliares();
+            if (typeof showSection === 'function') showSection('salaries');
         }
 
         function abrirAvisoDeHoras() {

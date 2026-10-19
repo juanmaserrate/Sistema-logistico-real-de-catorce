@@ -10741,6 +10741,19 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
         // reparte para dos le deja a cada una SUS horas y la parte del costo
         // que les corresponde. Las partes suman el costo del viaje, no lo
         // repiten; por eso el total de la apertura da igual al del mes.
+        // Los auxiliares que trabajaron el mes y NO tienen sueldo cargado.
+        // Su costo se suma en CERO y el viaje queda barato sin que nadie lo
+        // note: paso en septiembre con tres auxiliares y recien se encontro
+        // de casualidad. Se devuelve la lista para que la pantalla avise ANTES.
+        const sinSueldo = new Map<string, { nombre: string; viajes: number; dias: Set<string> }>();
+        const registrarSinSueldo = (nombre: string, dia: string) => {
+            const clave = nombre.toLowerCase();
+            if (!sinSueldo.has(clave)) sinSueldo.set(clave, { nombre, viajes: 0, dias: new Set() });
+            const x = sinSueldo.get(clave)!;
+            x.viajes += 1;
+            x.dias.add(dia);
+        };
+
         const mapaU = await unidadesPorRutaCacheado();
         const porUnidad: Record<string, { horas: number; costo: number; viajes: number }> = {};
         const sumarUnidad = (u: string, horas: number, costo: number) => {
@@ -10772,7 +10785,7 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
             const dia = new Date(t.date).toISOString().slice(0, 10);
             auxList.forEach((name: string) => {
                 const sueldo = buscarSueldo(name);
-                if (!sueldo || (!sueldo.bruto && !sueldo.jornal)) return;
+                if (!sueldo || (!sueldo.bruto && !sueldo.jornal)) { registrarSinSueldo(name, dia); return; }
                 if (sueldo.jornal > 0) {
                     // Por jornal: el dia se cobra una sola vez (primer viaje del dia)
                     if (primerViajeDelDia[`${name.toLowerCase()}|${dia}`] === t.id) tripCost += sueldo.jornal;
@@ -10844,8 +10857,13 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
             });
         }
 
+        const auxiliaresSinSueldo = [...sinSueldo.values()]
+            .map((x) => ({ nombre: x.nombre, viajes: x.viajes, dias: x.dias.size }))
+            .sort((a, b) => b.dias - a.dias || b.viajes - a.viajes);
+
         res.json({
             unidades,
+            auxiliaresSinSueldo,
             dryRun: !!dryRun,
             updated: dryRun ? 0 : updates.length,
             simulados: dryRun ? updates.length : 0,
