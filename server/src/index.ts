@@ -6493,7 +6493,15 @@ function aperturaPorUnidad(viajes: any[], mapaU: Map<string, string>): Record<st
             mapaU,
             horas
         );
-        const claves = [...new Set([...Object.keys(reparto.horas), ...Object.keys(reparto.paradas)])];
+        // Las unidades del viaje van SIEMPRE: un viaje sin horas y sin paradas
+        // cargadas (tipico de un tercerizado) igual tiene su unidad, y su costo
+        // es de esa unidad. Antes caia en SIN UNIDAD y se llevaba la plata de
+        // 19 viajes de octubre, \$5.510.000, a un casillero que no es de nadie.
+        const claves = [...new Set([
+            ...Object.keys(reparto.horas),
+            ...Object.keys(reparto.paradas),
+            ...unidadesDeTexto((t as any).businessUnit)
+        ])];
         if (!claves.length) { sumar(SIN_UNIDAD, horas, monto, esPropio); continue; }
         for (const u of claves) {
             const h = reparto.horas[u] || 0;
