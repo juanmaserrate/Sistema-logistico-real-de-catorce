@@ -18386,7 +18386,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
             closeHeaderFilter();
 
-            const th = triggerEl.closest('th');
             const uniqueValues = getUniqueValuesForColumn(columnId);
             _headerFilterValues = uniqueValues;
             const currentFilters = weeklyColumnFilters[columnId] || new Set();
@@ -18395,7 +18394,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const dropdown = document.createElement('div');
             dropdown.id = 'header-filter-dropdown';
             dropdown.dataset.col = columnId;
-            dropdown.className = 'absolute left-0 top-full mt-1 z-50 bg-white rounded-xl border border-[#E0E5F2] min-w-[220px] max-h-[420px] overflow-hidden';
+            // Posicion FIJA y colgado del <body>. Antes era absolute adentro del
+            // <th> y la tabla lo recortaba: el contenedor tiene overflow-x auto, y
+            // el navegador obliga a recortar tambien en vertical. Con la tabla
+            // filtrada quedan pocas filas, la caja es baja y el menu se cortaba a
+            // la mitad: no se llegaba a los valores.
+            dropdown.className = 'fixed z-[60] bg-white rounded-xl border border-[#E0E5F2] min-w-[220px] overflow-hidden';
             dropdown.style.cssText = 'box-shadow: 0 12px 36px rgba(0,0,0,0.15);';
 
             // ── ORDEN (asc/desc) ────────────────────────────────────────
@@ -18468,6 +18472,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (supportsFilter) {
                 const listWrap = document.createElement('div');
                 listWrap.className = 'overflow-y-auto max-h-[260px] p-2 space-y-1';
+                listWrap.dataset.listaValores = '1';
 
                 uniqueValues.forEach(function(val, idx) {
                     const label = document.createElement('label');
@@ -18508,13 +18513,67 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
                 dropdown.appendChild(listWrap);
             }
-            th.appendChild(dropdown);
+            document.body.appendChild(dropdown);
+            dropdown._trigger = triggerEl;
             _activeHeaderFilter = dropdown;
+            _posicionarHeaderFilter(triggerEl, dropdown);
+
+            // Si se mueve la pagina o la tabla, el menu se mueve con el boton
+            window.addEventListener('scroll', _reposHeaderFilter, true);
+            window.addEventListener('resize', _reposHeaderFilter);
 
             // Close on outside click
             setTimeout(function() {
                 document.addEventListener('click', _closeHeaderFilterOutside, true);
             }, 10);
+        }
+
+        /** Pone el menu debajo del boton, o arriba si abajo no entra, y le achica
+         *  la lista de valores a lo que quede libre en la pantalla. */
+        function _posicionarHeaderFilter(triggerEl, dropdown) {
+            const r = triggerEl.getBoundingClientRect();
+            const margen = 8;
+            const ancho = dropdown.offsetWidth || 220;
+
+            let izq = r.left;
+            if (izq + ancho > window.innerWidth - margen) izq = window.innerWidth - ancho - margen;
+            if (izq < margen) izq = margen;
+            dropdown.style.left = izq + 'px';
+
+            const abajo = window.innerHeight - r.bottom - margen * 2;
+            const arriba = r.top - margen * 2;
+            const haciaArriba = abajo < 240 && arriba > abajo;
+            const libre = Math.max(180, haciaArriba ? arriba : abajo);
+
+            dropdown.style.maxHeight = Math.min(440, libre) + 'px';
+            if (haciaArriba) {
+                dropdown.style.top = 'auto';
+                dropdown.style.bottom = (window.innerHeight - r.top + 4) + 'px';
+            } else {
+                dropdown.style.bottom = 'auto';
+                dropdown.style.top = (r.bottom + 4) + 'px';
+            }
+
+            const lista = dropdown.querySelector('[data-lista-valores]');
+            if (lista) {
+                let fijo = 0;
+                for (const hijo of dropdown.children) if (hijo !== lista) fijo += hijo.offsetHeight;
+                lista.style.maxHeight = Math.max(90, Math.min(300, Math.min(440, libre) - fijo - 12)) + 'px';
+            }
+        }
+
+        function _reposHeaderFilter() {
+            const dd = document.getElementById('header-filter-dropdown');
+            if (!dd) return;
+            if (!dd._trigger || !dd._trigger.isConnected) { closeHeaderFilter(); return; }
+            // Si la columna se fue de la pantalla (scroll horizontal de la tabla),
+            // el menu se cierra: dejarlo pegado a un borde no se entiende.
+            const t = dd._trigger.getBoundingClientRect();
+            if (t.right < 0 || t.left > window.innerWidth || t.bottom < 0 || t.top > window.innerHeight) {
+                closeHeaderFilter();
+                return;
+            }
+            _posicionarHeaderFilter(dd._trigger, dd);
         }
 
         function _closeHeaderFilterOutside(e) {
@@ -18530,6 +18589,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             _activeHeaderFilter = null;
             _headerFilterValues = [];
             document.removeEventListener('click', _closeHeaderFilterOutside, true);
+            window.removeEventListener('scroll', _reposHeaderFilter, true);
+            window.removeEventListener('resize', _reposHeaderFilter);
         }
 
         function clearColumnFilter(columnId) {
