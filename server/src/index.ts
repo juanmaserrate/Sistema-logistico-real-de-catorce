@@ -11883,7 +11883,7 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
     res.json({ routeId: r.routeId, stopCount: r.stopCount });
 });
 
-/** POST /api/v1/trips/stops-bulk { paradas: [{ tripId, clientIds }] }
+/** POST /api/v1/trips/stops-bulk { paradas: [{ tripId, clientIds, rutas? }] }
  *
  *  Las paradas de VARIOS viajes en un solo pedido. Se usa al CREAR: cargar 31
  *  dias mandaba 31 pedidos y tardaba casi 6 segundos, cuando cada ida y vuelta
@@ -11903,7 +11903,7 @@ app.put('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
  *  SOLO se usa con viajes sin ruta. Cualquier otro cae en el camino de
  *  siempre, con su guarda y su confirmacion. */
 async function paradasDeViajesNuevos(
-    items: { tripId: number; clientIds: string[] }[],
+    items: { tripId: number; clientIds: string[]; rutas?: (string | null)[] }[],
     tenantId: string
 ): Promise<{ ok: any[]; fallaron: any[] }> {
     const ok: any[] = [];
@@ -11934,7 +11934,7 @@ async function paradasDeViajesNuevos(
 
     // 1) Se arma todo en memoria
     const rutasACrear: any[] = [];
-    const validos: { tripId: number; clientIds: string[] }[] = [];
+    const validos: { tripId: number; clientIds: string[]; rutas: (string | null)[] }[] = [];
     for (const it of items) {
         const t = porId.get(it.tripId);
         if (!t) { fallaron.push({ tripId: it.tripId, status: 404, error: 'Viaje no encontrado' }); continue; }
@@ -11956,10 +11956,17 @@ async function paradasDeViajesNuevos(
         // El deposito va siempre ultimo: sin esa parada el viaje no puede
         // cerrarse solo con la hora real de vuelta.
         const lista = [...it.clientIds];
-        if (lista.length && baseId && lista[lista.length - 1] !== baseId) lista.push(baseId);
+        // De que ruta es cada parada, en el mismo orden. El deposito que se
+        // agrega al final no es de ninguna: el chofer vuelve una sola vez,
+        // haya repartido para una ruta o para tres.
+        const deQueRuta = Array.isArray(it.rutas) ? [...it.rutas] : [];
+        if (lista.length && baseId && lista[lista.length - 1] !== baseId) {
+            lista.push(baseId);
+            if (deQueRuta.length) deQueRuta.push(null);
+        }
 
         rutasACrear.push({ tenantId, date: new Date(t.date), driverId: usuario.id, status: 'PLANNED', tripId: t.id });
-        validos.push({ tripId: it.tripId, clientIds: lista });
+        validos.push({ tripId: it.tripId, clientIds: lista, rutas: deQueRuta });
     }
     if (!validos.length) return { ok, fallaron };
 
@@ -11973,11 +11980,13 @@ async function paradasDeViajesNuevos(
         const ruta = rutaPorTrip.get(v.tripId);
         if (!ruta) continue;
         v.clientIds.forEach((clientId, idx) => {
+            const deRuta = String((v as any).rutas?.[idx] ?? '').trim();
             paradas.push({
                 routeId: ruta.id,
                 clientId,
                 sequence: idx + 1,
                 status: 'PENDING',
+                ruta: deRuta || null,
                 isReturnToBase: baseId != null && clientId === baseId && idx === v.clientIds.length - 1
             });
         });

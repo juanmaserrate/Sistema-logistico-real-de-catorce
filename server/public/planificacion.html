@@ -27772,6 +27772,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
 
             const paradas = Array.isArray(tripDeliveryRows) ? tripDeliveryRows.map(r => r.clientId) : [];
+            // De que ruta es cada parada, en el mismo orden que `paradas`.
+            // Sin esto el viaje guarda las paradas pero pierde a cual de sus
+            // rutas pertenece cada una, y despues nadie puede decir de que
+            // unidad de negocio es: ni la hoja de ruta, ni el reparto de horas,
+            // ni el exportable.
+            const rutasDeLasParadas = Array.isArray(tripDeliveryRows) ? tripDeliveryRows.map(r => r.ruta || null) : [];
             const quien = (localStorage.getItem('r14.loggedUser') || '').trim();
             const payloads = targetDates.map(dia => {
                 const tripData = { ...baseTripData, date: new Date(dia + 'T12:00:00').toISOString() };
@@ -27786,8 +27792,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             // /api/health, que no hace nada), y esperarlo con el modal abierto
             // es lo que hacia sentir que crear un viaje tardaba un monton.
             closeNewTripModal();
-            if (id) guardarEdicionDeFondo(id, payloads[0], paradas, absorbidos);
-            else crearViajesDeFondo(payloads, paradas, quien);
+            if (id) guardarEdicionDeFondo(id, payloads[0], paradas, absorbidos, rutasDeLasParadas);
+            else crearViajesDeFondo(payloads, paradas, quien, rutasDeLasParadas);
         }
 
         /** Las horas de salida y llegada del modal, puestas sobre el dia que
@@ -27846,13 +27852,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             );
         }
 
-        async function _guardarParadasDeFondo(viajes, paradas) {
+        async function _guardarParadasDeFondo(viajes, paradas, rutas) {
             if (!paradas.length || !viajes.length) return;
 
             // Un viaje solo va por el camino de siempre, que sabe preguntar si
             // el viaje ya está en curso y cuidar lo que el chofer marcó.
             if (viajes.length === 1) {
-                try { await putTripDeliveryStops(viajes[0].id, paradas); }
+                try { await putTripDeliveryStops(viajes[0].id, paradas, rutas); }
                 catch (e) { _avisarParadasQueFaltan(1, e?.message, [viajes[0].id]); }
                 return;
             }
@@ -27863,7 +27869,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             try {
                 const res = await fetch(`${API_URL}/trips/stops-bulk`, {
                     method: 'POST', headers: getActorHeaders(),
-                    body: JSON.stringify({ paradas: viajes.map(t => ({ tripId: t.id, clientIds: paradas })) })
+                    body: JSON.stringify({
+                        paradas: viajes.map(t => ({
+                            tripId: t.id, clientIds: paradas,
+                            ...(Array.isArray(rutas) ? { rutas } : {})
+                        }))
+                    })
                 });
                 const d = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(d.error || ('El servidor rechazó las paradas (' + res.status + ')'));
@@ -27896,7 +27907,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
          *  dias van en UNA sola llamada a /trips/bulk: mandar 31 pedidos en
          *  paralelo tardaba 8,4 segundos, porque el navegador abre de a 6
          *  conexiones y el servidor tenia que revisar duplicados uno por uno. */
-        async function crearViajesDeFondo(payloads, paradas, quien) {
+        async function crearViajesDeFondo(payloads, paradas, quien, rutas) {
             try {
                 const r = payloads.length === 1
                     ? await _crearDeAUno(payloads)
@@ -27906,7 +27917,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 _avisarCreacion(r.creados, payloads.length, r.yaEstaban, quien);
                 // Las paradas son una escritura aparte: el viaje ya existe, asi
                 // que no hay por que hacer esperar a nadie por ellas.
-                _guardarParadasDeFondo(r.creados, paradas);
+                _guardarParadasDeFondo(r.creados, paradas, rutas);
 
                 if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
                 loadWeeklyData({ silencioso: r.creados.length > 0 });
@@ -27969,7 +27980,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         /** Guarda la edicion con la ventana ya cerrada. */
-        async function guardarEdicionDeFondo(id, tripData, paradas, absorbidos) {
+        async function guardarEdicionDeFondo(id, tripData, paradas, absorbidos, rutas) {
             try {
                 const res = await fetch(`${API_URL}/trips/${id}`, {
                     method: 'PUT', headers: getActorHeaders(), body: JSON.stringify(tripData)
@@ -27983,7 +27994,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 }
                 // En una edicion las paradas se mandan siempre, incluso vacias:
                 // dejar la lista en cero es una decision valida del operador.
-                const guardadas = await putTripDeliveryStops(parseInt(id, 10), paradas).catch(() => false);
+                const guardadas = await putTripDeliveryStops(parseInt(id, 10), paradas, rutas).catch(() => false);
                 if (guardadas === false && typeof addNotification === 'function') {
                     addNotification('info', 'Paradas sin cambios',
                         'Se guardaron los datos del viaje, pero no las paradas.');
