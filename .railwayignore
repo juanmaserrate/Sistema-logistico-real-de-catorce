@@ -1,0 +1,14 @@
+# Lo que nunca debe viajar en un deploy desde la CLI.
+# El .env local tiene valores de desarrollo: si se subiera, podria pisar
+# las Variables reales de Railway.
+server/.env
+**/.env
+**/.env.*
+!**/.env.example
+
+node_modules/
+**/node_modules/
+server/dist/
+mobile/
+client/node_modules/
+.git/
