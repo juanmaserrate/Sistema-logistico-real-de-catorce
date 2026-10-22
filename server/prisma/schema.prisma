@@ -568,6 +568,17 @@ model CrateMovement {
   cantidad  Int
   /// Solo en INVENTARIO: lo que se conto fisicamente.
   contado   Int?
+  /// Solo en RETORNO: lo que el reparto DIJO que traia, antes de contarlo.
+  /// `cantidad` es lo que se conto de verdad. Los dos quedan guardados para
+  /// poder ver la diferencia: si siempre vuelve menos de lo que se declara,
+  /// eso es un dato, no un error de tipeo.
+  declarado     Int?
+  /// Una vuelta no suma al stock hasta que alguien la cuenta y la confirma.
+  /// Todo lo demas (salidas, compras, bajas, inventarios) nace confirmado:
+  /// se carga en el momento en que pasa.
+  confirmado    Boolean   @default(true)
+  confirmadoPor String?
+  confirmadoAt  DateTime?
   /// SALIDA y RETORNO van atadas al viaje que se los llevo.
   tripId    Int?
   nota      String?
@@ -579,4 +590,5 @@ model CrateMovement {
   @@index([typeId, fecha])
   @@index([tripId, motivo])
   @@index([motivo, fecha])
+  @@index([confirmado, motivo])
 }

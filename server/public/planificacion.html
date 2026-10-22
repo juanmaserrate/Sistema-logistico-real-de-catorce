@@ -1612,6 +1612,17 @@
                             Crear
                         </button>
                     </div>
+                    <div class="mt-4 flex flex-wrap items-center gap-3">
+                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Qu&eacute; puede ver
+                            <select id="new-user-acceso" class="block mt-1 bg-[#F4F7FE] border-0 rounded-2xl px-4 py-3 text-sm font-bold text-[#1B2559] outline-none">
+                                <option value="TODO">Todos los m&oacute;dulos</option>
+                                <option value="STOCK">Solo Stock de cajones</option>
+                            </select>
+                        </label>
+                        <p class="text-[11px] text-[#A3AED0] max-w-md">
+                            Esto se puede cambiar despu&eacute;s en la tabla de abajo, marcando y desmarcando m&oacute;dulos.
+                        </p>
+                    </div>
                 </div>
 
                 <div class="card-dark overflow-hidden">
@@ -2289,6 +2300,7 @@
                         <div class="flex flex-wrap items-center gap-2">
                             <button onclick="stkTab('stock')" id="stk-tab-stock" class="stk-tab bg-[#451ebb] text-white rounded-lg px-4 py-2 text-sm font-bold">Inventario</button>
                             <button onclick="stkTab('viajes')" id="stk-tab-viajes" class="stk-tab bg-[#F4F7FE] text-[#1B2559] rounded-lg px-4 py-2 text-sm font-bold">Salidas y vueltas</button>
+                            <button onclick="stkTab('control')" id="stk-tab-control" class="stk-tab bg-[#F4F7FE] text-[#1B2559] rounded-lg px-4 py-2 text-sm font-bold">Control</button>
                             <button onclick="stkTab('movs')" id="stk-tab-movs" class="stk-tab bg-[#F4F7FE] text-[#1B2559] rounded-lg px-4 py-2 text-sm font-bold">Movimientos</button>
                         </div>
                     </div>
@@ -2301,6 +2313,7 @@
                             <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left border-b border-[#F4F7FE]">
                                 <th class="py-2 px-2">Tipo de caj&oacute;n</th>
                                 <th class="py-2 px-2 text-right">En el dep&oacute;sito</th>
+                                <th class="py-2 px-2 text-right">Sin contar</th>
                                 <th class="py-2 px-2 text-right">En la calle</th>
                                 <th class="py-2 px-2 text-right">Total</th>
                                 <th class="py-2 px-2">&Uacute;ltimo inventario</th>
@@ -2341,15 +2354,70 @@
                                 <th class="py-2 px-2">Reparto</th>
                                 <th class="py-2 px-2">Chofer</th>
                                 <th class="py-2 px-2 text-right">Salieron</th>
-                                <th class="py-2 px-2 text-right">Volvieron</th>
+                                <th class="py-2 px-2 text-right">Declararon</th>
+                                <th class="py-2 px-2 text-right">Contados</th>
                                 <th class="py-2 px-2 text-right">Sin volver</th>
                                 <th class="py-2 px-2 text-right">Cargar</th>
                             </tr></thead>
                             <tbody id="stk-viajes"></tbody>
                         </table></div>
                         <p class="text-[10px] text-[#A3AED0]">
-                            <b>Salieron</b> son los cajones que se llev&oacute; el reparto al salir del dep&oacute;sito.
-                            <b>Volvieron</b>, los que trajo de vuelta. La diferencia es lo que qued&oacute; afuera.
+                            <b>Salieron</b>: los cajones que se llev&oacute; el reparto.
+                            <b>Declararon</b>: los que dice que trae de vuelta.
+                            <b>Contados</b>: los que recepci&oacute;n cont&oacute; de verdad &mdash; y los &uacute;nicos que suman al stock.
+                            Una vuelta sin contar queda en <span class="text-amber-600 font-bold">amarillo</span> y no entra al dep&oacute;sito.
+                        </p>
+                    </div>
+
+                    <!-- ── SOLAPA CONTROL ── -->
+                    <div id="stk-pane-control" class="hidden p-6 bg-white space-y-5">
+                        <div class="flex flex-wrap items-end gap-2">
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">Ver por
+                                <select id="stk-ctl-agrupar" onchange="stkCargarControl()" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]">
+                                    <option value="dia">D&iacute;a</option>
+                                    <option value="mes" selected>Mes</option>
+                                    <option value="anio">A&ntilde;o</option>
+                                    <option value="reparto">Reparto</option>
+                                    <option value="tipo">Tipo de caj&oacute;n</option>
+                                    <option value="motivo">Tipo de movimiento</option>
+                                </select></label>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">Desde
+                                <input type="date" id="stk-ctl-desde" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></label>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">Hasta
+                                <input type="date" id="stk-ctl-hasta" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></label>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">Tipo
+                                <select id="stk-ctl-tipo" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></select></label>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">Reparto
+                                <select id="stk-ctl-reparto" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"><option value="">Todos</option></select></label>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">Movimiento
+                                <select id="stk-ctl-motivo" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]">
+                                    <option value="">Todos</option>
+                                    <option value="COMPRA">Entrada / compra</option>
+                                    <option value="SALIDA">Salida de reparto</option>
+                                    <option value="RETORNO">Vuelta de reparto</option>
+                                    <option value="INVENTARIO">Inventario</option>
+                                    <option value="BAJA">Baja</option>
+                                    <option value="AJUSTE">Ajuste</option>
+                                </select></label>
+                            <button onclick="stkCargarControl()" class="bg-[#451ebb] text-white rounded-lg px-4 py-2 text-sm font-bold">Ver</button>
+                        </div>
+
+                        <div id="stk-ctl-kpis" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+
+                        <div class="overflow-x-auto"><table class="w-full text-sm">
+                            <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left border-b border-[#F4F7FE]">
+                                <th class="py-2 px-2" id="stk-ctl-col1">Mes</th>
+                                <th class="py-2 px-2 text-right">Entraron</th>
+                                <th class="py-2 px-2 text-right">Salieron</th>
+                                <th class="py-2 px-2 text-right">Neto</th>
+                                <th class="py-2 px-2 text-right">Sin contar</th>
+                                <th class="py-2 px-2 text-right">Movimientos</th>
+                            </tr></thead>
+                            <tbody id="stk-ctl-filas"></tbody>
+                        </table></div>
+                        <p class="text-[10px] text-[#A3AED0]">
+                            <b>Entraron</b> y <b>Salieron</b> van por separado a prop&oacute;sito: un mes con neto cero
+                            puede no haber movido un caj&oacute;n o haber movido tres mil, y eso no es lo mismo.
                         </p>
                     </div>
 
@@ -4752,7 +4820,9 @@
             SUPERADMIN: ['control','drivers-status','crates','crates-sim','stock-cajones','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'],
             TRAFICO: ['control','drivers-status','crates','crates-sim','stock-cajones','hdr','weekly','payments','dashboard','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','employees','schools','reports','incidents','historial'],
             RRHH: ['salaries','employees'],
-            ADMINISTRACION: ['weekly','payments','dashboard','tarifas','budget','salaries','schools','reports']
+            ADMINISTRACION: ['weekly','payments','dashboard','tarifas','budget','salaries','schools','reports'],
+            // Recepcion, controladores: entran, cuentan cajones y nada mas.
+            STOCK: ['stock-cajones']
         };
 
         const USER_PROFILES = {
@@ -5043,6 +5113,7 @@
                             : `<div class="flex items-center justify-center gap-1">
                                 <button onclick="selectAllModules('${user}')" class="p-1 text-indigo-500 hover:text-indigo-700 transition-all" title="Todos"><i data-lucide="check-square" class="w-3.5 h-3.5"></i></button>
                                 <button onclick="deselectAllModules('${user}')" class="p-1 text-[#A3AED0] hover:text-amber-600 transition-all" title="Ninguno"><i data-lucide="square" class="w-3.5 h-3.5"></i></button>
+                                <button onclick="soloStockDeCajones('${user}')" class="p-1 text-[#A3AED0] hover:text-indigo-600 transition-all" title="Solo Stock de cajones"><i data-lucide="boxes" class="w-3.5 h-3.5"></i></button>
                                 <button onclick="removeProfileAssignment('${user}')" class="p-1 text-[#A3AED0] hover:text-rose-600 transition-all" title="Eliminar"><i data-lucide="trash-2" class="w-3.5 h-3.5"></i></button>
                             </div>`
                         }
@@ -5066,6 +5137,18 @@
             profiles[username] = [...ALL_MODULES];
             saveStoredProfiles(profiles);
             renderProfileAssignments();
+        }
+
+        /** Deja al usuario viendo unicamente el Stock de cajones. Es lo que
+         *  necesitan recepcion y los controladores: entran, cuentan y nada mas. */
+        function soloStockDeCajones(username) {
+            const profiles = getStoredProfiles();
+            profiles[username] = [...ACCESS_PROFILES.STOCK];
+            saveStoredProfiles(profiles);
+            renderProfileAssignments();
+            if (typeof addNotification === 'function') {
+                addNotification('success', 'Acceso cambiado', `${username} ahora solo ve Stock de cajones.`);
+            }
         }
 
         function deselectAllModules(username) {
@@ -5918,7 +6001,7 @@
         }
 
         function stkTab(cual) {
-            ['stock', 'viajes', 'movs'].forEach(t => {
+            ['stock', 'viajes', 'control', 'movs'].forEach(t => {
                 const pane = document.getElementById('stk-pane-' + t);
                 const btn = document.getElementById('stk-tab-' + t);
                 if (pane) pane.classList.toggle('hidden', t !== cual);
@@ -5930,6 +6013,7 @@
                 }
             });
             if (cual === 'viajes' && !_stkViajes.length) stkCargarViajes();
+            if (cual === 'control') stkCargarControl();
             if (cual === 'movs') stkCargarMovimientos();
         }
 
@@ -5937,7 +6021,7 @@
         async function cargarStockCajones() {
             const body = document.getElementById('stk-tipos');
             if (!body) return;
-            body.innerHTML = '<tr><td colspan="7" class="py-3 px-2 text-[#A3AED0]">Cargando...</td></tr>';
+            body.innerHTML = '<tr><td colspan="8" class="py-3 px-2 text-[#A3AED0]">Cargando...</td></tr>';
             const f = document.getElementById('stk-fecha');
             if (f && !f.value) f.value = _stkHoy();
             try {
@@ -5945,7 +6029,7 @@
                 _stkTipos = data.tipos || [];
                 renderStockCajones();
             } catch (e) {
-                body.innerHTML = `<tr><td colspan="7" class="py-3 px-2 text-rose-600 font-bold">Error: ${_stkEsc(e.message || e)}</td></tr>`;
+                body.innerHTML = `<tr><td colspan="8" class="py-3 px-2 text-rose-600 font-bold">Error: ${_stkEsc(e.message || e)}</td></tr>`;
             }
         }
 
@@ -5955,13 +6039,14 @@
 
             const totDeposito = activos.reduce((a, t) => a + t.stock, 0);
             const totCalle = activos.reduce((a, t) => a + t.enLaCalle, 0);
+            const totSinContar = activos.reduce((a, t) => a + (t.porConfirmar || 0), 0);
             const kpis = document.getElementById('stk-kpis');
             if (kpis) {
                 kpis.innerHTML = [
                     ['En el depósito', _stkNro(totDeposito), 'text-[#1B2559]'],
+                    ['Sin contar', _stkNro(totSinContar), totSinContar ? 'text-amber-600' : 'text-[#A3AED0]'],
                     ['En la calle', _stkNro(totCalle), 'text-amber-600'],
-                    ['Total de cajones', _stkNro(totDeposito + totCalle), 'text-indigo-600'],
-                    ['Tipos activos', _stkNro(activos.length), 'text-[#1B2559]']
+                    ['Total de cajones', _stkNro(totDeposito + totSinContar + totCalle), 'text-indigo-600']
                 ].map(([t, v, c]) => `
                     <div class="bg-[#F8FAFF] rounded-xl p-4">
                         <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">${t}</p>
@@ -5970,7 +6055,7 @@
             }
 
             if (!_stkTipos.length) {
-                body.innerHTML = '<tr><td colspan="7" class="py-3 px-2 text-[#A3AED0]">Todavía no hay tipos de cajón cargados.</td></tr>';
+                body.innerHTML = '<tr><td colspan="8" class="py-3 px-2 text-[#A3AED0]">Todavía no hay tipos de cajón cargados.</td></tr>';
                 return;
             }
 
@@ -5985,6 +6070,7 @@
                         ${t.activo ? '' : '<span class="text-[9px] font-black text-[#A3AED0] uppercase ml-1">de baja</span>'}
                     </td>
                     <td class="py-2 px-2 text-right font-black text-[#1B2559]">${_stkNro(t.stock)}</td>
+                    <td class="py-2 px-2 text-right font-bold ${t.porConfirmar ? 'text-amber-600' : 'text-[#A3AED0]'}">${_stkNro(t.porConfirmar || 0)}</td>
                     <td class="py-2 px-2 text-right font-bold ${t.enLaCalle > 0 ? 'text-amber-600' : 'text-[#A3AED0]'}">${_stkNro(t.enLaCalle)}</td>
                     <td class="py-2 px-2 text-right font-bold text-[#A3AED0]">${_stkNro(t.total)}</td>
                     <td class="py-2 px-2 text-[11px] text-[#A3AED0]">
@@ -6097,14 +6183,14 @@
             const body = document.getElementById('stk-viajes');
             if (!body) return;
             const fecha = document.getElementById('stk-fecha')?.value || _stkHoy();
-            body.innerHTML = '<tr><td colspan="7" class="py-3 px-2 text-[#A3AED0]">Cargando...</td></tr>';
+            body.innerHTML = '<tr><td colspan="9" class="py-3 px-2 text-[#A3AED0]">Cargando...</td></tr>';
             try {
                 const data = await _stkPedir(`/crates/viajes?fecha=${fecha}`);
                 _stkViajes = data.viajes || [];
                 if (data.tipos?.length) _stkTiposViaje = data.tipos;
                 renderStockViajes();
             } catch (e) {
-                body.innerHTML = `<tr><td colspan="7" class="py-3 px-2 text-rose-600 font-bold">Error: ${_stkEsc(e.message || e)}</td></tr>`;
+                body.innerHTML = `<tr><td colspan="9" class="py-3 px-2 text-rose-600 font-bold">Error: ${_stkEsc(e.message || e)}</td></tr>`;
             }
         }
         let _stkTiposViaje = [];
@@ -6122,23 +6208,36 @@
             }
 
             if (!_stkViajes.length) {
-                body.innerHTML = '<tr><td colspan="7" class="py-3 px-2 text-[#A3AED0]">No hay viajes cargados ese día.</td></tr>';
+                body.innerHTML = '<tr><td colspan="9" class="py-3 px-2 text-[#A3AED0]">No hay viajes cargados ese día.</td></tr>';
                 return;
             }
 
             body.innerHTML = _stkViajes.map(v => {
                 const c = v.cajones || {};
                 const sinVolver = (c.totalSalida || 0) - (c.totalRetorno || 0);
-                const celda = (n, cargado) => cargado
-                    ? `<span class="font-black text-[#1B2559]">${_stkNro(n)}</span>`
-                    : '<span class="text-[#A3AED0]">—</span>';
+                const vacia = '<span class="text-[#A3AED0]">—</span>';
+
+                // Lo contado es lo único que suma al stock. Mientras no se
+                // cuente, la fila queda en amarillo y pide que la confirmen.
+                let contados;
+                if (!c.cargadoRetorno) {
+                    contados = vacia;
+                } else if (c.vueltaPendiente) {
+                    contados = '<span class="text-[10px] font-black text-amber-600 uppercase">sin contar</span>';
+                } else {
+                    const dif = c.diferenciaVuelta || 0;
+                    contados = `<span class="font-black text-[#1B2559]">${_stkNro(c.totalRetorno)}</span>` +
+                        (dif ? ` <span class="text-[10px] font-black ${dif < 0 ? 'text-rose-600' : 'text-emerald-600'}">${dif > 0 ? '+' : ''}${dif}</span>` : '');
+                }
+
                 return `
-                <tr class="border-b border-[#F4F7FE]">
+                <tr class="border-b border-[#F4F7FE] ${c.vueltaPendiente ? 'bg-amber-50/60' : ''}">
                     <td class="py-2 px-2 font-bold text-[#1B2559]">#${v.id}</td>
                     <td class="py-2 px-2 font-bold text-[#2B3674]">${_stkEsc(v.reparto || '—')}</td>
                     <td class="py-2 px-2 text-[#2B3674]">${_stkEsc(v.driver || '—')}</td>
-                    <td class="py-2 px-2 text-right">${celda(c.totalSalida, c.cargadoSalida)}</td>
-                    <td class="py-2 px-2 text-right">${celda(c.totalRetorno, c.cargadoRetorno)}</td>
+                    <td class="py-2 px-2 text-right">${c.cargadoSalida ? `<span class="font-black text-[#1B2559]">${_stkNro(c.totalSalida)}</span>` : vacia}</td>
+                    <td class="py-2 px-2 text-right">${c.cargadoRetorno ? `<span class="font-bold text-[#2B3674]">${_stkNro(c.totalDeclarado)}</span>` : vacia}</td>
+                    <td class="py-2 px-2 text-right">${contados}</td>
                     <td class="py-2 px-2 text-right font-black ${sinVolver > 0 ? 'text-amber-600' : 'text-[#A3AED0]'}">
                         ${c.cargadoSalida ? _stkNro(sinVolver) : '—'}
                     </td>
@@ -6146,31 +6245,55 @@
                         <button onclick="stkAbrirViaje(${v.id},'SALIDA')" class="text-[11px] font-bold text-indigo-600 hover:underline">Salida</button>
                         <span class="text-[#E0E5F2] mx-1">|</span>
                         <button onclick="stkAbrirViaje(${v.id},'RETORNO')" class="text-[11px] font-bold text-indigo-600 hover:underline">Vuelta</button>
+                        ${c.cargadoRetorno ? `<span class="text-[#E0E5F2] mx-1">|</span>
+                        <button onclick="stkAbrirViaje(${v.id},'CONFIRMAR')" class="text-[11px] font-black ${c.vueltaPendiente ? 'text-amber-600' : 'text-emerald-600'} hover:underline">${c.vueltaPendiente ? 'Contar' : 'Recontar'}</button>` : ''}
                     </td>
                 </tr>`;
             }).join('');
         }
 
+        /** Abre el modal en uno de tres modos:
+         *    SALIDA     — cuántos se lleva el reparto
+         *    RETORNO    — cuántos DICE que trae de vuelta
+         *    CONFIRMAR  — cuántos contó recepción de verdad (los que suman)   */
         function stkAbrirViaje(tripId, clase) {
             const viaje = _stkViajes.find(v => v.id === tripId);
             if (!viaje) return;
             _stkViajeAbierto = { tripId, clase };
-            const yaCargado = clase === 'SALIDA' ? (viaje.cajones?.salida || {}) : (viaje.cajones?.retorno || {});
+            const c = viaje.cajones || {};
+            const esContar = clase === 'CONFIRMAR';
+
+            // Al contar arranca con lo declarado a la vista: se corrige lo que
+            // no coincida, en vez de escribir todo de nuevo.
+            const yaCargado = clase === 'SALIDA' ? (c.salida || {})
+                : (esContar ? (c.vueltaPendiente ? (c.declarado || {}) : (c.retorno || {}))
+                            : (c.declarado || {}));
+
             const tipos = (_stkTiposViaje.length ? _stkTiposViaje : _stkTipos).filter(t => t.activo);
 
             document.getElementById('stk-viaje-titulo').textContent =
-                clase === 'SALIDA' ? 'Cajones que salieron' : 'Cajones que volvieron';
-            document.getElementById('stk-viaje-sub').textContent =
-                `Viaje #${tripId} · ${viaje.reparto || '—'} · ${viaje.driver || '—'}`;
+                clase === 'SALIDA' ? 'Cajones que salieron'
+                : (esContar ? 'Contar la vuelta' : 'Cajones que vuelven');
+            document.getElementById('stk-viaje-sub').textContent = esContar
+                ? `Viaje #${tripId} · ${viaje.reparto || '—'} · declararon ${_stkNro(c.totalDeclarado || 0)}`
+                : `Viaje #${tripId} · ${viaje.reparto || '—'} · ${viaje.driver || '—'}`;
             document.getElementById('stk-viaje-nota').value = '';
 
-            document.getElementById('stk-viaje-tipos').innerHTML = tipos.map(t => `
+            document.getElementById('stk-viaje-tipos').innerHTML = tipos.map(t => {
+                const dicho = (c.declarado || {})[t.key];
+                const pie = esContar && dicho != null
+                    ? `<span class="block text-[10px] font-medium text-[#A3AED0]">declararon ${_stkNro(dicho)}</span>` : '';
+                return `
                 <label class="flex items-center justify-between gap-3 bg-[#F8FAFF] rounded-xl px-4 py-2">
-                    <span class="text-[12px] font-bold text-[#2B3674]">${_stkEsc(t.name)}</span>
+                    <span class="text-[12px] font-bold text-[#2B3674]">${_stkEsc(t.name)}${pie}</span>
                     <input type="number" min="0" data-stk-viaje="${_stkEsc(t.key)}" oninput="stkSumarViaje()"
                            value="${yaCargado[t.key] ?? ''}" placeholder="0"
                            class="w-24 bg-white border border-[#E0E5F2] rounded-lg p-2 text-sm font-bold text-[#1B2559] text-right">
-                </label>`).join('');
+                </label>`;
+            }).join('');
+
+            const btn = document.getElementById('stk-viaje-guardar');
+            if (btn) btn.textContent = esContar ? 'Confirmar' : 'Guardar';
 
             stkSumarViaje();
             document.getElementById('modal-stk-viaje').classList.remove('hidden');
@@ -6191,32 +6314,124 @@
 
         async function stkGuardarViaje() {
             if (!_stkViajeAbierto) return;
+            const { tripId, clase } = _stkViajeAbierto;
+            const esContar = clase === 'CONFIRMAR';
+
             const items = [];
             document.querySelectorAll('[data-stk-viaje]').forEach(i => {
                 const n = Math.round(Number(i.value) || 0);
-                if (n > 0) items.push({ key: i.dataset.stkViaje, cantidad: n });
+                // Al contar, el cero cuenta: significa "lo busqué y no había".
+                if (n > 0 || (esContar && i.value !== '')) {
+                    items.push({ key: i.dataset.stkViaje, cantidad: n });
+                }
             });
+
             const btn = document.getElementById('stk-viaje-guardar');
+            const textoBoton = esContar ? 'Confirmar' : 'Guardar';
             if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
             try {
-                const r = await _stkPedir(`/crates/viaje/${_stkViajeAbierto.tripId}`, {
-                    method: 'POST',
-                    body: JSON.stringify({
-                        clase: _stkViajeAbierto.clase,
-                        items,
-                        nota: document.getElementById('stk-viaje-nota')?.value || ''
-                    })
-                });
-                const viaje = _stkViajes.find(v => v.id === _stkViajeAbierto.tripId);
+                const nota = document.getElementById('stk-viaje-nota')?.value || '';
+                const r = esContar
+                    ? await _stkPedir(`/crates/confirmar/${tripId}`, {
+                        method: 'POST', body: JSON.stringify({ items, nota })
+                      })
+                    : await _stkPedir(`/crates/viaje/${tripId}`, {
+                        method: 'POST', body: JSON.stringify({ clase, items, nota })
+                      });
+
+                const viaje = _stkViajes.find(v => v.id === tripId);
                 if (viaje) viaje.cajones = r.cajones;
                 stkCerrarViaje();
                 renderStockViajes();
-                _stkAviso('success', 'Cajones guardados', `${r.total} cajón(es) en total.`);
+
+                if (esContar) {
+                    const d = r.diferencia || 0;
+                    _stkAviso(d ? 'warning' : 'success', 'Vuelta confirmada',
+                        d === 0
+                            ? `Contaste ${r.total} y es lo que habían declarado. Ya suma al stock.`
+                            : `Contaste ${r.total}, habían declarado ${r.declarado}: ${d > 0 ? 'sobran' : 'faltan'} ${Math.abs(d)}.`);
+                } else {
+                    _stkAviso('success', 'Cajones guardados',
+                        clase === 'RETORNO'
+                            ? `${r.total} declarado(s). Falta contarlos para que sumen al stock.`
+                            : `${r.total} cajón(es) en total.`);
+                }
                 cargarStockCajones();
             } catch (e) {
                 _stkAviso('error', 'No se pudo guardar', String(e.message || e));
             } finally {
-                if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
+                if (btn) { btn.disabled = false; btn.textContent = textoBoton; }
+            }
+        }
+
+        // ─── Control: los movimientos por donde haga falta ────────────────
+        const _STK_COL1 = {
+            dia: 'Día', mes: 'Mes', anio: 'Año',
+            reparto: 'Reparto', tipo: 'Tipo de cajón', motivo: 'Tipo de movimiento'
+        };
+
+        async function stkCargarControl() {
+            const body = document.getElementById('stk-ctl-filas');
+            if (!body) return;
+
+            const selTipo = document.getElementById('stk-ctl-tipo');
+            if (selTipo && !selTipo.options.length) {
+                if (!_stkTipos.length) { try { _stkTipos = (await _stkPedir('/crates/stock')).tipos || []; } catch (_) {} }
+                selTipo.innerHTML = '<option value="">Todos</option>' +
+                    _stkTipos.map(t => `<option value="${_stkEsc(t.key)}">${_stkEsc(t.name)}</option>`).join('');
+            }
+
+            const agrupar = document.getElementById('stk-ctl-agrupar')?.value || 'mes';
+            const q = new URLSearchParams({ agrupar });
+            const campos = { desde: 'stk-ctl-desde', hasta: 'stk-ctl-hasta', key: 'stk-ctl-tipo', motivo: 'stk-ctl-motivo', reparto: 'stk-ctl-reparto' };
+            for (const [param, id] of Object.entries(campos)) {
+                const v = document.getElementById(id)?.value;
+                if (v) q.set(param, v);
+            }
+
+            document.getElementById('stk-ctl-col1').textContent = _STK_COL1[agrupar] || '';
+            body.innerHTML = '<tr><td colspan="6" class="py-3 px-2 text-[#A3AED0]">Cargando...</td></tr>';
+            try {
+                const data = await _stkPedir('/crates/control?' + q.toString());
+
+                // El desplegable de repartos se llena con los que realmente
+                // movieron cajones, no con todos los que existen.
+                const selRep = document.getElementById('stk-ctl-reparto');
+                if (selRep && selRep.options.length <= 1 && (data.repartos || []).length) {
+                    const elegido = selRep.value;
+                    selRep.innerHTML = '<option value="">Todos</option>' +
+                        data.repartos.map(r => `<option value="${_stkEsc(r)}">${_stkEsc(r)}</option>`).join('');
+                    selRep.value = elegido;
+                }
+
+                const t = data.totales || {};
+                document.getElementById('stk-ctl-kpis').innerHTML = [
+                    ['Entraron', _stkNro(t.entraron), 'text-emerald-600'],
+                    ['Salieron', _stkNro(t.salieron), 'text-rose-600'],
+                    ['Neto', (t.neto > 0 ? '+' : '') + _stkNro(t.neto), 'text-[#1B2559]'],
+                    ['Sin contar', _stkNro(t.porConfirmar), t.porConfirmar ? 'text-amber-600' : 'text-[#A3AED0]']
+                ].map(([k, v, c]) => `
+                    <div class="bg-[#F8FAFF] rounded-xl p-4">
+                        <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">${k}</p>
+                        <p class="text-2xl font-black ${c}">${v}</p>
+                    </div>`).join('');
+
+                const filas = data.filas || [];
+                if (!filas.length) {
+                    body.innerHTML = '<tr><td colspan="6" class="py-3 px-2 text-[#A3AED0]">No hay movimientos con esos filtros.</td></tr>';
+                    return;
+                }
+                body.innerHTML = filas.map(f => `
+                    <tr class="border-b border-[#F4F7FE]">
+                        <td class="py-2 px-2 font-bold text-[#1B2559]">${_stkEsc(f.etiqueta)}</td>
+                        <td class="py-2 px-2 text-right font-bold text-emerald-600">${f.entraron ? _stkNro(f.entraron) : '—'}</td>
+                        <td class="py-2 px-2 text-right font-bold text-rose-600">${f.salieron ? _stkNro(f.salieron) : '—'}</td>
+                        <td class="py-2 px-2 text-right font-black text-[#1B2559]">${f.neto > 0 ? '+' : ''}${_stkNro(f.neto)}</td>
+                        <td class="py-2 px-2 text-right font-bold ${f.porConfirmar ? 'text-amber-600' : 'text-[#A3AED0]'}">${f.porConfirmar ? _stkNro(f.porConfirmar) : '—'}</td>
+                        <td class="py-2 px-2 text-right text-[#A3AED0]">${_stkNro(f.movimientos)}</td>
+                    </tr>`).join('');
+            } catch (e) {
+                body.innerHTML = `<tr><td colspan="6" class="py-3 px-2 text-rose-600 font-bold">Error: ${_stkEsc(e.message || e)}</td></tr>`;
             }
         }
 
@@ -6864,14 +7079,18 @@
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data?.error || 'No se pudo crear el usuario');
 
-                // Agregar a perfiles con acceso completo por defecto
+                // Que puede ver. Antes entraba siempre con TODO habilitado, asi
+                // que un usuario de recepcion nacia viendo sueldos y costos.
+                const acceso = (document.getElementById('new-user-acceso')?.value || 'TODO').toUpperCase();
+                const modulos = acceso === 'TODO' ? [...ALL_MODULES] : [...(ACCESS_PROFILES[acceso] || ALL_MODULES)];
                 const profiles = getStoredProfiles();
-                if (!profiles[username.toLowerCase()]) {
-                    profiles[username.toLowerCase()] = [...ALL_MODULES];
-                    saveStoredProfiles(profiles);
-                }
+                profiles[username.toLowerCase()] = modulos;
+                saveStoredProfiles(profiles);
 
-                notifyUsers(`Usuario "${username}" creado correctamente.`, 'success');
+                notifyUsers(
+                    `Usuario "${username}" creado` +
+                    (acceso === 'TODO' ? ' con todos los módulos.' : ` — solo ve ${modulos.length} módulo(s).`),
+                    'success');
                 document.getElementById('new-user-username').value = '';
                 document.getElementById('new-user-fullname').value = '';
                 document.getElementById('new-user-password').value = '';

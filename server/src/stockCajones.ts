@@ -18,9 +18,22 @@
  * conteo al lado. El stock pasa a ser 462 igual, pero queda escrito que la
  * diferencia fue de 18 y cuando aparecio.
  *
- * LO QUE SALE Y LO QUE VUELVE de cada reparto son dos movimientos atados al
- * viaje: la salida en negativo, la vuelta en positivo. La resta de los dos es
- * lo que quedo afuera.
+ * EL CIRCUITO DE UN REPARTO, de principio a fin:
+ *
+ *   1. ENTRAN cajones al deposito            (COMPRA)
+ *   2. SALEN con el reparto                  (SALIDA, en negativo)
+ *   3. En la calle se entregan y se recuperan -- eso lo carga el chofer en la
+ *      app, parada por parada, y vive aparte en el modulo Cajones
+ *   4. VUELVEN al deposito                   (RETORNO, en positivo)
+ *   5. Alguien los CUENTA y los confirma     -> recien ahi suman al stock
+ *
+ * EL PASO 5 NO ES UN TRAMITE. La vuelta se carga con lo que el reparto DICE
+ * que trae (`declarado`) y queda pendiente. Cuando recepcion los cuenta, lo
+ * contado pasa a ser `cantidad` y la vuelta se confirma. Los dos numeros
+ * quedan guardados: si siempre vuelve menos de lo declarado, eso se ve.
+ *
+ * Mientras una vuelta esta sin confirmar, NO suma al stock. Esta en el muelle,
+ * no en el deposito, y nadie todavia sabe cuantos son de verdad.
  * ========================================================================= */
 
 import { TIPOS_DE_ENVASE } from './reporteTorre';
@@ -88,7 +101,7 @@ export async function asegurarTipos(prisma: Prisma): Promise<TipoDeCajon[]> {
     return prisma.crateType.findMany({ orderBy: [{ orden: 'asc' }, { name: 'asc' }] });
 }
 
-/** typeId -> suma de sus movimientos (filtrando por motivo si se pide). */
+/** typeId -> suma de sus movimientos (filtrando por lo que se pida). */
 async function sumarPorTipo(prisma: Prisma, where: any = {}): Promise<Map<number, number>> {
     const filas = await prisma.crateMovement.groupBy({
         by: ['typeId'],
@@ -99,11 +112,13 @@ async function sumarPorTipo(prisma: Prisma, where: any = {}): Promise<Map<number
 }
 
 export interface StockDeUnTipo extends TipoDeCajon {
-    /** Lo que hay en el deposito segun los movimientos. */
+    /** Lo que hay en el deposito: solo movimientos confirmados. */
     stock: number;
+    /** Volvio pero nadie lo conto todavia. Esta en el muelle, no en el stock. */
+    porConfirmar: number;
     /** Lo que salio en viajes y todavia no volvio. */
     enLaCalle: number;
-    /** stock + enLaCalle: el total de cajones de ese tipo que existen. */
+    /** Todos los cajones de ese tipo que existen, esten donde esten. */
     total: number;
     /** Cuando se conto por ultima vez y que diferencia dio. */
     ultimoInventario: { fecha: string; contado: number; diferencia: number } | null;
@@ -114,9 +129,14 @@ export interface StockDeUnTipo extends TipoDeCajon {
 export async function fotoDelStock(prisma: Prisma): Promise<StockDeUnTipo[]> {
     const tipos = await asegurarTipos(prisma);
 
-    const deposito = await sumarPorTipo(prisma);
+    // El stock son los movimientos CONFIRMADOS. Una vuelta sin contar no entra:
+    // esta en el muelle y todavia no se sabe cuantos son.
+    const deposito = await sumarPorTipo(prisma, { confirmado: true });
+    const enMuelle = await sumarPorTipo(prisma, { confirmado: false });
     // Lo que esta afuera: las salidas (negativas) y los retornos (positivos) de
     // los viajes. Se da vuelta el signo porque "afuera" es lo que falta.
+    // La vuelta sin confirmar ya descuenta de "en la calle": fisicamente los
+    // cajones volvieron, aunque todavia no esten contados.
     const viajes = await sumarPorTipo(prisma, { motivo: { in: ['SALIDA', 'RETORNO'] } });
 
     // El ultimo inventario de cada tipo, uno por uno: son pocos tipos.
@@ -131,13 +151,15 @@ export async function fotoDelStock(prisma: Prisma): Promise<StockDeUnTipo[]> {
 
     return tipos.map((t: TipoDeCajon) => {
         const stock = deposito.get(t.id) || 0;
+        const porConfirmar = enMuelle.get(t.id) || 0;
         const enLaCalle = -(viajes.get(t.id) || 0);
         const inv = ultimos.get(t.id);
         return {
             id: t.id, key: t.key, name: t.name, orden: t.orden, activo: t.activo,
             stock,
+            porConfirmar,
             enLaCalle,
-            total: stock + enLaCalle,
+            total: stock + porConfirmar + enLaCalle,
             ultimoInventario: inv
                 ? {
                     fecha: new Date(inv.fecha).toISOString(),
@@ -225,8 +247,13 @@ export async function guardarCajonesDelViaje(
         const tipo: any = porClave.get(String(it?.key || '').trim());
         const n = entero(it?.cantidad);
         if (!tipo || n === null || n <= 0) continue;
+        // La vuelta nace PENDIENTE: lo que se carga es lo que el reparto dice
+        // que trae. Suma al stock cuando alguien la cuenta y la confirma.
+        const esVuelta = clase === 'RETORNO';
         data.push({
             typeId: tipo.id, motivo: clase, cantidad: signo * n,
+            declarado: esVuelta ? n : null,
+            confirmado: !esVuelta,
             tripId, usuario, nota, fecha: cuando
         });
         total += n;
@@ -236,26 +263,58 @@ export async function guardarCajonesDelViaje(
 }
 
 export interface CajonesDeUnViaje {
+    /** Lo que salio, por tipo. */
     salida: Record<string, number>;
+    /** Lo que volvio y YA se conto, por tipo. */
     retorno: Record<string, number>;
+    /** Lo que el reparto DIJO que traia, por tipo. Igual a `retorno` una vez
+     *  confirmado, distinto mientras la cuenta no cierre. */
+    declarado: Record<string, number>;
     totalSalida: number;
     totalRetorno: number;
+    totalDeclarado: number;
     /** Lo que se llevo y no volvio. */
     sinVolver: number;
     cargadoSalida: boolean;
     cargadoRetorno: boolean;
+    /** La vuelta esta cargada pero nadie la conto todavia. */
+    vueltaPendiente: boolean;
+    /** Contado menos declarado. Negativo = volvieron menos de los que dijeron. */
+    diferenciaVuelta: number;
+    confirmadoPor: string | null;
+    confirmadoAt: string | null;
 }
 
 export function vacioDeUnViaje(): CajonesDeUnViaje {
     return {
-        salida: {}, retorno: {}, totalSalida: 0, totalRetorno: 0,
-        sinVolver: 0, cargadoSalida: false, cargadoRetorno: false
+        salida: {}, retorno: {}, declarado: {},
+        totalSalida: 0, totalRetorno: 0, totalDeclarado: 0,
+        sinVolver: 0, cargadoSalida: false, cargadoRetorno: false,
+        vueltaPendiente: false, diferenciaVuelta: 0,
+        confirmadoPor: null, confirmadoAt: null
     };
 }
 
-/** Arma lo cargado de cada viaje a partir de sus movimientos. */
+interface MovimientoDeViaje {
+    tripId: number | null;
+    typeId?: number;
+    motivo: string;
+    cantidad: number;
+    declarado?: number | null;
+    confirmado?: boolean;
+    confirmadoPor?: string | null;
+    confirmadoAt?: Date | string | null;
+    type?: { key?: string } | null;
+}
+
+/**
+ * Arma lo cargado de cada viaje a partir de sus movimientos.
+ *
+ * `sinVolver` se calcula contra lo CONTADO, no contra lo declarado: lo que no
+ * se conto no volvio, por mas que alguien lo haya anotado.
+ */
 export function agruparPorViaje(
-    movimientos: Array<{ tripId: number | null; motivo: string; cantidad: number; type?: { key?: string } | null }>,
+    movimientos: MovimientoDeViaje[],
     claveDeTipo?: Map<number, string>
 ): Map<number, CajonesDeUnViaje> {
     const salida = new Map<number, CajonesDeUnViaje>();
@@ -263,21 +322,229 @@ export function agruparPorViaje(
         if (m.tripId == null) continue;
         const motivo = String(m.motivo).toUpperCase();
         if (motivo !== 'SALIDA' && motivo !== 'RETORNO') continue;
-        const key = m.type?.key || claveDeTipo?.get((m as any).typeId) || '';
+        const key = m.type?.key || (m.typeId != null ? claveDeTipo?.get(m.typeId) : '') || '';
         if (!key) continue;
+
         const v = salida.get(m.tripId) || vacioDeUnViaje();
         const n = Math.abs(Number(m.cantidad) || 0);
+
         if (motivo === 'SALIDA') {
             v.salida[key] = (v.salida[key] || 0) + n;
             v.totalSalida += n;
             v.cargadoSalida = true;
         } else {
-            v.retorno[key] = (v.retorno[key] || 0) + n;
-            v.totalRetorno += n;
+            const dicho = m.declarado == null ? n : Math.abs(Number(m.declarado) || 0);
+            v.declarado[key] = (v.declarado[key] || 0) + dicho;
+            v.totalDeclarado += dicho;
             v.cargadoRetorno = true;
+            if (m.confirmado === false) {
+                v.vueltaPendiente = true;
+            } else {
+                v.retorno[key] = (v.retorno[key] || 0) + n;
+                v.totalRetorno += n;
+                if (m.confirmadoPor) v.confirmadoPor = m.confirmadoPor;
+                if (m.confirmadoAt) v.confirmadoAt = new Date(m.confirmadoAt).toISOString();
+            }
         }
         v.sinVolver = v.totalSalida - v.totalRetorno;
+        v.diferenciaVuelta = v.vueltaPendiente ? 0 : v.totalRetorno - v.totalDeclarado;
         salida.set(m.tripId, v);
     }
     return salida;
+}
+
+/**
+ * Cuenta la vuelta de un viaje y la confirma: recien ahi suma al stock.
+ *
+ * `items` trae lo CONTADO de cada tipo. Lo que el reparto habia declarado no
+ * se toca: queda guardado al lado para poder comparar.
+ *
+ * Un tipo que estaba declarado y no viene en el conteo se confirma en cero:
+ * contaron y no habia ninguno. Uno que no estaba declarado y aparece en el
+ * conteo se agrega, porque volvio igual.
+ */
+export async function confirmarVuelta(
+    prisma: Prisma,
+    tripId: number,
+    items: ItemCantidad[],
+    usuario: string | null,
+    nota: string | null
+): Promise<{ confirmados: number; total: number; declarado: number; diferencia: number }> {
+    const tipos = await asegurarTipos(prisma);
+    const porClave = new Map(tipos.map((t: TipoDeCajon) => [t.key, t]));
+    const ahora = new Date();
+
+    const pendientes = await prisma.crateMovement.findMany({
+        where: { tripId, motivo: 'RETORNO' }
+    });
+    const porTipo = new Map<number, any>(pendientes.map((m: any) => [m.typeId, m]));
+
+    const contado = new Map<number, number>();
+    for (const it of items || []) {
+        const tipo: any = porClave.get(String(it?.key || '').trim());
+        const n = entero(it?.cantidad);
+        if (!tipo || n === null || n < 0) continue;
+        contado.set(tipo.id, n);
+    }
+
+    let total = 0;
+    let declarado = 0;
+    let confirmados = 0;
+    const fecha = pendientes[0]?.fecha || ahora;
+
+    // Los que ya estaban anotados: se les pone lo contado.
+    for (const [typeId, mov] of porTipo) {
+        const n = contado.has(typeId) ? (contado.get(typeId) as number) : 0;
+        const dicho = mov.declarado == null ? Math.abs(Number(mov.cantidad) || 0) : Number(mov.declarado);
+        await prisma.crateMovement.update({
+            where: { id: mov.id },
+            data: {
+                cantidad: n, declarado: dicho, confirmado: true,
+                confirmadoPor: usuario, confirmadoAt: ahora,
+                nota: nota || mov.nota
+            }
+        });
+        total += n;
+        declarado += dicho;
+        confirmados++;
+    }
+
+    // Los que aparecieron en el conteo sin estar anotados: volvieron igual.
+    for (const [typeId, n] of contado) {
+        if (porTipo.has(typeId) || n <= 0) continue;
+        await prisma.crateMovement.create({
+            data: {
+                typeId, motivo: 'RETORNO', cantidad: n, declarado: 0,
+                confirmado: true, confirmadoPor: usuario, confirmadoAt: ahora,
+                tripId, usuario, nota, fecha
+            }
+        });
+        total += n;
+        confirmados++;
+    }
+
+    return { confirmados, total, declarado, diferencia: total - declarado };
+}
+
+/** Las vueltas cargadas que nadie conto todavia. Es la cola de recepcion. */
+export async function vueltasPendientes(prisma: Prisma): Promise<any[]> {
+    const movs = await prisma.crateMovement.findMany({
+        where: { motivo: 'RETORNO', confirmado: false },
+        orderBy: [{ fecha: 'asc' }, { id: 'asc' }],
+        include: {
+            type: { select: { key: true, name: true } },
+            trip: { select: { id: true, reparto: true, driver: true, date: true } }
+        }
+    });
+    const porViaje = new Map<number, any>();
+    for (const m of movs as any[]) {
+        if (m.tripId == null) continue;
+        const v = porViaje.get(m.tripId) || {
+            tripId: m.tripId, reparto: m.trip?.reparto || null, driver: m.trip?.driver || null,
+            fecha: m.fecha, declarado: 0, porTipo: [] as any[]
+        };
+        const dicho = m.declarado == null ? Math.abs(Number(m.cantidad) || 0) : Number(m.declarado);
+        v.declarado += dicho;
+        v.porTipo.push({ key: m.type?.key, nombre: m.type?.name, declarado: dicho });
+        porViaje.set(m.tripId, v);
+    }
+    return [...porViaje.values()];
+}
+
+/* ---------------------------------------------------------------------------
+ * EL CONTROL: los mismos movimientos mirados por donde haga falta
+ * ------------------------------------------------------------------------ */
+
+export type Agrupador = 'dia' | 'mes' | 'anio' | 'reparto' | 'tipo' | 'motivo';
+
+export const AGRUPADORES: Agrupador[] = ['dia', 'mes', 'anio', 'reparto', 'tipo', 'motivo'];
+
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
+    'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+
+/** La fecha en Buenos Aires, no en UTC: un movimiento de las 22 h no tiene que
+ *  contarse al dia siguiente. */
+function partesDeFecha(f: Date | string): { dia: string; mes: string; anio: string } {
+    const d = new Date(f);
+    const ymd = d.toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+    const [a, m] = ymd.split('-');
+    return { dia: ymd, mes: `${a}-${m}`, anio: a };
+}
+
+export function etiquetaDeGrupo(agrupar: Agrupador, clave: string): string {
+    if (agrupar === 'mes') {
+        const [a, m] = clave.split('-');
+        return `${MESES[Number(m) - 1] || m} ${a}`;
+    }
+    if (agrupar === 'dia') {
+        const [a, m, d] = clave.split('-');
+        return `${d}/${m}/${a}`;
+    }
+    return clave;
+}
+
+export interface FilaDelControl {
+    clave: string;
+    etiqueta: string;
+    /** Todo lo que sumo al deposito. */
+    entraron: number;
+    /** Todo lo que resto, en positivo. */
+    salieron: number;
+    /** entraron - salieron */
+    neto: number;
+    /** Cuantos movimientos hay detras del numero. */
+    movimientos: number;
+    /** Lo que esta cargado pero sin contar. */
+    porConfirmar: number;
+}
+
+/**
+ * Agrupa los movimientos por donde se pida y devuelve las filas del control.
+ *
+ * Se separa en `entraron` y `salieron` en vez de dar solo el neto porque el
+ * neto solo no dice nada: un mes con 0 de neto puede no haber movido un cajon
+ * o haber movido tres mil.
+ */
+export function armarControl(
+    movimientos: Array<{
+        fecha: Date | string; cantidad: number; motivo: string; confirmado?: boolean;
+        type?: { key?: string; name?: string } | null;
+        trip?: { reparto?: string | null } | null;
+    }>,
+    agrupar: Agrupador
+): FilaDelControl[] {
+    const grupos = new Map<string, FilaDelControl>();
+
+    for (const m of movimientos) {
+        let clave: string;
+        if (agrupar === 'reparto') clave = String(m.trip?.reparto || 'SIN REPARTO').trim().toUpperCase();
+        else if (agrupar === 'tipo') clave = String(m.type?.name || '—');
+        else if (agrupar === 'motivo') clave = String(m.motivo).toUpperCase();
+        else clave = partesDeFecha(m.fecha)[agrupar];
+
+        const g = grupos.get(clave) || {
+            clave, etiqueta: etiquetaDeGrupo(agrupar, clave),
+            entraron: 0, salieron: 0, neto: 0, movimientos: 0, porConfirmar: 0
+        };
+        const n = Number(m.cantidad) || 0;
+        if (m.confirmado === false) {
+            g.porConfirmar += Math.abs(n);
+        } else if (n >= 0) {
+            g.entraron += n;
+        } else {
+            g.salieron += -n;
+        }
+        g.neto = g.entraron - g.salieron;
+        g.movimientos++;
+        grupos.set(clave, g);
+    }
+
+    const filas = [...grupos.values()];
+    // Las fechas en orden; el resto, alfabetico.
+    if (agrupar === 'dia' || agrupar === 'mes' || agrupar === 'anio') {
+        filas.sort((a, b) => b.clave.localeCompare(a.clave));
+    } else {
+        filas.sort((a, b) => a.clave.localeCompare(b.clave, 'es', { numeric: true }));
+    }
+    return filas;
 }

@@ -12,7 +12,11 @@ import {
     vacioDeUnViaje,
     claveDeNombre,
     entero as enteroDeCajones,
-    signoDelMotivo
+    signoDelMotivo,
+    confirmarVuelta,
+    vueltasPendientes,
+    armarControl,
+    AGRUPADORES
 } from './stockCajones';
 import { armarLibroViajes } from './libroViajes';
 import { metricasDelMes } from './metricasDashboard';
@@ -5875,6 +5879,108 @@ app.post('/api/v1/crates/viaje/:id', async (req: any, res: any) => {
     } catch (e: any) {
         console.error('POST /crates/viaje:', e);
         res.status(500).json({ error: e?.message || 'Error guardando los cajones del viaje' });
+    }
+});
+
+/** Las vueltas cargadas que nadie conto todavia. Es la cola de recepcion:
+ *  lo primero que mira el que recibe los cajones.
+ *  GET /api/v1/crates/pendientes */
+app.get('/api/v1/crates/pendientes', async (_req: any, res: any) => {
+    try {
+        res.json({ pendientes: await vueltasPendientes(prisma) });
+    } catch (e: any) {
+        console.error('GET /crates/pendientes:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Cuenta la vuelta de un viaje y la confirma. Recien aca suma al stock.
+ *  `items` es lo CONTADO; lo declarado queda guardado al lado.
+ *  POST /api/v1/crates/confirmar/:id { items: [{key, cantidad}], nota? } */
+app.post('/api/v1/crates/confirmar/:id', async (req: any, res: any) => {
+    try {
+        const tripId = Number(req.params.id);
+        const viaje = await prisma.trip.findUnique({
+            where: { id: tripId }, select: { id: true, reparto: true }
+        });
+        if (!viaje) return res.status(404).json({ error: 'Ese viaje no existe' });
+
+        const hay = await prisma.crateMovement.count({ where: { tripId, motivo: 'RETORNO' } });
+        if (!hay) return res.status(400).json({ error: 'Ese viaje no tiene una vuelta cargada para confirmar' });
+
+        const r = await confirmarVuelta(
+            prisma, tripId, req.body?.items || [],
+            quienCarga(req), String(req.body?.nota || '').trim() || null
+        );
+        await logAction(req, 'UPDATE', 'CrateMovement', tripId,
+            `Vuelta confirmada viaje #${tripId} (${viaje.reparto || '-'})`, null, r);
+
+        const movs = await prisma.crateMovement.findMany({
+            where: { tripId, motivo: { in: ['SALIDA', 'RETORNO'] } },
+            include: { type: { select: { key: true } } }
+        });
+        res.json({ ok: true, ...r, cajones: agruparPorViaje(movs as any).get(tripId) || vacioDeUnViaje() });
+    } catch (e: any) {
+        console.error('POST /crates/confirmar:', e);
+        res.status(500).json({ error: e?.message || 'Error confirmando la vuelta' });
+    }
+});
+
+/** El control: los movimientos agrupados por donde haga falta.
+ *  GET /api/v1/crates/control?agrupar=dia|mes|anio|reparto|tipo|motivo
+ *      &desde=&hasta=&key=&motivo=&reparto=
+ *
+ *  Los filtros y el agrupador son independientes: se puede pedir "por tipo de
+ *  cajon, solo del reparto R6, solo las salidas, de septiembre". */
+app.get('/api/v1/crates/control', async (req: any, res: any) => {
+    try {
+        const agrupar = String(req.query?.agrupar || 'mes').toLowerCase();
+        if (!AGRUPADORES.includes(agrupar as any)) {
+            return res.status(400).json({ error: `agrupar tiene que ser uno de: ${AGRUPADORES.join(', ')}` });
+        }
+        const { desde, hasta, key, motivo, reparto } = req.query || {};
+
+        const where: any = {};
+        if (desde || hasta) {
+            where.fecha = {};
+            if (desde) where.fecha.gte = new Date(String(desde) + 'T00:00:00');
+            if (hasta) where.fecha.lte = new Date(String(hasta) + 'T23:59:59');
+        }
+        if (key) {
+            const tipo = await prisma.crateType.findUnique({ where: { key: String(key) } });
+            where.typeId = tipo ? tipo.id : -1;
+        }
+        if (motivo) where.motivo = String(motivo).toUpperCase();
+        if (reparto) where.trip = { reparto: { equals: String(reparto), mode: 'insensitive' } };
+
+        const movs = await prisma.crateMovement.findMany({
+            where,
+            orderBy: [{ fecha: 'desc' }],
+            select: {
+                fecha: true, cantidad: true, motivo: true, confirmado: true,
+                type: { select: { key: true, name: true } },
+                trip: { select: { reparto: true } }
+            }
+        });
+
+        const filas = armarControl(movs as any, agrupar as any);
+        const totales = filas.reduce((a, f) => ({
+            entraron: a.entraron + f.entraron,
+            salieron: a.salieron + f.salieron,
+            neto: a.neto + f.neto,
+            movimientos: a.movimientos + f.movimientos,
+            porConfirmar: a.porConfirmar + f.porConfirmar
+        }), { entraron: 0, salieron: 0, neto: 0, movimientos: 0, porConfirmar: 0 });
+
+        // Los repartos que aparecen, para poder filtrar por uno
+        const repartos = [...new Set(movs
+            .map((m: any) => (m.trip?.reparto || '').trim().toUpperCase())
+            .filter(Boolean))].sort();
+
+        res.json({ agrupar, filas, totales, repartos });
+    } catch (e: any) {
+        console.error('GET /crates/control:', e);
+        res.status(500).json({ error: e?.message || 'Error armando el control' });
     }
 });
 
