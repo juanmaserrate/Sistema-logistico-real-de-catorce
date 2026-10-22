@@ -283,6 +283,7 @@ model Trip {
   locations          TripLocation[]
   linkedRoute        Route?
   tramos             TripLeg[]
+  cajones            CrateMovement[]
 
   @@index([date])
   @@index([driver])
@@ -534,4 +535,48 @@ model Historial {
   @@index([clientId])
   @@index([category])
   @@index([createdAt])
+}
+
+
+/// Un tipo de cajon del deposito. Arranca con los cinco que ya usa la app del
+/// chofer (Peco, Plasticos, Burzaco, Jaula, Cajones del deposito) y se pueden
+/// agregar mas sin tocar el codigo.
+model CrateType {
+  id          Int             @id @default(autoincrement())
+  /// Clave estable, la misma que usa la app: peco, plasticos, burzaco...
+  key         String          @unique
+  name        String
+  orden       Int             @default(0)
+  activo      Boolean         @default(true)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  movimientos CrateMovement[]
+}
+
+/// Cada entrada y salida de cajones del deposito.
+///
+/// El stock de un tipo es la SUMA de `cantidad` de todos sus movimientos.
+/// Positivo = entra al deposito, negativo = sale. Un inventario no fija el
+/// numero a lo bruto: guarda la diferencia contra lo que decia el sistema, asi
+/// nunca se pierde el rastro de por que cambio el stock.
+model CrateMovement {
+  id        Int       @id @default(autoincrement())
+  typeId    Int
+  fecha     DateTime  @default(now())
+  /// INVENTARIO | SALIDA | RETORNO | COMPRA | BAJA | AJUSTE
+  motivo    String
+  cantidad  Int
+  /// Solo en INVENTARIO: lo que se conto fisicamente.
+  contado   Int?
+  /// SALIDA y RETORNO van atadas al viaje que se los llevo.
+  tripId    Int?
+  nota      String?
+  usuario   String?
+  createdAt DateTime  @default(now())
+  type      CrateType @relation(fields: [typeId], references: [id])
+  trip      Trip?     @relation(fields: [tripId], references: [id])
+
+  @@index([typeId, fecha])
+  @@index([tripId, motivo])
+  @@index([motivo, fecha])
 }

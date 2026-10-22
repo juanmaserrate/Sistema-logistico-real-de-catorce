@@ -127,6 +127,7 @@
                             <a href="#weekly" id="btn-weekly" class="nav-menu-item" role="menuitem"><i data-lucide="layout-dashboard"></i> <span>Logística Semanal</span></a>
                             <a href="#hdr" id="btn-hdr" class="nav-menu-item" role="menuitem"><i data-lucide="history"></i> <span>HDR</span></a>
                             <a href="#crates" id="btn-crates" class="nav-menu-item" role="menuitem"><i data-lucide="package"></i> <span>Cajones</span></a>
+                            <a href="#stock-cajones" id="btn-stock-cajones" class="nav-menu-item" role="menuitem"><i data-lucide="boxes"></i> <span>Stock de cajones</span></a>
                         </div>
                     </div>
                     <div class="nav-menu" id="nav-menu-planificacion" data-menu="planificacion">
@@ -2268,6 +2269,174 @@
                                 <tbody id="crates-by-est"></tbody>
                             </table></div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- VIEW: STOCK DE CAJONES -->
+            <div id="view-stock-cajones" class="hidden view-animate space-y-6">
+
+                <!-- Solapas -->
+                <div class="card-dark overflow-hidden">
+                    <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
+                        <div>
+                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Stock de cajones</h4>
+                            <p class="text-xs text-[#A3AED0] mt-1">
+                                Cu&aacute;ntos cajones hay en el dep&oacute;sito de cada tipo. El n&uacute;mero no se escribe a mano:
+                                sale de sumar todo lo que entr&oacute; y sali&oacute;. Por eso cualquier cantidad se puede explicar.
+                            </p>
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <button onclick="stkTab('stock')" id="stk-tab-stock" class="stk-tab bg-[#451ebb] text-white rounded-lg px-4 py-2 text-sm font-bold">Inventario</button>
+                            <button onclick="stkTab('viajes')" id="stk-tab-viajes" class="stk-tab bg-[#F4F7FE] text-[#1B2559] rounded-lg px-4 py-2 text-sm font-bold">Salidas y vueltas</button>
+                            <button onclick="stkTab('movs')" id="stk-tab-movs" class="stk-tab bg-[#F4F7FE] text-[#1B2559] rounded-lg px-4 py-2 text-sm font-bold">Movimientos</button>
+                        </div>
+                    </div>
+
+                    <!-- ── SOLAPA INVENTARIO ── -->
+                    <div id="stk-pane-stock" class="p-6 bg-white space-y-5">
+                        <div id="stk-kpis" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+
+                        <div class="overflow-x-auto"><table class="w-full text-sm">
+                            <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left border-b border-[#F4F7FE]">
+                                <th class="py-2 px-2">Tipo de caj&oacute;n</th>
+                                <th class="py-2 px-2 text-right">En el dep&oacute;sito</th>
+                                <th class="py-2 px-2 text-right">En la calle</th>
+                                <th class="py-2 px-2 text-right">Total</th>
+                                <th class="py-2 px-2">&Uacute;ltimo inventario</th>
+                                <th class="py-2 px-2 text-right w-32">Cont&eacute; ahora</th>
+                                <th class="py-2 px-2 text-right w-24">Diferencia</th>
+                            </tr></thead>
+                            <tbody id="stk-tipos"></tbody>
+                        </table></div>
+
+                        <div class="flex flex-col lg:flex-row lg:items-end gap-3 pt-2 border-t border-[#F4F7FE]">
+                            <label class="flex-1 text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">
+                                Nota del inventario
+                                <input id="stk-inv-nota" placeholder="Qui&eacute;n cont&oacute;, d&oacute;nde, qu&eacute; pas&oacute;..." class="block w-full mt-1 bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559] normal-case">
+                            </label>
+                            <div class="flex flex-wrap gap-2">
+                                <button onclick="stkNuevoTipo()" class="bg-[#F4F7FE] text-[#1B2559] rounded-lg px-4 py-2 text-sm font-bold">+ Tipo de caj&oacute;n</button>
+                                <button onclick="stkAbrirAjuste()" class="bg-[#F4F7FE] text-[#1B2559] rounded-lg px-4 py-2 text-sm font-bold">Entrada / baja suelta</button>
+                                <button onclick="stkGuardarInventario()" id="stk-btn-inv" class="bg-[#451ebb] text-white rounded-lg px-5 py-2 text-sm font-bold">Guardar inventario</button>
+                            </div>
+                        </div>
+                        <p class="text-[10px] text-[#A3AED0]">
+                            Escrib&iacute; lo que contaste en <b>Cont&eacute; ahora</b>. Los que dejes en blanco no se tocan.
+                            Guardar no pisa el historial: deja asentada la diferencia y con qu&eacute; n&uacute;mero se corrigi&oacute;.
+                        </p>
+                    </div>
+
+                    <!-- ── SOLAPA SALIDAS Y VUELTAS ── -->
+                    <div id="stk-pane-viajes" class="hidden p-6 bg-white space-y-5">
+                        <div class="flex flex-wrap items-end gap-2">
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">D&iacute;a
+                                <input type="date" id="stk-fecha" onchange="stkCargarViajes()" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></label>
+                            <button onclick="stkCargarViajes()" class="bg-[#F4F7FE] text-[#1B2559] rounded-lg px-4 py-2 text-sm font-bold">Actualizar</button>
+                            <span id="stk-viajes-resumen" class="text-xs font-bold text-[#A3AED0] ml-auto"></span>
+                        </div>
+                        <div class="overflow-x-auto"><table class="w-full text-sm">
+                            <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left border-b border-[#F4F7FE]">
+                                <th class="py-2 px-2">Viaje</th>
+                                <th class="py-2 px-2">Reparto</th>
+                                <th class="py-2 px-2">Chofer</th>
+                                <th class="py-2 px-2 text-right">Salieron</th>
+                                <th class="py-2 px-2 text-right">Volvieron</th>
+                                <th class="py-2 px-2 text-right">Sin volver</th>
+                                <th class="py-2 px-2 text-right">Cargar</th>
+                            </tr></thead>
+                            <tbody id="stk-viajes"></tbody>
+                        </table></div>
+                        <p class="text-[10px] text-[#A3AED0]">
+                            <b>Salieron</b> son los cajones que se llev&oacute; el reparto al salir del dep&oacute;sito.
+                            <b>Volvieron</b>, los que trajo de vuelta. La diferencia es lo que qued&oacute; afuera.
+                        </p>
+                    </div>
+
+                    <!-- ── SOLAPA MOVIMIENTOS ── -->
+                    <div id="stk-pane-movs" class="hidden p-6 bg-white space-y-5">
+                        <div class="flex flex-wrap items-end gap-2">
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">Desde
+                                <input type="date" id="stk-mov-desde" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></label>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">Hasta
+                                <input type="date" id="stk-mov-hasta" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></label>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">Tipo
+                                <select id="stk-mov-tipo" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></select></label>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">Motivo
+                                <select id="stk-mov-motivo" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]">
+                                    <option value="">Todos</option>
+                                    <option value="INVENTARIO">Inventario</option>
+                                    <option value="SALIDA">Salida de reparto</option>
+                                    <option value="RETORNO">Vuelta de reparto</option>
+                                    <option value="COMPRA">Compra</option>
+                                    <option value="BAJA">Baja</option>
+                                    <option value="AJUSTE">Ajuste</option>
+                                </select></label>
+                            <button onclick="stkCargarMovimientos()" class="bg-[#451ebb] text-white rounded-lg px-4 py-2 text-sm font-bold">Buscar</button>
+                        </div>
+                        <div class="overflow-x-auto"><table class="w-full text-sm">
+                            <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left border-b border-[#F4F7FE]">
+                                <th class="py-2 px-2">Fecha</th>
+                                <th class="py-2 px-2">Tipo</th>
+                                <th class="py-2 px-2">Motivo</th>
+                                <th class="py-2 px-2 text-right">Cantidad</th>
+                                <th class="py-2 px-2">Viaje</th>
+                                <th class="py-2 px-2">Nota</th>
+                                <th class="py-2 px-2">Carg&oacute;</th>
+                                <th class="py-2 px-2"></th>
+                            </tr></thead>
+                            <tbody id="stk-movs"></tbody>
+                        </table></div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL: cargar los cajones de un viaje -->
+            <div id="modal-stk-viaje" class="fixed inset-0 z-[222] hidden flex items-center justify-center p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);" onclick="if(event.target===this)stkCerrarViaje()">
+                <div class="modal-content w-full max-w-lg p-8 bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+                    <div class="flex items-center gap-4 mb-5">
+                        <div class="w-12 h-12 rounded-2xl bg-indigo-50 flex items-center justify-center shrink-0">
+                            <i data-lucide="boxes" class="w-6 h-6 text-indigo-600"></i>
+                        </div>
+                        <div>
+                            <h3 id="stk-viaje-titulo" class="text-xl font-bold text-[#1B2559]">Cajones</h3>
+                            <p id="stk-viaje-sub" class="text-xs text-[#A3AED0] font-medium"></p>
+                        </div>
+                    </div>
+                    <div id="stk-viaje-tipos" class="space-y-2"></div>
+                    <div class="flex items-center justify-between mt-4 pt-4 border-t border-[#F4F7FE]">
+                        <span class="text-[11px] font-black text-[#A3AED0] uppercase tracking-wider">Total</span>
+                        <span id="stk-viaje-total" class="text-2xl font-black text-[#1B2559]">0</span>
+                    </div>
+                    <label class="block text-[10px] font-black text-[#A3AED0] uppercase tracking-wider mt-4">Nota
+                        <input id="stk-viaje-nota" class="block w-full mt-1 bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559] normal-case"></label>
+                    <div class="flex gap-2 mt-6">
+                        <button onclick="stkCerrarViaje()" class="flex-1 bg-[#F4F7FE] text-[#1B2559] rounded-xl py-3 text-sm font-bold">Cancelar</button>
+                        <button onclick="stkGuardarViaje()" id="stk-viaje-guardar" class="flex-1 bg-[#451ebb] text-white rounded-xl py-3 text-sm font-bold">Guardar</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- MODAL: entrada o baja suelta -->
+            <div id="modal-stk-ajuste" class="fixed inset-0 z-[222] hidden flex items-center justify-center p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);" onclick="if(event.target===this)stkCerrarAjuste()">
+                <div class="modal-content w-full max-w-md p-8 bg-white rounded-3xl shadow-2xl" onclick="event.stopPropagation()">
+                    <h3 class="text-xl font-bold text-[#1B2559] mb-1">Entrada o baja suelta</h3>
+                    <p class="text-xs text-[#A3AED0] font-medium mb-5">Lo que entra o sale del dep&oacute;sito sin ser un reparto: una compra, cajones rotos, un pr&eacute;stamo.</p>
+                    <label class="block text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">Tipo
+                        <select id="stk-aj-tipo" class="block w-full mt-1 bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></select></label>
+                    <label class="block text-[10px] font-black text-[#A3AED0] uppercase tracking-wider mt-3">Motivo
+                        <select id="stk-aj-motivo" class="block w-full mt-1 bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]">
+                            <option value="COMPRA">Compra &mdash; entran al dep&oacute;sito</option>
+                            <option value="BAJA">Baja &mdash; salen (rotos, perdidos)</option>
+                            <option value="AJUSTE">Ajuste &mdash; con signo</option>
+                        </select></label>
+                    <label class="block text-[10px] font-black text-[#A3AED0] uppercase tracking-wider mt-3">Cantidad
+                        <input type="number" id="stk-aj-cantidad" class="block w-full mt-1 bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></label>
+                    <label class="block text-[10px] font-black text-[#A3AED0] uppercase tracking-wider mt-3">Nota
+                        <input id="stk-aj-nota" class="block w-full mt-1 bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559] normal-case"></label>
+                    <div class="flex gap-2 mt-6">
+                        <button onclick="stkCerrarAjuste()" class="flex-1 bg-[#F4F7FE] text-[#1B2559] rounded-xl py-3 text-sm font-bold">Cancelar</button>
+                        <button onclick="stkGuardarAjuste()" class="flex-1 bg-[#451ebb] text-white rounded-xl py-3 text-sm font-bold">Guardar</button>
                     </div>
                 </div>
             </div>
@@ -4972,6 +5141,7 @@
                 control: 'Torre de Control / En Vivo',
                 'drivers-status': 'Estado de Choferes',
                 crates: 'Cajones',
+                'stock-cajones': 'Stock de cajones',
                 'crates-sim': 'Cajones en tránsito',
                 hdr: 'Historial de Rutas (HDR)',
                 fleets: 'Flotas — Datos de vehículos',
@@ -4997,6 +5167,7 @@
                 control: 'Monitoreo en tiempo real de operaciones y estados de tránsito',
                 'drivers-status': 'Quién está reportando señal y quién no, entre los choferes con viaje asignado',
                 crates: 'Cajones dejados y recuperados por tipo de envase (Peco, Plásticos, Burzaco, Jaula, Cajones del depósito), por reparto y por establecimiento',
+                'stock-cajones': 'Cuántos cajones hay en el depósito de cada tipo, cuántos se llevó cada reparto y cuántos volvieron',
                 'crates-sim': 'Cajones dejados y recuperados por reparto y por establecimiento — reporte fijo',
                 hdr: 'Recorridos finalizados con paradas, horarios y trazado GPS de la flota',
                 fleets: 'Configuración de cada camión reutilizable en presupuestos (valor, consumo, mantenimiento, etc.)',
@@ -5055,6 +5226,7 @@
             }
             // Estado de Choferes: refresco cada 15s solo mientras la vista esté abierta
             if (id === 'crates') loadCratesModule();
+            if (id === 'stock-cajones') cargarStockCajones();
             if (id === 'crates-sim') loadCratesSimModule();
             if (id === 'tarifas') cargarTarifas();
             if (id === 'drivers-status') startDriverStatusPolling();
@@ -5705,6 +5877,415 @@
                 cargarPanelChoferes(_pcMes);
             } catch (e) {
                 if (typeof addNotification === 'function') addNotification('error', 'No se pudo guardar', String(e.message || e));
+            }
+        }
+
+        // ═══════════════════════════════════════════════════════════════════
+        // STOCK DE CAJONES
+        // ═══════════════════════════════════════════════════════════════════
+        // Cuantos hay en el deposito de cada tipo, cuantos se llevo cada
+        // reparto y cuantos volvieron.
+        //
+        // El stock no es un numero guardado: es la suma de los movimientos.
+        // Por eso el inventario no "escribe" el stock, carga la diferencia.
+
+        let _stkTipos = [];       // los tipos con su stock
+        let _stkViajes = [];      // los viajes del dia elegido
+        let _stkViajeAbierto = null;  // { tripId, clase, reparto }
+
+        function _stkEsc(v) {
+            return String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+        }
+        function _stkHoy() {
+            return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+        }
+        function _stkNro(n) {
+            return (Number(n) || 0).toLocaleString('es-AR');
+        }
+        function _stkFecha(iso) {
+            if (!iso) return '—';
+            const d = new Date(iso);
+            return isNaN(d) ? '—' : d.toLocaleDateString('es-AR') + ' ' + d.toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+        }
+        async function _stkPedir(url, opciones) {
+            const res = await fetch(`${API_URL}${url}`, { headers: getActorHeaders(), ...(opciones || {}) });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || 'Error del servidor');
+            return data;
+        }
+        function _stkAviso(tipo, titulo, texto) {
+            if (typeof addNotification === 'function') addNotification(tipo, titulo, texto);
+        }
+
+        function stkTab(cual) {
+            ['stock', 'viajes', 'movs'].forEach(t => {
+                const pane = document.getElementById('stk-pane-' + t);
+                const btn = document.getElementById('stk-tab-' + t);
+                if (pane) pane.classList.toggle('hidden', t !== cual);
+                if (btn) {
+                    btn.classList.toggle('bg-[#451ebb]', t === cual);
+                    btn.classList.toggle('text-white', t === cual);
+                    btn.classList.toggle('bg-[#F4F7FE]', t !== cual);
+                    btn.classList.toggle('text-[#1B2559]', t !== cual);
+                }
+            });
+            if (cual === 'viajes' && !_stkViajes.length) stkCargarViajes();
+            if (cual === 'movs') stkCargarMovimientos();
+        }
+
+        // ─── Inventario ───────────────────────────────────────────────────
+        async function cargarStockCajones() {
+            const body = document.getElementById('stk-tipos');
+            if (!body) return;
+            body.innerHTML = '<tr><td colspan="7" class="py-3 px-2 text-[#A3AED0]">Cargando...</td></tr>';
+            const f = document.getElementById('stk-fecha');
+            if (f && !f.value) f.value = _stkHoy();
+            try {
+                const data = await _stkPedir('/crates/stock');
+                _stkTipos = data.tipos || [];
+                renderStockCajones();
+            } catch (e) {
+                body.innerHTML = `<tr><td colspan="7" class="py-3 px-2 text-rose-600 font-bold">Error: ${_stkEsc(e.message || e)}</td></tr>`;
+            }
+        }
+
+        function renderStockCajones() {
+            const body = document.getElementById('stk-tipos');
+            const activos = _stkTipos.filter(t => t.activo);
+
+            const totDeposito = activos.reduce((a, t) => a + t.stock, 0);
+            const totCalle = activos.reduce((a, t) => a + t.enLaCalle, 0);
+            const kpis = document.getElementById('stk-kpis');
+            if (kpis) {
+                kpis.innerHTML = [
+                    ['En el depósito', _stkNro(totDeposito), 'text-[#1B2559]'],
+                    ['En la calle', _stkNro(totCalle), 'text-amber-600'],
+                    ['Total de cajones', _stkNro(totDeposito + totCalle), 'text-indigo-600'],
+                    ['Tipos activos', _stkNro(activos.length), 'text-[#1B2559]']
+                ].map(([t, v, c]) => `
+                    <div class="bg-[#F8FAFF] rounded-xl p-4">
+                        <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">${t}</p>
+                        <p class="text-2xl font-black ${c}">${v}</p>
+                    </div>`).join('');
+            }
+
+            if (!_stkTipos.length) {
+                body.innerHTML = '<tr><td colspan="7" class="py-3 px-2 text-[#A3AED0]">Todavía no hay tipos de cajón cargados.</td></tr>';
+                return;
+            }
+
+            body.innerHTML = _stkTipos.map(t => {
+                const inv = t.ultimoInventario;
+                const difInv = inv ? (inv.diferencia > 0 ? `+${inv.diferencia}` : String(inv.diferencia)) : '';
+                const colorDif = inv ? (inv.diferencia === 0 ? 'text-emerald-600' : 'text-amber-600') : '';
+                return `
+                <tr class="border-b border-[#F4F7FE] ${t.activo ? '' : 'opacity-50'}">
+                    <td class="py-2 px-2 font-bold text-[#1B2559]">
+                        ${_stkEsc(t.name)}
+                        ${t.activo ? '' : '<span class="text-[9px] font-black text-[#A3AED0] uppercase ml-1">de baja</span>'}
+                    </td>
+                    <td class="py-2 px-2 text-right font-black text-[#1B2559]">${_stkNro(t.stock)}</td>
+                    <td class="py-2 px-2 text-right font-bold ${t.enLaCalle > 0 ? 'text-amber-600' : 'text-[#A3AED0]'}">${_stkNro(t.enLaCalle)}</td>
+                    <td class="py-2 px-2 text-right font-bold text-[#A3AED0]">${_stkNro(t.total)}</td>
+                    <td class="py-2 px-2 text-[11px] text-[#A3AED0]">
+                        ${inv ? `${_stkFecha(inv.fecha)} · contó ${_stkNro(inv.contado)} <span class="font-black ${colorDif}">${difInv}</span>` : 'nunca'}
+                    </td>
+                    <td class="py-2 px-2 text-right">
+                        <input type="number" min="0" data-stk-conteo="${_stkEsc(t.key)}" oninput="stkPintarDiferencia('${_stkEsc(t.key)}')"
+                               class="w-24 bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559] text-right" placeholder="—">
+                    </td>
+                    <td class="py-2 px-2 text-right font-black text-[#A3AED0]" id="stk-dif-${_stkEsc(t.key)}">—</td>
+                </tr>`;
+            }).join('');
+        }
+
+        /** La diferencia se ve mientras se escribe: contar y enterarse después
+         *  de guardar no sirve para nada. */
+        function stkPintarDiferencia(key) {
+            const input = document.querySelector(`[data-stk-conteo="${key}"]`);
+            const celda = document.getElementById('stk-dif-' + key);
+            const tipo = _stkTipos.find(t => t.key === key);
+            if (!input || !celda || !tipo) return;
+            if (input.value === '') {
+                celda.textContent = '—';
+                celda.className = 'py-2 px-2 text-right font-black text-[#A3AED0]';
+                return;
+            }
+            const dif = Math.round(Number(input.value) || 0) - tipo.stock;
+            celda.textContent = dif > 0 ? `+${dif}` : String(dif);
+            celda.className = 'py-2 px-2 text-right font-black ' +
+                (dif === 0 ? 'text-emerald-600' : (dif < 0 ? 'text-rose-600' : 'text-amber-600'));
+        }
+
+        async function stkGuardarInventario() {
+            const items = [];
+            document.querySelectorAll('[data-stk-conteo]').forEach(i => {
+                if (i.value !== '') items.push({ key: i.dataset.stkConteo, contado: Math.round(Number(i.value) || 0) });
+            });
+            if (!items.length) {
+                _stkAviso('warning', 'Inventario', 'No cargaste ningún número.');
+                return;
+            }
+            const faltan = _stkTipos.filter(t => t.activo && !items.some(i => i.key === t.key));
+            const aviso = faltan.length
+                ? `\n\nQuedan sin contar: ${faltan.map(t => t.name).join(', ')}. Esos no se tocan.`
+                : '';
+            if (!confirm(`Vas a guardar el conteo de ${items.length} tipo(s).${aviso}`)) return;
+
+            const btn = document.getElementById('stk-btn-inv');
+            if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+            try {
+                const r = await _stkPedir('/crates/inventario', {
+                    method: 'POST',
+                    body: JSON.stringify({ items, nota: document.getElementById('stk-inv-nota')?.value || '' })
+                });
+                document.getElementById('stk-inv-nota').value = '';
+                _stkAviso('success', 'Inventario guardado',
+                    `${r.contados} tipo(s) contados, ${r.conDiferencia} con diferencia.`);
+                await cargarStockCajones();
+            } catch (e) {
+                _stkAviso('error', 'No se pudo guardar', String(e.message || e));
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = 'Guardar inventario'; }
+            }
+        }
+
+        async function stkNuevoTipo() {
+            const nombre = prompt('Nombre del tipo de cajón nuevo:');
+            if (!nombre || !nombre.trim()) return;
+            try {
+                await _stkPedir('/crates/tipos', { method: 'POST', body: JSON.stringify({ name: nombre.trim() }) });
+                _stkAviso('success', 'Tipo agregado', nombre.trim());
+                await cargarStockCajones();
+            } catch (e) {
+                _stkAviso('error', 'No se pudo agregar', String(e.message || e));
+            }
+        }
+
+        // ─── Entrada o baja suelta ────────────────────────────────────────
+        function stkAbrirAjuste() {
+            const sel = document.getElementById('stk-aj-tipo');
+            sel.innerHTML = _stkTipos.filter(t => t.activo)
+                .map(t => `<option value="${_stkEsc(t.key)}">${_stkEsc(t.name)}</option>`).join('');
+            document.getElementById('stk-aj-cantidad').value = '';
+            document.getElementById('stk-aj-nota').value = '';
+            document.getElementById('modal-stk-ajuste').classList.remove('hidden');
+        }
+        function stkCerrarAjuste() {
+            document.getElementById('modal-stk-ajuste').classList.add('hidden');
+        }
+        async function stkGuardarAjuste() {
+            const key = document.getElementById('stk-aj-tipo').value;
+            const motivo = document.getElementById('stk-aj-motivo').value;
+            const cantidad = Math.round(Number(document.getElementById('stk-aj-cantidad').value) || 0);
+            if (!cantidad) { _stkAviso('warning', 'Falta la cantidad', 'Poné cuántos cajones son.'); return; }
+            try {
+                await _stkPedir('/crates/ajuste', {
+                    method: 'POST',
+                    body: JSON.stringify({ key, motivo, cantidad, nota: document.getElementById('stk-aj-nota').value })
+                });
+                stkCerrarAjuste();
+                _stkAviso('success', 'Guardado', `${motivo} de ${Math.abs(cantidad)} cajón(es).`);
+                await cargarStockCajones();
+            } catch (e) {
+                _stkAviso('error', 'No se pudo guardar', String(e.message || e));
+            }
+        }
+
+        // ─── Salidas y vueltas de cada reparto ────────────────────────────
+        async function stkCargarViajes() {
+            const body = document.getElementById('stk-viajes');
+            if (!body) return;
+            const fecha = document.getElementById('stk-fecha')?.value || _stkHoy();
+            body.innerHTML = '<tr><td colspan="7" class="py-3 px-2 text-[#A3AED0]">Cargando...</td></tr>';
+            try {
+                const data = await _stkPedir(`/crates/viajes?fecha=${fecha}`);
+                _stkViajes = data.viajes || [];
+                if (data.tipos?.length) _stkTiposViaje = data.tipos;
+                renderStockViajes();
+            } catch (e) {
+                body.innerHTML = `<tr><td colspan="7" class="py-3 px-2 text-rose-600 font-bold">Error: ${_stkEsc(e.message || e)}</td></tr>`;
+            }
+        }
+        let _stkTiposViaje = [];
+
+        function renderStockViajes() {
+            const body = document.getElementById('stk-viajes');
+            const resumen = document.getElementById('stk-viajes-resumen');
+
+            const sal = _stkViajes.reduce((a, v) => a + (v.cajones?.totalSalida || 0), 0);
+            const ret = _stkViajes.reduce((a, v) => a + (v.cajones?.totalRetorno || 0), 0);
+            if (resumen) {
+                resumen.textContent = _stkViajes.length
+                    ? `${_stkViajes.length} viaje(s) · salieron ${_stkNro(sal)} · volvieron ${_stkNro(ret)} · sin volver ${_stkNro(sal - ret)}`
+                    : '';
+            }
+
+            if (!_stkViajes.length) {
+                body.innerHTML = '<tr><td colspan="7" class="py-3 px-2 text-[#A3AED0]">No hay viajes cargados ese día.</td></tr>';
+                return;
+            }
+
+            body.innerHTML = _stkViajes.map(v => {
+                const c = v.cajones || {};
+                const sinVolver = (c.totalSalida || 0) - (c.totalRetorno || 0);
+                const celda = (n, cargado) => cargado
+                    ? `<span class="font-black text-[#1B2559]">${_stkNro(n)}</span>`
+                    : '<span class="text-[#A3AED0]">—</span>';
+                return `
+                <tr class="border-b border-[#F4F7FE]">
+                    <td class="py-2 px-2 font-bold text-[#1B2559]">#${v.id}</td>
+                    <td class="py-2 px-2 font-bold text-[#2B3674]">${_stkEsc(v.reparto || '—')}</td>
+                    <td class="py-2 px-2 text-[#2B3674]">${_stkEsc(v.driver || '—')}</td>
+                    <td class="py-2 px-2 text-right">${celda(c.totalSalida, c.cargadoSalida)}</td>
+                    <td class="py-2 px-2 text-right">${celda(c.totalRetorno, c.cargadoRetorno)}</td>
+                    <td class="py-2 px-2 text-right font-black ${sinVolver > 0 ? 'text-amber-600' : 'text-[#A3AED0]'}">
+                        ${c.cargadoSalida ? _stkNro(sinVolver) : '—'}
+                    </td>
+                    <td class="py-2 px-2 text-right whitespace-nowrap">
+                        <button onclick="stkAbrirViaje(${v.id},'SALIDA')" class="text-[11px] font-bold text-indigo-600 hover:underline">Salida</button>
+                        <span class="text-[#E0E5F2] mx-1">|</span>
+                        <button onclick="stkAbrirViaje(${v.id},'RETORNO')" class="text-[11px] font-bold text-indigo-600 hover:underline">Vuelta</button>
+                    </td>
+                </tr>`;
+            }).join('');
+        }
+
+        function stkAbrirViaje(tripId, clase) {
+            const viaje = _stkViajes.find(v => v.id === tripId);
+            if (!viaje) return;
+            _stkViajeAbierto = { tripId, clase };
+            const yaCargado = clase === 'SALIDA' ? (viaje.cajones?.salida || {}) : (viaje.cajones?.retorno || {});
+            const tipos = (_stkTiposViaje.length ? _stkTiposViaje : _stkTipos).filter(t => t.activo);
+
+            document.getElementById('stk-viaje-titulo').textContent =
+                clase === 'SALIDA' ? 'Cajones que salieron' : 'Cajones que volvieron';
+            document.getElementById('stk-viaje-sub').textContent =
+                `Viaje #${tripId} · ${viaje.reparto || '—'} · ${viaje.driver || '—'}`;
+            document.getElementById('stk-viaje-nota').value = '';
+
+            document.getElementById('stk-viaje-tipos').innerHTML = tipos.map(t => `
+                <label class="flex items-center justify-between gap-3 bg-[#F8FAFF] rounded-xl px-4 py-2">
+                    <span class="text-[12px] font-bold text-[#2B3674]">${_stkEsc(t.name)}</span>
+                    <input type="number" min="0" data-stk-viaje="${_stkEsc(t.key)}" oninput="stkSumarViaje()"
+                           value="${yaCargado[t.key] ?? ''}" placeholder="0"
+                           class="w-24 bg-white border border-[#E0E5F2] rounded-lg p-2 text-sm font-bold text-[#1B2559] text-right">
+                </label>`).join('');
+
+            stkSumarViaje();
+            document.getElementById('modal-stk-viaje').classList.remove('hidden');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function stkSumarViaje() {
+            let total = 0;
+            document.querySelectorAll('[data-stk-viaje]').forEach(i => { total += Math.round(Number(i.value) || 0); });
+            const el = document.getElementById('stk-viaje-total');
+            if (el) el.textContent = _stkNro(total);
+        }
+
+        function stkCerrarViaje() {
+            document.getElementById('modal-stk-viaje').classList.add('hidden');
+            _stkViajeAbierto = null;
+        }
+
+        async function stkGuardarViaje() {
+            if (!_stkViajeAbierto) return;
+            const items = [];
+            document.querySelectorAll('[data-stk-viaje]').forEach(i => {
+                const n = Math.round(Number(i.value) || 0);
+                if (n > 0) items.push({ key: i.dataset.stkViaje, cantidad: n });
+            });
+            const btn = document.getElementById('stk-viaje-guardar');
+            if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
+            try {
+                const r = await _stkPedir(`/crates/viaje/${_stkViajeAbierto.tripId}`, {
+                    method: 'POST',
+                    body: JSON.stringify({
+                        clase: _stkViajeAbierto.clase,
+                        items,
+                        nota: document.getElementById('stk-viaje-nota')?.value || ''
+                    })
+                });
+                const viaje = _stkViajes.find(v => v.id === _stkViajeAbierto.tripId);
+                if (viaje) viaje.cajones = r.cajones;
+                stkCerrarViaje();
+                renderStockViajes();
+                _stkAviso('success', 'Cajones guardados', `${r.total} cajón(es) en total.`);
+                cargarStockCajones();
+            } catch (e) {
+                _stkAviso('error', 'No se pudo guardar', String(e.message || e));
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = 'Guardar'; }
+            }
+        }
+
+        // ─── Movimientos ──────────────────────────────────────────────────
+        const _STK_MOTIVO_TXT = {
+            INVENTARIO: 'Inventario', SALIDA: 'Salida de reparto', RETORNO: 'Vuelta de reparto',
+            COMPRA: 'Compra', BAJA: 'Baja', AJUSTE: 'Ajuste'
+        };
+
+        async function stkCargarMovimientos() {
+            const body = document.getElementById('stk-movs');
+            if (!body) return;
+
+            const sel = document.getElementById('stk-mov-tipo');
+            if (sel && sel.options.length <= 1) {
+                sel.innerHTML = '<option value="">Todos</option>' +
+                    _stkTipos.map(t => `<option value="${_stkEsc(t.key)}">${_stkEsc(t.name)}</option>`).join('');
+            }
+
+            const q = new URLSearchParams();
+            const desde = document.getElementById('stk-mov-desde')?.value;
+            const hasta = document.getElementById('stk-mov-hasta')?.value;
+            if (desde) q.set('desde', desde);
+            if (hasta) q.set('hasta', hasta);
+            if (sel?.value) q.set('key', sel.value);
+            const motivo = document.getElementById('stk-mov-motivo')?.value;
+            if (motivo) q.set('motivo', motivo);
+
+            body.innerHTML = '<tr><td colspan="8" class="py-3 px-2 text-[#A3AED0]">Cargando...</td></tr>';
+            try {
+                const data = await _stkPedir('/crates/movimientos?' + q.toString());
+                const movs = data.movimientos || [];
+                if (!movs.length) {
+                    body.innerHTML = '<tr><td colspan="8" class="py-3 px-2 text-[#A3AED0]">No hay movimientos con ese filtro.</td></tr>';
+                    return;
+                }
+                body.innerHTML = movs.map(m => `
+                    <tr class="border-b border-[#F4F7FE]">
+                        <td class="py-2 px-2 text-[11px] text-[#A3AED0] whitespace-nowrap">${_stkFecha(m.fecha)}</td>
+                        <td class="py-2 px-2 font-bold text-[#2B3674]">${_stkEsc(m.type?.name || '—')}</td>
+                        <td class="py-2 px-2 text-[11px] font-bold text-[#2B3674]">
+                            ${_stkEsc(_STK_MOTIVO_TXT[m.motivo] || m.motivo)}
+                            ${m.motivo === 'INVENTARIO' && m.contado != null ? `<span class="text-[#A3AED0] font-medium">· contó ${_stkNro(m.contado)}</span>` : ''}
+                        </td>
+                        <td class="py-2 px-2 text-right font-black ${m.cantidad < 0 ? 'text-rose-600' : 'text-emerald-600'}">
+                            ${m.cantidad > 0 ? '+' : ''}${_stkNro(m.cantidad)}
+                        </td>
+                        <td class="py-2 px-2 text-[11px] text-[#2B3674]">${m.trip ? `#${m.trip.id} ${_stkEsc(m.trip.reparto || '')}` : '—'}</td>
+                        <td class="py-2 px-2 text-[11px] text-[#A3AED0]">${_stkEsc(m.nota || '')}</td>
+                        <td class="py-2 px-2 text-[11px] text-[#A3AED0]">${_stkEsc(m.usuario || '—')}</td>
+                        <td class="py-2 px-2 text-right">
+                            ${m.motivo === 'INVENTARIO' ? '' :
+                              `<button onclick="stkBorrarMovimiento(${m.id})" class="text-[11px] font-bold text-rose-600 hover:underline">Borrar</button>`}
+                        </td>
+                    </tr>`).join('');
+            } catch (e) {
+                body.innerHTML = `<tr><td colspan="8" class="py-3 px-2 text-rose-600 font-bold">Error: ${_stkEsc(e.message || e)}</td></tr>`;
+            }
+        }
+
+        async function stkBorrarMovimiento(id) {
+            if (!confirm('¿Borrar este movimiento? El stock se recalcula solo.')) return;
+            try {
+                await _stkPedir(`/crates/movimientos/${id}`, { method: 'DELETE' });
+                _stkAviso('success', 'Movimiento borrado', 'El stock quedó recalculado.');
+                await stkCargarMovimientos();
+                await cargarStockCajones();
+            } catch (e) {
+                _stkAviso('error', 'No se pudo borrar', String(e.message || e));
             }
         }
 

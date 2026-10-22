@@ -3,6 +3,17 @@ import express from 'express';
 import { mapaUnidadPorRuta, unidadDeParada, unidadesDeTexto, repartirHoras, SIN_UNIDAD } from './unidadesDelViaje';
 import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail, limpiarTokenMail } from './mailer';
 import { armarReporte, filasViajesPorIds, mesDeFecha, esCuentaDePrueba, TIPOS_DE_ENVASE, sumaDeLosTipos, sinLocalidadPorUnidad, TEXTO_SIN_LOCALIDAD, sinViajesDePrueba } from './reporteTorre';
+import {
+    asegurarTipos as asegurarTiposDeCajon,
+    fotoDelStock,
+    aplicarInventario,
+    guardarCajonesDelViaje,
+    agruparPorViaje,
+    vacioDeUnViaje,
+    claveDeNombre,
+    entero as enteroDeCajones,
+    signoDelMotivo
+} from './stockCajones';
 import { armarLibroViajes } from './libroViajes';
 import { metricasDelMes } from './metricasDashboard';
 import { subirArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnosticoSharepoint, limpiarTokenSharepoint } from './sharepoint';
@@ -5577,6 +5588,311 @@ app.get('/api/v1/crates/simulacion', async (_req: any, res: any) => {
         res.json(JSON.parse(fila.value));
     } catch (e: any) {
         console.error('GET /crates/simulacion:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/* ===========================================================================
+ * STOCK DE CAJONES
+ * ===========================================================================
+ * Cuantos cajones hay en el deposito, cuantos salieron en cada reparto y
+ * cuantos volvieron. La logica esta en stockCajones.ts; aca solo esta la
+ * puerta de entrada.
+ *
+ * Todo cuelga de /api/v1/crates, que ya pide sesion iniciada.
+ * ======================================================================== */
+
+/** Quien esta haciendo el movimiento, para dejarlo escrito. */
+function quienCarga(req: any): string | null {
+    return String(req?.user?.fullName || req?.user?.username || req.headers['x-actor-name'] || '').trim() || null;
+}
+
+/** La foto del deposito: cada tipo con su stock, lo que tiene afuera y el
+ *  ultimo conteo.
+ *  GET /api/v1/crates/stock */
+app.get('/api/v1/crates/stock', async (_req: any, res: any) => {
+    try {
+        res.json({ tipos: await fotoDelStock(prisma) });
+    } catch (e: any) {
+        console.error('GET /crates/stock:', e);
+        res.status(500).json({ error: e?.message || 'Error leyendo el stock' });
+    }
+});
+
+/** Los tipos de cajon, para las pantallas que solo necesitan la lista.
+ *  GET /api/v1/crates/tipos */
+app.get('/api/v1/crates/tipos', async (_req: any, res: any) => {
+    try {
+        res.json({ tipos: await asegurarTiposDeCajon(prisma) });
+    } catch (e: any) {
+        console.error('GET /crates/tipos:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Agrega un tipo nuevo, le cambia el nombre o lo da de baja.
+ *  Un tipo NO se borra: si tuvo movimientos, borrarlo dejaria el historial
+ *  sin sentido. Se desactiva y deja de aparecer para cargar.
+ *  POST /api/v1/crates/tipos { id?, name, activo?, orden? } */
+app.post('/api/v1/crates/tipos', async (req: any, res: any) => {
+    try {
+        const { id, name, activo, orden } = req.body || {};
+        const nombre = String(name ?? '').trim();
+
+        if (id) {
+            const antes = await prisma.crateType.findUnique({ where: { id: Number(id) } });
+            if (!antes) return res.status(404).json({ error: 'Ese tipo no existe' });
+            const data: any = {};
+            if (nombre) data.name = nombre;
+            if (activo !== undefined) data.activo = !!activo;
+            if (orden !== undefined && Number.isFinite(Number(orden))) data.orden = Number(orden);
+            const tipo = await prisma.crateType.update({ where: { id: antes.id }, data });
+            await logAction(req, 'UPDATE', 'CrateType', tipo.id, tipo.name, antes, tipo);
+            return res.json({ tipo });
+        }
+
+        if (!nombre) return res.status(400).json({ error: 'Falta el nombre del tipo' });
+        const key = claveDeNombre(nombre);
+        if (!key) return res.status(400).json({ error: 'Ese nombre no sirve como tipo' });
+        const repetido = await prisma.crateType.findUnique({ where: { key } });
+        if (repetido) return res.status(409).json({ error: `Ya existe un tipo "${repetido.name}"` });
+
+        const ultimo = await prisma.crateType.findFirst({ orderBy: { orden: 'desc' } });
+        const tipo = await prisma.crateType.create({
+            data: { key, name: nombre, orden: (ultimo?.orden ?? -1) + 1 }
+        });
+        await logAction(req, 'CREATE', 'CrateType', tipo.id, tipo.name, null, tipo);
+        res.json({ tipo });
+    } catch (e: any) {
+        console.error('POST /crates/tipos:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** El inventario fisico: se cuenta y se carga lo contado de cada tipo.
+ *  POST /api/v1/crates/inventario { items: [{key, contado}], nota?, fecha? } */
+app.post('/api/v1/crates/inventario', async (req: any, res: any) => {
+    try {
+        const { items, nota, fecha } = req.body || {};
+        if (!Array.isArray(items) || !items.length) {
+            return res.status(400).json({ error: 'No viene ningun tipo contado' });
+        }
+        const cuando = fecha && !isNaN(new Date(fecha).getTime()) ? new Date(fecha) : new Date();
+        const hechos = await aplicarInventario(prisma, items, quienCarga(req), String(nota || '').trim() || null, cuando);
+        if (!hechos.length) return res.status(400).json({ error: 'Ningun numero valido para cargar' });
+
+        const conDiferencia = hechos.filter((h: any) => h.diferencia !== 0);
+        await logAction(req, 'CREATE', 'CrateMovement', null, 'Inventario de cajones', null, { hechos });
+        res.json({ ok: true, contados: hechos.length, conDiferencia: conDiferencia.length, detalle: hechos });
+    } catch (e: any) {
+        console.error('POST /crates/inventario:', e);
+        res.status(500).json({ error: e?.message || 'Error guardando el inventario' });
+    }
+});
+
+/** Una entrada o salida que no es de un reparto: una compra, una rotura, un
+ *  prestamo. El signo lo pone el motivo.
+ *  POST /api/v1/crates/ajuste { key, cantidad, motivo, nota?, fecha? } */
+app.post('/api/v1/crates/ajuste', async (req: any, res: any) => {
+    try {
+        const { key, cantidad, motivo, nota, fecha } = req.body || {};
+        const mot = String(motivo || 'AJUSTE').toUpperCase();
+        if (!['COMPRA', 'BAJA', 'AJUSTE'].includes(mot)) {
+            return res.status(400).json({ error: 'El motivo tiene que ser COMPRA, BAJA o AJUSTE' });
+        }
+        const tipo = await prisma.crateType.findUnique({ where: { key: String(key || '').trim() } });
+        if (!tipo) return res.status(404).json({ error: 'Ese tipo de cajon no existe' });
+
+        const n = enteroDeCajones(cantidad);
+        if (n === null || n === 0) return res.status(400).json({ error: 'Falta la cantidad' });
+        // COMPRA y BAJA se cargan en positivo y el motivo decide el signo.
+        // AJUSTE acepta negativo, que es como se corrige para abajo.
+        const valor = mot === 'AJUSTE' ? n : Math.abs(n) * signoDelMotivo(mot);
+
+        const mov = await prisma.crateMovement.create({
+            data: {
+                typeId: tipo.id, motivo: mot, cantidad: valor,
+                nota: String(nota || '').trim() || null,
+                usuario: quienCarga(req),
+                fecha: fecha && !isNaN(new Date(fecha).getTime()) ? new Date(fecha) : new Date()
+            }
+        });
+        await logAction(req, 'CREATE', 'CrateMovement', mov.id, `${mot} ${tipo.name}`, null, mov);
+        res.json({ ok: true, movimiento: mov });
+    } catch (e: any) {
+        console.error('POST /crates/ajuste:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Borra un movimiento cargado por error. El inventario no se borra: es la
+ *  prueba de un conteo, y sacarlo cambiaria el stock sin dejar rastro.
+ *  DELETE /api/v1/crates/movimientos/:id */
+app.delete('/api/v1/crates/movimientos/:id', async (req: any, res: any) => {
+    try {
+        const id = Number(req.params.id);
+        const mov = await prisma.crateMovement.findUnique({ where: { id }, include: { type: true } });
+        if (!mov) return res.status(404).json({ error: 'Ese movimiento no existe' });
+        if (mov.motivo === 'INVENTARIO') {
+            return res.status(400).json({ error: 'Un inventario no se borra. Carga uno nuevo con el numero correcto.' });
+        }
+        await prisma.crateMovement.delete({ where: { id } });
+        await logAction(req, 'DELETE', 'CrateMovement', id, `${mov.motivo} ${mov.type?.name || ''}`, mov, null);
+        res.json({ ok: true });
+    } catch (e: any) {
+        console.error('DELETE /crates/movimientos:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** La lista de movimientos, para poder explicar cualquier numero.
+ *  GET /api/v1/crates/movimientos?desde=&hasta=&key=&motivo=&limite= */
+app.get('/api/v1/crates/movimientos', async (req: any, res: any) => {
+    try {
+        const { desde, hasta, key, motivo } = req.query || {};
+        const limite = Math.min(Math.max(Number(req.query?.limite) || 300, 1), 2000);
+        const where: any = {};
+        if (desde || hasta) {
+            where.fecha = {};
+            if (desde) where.fecha.gte = new Date(String(desde) + 'T00:00:00');
+            if (hasta) where.fecha.lte = new Date(String(hasta) + 'T23:59:59');
+        }
+        if (key) {
+            const tipo = await prisma.crateType.findUnique({ where: { key: String(key) } });
+            where.typeId = tipo ? tipo.id : -1;
+        }
+        if (motivo) where.motivo = String(motivo).toUpperCase();
+
+        const movs = await prisma.crateMovement.findMany({
+            where,
+            orderBy: [{ fecha: 'desc' }, { id: 'desc' }],
+            take: limite,
+            include: {
+                type: { select: { key: true, name: true } },
+                trip: { select: { id: true, reparto: true, driver: true, date: true } }
+            }
+        });
+        res.json({ movimientos: movs });
+    } catch (e: any) {
+        console.error('GET /crates/movimientos:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Los viajes de un dia con lo que se llevaron y lo que trajeron.
+ *  Es la pantalla de carga: una fila por reparto, dos columnas.
+ *  GET /api/v1/crates/viajes?fecha=YYYY-MM-DD */
+app.get('/api/v1/crates/viajes', async (req: any, res: any) => {
+    try {
+        const ymd = /^\d{4}-\d{2}-\d{2}$/.test(String(req.query?.fecha || ''))
+            ? String(req.query.fecha) : buenosAiresYmd();
+        const desde = new Date(ymd + 'T00:00:00.000Z');
+        const hasta = new Date(ymd + 'T23:59:59.999Z');
+
+        const viajes = await prisma.trip.findMany({
+            where: { date: { gte: desde, lte: hasta } },
+            orderBy: [{ reparto: 'asc' }, { id: 'asc' }],
+            select: {
+                id: true, date: true, reparto: true, driver: true, businessUnit: true,
+                assignedMobileUser: true, status: true, exitTime: true, returnTime: true
+            }
+        });
+
+        const movs = await prisma.crateMovement.findMany({
+            where: { tripId: { in: viajes.map((v: any) => v.id) }, motivo: { in: ['SALIDA', 'RETORNO'] } },
+            include: { type: { select: { key: true } } }
+        });
+        const porViaje = agruparPorViaje(movs as any);
+
+        res.json({
+            fecha: ymd,
+            tipos: await asegurarTiposDeCajon(prisma),
+            viajes: viajes.map((v: any) => ({ ...v, cajones: porViaje.get(v.id) || vacioDeUnViaje() }))
+        });
+    } catch (e: any) {
+        console.error('GET /crates/viajes:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Lo cargado de un viaje puntual.
+ *  GET /api/v1/crates/viaje/:id */
+app.get('/api/v1/crates/viaje/:id', async (req: any, res: any) => {
+    try {
+        const tripId = Number(req.params.id);
+        const viaje = await prisma.trip.findUnique({
+            where: { id: tripId },
+            select: { id: true, date: true, reparto: true, driver: true, exitTime: true, returnTime: true }
+        });
+        if (!viaje) return res.status(404).json({ error: 'Ese viaje no existe' });
+        const movs = await prisma.crateMovement.findMany({
+            where: { tripId, motivo: { in: ['SALIDA', 'RETORNO'] } },
+            include: { type: { select: { key: true } } }
+        });
+        res.json({
+            viaje,
+            tipos: await asegurarTiposDeCajon(prisma),
+            cajones: agruparPorViaje(movs as any).get(tripId) || vacioDeUnViaje()
+        });
+    } catch (e: any) {
+        console.error('GET /crates/viaje:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Carga lo que SALIO o lo que VOLVIO en un viaje. Reemplaza lo anterior de
+ *  esa clase, asi corregir no duplica.
+ *  POST /api/v1/crates/viaje/:id { clase: 'SALIDA'|'RETORNO', items: [{key, cantidad}], nota? } */
+app.post('/api/v1/crates/viaje/:id', async (req: any, res: any) => {
+    try {
+        const tripId = Number(req.params.id);
+        const clase = String(req.body?.clase || '').toUpperCase();
+        if (clase !== 'SALIDA' && clase !== 'RETORNO') {
+            return res.status(400).json({ error: 'clase tiene que ser SALIDA o RETORNO' });
+        }
+        const viaje = await prisma.trip.findUnique({
+            where: { id: tripId },
+            select: { id: true, date: true, reparto: true, exitTime: true, returnTime: true }
+        });
+        if (!viaje) return res.status(404).json({ error: 'Ese viaje no existe' });
+
+        // La fecha del movimiento es la del viaje, no la de hoy: cargarlo al
+        // otro dia no tiene que correr el stock de dia.
+        const cuando = (clase === 'SALIDA' ? viaje.exitTime : viaje.returnTime) || viaje.date || new Date();
+
+        const r = await guardarCajonesDelViaje(
+            prisma, tripId, clase as any, req.body?.items || [],
+            quienCarga(req), String(req.body?.nota || '').trim() || null, new Date(cuando)
+        );
+        await logAction(req, 'UPDATE', 'CrateMovement', tripId,
+            `Cajones ${clase} viaje #${tripId} (${viaje.reparto || '-'})`, null, r);
+
+        const movs = await prisma.crateMovement.findMany({
+            where: { tripId, motivo: { in: ['SALIDA', 'RETORNO'] } },
+            include: { type: { select: { key: true } } }
+        });
+        res.json({ ok: true, ...r, cajones: agruparPorViaje(movs as any).get(tripId) || vacioDeUnViaje() });
+    } catch (e: any) {
+        console.error('POST /crates/viaje:', e);
+        res.status(500).json({ error: e?.message || 'Error guardando los cajones del viaje' });
+    }
+});
+
+/** Lo mismo que /crates/stock pero con la clave de servicio, para poder
+ *  revisarlo sin iniciar sesion. Solo lee.
+ *  POST /api/admin/cajones-stock { key } */
+app.post('/api/admin/cajones-stock', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const tipos = await fotoDelStock(prisma);
+        const ultimos = await prisma.crateMovement.findMany({
+            orderBy: [{ fecha: 'desc' }, { id: 'desc' }],
+            take: 20,
+            include: { type: { select: { key: true, name: true } }, trip: { select: { id: true, reparto: true } } }
+        });
+        res.json({ tipos, ultimosMovimientos: ultimos });
+    } catch (e: any) {
+        console.error('POST /admin/cajones-stock:', e);
         res.status(500).json({ error: e?.message || 'Error' });
     }
 });
