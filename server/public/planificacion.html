@@ -16442,12 +16442,22 @@
                         cratesDelivered: s.cratesDelivered ?? null,
                         cratesRecovered: s.cratesRecovered ?? null,
                         cratesUpdatedAt: s.cratesUpdatedAt ?? null,
+                        // De que ruta y de que unidad es la parada. El renglon
+                        // que separa los bloques leia `unidad` y nunca estaba,
+                        // asi que no aparecia nunca.
+                        ruta: s.ruta || null,
+                        unidad: s.unidad || null,
                     };
                 });
+                // `ruta` y `unidad` viajan con la fila: weeklyStopsSave manda la
+                // ruta de cada parada y, si no estuviera aca, la mandaria en
+                // null y se la borraria a todas con solo apretar Guardar.
                 let rows = (data.stops || []).map((s) => ({
                     clientId: s.clientId,
                     name: s.name,
-                    address: s.address || ''
+                    address: s.address || '',
+                    ruta: s.ruta || null,
+                    unidad: s.unidad || null
                 }));
                 if (rows.length === 0 && reparto && !/^libre$/i.test(reparto)) {
                     const tr = await fetch(
@@ -16458,7 +16468,9 @@
                         rows = j.stops.map((s) => ({
                             clientId: s.clientId,
                             name: s.name,
-                            address: s.address || ''
+                            address: s.address || '',
+                            ruta: reparto || null,
+                            unidad: null
                         }));
                         if (j.unmatched && j.unmatched.length && typeof addNotification === 'function') {
                             addNotification(
@@ -16954,6 +16966,7 @@
                     ${rows
                         .map(
                             (row, i) => `
+                        ${_weeklySeparadorDeUnidad(rows, i)}
                         <li draggable="true" data-idx="${i}" class="weekly-stop-item flex items-center gap-2 bg-white border border-[#E0E5F2] rounded-xl px-3 py-2 text-sm font-bold text-[#2B3674] cursor-grab shadow-sm">
                             <i data-lucide="grip-vertical" class="w-4 h-4 text-[#A3AED0] shrink-0"></i>
                             <span class="text-[#A3AED0] text-xs w-5">${i + 1}</span>
@@ -16999,6 +17012,35 @@
             weeklyStopsPopulateAddSelect(tripId);
             loadWeeklyTripIncidents(tripId);
             if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+        }
+
+        /** El renglon que separa los bloques de unidad de negocio.
+         *
+         *  Un viaje puede repartir para varias unidades (R16 es SAE LANUS y
+         *  SAM 1 VIERNES R16 es SAM). La lista de paradas es UNA sola -- el
+         *  chofer hace un recorrido, no dos -- pero cada vez que cambia la
+         *  unidad se abre un bloque que dice de quien es lo que sigue.
+         *
+         *  Con una sola unidad no aparece nada: no hay nada que separar.
+         *  Las paradas de una ruta pueden intercalarse con las de la otra, asi
+         *  que el renglon vuelve a aparecer cada vez que cambia. */
+        function _weeklySeparadorDeUnidad(rows, i) {
+            const deLaFila = (x) => String(x?.unidad || x?.ruta || '').trim();
+            const mia = deLaFila(rows[i]);
+            if (!mia) return '';
+            const anterior = i > 0 ? deLaFila(rows[i - 1]) : null;
+            if (mia === anterior) return '';
+            // Si todas son de lo mismo no hay bloques que marcar
+            if (!rows.some((x) => deLaFila(x) && deLaFila(x) !== mia)) return '';
+            const ruta = String(rows[i]?.ruta || '').trim();
+            const detalle = (ruta && ruta !== mia) ? ` · ${escapeHtmlWeekly(ruta)}` : '';
+            return `
+                <li class="flex items-center gap-2 pt-2 pb-0.5">
+                    <span class="inline-block px-2.5 py-1 rounded-full bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest">
+                        ${escapeHtmlWeekly(mia)}${detalle}
+                    </span>
+                    <span class="flex-1 h-px bg-[#E0E5F2]"></span>
+                </li>`;
         }
 
         async function loadWeeklyTripIncidents(tripId) {
