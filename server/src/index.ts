@@ -7124,6 +7124,220 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
     }
 });
 
+/** Les suma a los viajes las paradas de las rutas que tienen cargadas pero
+ *  que nunca trajeron sus paradas.
+ *
+ *  El caso: se crea el viaje con R17, despues se le agrega SAM 4. Hasta el
+ *  arreglo de hoy eso cargaba la ruta y la unidad de negocio pero ni una sola
+ *  parada, asi que el chofer no las veia y no entraban en ningun calculo.
+ *
+ *  Que hace, viaje por viaje:
+ *    1. mira las rutas del viaje (Trip.rutas) que coincidan con el filtro;
+ *    2. resuelve las paradas de cada plantilla contra el directorio;
+ *    3. le pone `ruta` a las paradas que ya estaban y no la tenian;
+ *    4. agrega las que faltan, antes del deposito, y renumera.
+ *
+ *  No toca un viaje que ya arranco: ahi hay paradas marcadas por el chofer y
+ *  renumerar seria pisarle el trabajo.
+ *
+ *  POST /api/admin/sumar-paradas-de-ruta
+ *  { key, fecha?: 'YYYY-MM-DD', ids?: [tripId], contiene?: 'SAM', dryRun? } */
+app.post('/api/admin/sumar-paradas-de-ruta', async (req: any, res: any) => {
+    const { key, fecha, ids, contiene, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+
+    const filtro = String(contiene || '').trim().toUpperCase();
+    const norm = (x: any) => String(x ?? '').trim().toUpperCase();
+
+    try {
+        const where: any = {};
+        if (Array.isArray(ids) && ids.length) {
+            where.id = { in: ids.map(Number).filter(Number.isFinite) };
+        } else if (/^\d{4}-\d{2}-\d{2}$/.test(String(fecha || ''))) {
+            where.date = {
+                gte: new Date(String(fecha) + 'T00:00:00.000Z'),
+                lte: new Date(String(fecha) + 'T23:59:59.999Z')
+            };
+        } else {
+            return res.status(400).json({ error: 'Falta fecha (YYYY-MM-DD) o ids' });
+        }
+
+        const viajes = await prisma.trip.findMany({
+            where,
+            orderBy: { id: 'asc' },
+            select: {
+                id: true, date: true, reparto: true, rutas: true, driver: true,
+                businessUnit: true, assignedMobileUser: true,
+                linkedRoute: {
+                    select: {
+                        id: true, actualStartTime: true,
+                        stops: {
+                            orderBy: { sequence: 'asc' },
+                            select: {
+                                id: true, sequence: true, ruta: true, status: true,
+                                isReturnToBase: true, clientId: true,
+                                client: { select: { id: true, name: true } }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // El directorio, una sola vez.
+        const clients = await prisma.client.findMany({ select: { id: true, name: true } });
+        const porNombre = new Map<string, { id: string; name: string }>();
+        for (const c of clients) {
+            const n = normClientNameForMatch(c.name);
+            if (n && !porNombre.has(n)) porNombre.set(n, c);
+        }
+
+        // Las plantillas, una sola vez.
+        const plantillas = await (prisma as any).routeTemplate.findMany({
+            select: { name: true, businessUnit: true, stops: { orderBy: { sequence: 'asc' }, select: { name: true } } }
+        });
+        const plantillaPorNombre = new Map<string, any>();
+        for (const t of plantillas) plantillaPorNombre.set(norm(t.name), t);
+
+        /** Las paradas de una plantilla, ya resueltas contra el directorio. */
+        const paradasDe = (nombre: string) => {
+            const t = plantillaPorNombre.get(norm(nombre));
+            if (!t) return null;
+            const encontradas: Array<{ clientId: string; name: string }> = [];
+            const sinMatch: string[] = [];
+            for (const st of t.stops || []) {
+                const c = porNombre.get(normClientNameForMatch(st.name));
+                if (c) encontradas.push({ clientId: c.id, name: c.name });
+                else sinMatch.push(st.name);
+            }
+            return { unidad: norm(t.businessUnit), encontradas, sinMatch };
+        };
+
+        const hechos: any[] = [];
+        const saltados: any[] = [];
+
+        for (const t of viajes as any[]) {
+            const lista: string[] = Array.isArray(t.rutas)
+                ? t.rutas.map((r: any) => norm(r)).filter(Boolean)
+                : [];
+            if (lista.length < 2) { saltados.push({ id: t.id, motivo: 'tiene una sola ruta' }); continue; }
+
+            // Las rutas que hay que traer: las que pasan el filtro, sin contar
+            // la primera (esa ya trajo sus paradas al crear el viaje).
+            const aTraer = lista.slice(1).filter((n) => !filtro || n.includes(filtro));
+            if (!aTraer.length) { saltados.push({ id: t.id, rutas: lista, motivo: `ninguna otra ruta contiene "${filtro}"` }); continue; }
+
+            const ruta = t.linkedRoute;
+            if (!ruta) { saltados.push({ id: t.id, motivo: 'el viaje no tiene paradas cargadas' }); continue; }
+            if (ruta.actualStartTime) { saltados.push({ id: t.id, motivo: 'el viaje ya arranco, no se toca' }); continue; }
+
+            const stops = ruta.stops || [];
+            const yaEstan = new Set(stops.map((x: any) => x.clientId));
+            const esBase = (x: any) => x.isReturnToBase || /^(REAL\s*(DE\s*)?(14|CATORCE)|DEPOSITO|R\s*14)\b/
+                .test(normClientNameForMatch(x.client?.name || '').toUpperCase());
+
+            // De que ruta es cada parada que ya estaba, para las que no lo dicen
+            const deQuePlantilla = new Map<string, string>();
+            for (const nombre of lista) {
+                const p = paradasDe(nombre);
+                if (!p) continue;
+                for (const e of p.encontradas) if (!deQuePlantilla.has(e.clientId)) deQuePlantilla.set(e.clientId, nombre);
+            }
+
+            const marcar: any[] = [];
+            for (const x of stops) {
+                if (esBase(x)) continue;
+                if (String(x.ruta || '').trim()) continue;
+                const de = deQuePlantilla.get(x.clientId);
+                if (de) marcar.push({ stopId: x.id, parada: x.client?.name, ruta: de });
+            }
+
+            const agregar: any[] = [];
+            const sinPlantilla: string[] = [];
+            const sinMatch: string[] = [];
+            for (const nombre of aTraer) {
+                const p = paradasDe(nombre);
+                if (!p) { sinPlantilla.push(nombre); continue; }
+                sinMatch.push(...p.sinMatch);
+                for (const e of p.encontradas) {
+                    if (yaEstan.has(e.clientId)) continue;
+                    yaEstan.add(e.clientId);
+                    agregar.push({ clientId: e.clientId, parada: e.name, ruta: nombre });
+                }
+            }
+
+            if (!marcar.length && !agregar.length) {
+                saltados.push({ id: t.id, rutas: lista, motivo: 'no falta nada', sinPlantilla, sinMatch });
+                continue;
+            }
+
+            hechos.push({
+                id: t.id,
+                fecha: new Date(t.date).toISOString().slice(0, 10),
+                reparto: t.reparto, rutas: lista, unidades: t.businessUnit,
+                chofer: t.driver, usuarioApp: t.assignedMobileUser,
+                paradasAhora: stops.length,
+                marcar, agregar, sinPlantilla, sinMatch,
+                _routeId: ruta.id,
+                _stops: stops
+            });
+        }
+
+        if (!dryRun) {
+            for (const h of hechos) {
+                // 1) la ruta de las que ya estaban
+                for (const m of h.marcar) {
+                    await prisma.stop.update({ where: { id: m.stopId }, data: { ruta: m.ruta } });
+                }
+                // 2) las nuevas, antes del deposito
+                const stops = h._stops;
+                const base = stops.find((x: any) => x.isReturnToBase) || null;
+                let sec = 0;
+                const orden: Array<{ id?: number; clientId: string; ruta?: string }> = [];
+                for (const x of stops) {
+                    if (base && x.id === base.id) continue;
+                    orden.push({ id: x.id, clientId: x.clientId });
+                }
+                for (const a of h.agregar) orden.push({ clientId: a.clientId, ruta: a.ruta });
+                if (base) orden.push({ id: base.id, clientId: base.clientId });
+
+                for (const o of orden) {
+                    sec++;
+                    if (o.id) {
+                        await prisma.stop.update({ where: { id: o.id }, data: { sequence: sec } });
+                    } else {
+                        await prisma.stop.create({
+                            data: {
+                                routeId: h._routeId, clientId: o.clientId, sequence: sec,
+                                status: 'PENDING', ruta: o.ruta || null, isReturnToBase: false
+                            }
+                        });
+                    }
+                }
+            }
+            if (hechos.length) {
+                await logAction(req, 'UPDATE', 'Stop', hechos.map((h: any) => h.id).join(','),
+                    `paradas de la segunda ruta sumadas a ${hechos.length} viaje(s)`, null,
+                    { detalle: hechos.map((h: any) => ({ id: h.id, agregadas: h.agregar.length, marcadas: h.marcar.length })) });
+            }
+        }
+
+        res.json({
+            dryRun: !!dryRun,
+            fecha: fecha || null,
+            filtro,
+            viajes: hechos.length,
+            paradasAgregadas: hechos.reduce((a: number, h: any) => a + h.agregar.length, 0),
+            paradasMarcadas: hechos.reduce((a: number, h: any) => a + h.marcar.length, 0),
+            hechos: hechos.map(({ _routeId, _stops, ...resto }: any) => resto),
+            saltados
+        });
+    } catch (e: any) {
+        console.error('sumar-paradas-de-ruta:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Les pone la ruta a las paradas viejas, mirando la plantilla del reparto.
  *
  *  Los viajes de antes de esta semana tienen las paradas sin ruta. Con una
