@@ -17001,6 +17001,7 @@
                             <i data-lucide="grip-vertical" class="w-4 h-4 text-[#A3AED0] shrink-0"></i>
                             <span class="text-[#A3AED0] text-xs w-5">${i + 1}</span>
                             <span class="flex-1 min-w-0 truncate" title="${escapeHtmlWeekly(row.address || '')}">${escapeHtmlWeekly(row.name)}</span>
+                            ${esParadaDeposito(row.name) ? '' : _weeklySelectorDeUnidad(tripId, row, i)}
                             ${esParadaDeposito(row.name) ? '' : contactoBotonHtml('semana-' + tripId, row.clientId)}
                             <button type="button" onclick="weeklyStopsRemove(${tripId},${i})" class="text-rose-500 font-bold px-2 py-0.5 rounded-lg hover:bg-rose-50 shrink-0" title="Quitar">✕</button>
                         </li>
@@ -17042,6 +17043,67 @@
             weeklyStopsPopulateAddSelect(tripId);
             loadWeeklyTripIncidents(tripId);
             if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+        }
+
+        /** Las opciones de a quien le toca una parada: las rutas del viaje y,
+         *  ademas, sus unidades de negocio sueltas.
+         *
+         *  Las rutas alcanzan cuando el viaje se armo desde plantillas. Pero un
+         *  viaje LIBRE no tiene rutas: se arma a mano y puede repartir para dos
+         *  o tres unidades. Ahi la unica forma de decir de quien es cada parada
+         *  es nombrando la unidad derecho viejo, y el servidor ya lo entiende:
+         *  si lo que dice la parada es una de las unidades del viaje, esa es. */
+        function _opcionesDeUnidad(trip) {
+            const salida = [];
+            const vistas = new Set();
+            const sumar = (v) => {
+                const x = String(v || '').trim().toUpperCase();
+                if (x && !vistas.has(x)) { vistas.add(x); salida.push(x); }
+            };
+            // Las rutas del viaje primero
+            const crudo = trip && trip.rutas;
+            let rutas = [];
+            if (Array.isArray(crudo)) rutas = crudo;
+            else if (typeof crudo === 'string' && crudo.trim()) {
+                try { const x = JSON.parse(crudo); if (Array.isArray(x)) rutas = x; } catch (_) {}
+            }
+            rutas.forEach(sumar);
+            // Y despues las unidades
+            (typeof unidadesDeNegocio === 'function' ? unidadesDeNegocio(trip?.businessUnit) : []).forEach(sumar);
+            return salida;
+        }
+
+        /** El desplegable para decir de que unidad es una parada.
+         *
+         *  Solo aparece cuando hay mas de una opcion: con una sola unidad no
+         *  hay nada que elegir y la parada hereda la del viaje. */
+        function _weeklySelectorDeUnidad(tripId, row, i) {
+            const trip = typeof getWeeklyTripById === 'function' ? getWeeklyTripById(tripId) : null;
+            const ops = _opcionesDeUnidad(trip);
+            if (ops.length < 2) return '';
+            const actual = String(row.ruta || '').trim().toUpperCase();
+            const sinAsignar = !actual;
+            return `<select onchange="weeklyStopsSetUnidad(${tripId}, ${i}, this.value)" onclick="event.stopPropagation()"
+                        title="De qué unidad de negocio es esta parada"
+                        class="shrink-0 max-w-[40%] text-[10px] font-black uppercase tracking-wider rounded-lg px-1.5 py-1 border cursor-pointer outline-none ${
+                            sinAsignar ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-indigo-50 border-indigo-100 text-indigo-700'
+                        }">
+                        <option value="" ${sinAsignar ? 'selected' : ''}>— sin asignar —</option>
+                        ${ops.map(o => `<option value="${escapeHtmlWeekly(o)}" ${o === actual ? 'selected' : ''}>${escapeHtmlWeekly(o)}</option>`).join('')}
+                    </select>`;
+        }
+
+        /** Marca la parada y vuelve a dibujar: los bloques se reacomodan solos. */
+        function weeklyStopsSetUnidad(tripId, i, valor) {
+            const rows = weeklyTripStopsBuffers[tripId];
+            if (!rows || !rows[i]) return;
+            rows[i].ruta = String(valor || '').trim().toUpperCase() || null;
+            rows[i].unidad = rows[i].ruta;
+            renderWeeklyTripStopsPanel(tripId);
+            if (typeof addNotification === 'function') {
+                addNotification('info', 'Parada marcada',
+                    `${rows[i].name}: ${rows[i].ruta || 'sin asignar'}. Tocá Guardar para aplicarlo.`);
+            }
         }
 
         /** El renglon que separa los bloques de unidad de negocio.
