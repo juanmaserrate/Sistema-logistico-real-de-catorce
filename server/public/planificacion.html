@@ -2302,6 +2302,9 @@
                         <button onclick="stkTab('stock')" id="stk-tab-stock" class="stk-tab">
                             <i data-lucide="boxes" class="w-4 h-4"></i> Dep&oacute;sito
                         </button>
+                        <button onclick="stkTab('historial')" id="stk-tab-historial" class="stk-tab">
+                            <i data-lucide="trending-up" class="w-4 h-4"></i> Historial
+                        </button>
                         <button onclick="stkTab('control')" id="stk-tab-control" class="stk-tab">
                             <i data-lucide="bar-chart-3" class="w-4 h-4"></i> Control
                         </button>
@@ -2394,6 +2397,58 @@
                         </p>
                     </div>
 
+                    <!-- ══ HISTORIAL ══ -->
+                    <div id="stk-pane-historial" class="hidden p-6 bg-white space-y-5">
+                        <div class="rounded-2xl bg-[#F8FAFF] p-4 flex flex-wrap items-end gap-3">
+                            <div class="flex items-center gap-2">
+                                <span class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Ver por</span>
+                                <div id="stk-hist-agrupadores" class="flex gap-1"></div>
+                            </div>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">Tipo de caj&oacute;n
+                                <select id="stk-hist-tipo" onchange="stkCargarHistorial()" class="block bg-white border-0 rounded-xl p-2 text-sm font-bold text-[#1B2559]"></select></label>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">Desde
+                                <input type="date" id="stk-hist-desde" onchange="stkCargarHistorial()" class="block bg-white border-0 rounded-xl p-2 text-sm font-bold text-[#1B2559]"></label>
+                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">Hasta
+                                <input type="date" id="stk-hist-hasta" onchange="stkCargarHistorial()" class="block bg-white border-0 rounded-xl p-2 text-sm font-bold text-[#1B2559]"></label>
+                            <button onclick="stkLimpiarHistorial()" class="text-[11px] font-bold text-indigo-600 hover:underline pb-2">Limpiar</button>
+                            <button onclick="stkBajarHistorial()" class="ml-auto bg-white text-[#1B2559] rounded-xl px-4 py-2 text-[12px] font-bold hover:bg-[#E8ECF8] transition-all">Bajar a Excel</button>
+                        </div>
+
+                        <div id="stk-hist-vacio" class="hidden py-10 text-center">
+                            <p class="text-[13px] font-bold text-[#A3AED0]">Todav&iacute;a no hay movimientos en ese per&iacute;odo.</p>
+                            <p class="text-[11px] text-[#A3AED0] mt-1">El historial se arma solo a medida que se cargan salidas, vueltas e inventarios.</p>
+                        </div>
+
+                        <div id="stk-hist-cuerpo" class="space-y-5">
+                            <div class="rounded-2xl border border-[#F4F7FE] p-4">
+                                <div class="flex items-center justify-between mb-3">
+                                    <h5 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest">C&oacute;mo fue cambiando el stock</h5>
+                                    <span id="stk-hist-sub" class="text-[11px] font-bold text-[#A3AED0]"></span>
+                                </div>
+                                <div style="height: 240px"><canvas id="stk-hist-grafico"></canvas></div>
+                            </div>
+
+                            <div class="overflow-x-auto"><table class="w-full text-sm">
+                                <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left border-b border-[#F4F7FE]">
+                                    <th class="py-2 px-2" id="stk-hist-col1">Mes</th>
+                                    <th class="py-2 px-2 text-right">Ven&iacute;a con</th>
+                                    <th class="py-2 px-2 text-right">Entraron</th>
+                                    <th class="py-2 px-2 text-right">Salieron</th>
+                                    <th class="py-2 px-2 text-right">Qued&oacute; en</th>
+                                    <th class="py-2 px-2 text-right">Cambio</th>
+                                    <th class="py-2 px-2 text-right">Sin contar</th>
+                                    <th class="py-2 px-2 text-right">Movim.</th>
+                                </tr></thead>
+                                <tbody id="stk-hist-filas"></tbody>
+                            </table></div>
+                            <p class="text-[10px] text-[#A3AED0]">
+                                <b>Ven&iacute;a con</b> es lo que hab&iacute;a al empezar el per&iacute;odo y <b>Qued&oacute; en</b> lo que hab&iacute;a al terminarlo:
+                                el final de uno es el inicial del siguiente. Por eso se puede mirar cualquier fecha y saber cu&aacute;ntos cajones hab&iacute;a ese d&iacute;a.
+                                Click en una fila para ver los movimientos de ese per&iacute;odo.
+                            </p>
+                        </div>
+                    </div>
+
                     <!-- ══ CONTROL ══ -->
                     <div id="stk-pane-control" class="hidden p-6 bg-white space-y-5">
                         <div class="rounded-2xl bg-[#F8FAFF] p-4 space-y-3">
@@ -2471,6 +2526,7 @@
                                 <th class="py-2 px-2">Tipo</th>
                                 <th class="py-2 px-2">Movimiento</th>
                                 <th class="py-2 px-2 text-right">Cantidad</th>
+                                <th class="py-2 px-2 text-right stk-col-saldo hidden">Qued&oacute; en</th>
                                 <th class="py-2 px-2">Reparto</th>
                                 <th class="py-2 px-2">Nota</th>
                                 <th class="py-2 px-2">Carg&oacute;</th>
@@ -6051,12 +6107,13 @@
 
         // ─── Solapas ──────────────────────────────────────────────────────
         function stkTab(cual) {
-            ['viajes', 'stock', 'control', 'movs'].forEach(t => {
+            ['viajes', 'stock', 'historial', 'control', 'movs'].forEach(t => {
                 document.getElementById('stk-pane-' + t)?.classList.toggle('hidden', t !== cual);
                 document.getElementById('stk-tab-' + t)?.classList.toggle('stk-tab-on', t === cual);
             });
             if (cual === 'viajes' && !_stkViajes.length) stkCargarViajes();
             if (cual === 'stock' && !_stkTipos.length) cargarStockCajones();
+            if (cual === 'historial') stkCargarHistorial();
             if (cual === 'control') stkCargarControl();
             if (cual === 'movs') stkCargarMovimientos();
             if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -6070,7 +6127,7 @@
             // Siempre vuelve a abrir en Salidas y vueltas: si se habia quedado
             // en otra solapa, al volver a entrar quedaba el panel de una y la
             // solapa marcada de otra.
-            ['viajes', 'stock', 'control', 'movs'].forEach(t => {
+            ['viajes', 'stock', 'historial', 'control', 'movs'].forEach(t => {
                 document.getElementById('stk-pane-' + t)?.classList.toggle('hidden', t !== 'viajes');
                 document.getElementById('stk-tab-' + t)?.classList.toggle('stk-tab-on', t !== 'viajes' ? false : true);
             });
@@ -6574,6 +6631,181 @@
             }
         }
 
+        // ─── Historial: como fue cambiando el stock ───────────────────────
+        // La diferencia con Control: el Control suma lo que paso en cada
+        // periodo; el historial arrastra el SALDO. El final de un periodo es
+        // el inicial del siguiente, asi que se puede mirar una fecha y saber
+        // cuantos cajones habia ese dia. Eso una lista de movimientos no lo
+        // contesta.
+
+        const _STK_HIST_AGRUP = [['dia', 'Día'], ['mes', 'Mes'], ['anio', 'Año']];
+        let _stkHistAgrupar = 'mes';
+        let _stkHistFilas = [];
+        let _stkHistGrafico = null;
+
+        function stkPintarHistAgrupadores() {
+            const c = document.getElementById('stk-hist-agrupadores');
+            if (!c) return;
+            c.innerHTML = _STK_HIST_AGRUP.map(([k, txt]) => `
+                <button onclick="stkHistAgruparPor('${k}')" class="px-3 py-1.5 rounded-lg text-[11px] font-bold transition-all ${
+                    k === _stkHistAgrupar ? 'bg-[#451ebb] text-white' : 'bg-white text-[#2B3674] hover:bg-[#E8ECF8]'
+                }">${txt}</button>`).join('');
+        }
+
+        function stkHistAgruparPor(k) {
+            _stkHistAgrupar = k;
+            stkCargarHistorial();
+        }
+
+        function stkLimpiarHistorial() {
+            ['stk-hist-desde', 'stk-hist-hasta', 'stk-hist-tipo']
+                .forEach(id => { const e = document.getElementById(id); if (e) e.value = ''; });
+            stkCargarHistorial();
+        }
+
+        async function stkCargarHistorial() {
+            const body = document.getElementById('stk-hist-filas');
+            if (!body) return;
+            stkPintarHistAgrupadores();
+
+            const sel = document.getElementById('stk-hist-tipo');
+            if (sel && !sel.options.length) {
+                if (!_stkTipos.length) { try { _stkTipos = (await _stkPedir('/crates/stock')).tipos || []; } catch (_) {} }
+                sel.innerHTML = '<option value="">Todos los tipos</option>' +
+                    _stkTipos.map(t => `<option value="${_stkEsc(t.key)}">${_stkEsc(t.name)}</option>`).join('');
+            }
+
+            const q = new URLSearchParams({ agrupar: _stkHistAgrupar });
+            const campos = { desde: 'stk-hist-desde', hasta: 'stk-hist-hasta', key: 'stk-hist-tipo' };
+            for (const [param, id] of Object.entries(campos)) {
+                const v = document.getElementById(id)?.value;
+                if (v) q.set(param, v);
+            }
+
+            const titulo = (_STK_HIST_AGRUP.find(([k]) => k === _stkHistAgrupar) || [])[1] || '';
+            document.getElementById('stk-hist-col1').textContent = titulo;
+            body.innerHTML = '<tr><td colspan="8" class="py-6 px-2 text-center text-[#A3AED0]">Cargando...</td></tr>';
+
+            try {
+                const data = await _stkPedir('/crates/historial?' + q.toString());
+                _stkHistFilas = data.filas || [];
+
+                const vacio = document.getElementById('stk-hist-vacio');
+                const cuerpo = document.getElementById('stk-hist-cuerpo');
+                vacio?.classList.toggle('hidden', !!_stkHistFilas.length);
+                cuerpo?.classList.toggle('hidden', !_stkHistFilas.length);
+                if (!_stkHistFilas.length) return;
+
+                const nombreTipo = sel?.value
+                    ? (_stkTipos.find(t => t.key === sel.value) || {}).name
+                    : 'todos los tipos';
+                document.getElementById('stk-hist-sub').textContent =
+                    `${nombreTipo} · hoy hay ${_stkNro(data.saldoHoy)}`;
+
+                body.innerHTML = _stkHistFilas.map((f, i) => {
+                    const cambio = f.saldoFinal - f.saldoInicial;
+                    return `
+                    <tr class="border-b border-[#F4F7FE] hover:bg-[#F8FAFF] cursor-pointer" onclick="stkVerMovimientosDe(${i})">
+                        <td class="py-2.5 px-2 font-bold text-[#1B2559]">${_stkEsc(f.etiqueta)}</td>
+                        <td class="py-2.5 px-2 text-right font-bold text-[#A3AED0]">${_stkNro(f.saldoInicial)}</td>
+                        <td class="py-2.5 px-2 text-right font-bold text-emerald-600">${f.entraron ? _stkNro(f.entraron) : '<span class="text-[#E0E5F2]">—</span>'}</td>
+                        <td class="py-2.5 px-2 text-right font-bold text-rose-600">${f.salieron ? _stkNro(f.salieron) : '<span class="text-[#E0E5F2]">—</span>'}</td>
+                        <td class="py-2.5 px-2 text-right font-black text-[#1B2559] text-[15px]">${_stkNro(f.saldoFinal)}</td>
+                        <td class="py-2.5 px-2 text-right font-black ${cambio > 0 ? 'text-emerald-600' : (cambio < 0 ? 'text-rose-600' : 'text-[#E0E5F2]')}">
+                            ${cambio === 0 ? '—' : (cambio > 0 ? '+' : '') + _stkNro(cambio)}
+                        </td>
+                        <td class="py-2.5 px-2 text-right font-bold ${f.sinContar ? 'text-amber-600' : 'text-[#E0E5F2]'}">${f.sinContar ? _stkNro(f.sinContar) : '—'}</td>
+                        <td class="py-2.5 px-2 text-right text-[#A3AED0]">${_stkNro(f.movimientos)}</td>
+                    </tr>`;
+                }).join('');
+
+                stkPintarCurva();
+            } catch (e) {
+                body.innerHTML = `<tr><td colspan="8" class="py-6 px-2 text-center text-rose-600 font-bold">Error: ${_stkEsc(e.message || e)}</td></tr>`;
+            }
+        }
+
+        /** La curva del saldo. Va de viejo a nuevo, al reves que la tabla:
+         *  un grafico que avanza hacia atras no se entiende. */
+        function stkPintarCurva() {
+            const cv = document.getElementById('stk-hist-grafico');
+            if (!cv || typeof Chart === 'undefined') return;
+            const filas = [..._stkHistFilas].reverse();
+
+            try { _stkHistGrafico?.destroy(); } catch (_) {}
+            _stkHistGrafico = new Chart(cv, {
+                type: 'line',
+                data: {
+                    labels: filas.map(f => f.etiqueta),
+                    datasets: [{
+                        label: 'En el depósito',
+                        data: filas.map(f => f.saldoFinal),
+                        borderColor: '#451ebb',
+                        backgroundColor: 'rgba(69,30,187,.08)',
+                        borderWidth: 2,
+                        pointRadius: filas.length > 40 ? 0 : 3,
+                        pointBackgroundColor: '#451ebb',
+                        fill: true,
+                        tension: 0.25
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                afterBody: (ctx) => {
+                                    const f = filas[ctx[0].dataIndex];
+                                    return `entraron ${f.entraron} · salieron ${f.salieron}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { maxRotation: 0, autoSkipPadding: 16 } },
+                        y: { beginAtZero: true, grid: { color: '#F4F7FE' } }
+                    }
+                }
+            });
+        }
+
+        /** Click en una fila: lleva a Movimientos con ese período filtrado. */
+        function stkVerMovimientosDe(i) {
+            const f = _stkHistFilas[i];
+            if (!f) return;
+            let desde = f.clave, hasta = f.clave;
+            if (_stkHistAgrupar === 'mes') {
+                const [a, m] = f.clave.split('-');
+                desde = `${a}-${m}-01`;
+                hasta = new Date(Number(a), Number(m), 0).toLocaleDateString('en-CA');
+            } else if (_stkHistAgrupar === 'anio') {
+                desde = `${f.clave}-01-01`;
+                hasta = `${f.clave}-12-31`;
+            }
+            document.getElementById('stk-mov-desde').value = desde;
+            document.getElementById('stk-mov-hasta').value = hasta;
+            const tipo = document.getElementById('stk-hist-tipo')?.value || '';
+            stkTab('movs');
+            const selMov = document.getElementById('stk-mov-tipo');
+            if (selMov) { selMov.value = tipo; }
+            stkCargarMovimientos();
+        }
+
+        function stkBajarHistorial() {
+            if (!_stkHistFilas.length) { _stkAviso('warning', 'Nada para bajar', 'No hay filas en pantalla.'); return; }
+            const titulo = (_STK_HIST_AGRUP.find(([k]) => k === _stkHistAgrupar) || [])[1] || '';
+            const filas = [[titulo, 'Venía con', 'Entraron', 'Salieron', 'Quedó en', 'Cambio', 'Sin contar', 'Movimientos']]
+                .concat(_stkHistFilas.map(f => [f.etiqueta, f.saldoInicial, f.entraron, f.salieron, f.saldoFinal,
+                    f.saldoFinal - f.saldoInicial, f.sinContar, f.movimientos]));
+            const csv = '\uFEFF' + filas.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\r\n');
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }));
+            a.download = `historial-cajones-por-${_stkHistAgrupar}-${_stkHoy()}.csv`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+        }
+
         // ─── Control ──────────────────────────────────────────────────────
         const _STK_AGRUPADORES = [
             ['dia', 'Día'], ['mes', 'Mes'], ['anio', 'Año'],
@@ -6708,14 +6940,23 @@
                 if (v) q.set(param, v);
             }
 
-            body.innerHTML = '<tr><td colspan="8" class="py-6 px-2 text-center text-[#A3AED0]">Cargando...</td></tr>';
+            body.innerHTML = '<tr><td colspan="9" class="py-6 px-2 text-center text-[#A3AED0]">Cargando...</td></tr>';
             try {
                 const data = await _stkPedir('/crates/movimientos?' + q.toString());
                 const movs = data.movimientos || [];
+
+                // La columna del saldo solo aparece con UN tipo elegido: con
+                // varios mezclados, un saldo arrastrado no significa nada.
+                document.querySelectorAll('.stk-col-saldo').forEach(e => e.classList.toggle('hidden', !data.conSaldo));
+
                 const resumen = document.getElementById('stk-movs-resumen');
-                if (resumen) resumen.textContent = movs.length ? `${movs.length} movimiento(s)` : '';
+                if (resumen) {
+                    resumen.textContent = movs.length
+                        ? `${movs.length} movimiento(s)` + (data.conSaldo ? ' · con el saldo de cada paso' : '')
+                        : '';
+                }
                 if (!movs.length) {
-                    body.innerHTML = '<tr><td colspan="8" class="py-10 px-2 text-center text-[#A3AED0] text-[13px] font-bold">No hay movimientos con ese filtro.</td></tr>';
+                    body.innerHTML = '<tr><td colspan="9" class="py-10 px-2 text-center text-[#A3AED0] text-[13px] font-bold">No hay movimientos con ese filtro.</td></tr>';
                     return;
                 }
                 body.innerHTML = movs.map(m => `
@@ -6730,6 +6971,7 @@
                         <td class="py-2.5 px-2 text-right font-black ${m.cantidad < 0 ? 'text-rose-600' : 'text-emerald-600'}">
                             ${m.cantidad > 0 ? '+' : ''}${_stkNro(m.cantidad)}
                         </td>
+                        <td class="py-2.5 px-2 text-right font-bold text-[#1B2559] stk-col-saldo ${data.conSaldo ? '' : 'hidden'}">${m.saldo != null ? _stkNro(m.saldo) : '—'}</td>
                         <td class="py-2.5 px-2 text-[11px] text-[#2B3674]">${m.trip ? `${_stkEsc(m.trip.reparto || '')} <span class="text-[#A3AED0]">#${m.trip.id}</span>` : '—'}</td>
                         <td class="py-2.5 px-2 text-[11px] text-[#A3AED0]">${_stkEsc(m.nota || '')}</td>
                         <td class="py-2.5 px-2 text-[11px] text-[#A3AED0]">${_stkEsc(m.usuario || '—')}</td>
@@ -6739,7 +6981,7 @@
                         </td>
                     </tr>`).join('');
             } catch (e) {
-                body.innerHTML = `<tr><td colspan="8" class="py-6 px-2 text-center text-rose-600 font-bold">Error: ${_stkEsc(e.message || e)}</td></tr>`;
+                body.innerHTML = `<tr><td colspan="9" class="py-6 px-2 text-center text-rose-600 font-bold">Error: ${_stkEsc(e.message || e)}</td></tr>`;
             }
         }
 

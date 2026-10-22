@@ -548,3 +548,96 @@ export function armarControl(
     }
     return filas;
 }
+
+/* ---------------------------------------------------------------------------
+ * EL HISTORIAL: como fue cambiando el stock
+ * ------------------------------------------------------------------------ */
+
+/**
+ * Una fila del historial. A diferencia del control, que solo suma lo que paso
+ * en cada periodo, el historial arrastra el SALDO: con cuanto se arranco, que
+ * se movio, con cuanto se termino.
+ *
+ * El saldo final de un periodo es el inicial del siguiente. Esa es toda la
+ * gracia: permite mirar una fecha y saber cuantos cajones habia ese dia, que
+ * es la pregunta que no contesta una lista de movimientos.
+ */
+export interface FilaDelHistorial {
+    clave: string;
+    etiqueta: string;
+    saldoInicial: number;
+    entraron: number;
+    salieron: number;
+    saldoFinal: number;
+    movimientos: number;
+    /** Lo que en ese periodo quedo cargado sin contar. */
+    sinContar: number;
+}
+
+/**
+ * Arma el historial a partir de los movimientos CONFIRMADOS, arrastrando el
+ * saldo desde `saldoAntes` (lo que habia antes del primer periodo).
+ *
+ * `movimientos` tiene que venir ordenado de mas viejo a mas nuevo; las filas
+ * salen al reves, de mas nuevo a mas viejo, que es como se mira.
+ */
+export function armarHistorial(
+    movimientos: Array<{ fecha: Date | string; cantidad: number; confirmado?: boolean }>,
+    agrupar: 'dia' | 'mes' | 'anio',
+    saldoAntes: number
+): FilaDelHistorial[] {
+    const orden: string[] = [];
+    const grupos = new Map<string, FilaDelHistorial>();
+
+    for (const m of movimientos) {
+        const clave = partesDeFecha(m.fecha)[agrupar];
+        let g = grupos.get(clave);
+        if (!g) {
+            g = {
+                clave, etiqueta: etiquetaDeGrupo(agrupar, clave),
+                saldoInicial: 0, entraron: 0, salieron: 0, saldoFinal: 0,
+                movimientos: 0, sinContar: 0
+            };
+            grupos.set(clave, g);
+            orden.push(clave);
+        }
+        const n = Number(m.cantidad) || 0;
+        if (m.confirmado === false) {
+            g.sinContar += Math.abs(n);
+        } else if (n >= 0) {
+            g.entraron += n;
+        } else {
+            g.salieron += -n;
+        }
+        g.movimientos++;
+    }
+
+    // El arrastre del saldo. Se hace en orden cronologico y recien despues se
+    // da vuelta la lista: al reves no se puede arrastrar nada.
+    orden.sort();
+    let saldo = saldoAntes;
+    for (const clave of orden) {
+        const g = grupos.get(clave) as FilaDelHistorial;
+        g.saldoInicial = saldo;
+        saldo = saldo + g.entraron - g.salieron;
+        g.saldoFinal = saldo;
+    }
+
+    return orden.reverse().map((c) => grupos.get(c) as FilaDelHistorial);
+}
+
+/**
+ * Cuantos cajones habia antes de una fecha. Es la suma de todo lo confirmado
+ * hasta ese momento; sin esto el historial arrancaria siempre en cero y los
+ * saldos serian mentira.
+ *
+ * `hasta` es exclusivo: lo del propio dia no entra, porque ese dia es el
+ * primero del historial que se va a mostrar.
+ */
+export async function saldoAntesDe(prisma: Prisma, hasta: Date | null, typeId?: number | null): Promise<number> {
+    const where: any = { confirmado: true };
+    if (hasta) where.fecha = { lt: hasta };
+    if (typeId) where.typeId = typeId;
+    const r = await prisma.crateMovement.aggregate({ where, _sum: { cantidad: true } });
+    return Number(r?._sum?.cantidad) || 0;
+}

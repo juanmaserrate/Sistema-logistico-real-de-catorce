@@ -16,6 +16,8 @@ import {
     confirmarVuelta,
     vueltasPendientes,
     armarControl,
+    armarHistorial,
+    saldoAntesDe,
     AGRUPADORES
 } from './stockCajones';
 import { armarLibroViajes } from './libroViajes';
@@ -5776,7 +5778,36 @@ app.get('/api/v1/crates/movimientos', async (req: any, res: any) => {
                 trip: { select: { id: true, reparto: true, driver: true, date: true } }
             }
         });
-        res.json({ movimientos: movs });
+
+        // Con UN solo tipo elegido se puede arrastrar el saldo linea por linea:
+        // cada movimiento muestra como quedo el stock despues de el. Con varios
+        // tipos mezclados ese numero no significaria nada, asi que no va.
+        let conSaldo: any[] = movs;
+        if (where.typeId && where.typeId > 0) {
+            const masViejo = movs.length ? movs[movs.length - 1] : null;
+            // El saldo justo antes del movimiento mas viejo de la lista.
+            const base = masViejo
+                ? await (prisma as any).crateMovement.aggregate({
+                    where: {
+                        typeId: where.typeId, confirmado: true,
+                        OR: [
+                            { fecha: { lt: masViejo.fecha } },
+                            { fecha: masViejo.fecha, id: { lt: masViejo.id } }
+                        ]
+                    },
+                    _sum: { cantidad: true }
+                }).then((r: any) => Number(r?._sum?.cantidad) || 0)
+                : 0;
+
+            let saldo = base;
+            const alReves = [...movs].reverse().map((m: any) => {
+                if (m.confirmado !== false) saldo += Number(m.cantidad) || 0;
+                return { ...m, saldo };
+            });
+            conSaldo = alReves.reverse();
+        }
+
+        res.json({ movimientos: conSaldo, conSaldo: !!(where.typeId && where.typeId > 0) });
     } catch (e: any) {
         console.error('GET /crates/movimientos:', e);
         res.status(500).json({ error: e?.message || 'Error' });
@@ -5981,6 +6012,58 @@ app.get('/api/v1/crates/control', async (req: any, res: any) => {
     } catch (e: any) {
         console.error('GET /crates/control:', e);
         res.status(500).json({ error: e?.message || 'Error armando el control' });
+    }
+});
+
+/** El historial del stock: con cuanto se arranco cada periodo, que se movio
+ *  y con cuanto se termino. El saldo final de un periodo es el inicial del
+ *  siguiente, asi que se puede mirar una fecha y saber cuantos habia.
+ *
+ *  GET /api/v1/crates/historial?agrupar=dia|mes|anio&desde=&hasta=&key= */
+app.get('/api/v1/crates/historial', async (req: any, res: any) => {
+    try {
+        const agrupar = String(req.query?.agrupar || 'mes').toLowerCase();
+        if (!['dia', 'mes', 'anio'].includes(agrupar)) {
+            return res.status(400).json({ error: 'agrupar tiene que ser dia, mes o anio' });
+        }
+        const { desde, hasta, key } = req.query || {};
+
+        let typeId: number | null = null;
+        if (key) {
+            const tipo = await prisma.crateType.findUnique({ where: { key: String(key) } });
+            typeId = tipo ? tipo.id : -1;
+        }
+
+        const where: any = {};
+        if (typeId) where.typeId = typeId;
+        const dDesde = desde ? new Date(String(desde) + 'T00:00:00') : null;
+        if (desde || hasta) {
+            where.fecha = {};
+            if (dDesde) where.fecha.gte = dDesde;
+            if (hasta) where.fecha.lte = new Date(String(hasta) + 'T23:59:59');
+        }
+
+        // Lo que habia ANTES del primer periodo. Sin esto los saldos arrancan
+        // en cero y todo el historial queda corrido.
+        const saldoAntes = await saldoAntesDe(prisma, dDesde, typeId);
+
+        const movs = await prisma.crateMovement.findMany({
+            where,
+            orderBy: [{ fecha: 'asc' }, { id: 'asc' }],
+            select: { fecha: true, cantidad: true, confirmado: true }
+        });
+
+        const filas = armarHistorial(movs as any, agrupar as any, saldoAntes);
+        res.json({
+            agrupar,
+            saldoAntes,
+            saldoHoy: filas.length ? filas[0].saldoFinal : saldoAntes,
+            filas,
+            tipo: key ? String(key) : null
+        });
+    } catch (e: any) {
+        console.error('GET /crates/historial:', e);
+        res.status(500).json({ error: e?.message || 'Error armando el historial' });
     }
 });
 
