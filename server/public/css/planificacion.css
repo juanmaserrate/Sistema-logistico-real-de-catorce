@@ -1140,3 +1140,50 @@ tr.r14-fila-total > td * { color: #ffffff !important; }
     min-width: 240px;
     white-space: normal;
 }
+
+
+/* ── Stock de cajones ────────────────────────────────────────────────────
+   Solapas pegadas al borde de la tarjeta: la activa se une al panel de
+   abajo, asi se entiende que lo que se ve es el contenido de esa solapa. */
+.stk-tab {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.6rem 1rem;
+    margin-bottom: -1px;
+    border-bottom: 2px solid transparent;
+    border-radius: 0.6rem 0.6rem 0 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--on-surface-variant, #A3AED0);
+    background: transparent;
+    transition: color .15s ease, background .15s ease, border-color .15s ease;
+}
+.stk-tab:hover { color: #2B3674; background: #F8FAFF; }
+.stk-tab-on {
+    color: #451ebb;
+    border-bottom-color: #451ebb;
+    background: transparent;
+}
+.stk-tab-on:hover { background: transparent; }
+
+/* Los botones de accion de cada fila: chicos, sin grito. */
+.stk-mini {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    margin-left: 0.25rem;
+    border-radius: 0.5rem;
+    font-size: 11px;
+    font-weight: 700;
+    color: #2B3674;
+    background: #F4F7FE;
+    transition: background .15s ease, color .15s ease;
+}
+.stk-mini:hover { background: #E8ECF8; }
+.stk-mini-alerta { background: #FEF3C7; color: #B45309; }
+.stk-mini-alerta:hover { background: #FDE68A; }
+.stk-mini-ok { background: #D1FAE5; color: #047857; }
+.stk-mini-ok:hover { background: #A7F3D0; }
+
+[data-theme="dark"] .stk-tab:hover { background: var(--surface-container, #1f2430); }
+[data-theme="dark"] .stk-mini { background: var(--surface-container-high, #272c38); color: var(--on-surface, #e6e8ef); }
