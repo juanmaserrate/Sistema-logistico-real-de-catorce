@@ -1,6 +1,6 @@
 
 import express from 'express';
-import { mapaUnidadPorRuta, unidadDeParada, unidadesDeTexto, repartirHoras, SIN_UNIDAD } from './unidadesDelViaje';
+import { mapaUnidadPorRuta, unidadDeParada, unidadesDeTexto, repartirHoras, esVueltaAlDeposito, SIN_UNIDAD } from './unidadesDelViaje';
 import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail, limpiarTokenMail } from './mailer';
 import { armarReporte, filasViajesPorIds, mesDeFecha, esCuentaDePrueba, TIPOS_DE_ENVASE, sumaDeLosTipos, sinLocalidadPorUnidad, TEXTO_SIN_LOCALIDAD, sinViajesDePrueba } from './reporteTorre';
 import {
@@ -7120,6 +7120,112 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
         res.json({ mes, anio, calculadoEl, unidades });
     } catch (e: any) {
         console.error('costs/unidades:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Los viajes que reparten para VARIAS unidades y cuyas paradas no dicen de
+ *  cual son. En esos, el reparto de horas manda todo a SIN UNIDAD.
+ *
+ *  Devuelve cada viaje con sus paradas, el horario de cada una y cuanto duro
+ *  el tramo, para poder decidir a quien le toca cada una.
+ *
+ *  Solo lee.
+ *  POST /api/admin/paradas-sin-unidad { key, desde?, hasta?, soloLibre? } */
+app.post('/api/admin/paradas-sin-unidad', async (req: any, res: any) => {
+    const { key, desde, hasta, soloLibre } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+
+    try {
+        const where: any = {};
+        if (desde || hasta) {
+            where.date = {};
+            if (desde) where.date.gte = new Date(String(desde) + 'T00:00:00.000Z');
+            if (hasta) where.date.lte = new Date(String(hasta) + 'T23:59:59.999Z');
+        }
+
+        const viajes = await prisma.trip.findMany({
+            where,
+            orderBy: { id: 'asc' },
+            select: {
+                id: true, date: true, reparto: true, rutas: true, driver: true,
+                businessUnit: true, exitTime: true, returnTime: true,
+                linkedRoute: {
+                    select: {
+                        actualStartTime: true, actualEndTime: true,
+                        stops: {
+                            orderBy: { sequence: 'asc' },
+                            select: {
+                                id: true, sequence: true, ruta: true, status: true,
+                                isReturnToBase: true, actualArrival: true, actualDeparture: true,
+                                client: { select: { name: true } }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        const mapaU = await unidadesPorRutaCacheado();
+        const hm = (d: any) => d ? new Date(d).toLocaleTimeString('es-AR',
+            { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' }) : null;
+
+        const salida: any[] = [];
+        for (const t of viajes as any[]) {
+            const unidades = unidadesDeTexto(t.businessUnit);
+            if (unidades.length < 2) continue;
+            if (soloLibre && !/^libre$/i.test(String(t.reparto || '').trim())) continue;
+
+            const stops = t.linkedRoute?.stops || [];
+            const utiles = stops.filter((x: any) => !esVueltaAlDeposito(x));
+            const sinMarcar = utiles.filter((x: any) => !String(x.ruta || '').trim());
+            if (!sinMarcar.length) continue;
+
+            // El tramo de cada parada: desde donde quedo la anterior hasta que
+            // se cerro esta. Es exactamente lo que reparte el calculo de horas,
+            // asi que sirve para ver cuanto se lleva cada una.
+            const inicio = t.linkedRoute?.actualStartTime || t.exitTime || null;
+            let cursor = inicio ? new Date(inicio).getTime() : null;
+            const paradas = stops.map((x: any) => {
+                const cierre = x.actualDeparture || x.actualArrival || null;
+                let tramo = null;
+                if (cursor != null && cierre) {
+                    const tt = new Date(cierre).getTime();
+                    if (tt > cursor) { tramo = Math.round((tt - cursor) / 36000) / 100; cursor = tt; }
+                }
+                return {
+                    seq: x.sequence,
+                    nombre: x.client?.name || '-',
+                    deposito: esVueltaAlDeposito(x),
+                    ruta: x.ruta || null,
+                    unidad: unidadDeParada(x, mapaU, unidades),
+                    llegada: hm(x.actualArrival),
+                    salida: hm(x.actualDeparture),
+                    horasDelTramo: tramo
+                };
+            });
+
+            salida.push({
+                id: t.id,
+                fecha: new Date(t.date).toISOString().slice(0, 10),
+                reparto: t.reparto,
+                chofer: t.driver,
+                unidades,
+                inicio: hm(inicio),
+                fin: hm(t.linkedRoute?.actualEndTime || t.returnTime),
+                paradas,
+                sinMarcar: sinMarcar.length,
+                total: utiles.length
+            });
+        }
+
+        res.json({
+            viajes: salida.length,
+            paradasSinMarcar: salida.reduce((a, v) => a + v.sinMarcar, 0),
+            detalle: salida
+        });
+    } catch (e: any) {
+        console.error('paradas-sin-unidad:', e);
         res.status(500).json({ error: e?.message || 'Error' });
     }
 });
