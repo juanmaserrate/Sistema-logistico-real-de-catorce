@@ -25891,6 +25891,16 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (!nombre || tripRutas.includes(nombre)) { renderTripRutas(); return; }
             tripRutas.push(nombre);
             renderTripRutas();
+
+            // En un viaje que YA EXISTE la ruta nueva trae sus paradas sola.
+            // Antes no pasaba nada: quedaban la ruta y la unidad de negocio
+            // cargadas pero sin una sola parada detras, y el chofer nunca las
+            // veia. Agregar no pisa nada, asi que es seguro hacerlo solo;
+            // rearmar todo, que si pisa, sigue necesitando el boton.
+            if (_ntEditando()) {
+                await _sumarParadasDeLaRuta(nombre);
+                return;
+            }
             await _rearmarSiCorresponde();
         }
 
@@ -25905,9 +25915,74 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         async function quitarRutaDelViaje(i) {
             if (i < 0 || i >= tripRutas.length) return;
+            const nombre = tripRutas[i];
             tripRutas.splice(i, 1);
             renderTripRutas();
+
+            if (_ntEditando()) {
+                _sacarParadasDeLaRuta(nombre);
+                return;
+            }
             await _rearmarSiCorresponde();
+        }
+
+        /** Suma las paradas de una ruta a un viaje que ya existe, sin tocar las
+         *  que ya estaban ni su orden. Van antes del deposito, que queda
+         *  siempre ultimo. */
+        async function _sumarParadasDeLaRuta(nombre) {
+            const r = await _paradasDeRuta(nombre);
+            if (r.falta || !r.stops.length) {
+                if (typeof addNotification === 'function') {
+                    addNotification('warning', 'Ruta sin paradas',
+                        `${nombre}: no hay plantilla cargada o ningún nombre coincide con el directorio.`);
+                }
+                return 0;
+            }
+            const yaEstan = new Set(tripDeliveryRows.map(x => x.clientId));
+            let sumadas = 0;
+            for (const fila of r.stops) {
+                if (esParadaDeposito(fila.name)) continue;
+                if (yaEstan.has(fila.clientId)) continue;
+                yaEstan.add(fila.clientId);
+                agregarParadaAntesDelDeposito(tripDeliveryRows, fila);
+                sumadas++;
+            }
+            renderTripDeliveryList();
+            populateTripDeliveryAddSelect();
+
+            if (typeof addNotification === 'function') {
+                addNotification(sumadas ? 'success' : 'info', `Ruta ${nombre}`,
+                    sumadas
+                        ? `${sumadas} parada(s) agregadas al final. Guardá para que le lleguen al chofer.`
+                        : 'Sus paradas ya estaban todas en el viaje.');
+            }
+            return sumadas;
+        }
+
+        /** Saca las paradas que vinieron de una ruta. Las que el chofer ya
+         *  marco se quedan: borrarlas perderia su hora y su foto. */
+        function _sacarParadasDeLaRuta(nombre) {
+            const suyas = tripDeliveryRows.filter(x => x.ruta === nombre);
+            if (!suyas.length) {
+                if (typeof addNotification === 'function') {
+                    addNotification('info', `Ruta ${nombre} quitada`,
+                        'Sus paradas no estaban identificadas, así que quedaron en el viaje. Sacalas a mano si no van.');
+                }
+                return;
+            }
+            const marcadas = suyas.filter(x => x.status && x.status !== 'PENDING');
+            const texto = `Quitar las ${suyas.length} parada(s) de ${nombre} del viaje?`
+                + (marcadas.length ? `\n\n${marcadas.length} ya fueron marcadas por el chofer y NO se van a tocar.` : '');
+            if (!confirm(texto)) { tripRutas.push(nombre); renderTripRutas(); return; }
+
+            tripDeliveryRows = tripDeliveryRows.filter(
+                x => x.ruta !== nombre || (x.status && x.status !== 'PENDING'));
+            renderTripDeliveryList();
+            populateTripDeliveryAddSelect();
+            if (typeof addNotification === 'function') {
+                addNotification('success', `Ruta ${nombre} quitada`,
+                    `${suyas.length - marcadas.length} parada(s) sacadas. Guardá para aplicarlo.`);
+            }
         }
 
         /** En un viaje nuevo las paradas se rearman solas. En uno que ya existe
@@ -26658,7 +26733,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 tripDeliveryRows = (data.stops || []).map((s) => ({
                     clientId: s.clientId,
                     name: s.name,
-                    address: s.address || ''
+                    address: s.address || '',
+                    // De que ruta es, y si el chofer ya la marco. Antes los dos
+                    // se descartaban al abrir el viaje: editar y guardar le
+                    // borraba la ruta a todas las paradas sin que nadie lo
+                    // pidiera, y no habia forma de saber cual no tocar.
+                    ruta: s.ruta || null,
+                    status: s.status || 'PENDING'
                 }));
             } catch (e) {
                 console.error(e);
