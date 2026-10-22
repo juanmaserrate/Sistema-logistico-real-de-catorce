@@ -17914,8 +17914,10 @@
   .stops .n { width: 22px; text-align: center; color: #888; }
   .stops .dest { font-weight: bold; }
   .stops .hr { width: 70px; }
-  .stops .mot { width: 70px; text-align: center; color: #b45309; font-weight: bold; }
+  .stops .mot { width: 96px; text-align: center; color: #b45309; font-weight: bold; font-size: 9px; line-height: 1.15; }
   .depot td { background: #F4F7FE; font-weight: bold; }
+  .bloque td { background: #E8ECF8; color: #1B2559; font-weight: bold; font-size: 9px; height: 16px;
+               text-transform: uppercase; letter-spacing: .6px; }
   .na { position: relative; background: #f5f5f5; }
   .na::before { content: "N/A"; font-size: 7px; color: #c0392b; position: absolute; top: 1px; left: 3px; }
   .na::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top right, transparent calc(50% - 0.8px), #c0392b calc(50% - 0.8px), #c0392b calc(50% + 0.8px), transparent calc(50% + 0.8px)); }
@@ -17933,7 +17935,11 @@
 
         function hdrPageHtml(trip, stops, logo) {
             const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-            const reparto = trip.tripType || trip.reparto || '—';
+            // El encabezado nombra todas las rutas del viaje ("R6 + SAM 1"),
+            // no solo la primera: si no, la hoja parece de un reparto solo.
+            const reparto = (typeof rutasDelViaje === 'function')
+                ? rutasDelViaje(trip)
+                : (trip.tripType || trip.reparto || '—');
             const transportista = trip.driver || '';
             const aux = [trip.auxiliar, trip.auxiliar2, trip.auxiliar3].filter(Boolean).join(' / ');
             const vehiculo = trip.vehicleType || '';
@@ -17942,18 +17948,51 @@
             const refrig = trip.isRefrigerated ? 'SÍ' : 'NO';
             const temp = (trip.temperature != null && trip.temperature !== '') ? `${trip.temperature}°` : '';
 
+            // UNA SOLA HOJA, aunque el viaje tenga dos o mas rutas predefinidas:
+            // el chofer hace un recorrido, no dos, y las paradas se intercalan.
+            //
+            // En Motivo va la unidad de negocio de CADA PARADA, no la del viaje
+            // entero. En un viaje que reparte para dos unidades, poner la misma
+            // en todas las filas seria mentir, y esa columna es justamente la
+            // que mira el deposito para saber a quien le corresponde cada cosa.
+            const paradas = (stops || []).map((s) => ({
+                name: s.name || s.clientId || '',
+                ruta: String(s.ruta || '').trim(),
+                // Cuando no se puede saber de cual es -- una parada vieja sin
+                // ruta en un viaje de dos unidades -- se imprimen todas las del
+                // viaje. Es lo mas que se sabe, y es mejor que inventar una.
+                unidad: (!s.unidad || s.unidad === 'SIN UNIDAD') ? motivo : s.unidad
+            }));
+
+            // Los separadores solo tienen sentido si de verdad hay varias rutas.
+            const variasRutas = new Set(paradas.map((p) => p.ruta).filter(Boolean)).size > 1;
+
             // Filas: depósito (salida) + paradas. 1ra fila tacha HR LLEGADA; última tacha HR SALIDA.
-            const rows = [{ name: 'REAL DE CATORCE — SALIDA DEPÓSITO', depot: true }]
-                .concat((stops || []).map((s) => ({ name: s.name || s.clientId || '' })));
+            const rows = [{ name: 'REAL DE CATORCE — SALIDA DEPÓSITO', depot: true }];
+            let rutaAnterior = null;
+            let nro = 0;
+            for (const p of paradas) {
+                if (variasRutas && p.ruta !== rutaAnterior) {
+                    // Una parada sin ruta tambien abre bloque: si quedara
+                    // debajo del titulo anterior, pareceria de esa ruta.
+                    rows.push({ bloque: true, name: p.ruta || 'OTRAS PARADAS', unidad: p.unidad });
+                    rutaAnterior = p.ruta;
+                }
+                rows.push({ ...p, nro: ++nro });
+            }
+
             const last = rows.length - 1;
             const stopRows = rows.map((r, i) => {
+                if (r.bloque) {
+                    return `<tr class="bloque"><td colspan="6">${esc(r.name)}${r.unidad ? ' &middot; ' + esc(r.unidad) : ''}</td></tr>`;
+                }
                 const lleg = i === 0 ? '<td class="hr na"></td>' : '<td class="hr"></td>';
                 const sal = i === last ? '<td class="hr na"></td>' : '<td class="hr"></td>';
                 return `<tr class="${r.depot ? 'depot' : ''}">
-                    <td class="n">${i === 0 ? '' : i}</td>
+                    <td class="n">${r.depot ? '' : r.nro}</td>
                     <td class="dest">${esc(r.name)}</td>
                     ${lleg}${sal}
-                    <td class="mot">${r.depot ? '' : esc(motivo)}</td>
+                    <td class="mot">${r.depot ? '' : esc(r.unidad || motivo)}</td>
                     <td></td>
                 </tr>`;
             }).join('');
