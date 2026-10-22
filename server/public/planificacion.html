@@ -4749,8 +4749,8 @@
 
         // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
         const ACCESS_PROFILES = {
-            SUPERADMIN: ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'],
-            TRAFICO: ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','employees','schools','reports','incidents','historial'],
+            SUPERADMIN: ['control','drivers-status','crates','crates-sim','stock-cajones','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'],
+            TRAFICO: ['control','drivers-status','crates','crates-sim','stock-cajones','hdr','weekly','payments','dashboard','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','employees','schools','reports','incidents','historial'],
             RRHH: ['salaries','employees'],
             ADMINISTRACION: ['weekly','payments','dashboard','tarifas','budget','salaries','schools','reports']
         };
@@ -4792,7 +4792,7 @@
             }
 
             // Hide/show nav buttons based on access
-            const allSections = ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
+            const allSections = ['control','drivers-status','crates','crates-sim','stock-cajones','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
             allSections.forEach(sec => {
                 const btn = document.getElementById('btn-' + sec);
                 if (btn) {
@@ -4960,7 +4960,7 @@
                 // agregarle el módulo nuevo automáticamente (solo si todos los otros
                 // están habilitados → asumimos perfil completo).
                 let migrated = false;
-                const newModules = ['payments'];
+                const newModules = ['payments', 'stock-cajones'];
                 for (const [user, perms] of Object.entries(parsed)) {
                     if (Array.isArray(perms)) {
                         for (const nm of newModules) {
@@ -5010,7 +5010,7 @@
             return { ...stored, ...hardcoded };
         }
 
-        const ALL_MODULES = ['control','drivers-status','crates','crates-sim','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
+        const ALL_MODULES = ['control','drivers-status','crates','crates-sim','stock-cajones','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
 
         function renderProfileAssignments() {
             const tbody = document.getElementById('profile-assignments-body');
@@ -23492,6 +23492,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             'drivers-status': () => loadDriverStatus(),
             crates:          () => loadCratesModule(),
             'crates-sim':    () => loadCratesSimModule(),
+            'stock-cajones': () => cargarStockCajones(),
             tarifas:         () => cargarTarifas(),
             hdr:             () => loadHdrList(),
             payments:        () => loadPaymentsView(),
