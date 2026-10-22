@@ -2036,6 +2036,36 @@
             </div>
 
             <!-- Modal: auxiliares del mes sin sueldo cargado -->
+            <!-- Viajes sin horario: el calculo les inventaria las horas -->
+            <div id="modal-sin-horario" class="fixed inset-0 z-[221] hidden flex items-center justify-center p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);" onclick="if(event.target===this)cerrarAvisoSinHorario()">
+                <div class="modal-content w-full max-w-2xl p-8 bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
+                    <div class="flex items-center gap-4 mb-5">
+                        <div class="w-12 h-12 rounded-2xl bg-rose-50 flex items-center justify-center shrink-0">
+                            <i data-lucide="clock-alert" class="w-6 h-6 text-rose-600"></i>
+                        </div>
+                        <div>
+                            <h3 class="text-xl font-bold text-[#1B2559]">Hay viajes sin horario</h3>
+                            <p id="sinhor-aviso-sub" class="text-xs text-[#A3AED0] font-medium"></p>
+                        </div>
+                    </div>
+                    <p class="text-[13px] text-[#44474a] leading-relaxed mb-4">
+                        Estos viajes no tienen ni GPS ni horario cargado, as&iacute; que el c&aacute;lculo
+                        <strong>les inventa</strong> las horas que diga &laquo;Hs viaje sin horario&raquo;.
+                        Esas horas entran dos veces: le ponen un costo a ese viaje
+                        <em>y</em> ensucian el valor hora de todo el mes.
+                    </p>
+                    <div id="sinhor-aviso-impacto" class="rounded-2xl bg-rose-50 p-4 mb-4"></div>
+                    <div id="sinhor-aviso-cuerpo" class="rounded-2xl border border-[#F4F7FE] overflow-hidden mb-5 max-h-[40vh] overflow-y-auto"></div>
+                    <div class="flex flex-col sm:flex-row gap-2">
+                        <button onclick="cerrarAvisoSinHorario()" class="flex-1 bg-[#451ebb] text-white rounded-xl py-3 text-sm font-bold">Voy a cargarles la hora</button>
+                        <button onclick="calcularIgualSinHorario()" class="flex-1 bg-[#F4F7FE] text-[#1B2559] rounded-xl py-3 text-sm font-bold">Calcular igual</button>
+                    </div>
+                    <p class="text-[10px] text-[#A3AED0] mt-3 text-center">
+                        La hora se corrige en Log&iacute;stica Semanal, con doble click en Salida o Llegada del viaje.
+                    </p>
+                </div>
+            </div>
+
             <div id="modal-aux-sin-sueldo" class="fixed inset-0 z-[221] hidden flex items-center justify-center p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);" onclick="if(event.target===this)cerrarAvisoDeAuxiliares()">
                 <div class="modal-content w-full max-w-2xl p-8 bg-white rounded-3xl shadow-2xl max-h-[90vh] overflow-y-auto" onclick="event.stopPropagation()">
                     <div class="flex items-center gap-4 mb-5">
@@ -23507,6 +23537,17 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 if (btn) { btn.disabled = false; btn.style.opacity = ''; }
             }
 
+            // PRIMERO: los viajes sin horario. Es lo mas grave de los tres,
+            // porque son horas INVENTADAS: le ponen costo a un viaje que no se
+            // sabe cuanto duro y ademas entran al divisor del valor hora, asi
+            // que ensucian el costo de todos los demas viajes del mes.
+            const sinHorario = Array.isArray(d.sinHorarioDetalle) ? d.sinHorarioDetalle : [];
+            if (sinHorario.length && !_calcularIgualSinHorario) {
+                _avisoSinHorarioPendiente = { month, d, sinHorario };
+                abrirAvisoSinHorario();
+                return 'frenar';
+            }
+
             // Los auxiliares sin sueldo se avisan ANTES que lo de las horas:
             // es un dato que falta, no un desvio. Si el costo del auxiliar se
             // suma en cero, el viaje queda barato y no lo nota nadie.
@@ -23526,6 +23567,87 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             _avisoDeHorasPendiente = { month, d, cargadas, repartidas, desvio };
             abrirAvisoDeHoras();
             return 'frenar';
+        }
+
+        let _avisoSinHorarioPendiente = null;
+        let _calcularIgualSinHorario = false;
+
+        /** Avisa que hay viajes propios sin horario antes de calcular.
+         *
+         *  Sin GPS ni horas cargadas, el calculo les pone las horas por defecto.
+         *  Eso no es un redondeo: son horas que nadie trabajo necesariamente.
+         *  Le ponen un costo a ese viaje y, peor, entran al divisor del valor
+         *  hora, asi que mueven el costo de TODOS los viajes del mes. */
+        function abrirAvisoSinHorario() {
+            const p = _avisoSinHorarioPendiente;
+            if (!p) return;
+            const { d, sinHorario } = p;
+
+            const sub = document.getElementById('sinhor-aviso-sub');
+            if (sub) sub.textContent = `${p.month} ${anioCostos()} \u00b7 ${sinHorario.length} de ${d.viajes} viajes propios`;
+
+            const horasInv = Number(d.horasInventadas) || 0;
+            const repartidas = Number(d.horasRepartidas) || 0;
+            const parte = repartidas ? Math.round(horasInv / repartidas * 100) : 0;
+            const imp = document.getElementById('sinhor-aviso-impacto');
+            if (imp) {
+                imp.innerHTML = `
+                    <div class="grid grid-cols-3 gap-3 text-center">
+                        <div>
+                            <p class="text-[9px] font-black text-rose-700 uppercase tracking-widest">Horas inventadas</p>
+                            <p class="text-xl font-black text-rose-700">${numeroAR(horasInv)} h</p>
+                        </div>
+                        <div>
+                            <p class="text-[9px] font-black text-rose-700 uppercase tracking-widest">Del mes</p>
+                            <p class="text-xl font-black text-rose-700">${parte}%</p>
+                        </div>
+                        <div>
+                            <p class="text-[9px] font-black text-rose-700 uppercase tracking-widest">Costo que inventan</p>
+                            <p class="text-xl font-black text-rose-700">$ ${numeroAR(Number(d.costoInventado) || 0, 0)}</p>
+                        </div>
+                    </div>`;
+            }
+
+            const cuerpo = document.getElementById('sinhor-aviso-cuerpo');
+            if (cuerpo) {
+                cuerpo.innerHTML = `
+                    <table class="w-full text-[12px] border-collapse">
+                        <thead class="sticky top-0">
+                            <tr class="bg-[#F8FAFF]">
+                                <th class="text-left px-3 py-2 font-black text-[#1B2559] uppercase tracking-wider">Viaje</th>
+                                <th class="text-left px-3 py-2 font-black text-[#1B2559] uppercase tracking-wider">Fecha</th>
+                                <th class="text-left px-3 py-2 font-black text-[#1B2559] uppercase tracking-wider">Reparto</th>
+                                <th class="text-left px-3 py-2 font-black text-[#1B2559] uppercase tracking-wider">Chofer</th>
+                                <th class="text-left px-3 py-2 font-black text-[#1B2559] uppercase tracking-wider">Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${sinHorario.map((v, i) => `
+                                <tr class="r14-fila ${i % 2 ? 'r14-fila-alt' : ''}">
+                                    <td class="px-3 py-2 font-bold text-[#1B2559]">#${v.id}</td>
+                                    <td class="px-3 py-2 text-[#2B3674]">${escapeHtml(v.fecha || '')}</td>
+                                    <td class="px-3 py-2 text-[#2B3674]">${escapeHtml(v.reparto || '-')}</td>
+                                    <td class="px-3 py-2 text-[#2B3674]">${escapeHtml(v.chofer || '-')}</td>
+                                    <td class="px-3 py-2 text-[#A3AED0]">${escapeHtml(v.estado || '-')}</td>
+                                </tr>`).join('')}
+                        </tbody>
+                    </table>`;
+            }
+            document.getElementById('modal-sin-horario')?.classList.remove('hidden');
+            if (typeof lucide !== 'undefined') lucide.createIcons();
+        }
+
+        function cerrarAvisoSinHorario() {
+            document.getElementById('modal-sin-horario')?.classList.add('hidden');
+            _avisoSinHorarioPendiente = null;
+        }
+
+        /** "Calcular igual": se acepta que esos viajes vayan con horas
+         *  inventadas. La bandera dura un solo calculo. */
+        function calcularIgualSinHorario() {
+            cerrarAvisoSinHorario();
+            _calcularIgualSinHorario = true;
+            calcularCostosDelMes();
         }
 
         let _avisoDeAuxPendiente = null;
@@ -23687,6 +23809,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 if (aviso === 'frenar') return;        // el modal se encarga
             }
             _calcularIgualAunqueNoCierre = false;
+            // La excepcion de las horas inventadas tambien dura un solo calculo
+            _calcularIgualSinHorario = false;
 
             if (btn) { btn.disabled = true; btn.innerHTML = '<i data-lucide="loader-2" class="w-5 h-5 animate-spin"></i> Calculando...'; lucide.createIcons(); }
 

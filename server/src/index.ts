@@ -11602,10 +11602,25 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
         // les pone las horas por defecto, y son los que hacen que lo repartido
         // no cierre con las horas del mes.
         let viajesSinHorario = 0;
+        // Y CUALES son. El numero solo no sirve: para arreglarlos hay que saber
+        // a que viajes les falta el horario, y la pantalla tiene que poder
+        // mostrarlos antes de dejar calcular.
+        const sinHorarioDetalle: any[] = [];
         for (const t of trips as any[]) {
             const durHrs = parseTripDurationHrs(t, fallbackHours);
             // fallback 0 = centinela: si da 0 es que no habia de donde sacarla
-            if (parseTripDurationHrs(t, 0) <= 0) viajesSinHorario++;
+            if (parseTripDurationHrs(t, 0) <= 0) {
+                viajesSinHorario++;
+                if (sinHorarioDetalle.length < 200) {
+                    sinHorarioDetalle.push({
+                        id: t.id,
+                        fecha: new Date(t.date).toISOString().slice(0, 10),
+                        reparto: t.reparto || t.tripType || null,
+                        chofer: t.driver || null,
+                        estado: t.status || null
+                    });
+                }
+            }
             let tripCost = durHrs * vehicleHourlyRate;
 
             // Dedupe: si el mismo auxiliar figura en auxiliar y auxiliar2 (error de carga),
@@ -11710,6 +11725,11 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
             horasRepartidas,
             horasReales,
             viajesSinHorario,
+            sinHorarioDetalle,
+            // Las horas que se INVENTAN y lo que cuestan: el dato que convierte
+            // "45 viajes sin horario" en "36% del mes es un supuesto".
+            horasInventadas: Math.round(viajesSinHorario * fallbackHours * 10) / 10,
+            costoInventado: Math.round(viajesSinHorario * fallbackHours * vehicleHourlyRate),
             fallbackHours
         });
     } catch (e: any) {
