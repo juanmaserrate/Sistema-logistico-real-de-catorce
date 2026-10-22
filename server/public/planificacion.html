@@ -17499,6 +17499,10 @@
             await loadWeeklyData();
             const dash = document.getElementById('view-dashboard');
             if (dash && !dash.classList.contains('hidden') && typeof renderLogisticsDashboard === 'function') {
+                // Con el panel abierto, cambiar de mes tiene que TRAER ese mes:
+                // loadWeeklyData solo trae los que necesita la tabla semanal,
+                // que puede estar filtrada por hoy o por un dia suelto.
+                if (typeof _dashAsegurarMesDelPanel === 'function') await _dashAsegurarMesDelPanel();
                 renderLogisticsDashboard();
                 if (typeof renderMetricasOperativas === 'function') renderMetricasOperativas();
             }
@@ -24834,8 +24838,37 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         async function refreshLogisticsDashboard() {
             await loadCostsData();
             await loadWeeklyData();
+            // El panel muestra el mes de SU selector, que no tiene por que ser
+            // el que esta mirando la semanal. Con la semanal en "Hoy" el store
+            // solo tiene el mes actual, y abrir el panel en septiembre daba
+            // todo en cero: los viajes de septiembre nunca se habian traido.
+            await _dashAsegurarMesDelPanel();
             renderLogisticsDashboard();
             renderMetricasOperativas();
+        }
+
+        /** Se asegura de que los viajes del mes que muestra el panel esten en
+         *  el store. No toca la tabla semanal: esa sigue con su propio filtro. */
+        async function _dashAsegurarMesDelPanel() {
+            const mes = (document.getElementById('dashboard-month-select')
+                || document.getElementById('planning-month-select'))?.value;
+            if (!mes) return;
+            const key = String(mes).toLowerCase() + '-' + nowBuenosAires().year;
+
+            const ts = __weeklyMonthsLoaded.get(key);
+            if (ts && (Date.now() - ts) < WEEKLY_CACHE_TTL_MS) return;
+            if (__weeklyMonthsLoading.has(key)) return;
+
+            __weeklyMonthsLoading.add(key);
+            try {
+                const n = await _weeklyFetchMonth(key);
+                console.log('[Panel] ' + key + ': ' + n + ' viajes');
+                _weeklyRebuildPlanningData();
+            } catch (e) {
+                console.warn('[Panel] no se pudo traer', key, e);
+            } finally {
+                __weeklyMonthsLoading.delete(key);
+            }
         }
 
         // ─── LO OPERATIVO: lo que cargan los choferes ────────────────────────
