@@ -114,7 +114,11 @@ export async function filasViajesPorIds(prisma: Prisma, ids: number[]) {
  *
  *  DESARROLLO no es un reparto a establecimientos: no tiene sentido pedirle
  *  una localidad, y dejarla en blanco en el Excel parecia un dato faltante.
- *  Por eso en vez de vacio se escribe la explicacion. */
+ *  Por eso en vez de vacio se escribe la explicacion.
+ *
+ *  OJO: esto vale para la LOCALIDAD, no para el partido. Un desarrollo si se
+ *  ubica en un partido -- es la unidad geografica con la que se maneja -- asi
+ *  que esa columna va con su valor como cualquier otro viaje. */
 export const UNIDADES_SIN_LOCALIDAD = ['DESARROLLO'];
 
 /** El viaje pertenece a una unidad que no lleva localidad.
@@ -130,7 +134,8 @@ export function sinLocalidadPorUnidad(businessUnit: string | null | undefined): 
     return lista.length === 1 && UNIDADES_SIN_LOCALIDAD.includes(lista[0]);
 }
 
-/** Lo que va en las columnas Localidad y Partido cuando la unidad no lleva. */
+/** Lo que va en la columna Localidad cuando la unidad no lleva. El Partido
+ *  NO usa esto: un desarrollo igual pertenece a un partido. */
 export const TEXTO_SIN_LOCALIDAD = 'No aplica \u2014 DESARROLLO no lleva localidad';
 
 const MESES_LIBRO = ['01 Enero', '02 Febrero', '03 Marzo', '04 Abril', '05 Mayo', '06 Junio',

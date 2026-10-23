@@ -1652,10 +1652,10 @@ app.post('/api/v1/trips/export-xlsx', async (req: any, res: any) => {
                 ...f,
                 Mes: mesDeFecha(f['Fecha']),
                 // El partido sale de la tabla de equivalencias que vive en la web.
-                // Si la unidad no lleva localidad, tampoco lleva partido.
-                Partido: sinLocalidadPorUnidad(f['Unidad de negocio'])
-                    ? TEXTO_SIN_LOCALIDAD
-                    : (c.partido || ''),
+                // DESARROLLO no lleva LOCALIDAD, pero si lleva partido: es la
+                // unidad geografica con la que se maneja. Antes se le borraban
+                // las dos y los desarrollos quedaban sin ubicar en ningun lado.
+                Partido: c.partido || '',
                 'Region UN': c.region || '',
                 'Categoria UN': c.categoria || ''
             };
