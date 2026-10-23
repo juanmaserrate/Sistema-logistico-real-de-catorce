@@ -7124,6 +7124,135 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
     }
 });
 
+/** DESARROLLO pasa a ser DESARROLLO LOMAS / LANUS / BROWN, segun el partido.
+ *
+ *  Un desarrollo no se reparte en una localidad, pero si pertenece a un
+ *  partido: es la unidad geografica con la que se maneja. Igual que SAE, que
+ *  ya esta abierto en SAE LANUS / SAE LOMAS / SAE BROWN.
+ *
+ *  El partido sale de las paradas del viaje: el que mas se repite. Si no se
+ *  puede determinar, el viaje NO se toca y se informa: ponerle uno a dedo
+ *  seria peor que dejarlo como esta.
+ *
+ *  Tambien corrige las paradas que digan "DESARROLLO" a secas: si la unidad
+ *  pasa a llamarse distinto, esa parada se queda huerfana.
+ *
+ *  POST /api/admin/desarrollo-por-partido { key, dryRun? } */
+app.post('/api/admin/desarrollo-por-partido', async (req: any, res: any) => {
+    const { key, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+
+    const norm = (x: any) => String(x ?? '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/).filter(Boolean).join(' ');
+
+    /** El partido, con el nombre corto que ya usa el catalogo (SAE LOMAS...). */
+    const corto = (texto: any): string | null => {
+        const t = norm(texto);
+        if (!t) return null;
+        if (t.includes('LOMAS')) return 'LOMAS';
+        if (t.includes('LANUS')) return 'LANUS';
+        if (t.includes('BROWN')) return 'BROWN';
+        return null;
+    };
+
+    try {
+        const viajes = await prisma.trip.findMany({
+            where: { businessUnit: { contains: 'DESARROLLO', mode: 'insensitive' } },
+            orderBy: { id: 'asc' },
+            select: {
+                id: true, date: true, reparto: true, driver: true, businessUnit: true,
+                zone: true, locality: true,
+                linkedRoute: {
+                    select: {
+                        stops: {
+                            orderBy: { sequence: 'asc' },
+                            select: {
+                                id: true, ruta: true,
+                                client: { select: { name: true, partido: true, localidad: true, zone: true } }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        const hechos: any[] = [];
+        const sinPartido: any[] = [];
+
+        for (const t of viajes as any[]) {
+            const unidades = unidadesDeTexto(t.businessUnit);
+            if (!unidades.includes('DESARROLLO')) continue;   // ya esta abierto
+
+            // El partido que mas se repite entre las paradas. Si no hay
+            // paradas con dato, se mira la zona del viaje.
+            const cuenta = new Map<string, number>();
+            const stops = t.linkedRoute?.stops || [];
+            for (const x of stops) {
+                const p = corto(x.client?.partido) || corto(x.client?.localidad) || corto(x.client?.zone);
+                if (p) cuenta.set(p, (cuenta.get(p) || 0) + 1);
+            }
+            let partido: string | null = null;
+            let apoyo = '';
+            if (cuenta.size) {
+                const orden = [...cuenta.entries()].sort((a, b) => b[1] - a[1]);
+                partido = orden[0][0];
+                apoyo = `${orden[0][1]}/${stops.length} paradas`;
+            } else {
+                partido = corto(t.zone) || corto(t.locality);
+                if (partido) apoyo = 'zona del viaje';
+            }
+
+            if (!partido) {
+                sinPartido.push({
+                    id: t.id, fecha: new Date(t.date).toISOString().slice(0, 10),
+                    reparto: t.reparto, chofer: t.driver, unidades: t.businessUnit,
+                    zona: t.zone || null, paradas: stops.map((x: any) => x.client?.name).slice(0, 8)
+                });
+                continue;
+            }
+
+            const nueva = `DESARROLLO ${partido}`;
+            const unidadesNuevas = unidades.map((u) => (u === 'DESARROLLO' ? nueva : u));
+            // Las paradas que decian DESARROLLO a secas pasan a la nueva
+            const paradasACambiar = stops
+                .filter((x: any) => norm(x.ruta) === 'DESARROLLO')
+                .map((x: any) => ({ stopId: x.id, parada: x.client?.name }));
+
+            hechos.push({
+                id: t.id, fecha: new Date(t.date).toISOString().slice(0, 10),
+                reparto: t.reparto, chofer: t.driver,
+                antes: t.businessUnit, ahora: unidadesNuevas.join(', '),
+                partido, apoyo, paradasACambiar
+            });
+        }
+
+        if (!dryRun) {
+            for (const h of hechos) {
+                await prisma.trip.update({ where: { id: h.id }, data: { businessUnit: h.ahora } });
+                for (const p of h.paradasACambiar) {
+                    await prisma.stop.update({ where: { id: p.stopId }, data: { ruta: `DESARROLLO ${h.partido}` } });
+                }
+            }
+            if (hechos.length) {
+                await logAction(req, 'UPDATE', 'Trip', hechos.map((h: any) => h.id).join(','),
+                    `DESARROLLO abierto por partido en ${hechos.length} viaje(s)`, null, { detalle: hechos });
+            }
+        }
+
+        res.json({
+            dryRun: !!dryRun,
+            viajes: hechos.length,
+            paradas: hechos.reduce((a: number, h: any) => a + h.paradasACambiar.length, 0),
+            hechos,
+            sinPartido
+        });
+    } catch (e: any) {
+        console.error('desarrollo-por-partido:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Le pone la unidad de negocio a paradas puntuales, nombradas una por una.
  *
  *  Para los viajes que no vienen de una ruta predefinida: ahi no hay plantilla

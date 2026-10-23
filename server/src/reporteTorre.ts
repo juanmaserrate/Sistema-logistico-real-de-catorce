@@ -131,7 +131,11 @@ export function sinLocalidadPorUnidad(businessUnit: string | null | undefined): 
         .split(',')
         .map((x) => x.trim().toUpperCase())
         .filter(Boolean);
-    return lista.length === 1 && UNIDADES_SIN_LOCALIDAD.includes(lista[0]);
+    if (lista.length !== 1) return false;
+    // Vale tambien para las abiertas por partido: DESARROLLO LOMAS sigue sin
+    // repartir en una localidad. Se compara por el principio del nombre para
+    // no tener que listarlas una por una cada vez que se abre otra.
+    return UNIDADES_SIN_LOCALIDAD.some((u) => lista[0] === u || lista[0].startsWith(u + ' '));
 }
 
 /** Lo que va en la columna Localidad cuando la unidad no lleva. El Partido
