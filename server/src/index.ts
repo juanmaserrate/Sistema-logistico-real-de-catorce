@@ -7186,8 +7186,15 @@ app.post('/api/admin/desarrollo-por-partido', async (req: any, res: any) => {
 
             // El partido que mas se repite entre las paradas. Si no hay
             // paradas con dato, se mira la zona del viaje.
+            //
+            // En un viaje de VARIAS unidades se miran SOLO las paradas que son
+            // del desarrollo. Si no, el partido podria salir de una parada de
+            // otra unidad: en los dos viajes RETIRO + DESARROLLO, el unico dato
+            // venia de MAXICONSUMO, que es la parada del RETIRO.
+            const todas = t.linkedRoute?.stops || [];
+            const delDesarrollo = todas.filter((x: any) => norm(x.ruta) === 'DESARROLLO');
+            const stops = (unidades.length > 1 && delDesarrollo.length) ? delDesarrollo : todas;
             const cuenta = new Map<string, number>();
-            const stops = t.linkedRoute?.stops || [];
             for (const x of stops) {
                 const p = corto(x.client?.partido) || corto(x.client?.localidad) || corto(x.client?.zone);
                 if (p) cuenta.set(p, (cuenta.get(p) || 0) + 1);
@@ -7215,7 +7222,7 @@ app.post('/api/admin/desarrollo-por-partido', async (req: any, res: any) => {
             const nueva = `DESARROLLO ${partido}`;
             const unidadesNuevas = unidades.map((u) => (u === 'DESARROLLO' ? nueva : u));
             // Las paradas que decian DESARROLLO a secas pasan a la nueva
-            const paradasACambiar = stops
+            const paradasACambiar = todas
                 .filter((x: any) => norm(x.ruta) === 'DESARROLLO')
                 .map((x: any) => ({ stopId: x.id, parada: x.client?.name }));
 
