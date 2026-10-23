@@ -7124,6 +7124,91 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
     }
 });
 
+/** Le pone la unidad de negocio a paradas puntuales, nombradas una por una.
+ *
+ *  Para los viajes que no vienen de una ruta predefinida: ahi no hay plantilla
+ *  contra la cual comparar y la unica forma es decir, parada por parada, de
+ *  quien es. Es lo mismo que hace el desplegable de la pantalla, pero en
+ *  tanda.
+ *
+ *  Verifica que la unidad sea UNA DE LAS DEL VIAJE: si no, la parada quedaria
+ *  igual de huerfana que antes y nadie se enteraria.
+ *
+ *  POST /api/admin/paradas-set-unidad
+ *  { key, items: [{ tripId, parada, unidad }], dryRun? } */
+app.post('/api/admin/paradas-set-unidad', async (req: any, res: any) => {
+    const { key, items, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Faltan items' });
+
+    const norm = (x: any) => String(x ?? '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/).filter(Boolean).join(' ');
+
+    try {
+        const ids = [...new Set(items.map((x: any) => Number(x.tripId)).filter(Number.isFinite))];
+        const viajes = await prisma.trip.findMany({
+            where: { id: { in: ids } },
+            select: {
+                id: true, businessUnit: true, reparto: true,
+                linkedRoute: {
+                    select: {
+                        stops: {
+                            orderBy: { sequence: 'asc' },
+                            select: { id: true, ruta: true, client: { select: { name: true } } }
+                        }
+                    }
+                }
+            }
+        });
+        const porId = new Map(viajes.map((t: any) => [t.id, t]));
+
+        const hechos: any[] = [];
+        const fallaron: any[] = [];
+
+        for (const it of items as any[]) {
+            const tripId = Number(it?.tripId);
+            const unidad = String(it?.unidad ?? '').trim().toUpperCase();
+            const quiero = norm(it?.parada);
+            const t: any = porId.get(tripId);
+
+            if (!t) { fallaron.push({ ...it, motivo: 'el viaje no existe' }); continue; }
+            const unidades = unidadesDeTexto(t.businessUnit);
+            if (!unidades.includes(unidad)) {
+                fallaron.push({ ...it, motivo: `"${unidad}" no es una unidad de este viaje (${unidades.join(' + ')})` });
+                continue;
+            }
+            const stops = t.linkedRoute?.stops || [];
+            const candidatos = stops.filter((x: any) => norm(x.client?.name) === quiero);
+            if (candidatos.length !== 1) {
+                fallaron.push({ ...it, motivo: candidatos.length ? 'hay mas de una parada con ese nombre' : 'no se encontro esa parada' });
+                continue;
+            }
+            const stop = candidatos[0];
+            hechos.push({
+                tripId, stopId: stop.id, parada: stop.client?.name,
+                antes: stop.ruta || null, ahora: unidad
+            });
+        }
+
+        if (!dryRun) {
+            for (const h of hechos) {
+                await prisma.stop.update({ where: { id: h.stopId }, data: { ruta: h.ahora } });
+            }
+            if (hechos.length) {
+                await logAction(req, 'UPDATE', 'Stop',
+                    [...new Set(hechos.map((h: any) => h.tripId))].join(','),
+                    `unidad de negocio puesta a mano en ${hechos.length} parada(s)`, null, { detalle: hechos });
+            }
+        }
+
+        res.json({ dryRun: !!dryRun, paradas: hechos.length, hechos, fallaron });
+    } catch (e: any) {
+        console.error('paradas-set-unidad:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Los viajes que reparten para VARIAS unidades y cuyas paradas no dicen de
  *  cual son. En esos, el reparto de horas manda todo a SIN UNIDAD.
  *
