@@ -3964,6 +3964,76 @@ app.delete('/api/v1/routes/:id', async (req, res) => {
     }
 });
 
+/** El chofer ya esta en otro viaje de ese mismo dia.
+ *
+ *  Un chofer no puede estar en dos viajes a la vez: ni arrancar los dos a la
+ *  misma hora, ni arrancar uno mientras el anterior sigue en camino. Cuando
+ *  pasa, las horas de los dos se cuentan por separado y el mes termina con
+ *  horas que nadie trabajo -- en octubre son 11 pares, unas 16 horas.
+ *
+ *  Solo mira el MISMO DIA a proposito. Un viaje que quedo abierto de ayer no
+ *  puede dejar al chofer sin poder arrancar hoy: eso lo frenaria en la calle
+ *  por un error de carga viejo.
+ *
+ *  Devuelve el viaje que esta en camino, o null si no hay.
+ */
+async function choferYaEnOtroViaje(tripId: number): Promise<any | null> {
+    const t = await prisma.trip.findUnique({
+        where: { id: tripId },
+        select: { id: true, date: true, driver: true, linkedRoute: { select: { driverId: true } } }
+    });
+    if (!t?.date) return null;
+
+    const norm = (v: any) => String(v ?? '').trim().toUpperCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/\s+/g, ' ');
+    const nombre = norm(t.driver);
+    const driverId = (t as any).linkedRoute?.driverId || null;
+    if (!nombre && !driverId) return null;
+
+    const dia = new Date(t.date);
+    const desde = new Date(Date.UTC(dia.getUTCFullYear(), dia.getUTCMonth(), dia.getUTCDate(), 0, 0, 0));
+    const hasta = new Date(Date.UTC(dia.getUTCFullYear(), dia.getUTCMonth(), dia.getUTCDate(), 23, 59, 59));
+
+    const abiertas = await prisma.route.findMany({
+        where: {
+            tripId: { not: tripId },
+            actualStartTime: { not: null },
+            actualEndTime: null,
+            date: { gte: desde, lte: hasta }
+        },
+        select: {
+            tripId: true, driverId: true, actualStartTime: true,
+            trip: { select: { id: true, driver: true, reparto: true } }
+        }
+    });
+
+    for (const r of abiertas as any[]) {
+        const mismoPorId = driverId && r.driverId && r.driverId === driverId;
+        const mismoPorNombre = nombre && norm(r.trip?.driver) === nombre;
+        if (mismoPorId || mismoPorNombre) {
+            return {
+                tripId: r.tripId,
+                reparto: r.trip?.reparto || null,
+                chofer: r.trip?.driver || null,
+                desde: r.actualStartTime
+            };
+        }
+    }
+    return null;
+}
+
+/** El texto del aviso, uno solo para las dos puertas. */
+function avisoChoferOcupado(otro: any): string {
+    const hora = otro?.desde
+        ? new Date(otro.desde).toLocaleTimeString('es-AR',
+            { hour: '2-digit', minute: '2-digit', timeZone: 'America/Argentina/Buenos_Aires' })
+        : null;
+    return `${otro?.chofer || 'Ese chofer'} ya está en el viaje #${otro?.tripId}`
+        + (otro?.reparto ? ` (${otro.reparto})` : '')
+        + (hora ? `, que arrancó ${hora} y sigue abierto` : ', que sigue abierto')
+        + '. Cerralo antes de arrancar este.';
+}
+
 /** Inicio / fin de recorrido real (app chofer). Valida que el chofer sea el asignado a la ruta. */
 app.patch('/api/v1/routes/:id/recorrido', async (req, res) => {
     try {
@@ -4037,6 +4107,21 @@ app.patch('/api/v1/routes/:id/recorrido', async (req, res) => {
                     } catch (e) { console.warn('[routes/recorrido start] sync trip skip:', e); }
                 }
                 return res.json(route);
+            }
+            // Un chofer no puede estar en dos viajes a la vez. Desde la app se
+            // frena igual que desde la web: si arranca el segundo, las horas de
+            // los dos se cuentan por separado y el mes queda con horas que nadie
+            // trabajo. Solo cuenta el MISMO DIA: un viaje que quedo abierto de
+            // ayer no puede dejarlo parado en la calle.
+            if (route.tripId) {
+                const ocupado = await choferYaEnOtroViaje(route.tripId);
+                if (ocupado) {
+                    return res.status(409).json({
+                        code: 'CHOFER_EN_OTRO_VIAJE',
+                        error: avisoChoferOcupado(ocupado),
+                        otroViaje: ocupado
+                    });
+                }
             }
             const updated = await prisma.route.update({
                 where: { id: routeId },
@@ -12661,6 +12746,15 @@ app.patch('/api/v1/trips/:tripId/recorrido-operador', async (req, res) => {
             }
             if (route.actualStartTime) {
                 return res.status(400).json({ error: 'El recorrido ya fue iniciado' });
+            }
+            // Un chofer no puede estar en dos viajes a la vez.
+            const ocupado = await choferYaEnOtroViaje(tripId);
+            if (ocupado) {
+                return res.status(409).json({
+                    code: 'CHOFER_EN_OTRO_VIAJE',
+                    error: avisoChoferOcupado(ocupado),
+                    otroViaje: ocupado
+                });
             }
             const updated = await prisma.route.update({
                 where: { id: route.id },
