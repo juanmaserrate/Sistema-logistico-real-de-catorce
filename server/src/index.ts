@@ -7209,6 +7209,189 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
     }
 });
 
+/** Le agrega a cada viaje la ruta SAM que le corresponde, como SEGUNDA ruta.
+ *
+ *  Las rutas SAM se llaman diciendo cuando van y con que reparto:
+ *  "SAM 4 VIERNES R17" = la SAM 4, los viernes, con el R17. Asi que para un
+ *  viaje del R17 de un viernes, esa es la que va.
+ *
+ *  Agrega la ruta a la lista del viaje, le suma su unidad de negocio y le
+ *  pone sus paradas al final, antes del deposito, con la ruta estampada.
+ *
+ *  No toca un viaje que ya arranco: ahi hay paradas marcadas por el chofer y
+ *  renumerar seria pisarle el trabajo.
+ *
+ *  POST /api/admin/agregar-sam { key, desde, hasta, dryRun? } */
+app.post('/api/admin/agregar-sam', async (req: any, res: any) => {
+    const { key, desde, hasta, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(desde || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(hasta || ''))) {
+        return res.status(400).json({ error: 'Faltan desde y hasta (YYYY-MM-DD)' });
+    }
+
+    const norm = (x: any) => String(x ?? '')
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .toUpperCase().replace(/[^A-Z0-9 ]/g, ' ').split(/\s+/).filter(Boolean).join(' ');
+
+    // "MIECOLES" esta mal escrito en una plantilla; se acepta igual.
+    const DIAS: Record<string, number> = {
+        DOMINGO: 0, LUNES: 1, MARTES: 2, MIERCOLES: 3, MIECOLES: 3,
+        JUEVES: 4, VIERNES: 5, SABADO: 6
+    };
+
+    try {
+        const plantillas = await (prisma as any).routeTemplate.findMany({
+            select: { name: true, businessUnit: true, stops: { orderBy: { sequence: 'asc' }, select: { name: true } } }
+        });
+
+        /** De "SAM 4 VIERNES R17" saca el dia (5) y el reparto ("R17"). */
+        const sams: any[] = [];
+        for (const t of plantillas) {
+            const n = norm(t.name);
+            if (!n.startsWith('SAM')) continue;
+            const palabras = n.split(' ');
+            let dia: number | null = null;
+            for (const p of palabras) if (DIAS[p] !== undefined) { dia = DIAS[p]; break; }
+            const reparto = palabras[palabras.length - 1];
+            if (dia === null || !reparto) continue;
+            sams.push({ nombre: String(t.name).trim(), dia, reparto, unidad: norm(t.businessUnit), stops: t.stops || [] });
+        }
+
+        // El directorio, para resolver los nombres de la plantilla
+        const clients = await prisma.client.findMany({ select: { id: true, name: true } });
+        const porNombre = new Map<string, { id: string; name: string }>();
+        for (const c of clients) {
+            const k = normClientNameForMatch(c.name);
+            if (k && !porNombre.has(k)) porNombre.set(k, c);
+        }
+
+        const viajes = await prisma.trip.findMany({
+            where: {
+                date: {
+                    gte: new Date(String(desde) + 'T00:00:00.000Z'),
+                    lte: new Date(String(hasta) + 'T23:59:59.999Z')
+                }
+            },
+            orderBy: [{ date: 'asc' }, { id: 'asc' }],
+            select: {
+                id: true, date: true, reparto: true, rutas: true, driver: true,
+                businessUnit: true, assignedMobileUser: true,
+                linkedRoute: {
+                    select: {
+                        id: true, actualStartTime: true,
+                        stops: {
+                            orderBy: { sequence: 'asc' },
+                            select: { id: true, sequence: true, clientId: true, isReturnToBase: true, client: { select: { name: true } } }
+                        }
+                    }
+                }
+            }
+        });
+
+        const hechos: any[] = [];
+        const saltados: any[] = [];
+
+        for (const t of viajes as any[]) {
+            const rep = norm(t.reparto);
+            if (!rep) continue;
+            // El dia de la semana en Buenos Aires, no en UTC
+            const ymd = new Date(t.date).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+            const [aa, mm, dd] = ymd.split('-').map(Number);
+            const dow = new Date(Date.UTC(aa, mm - 1, dd)).getUTCDay();
+
+            const candidatas = sams.filter((x) => x.dia === dow && x.reparto === rep);
+            if (!candidatas.length) continue;
+
+            const yaTiene = Array.isArray(t.rutas) ? t.rutas.map((r: any) => norm(r)) : [];
+            const nuevas = candidatas.filter((x) => !yaTiene.includes(norm(x.nombre)));
+            if (!nuevas.length) { saltados.push({ id: t.id, fecha: ymd, reparto: t.reparto, motivo: 'ya tiene su SAM' }); continue; }
+
+            const ruta = t.linkedRoute;
+            if (!ruta) { saltados.push({ id: t.id, fecha: ymd, reparto: t.reparto, motivo: 'el viaje no tiene paradas cargadas' }); continue; }
+            if (ruta.actualStartTime) { saltados.push({ id: t.id, fecha: ymd, reparto: t.reparto, motivo: 'el viaje ya arranco, no se toca' }); continue; }
+
+            const stops = ruta.stops || [];
+            const yaEstan = new Set(stops.map((x: any) => x.clientId));
+            const agregar: any[] = [];
+            const sinMatch: string[] = [];
+            for (const c of nuevas) {
+                for (const st of c.stops) {
+                    const cl = porNombre.get(normClientNameForMatch(st.name));
+                    if (!cl) { sinMatch.push(st.name); continue; }
+                    if (yaEstan.has(cl.id)) continue;
+                    yaEstan.add(cl.id);
+                    agregar.push({ clientId: cl.id, parada: cl.name, ruta: c.nombre });
+                }
+            }
+
+            const rutasFinales = [
+                ...(Array.isArray(t.rutas) ? t.rutas.map((r: any) => String(r)) : (t.reparto ? [String(t.reparto)] : [])),
+                ...nuevas.map((x) => x.nombre)
+            ];
+            const unidades = unidadesDeTexto(t.businessUnit);
+            for (const c of nuevas) if (c.unidad && !unidades.includes(c.unidad)) unidades.push(c.unidad);
+
+            hechos.push({
+                id: t.id, fecha: ymd, reparto: t.reparto, chofer: t.driver, usuarioApp: t.assignedMobileUser,
+                sam: nuevas.map((x) => x.nombre),
+                rutasAntes: Array.isArray(t.rutas) ? t.rutas : null,
+                rutasDespues: rutasFinales,
+                unidadesAntes: t.businessUnit,
+                unidadesDespues: unidades.join(', '),
+                paradasAntes: stops.length,
+                agregar, sinMatch,
+                _routeId: ruta.id, _stops: stops
+            });
+        }
+
+        if (!dryRun) {
+            for (const h of hechos) {
+                await prisma.trip.update({
+                    where: { id: h.id },
+                    data: { rutas: h.rutasDespues as any, businessUnit: h.unidadesDespues }
+                });
+                // Las paradas nuevas van antes del deposito, y se renumera todo
+                const stops = h._stops;
+                const base = stops.find((x: any) => x.isReturnToBase) || null;
+                const orden: any[] = [];
+                for (const x of stops) { if (!base || x.id !== base.id) orden.push({ id: x.id }); }
+                for (const a of h.agregar) orden.push({ clientId: a.clientId, ruta: a.ruta });
+                if (base) orden.push({ id: base.id });
+
+                let sec = 0;
+                for (const o of orden) {
+                    sec++;
+                    if (o.id) await prisma.stop.update({ where: { id: o.id }, data: { sequence: sec } });
+                    else await prisma.stop.create({
+                        data: {
+                            routeId: h._routeId, clientId: o.clientId, sequence: sec,
+                            status: 'PENDING', ruta: o.ruta, isReturnToBase: false
+                        }
+                    });
+                }
+            }
+            if (hechos.length) {
+                await logAction(req, 'UPDATE', 'Trip', hechos.map((h: any) => h.id).join(','),
+                    `ruta SAM agregada a ${hechos.length} viaje(s)`, null,
+                    { detalle: hechos.map((h: any) => ({ id: h.id, sam: h.sam, paradas: h.agregar.length })) });
+            }
+        }
+
+        res.json({
+            dryRun: !!dryRun,
+            desde, hasta,
+            plantillasSam: sams.length,
+            viajes: hechos.length,
+            paradas: hechos.reduce((a: number, h: any) => a + h.agregar.length, 0),
+            hechos: hechos.map(({ _routeId, _stops, ...r }: any) => r),
+            saltados
+        });
+    } catch (e: any) {
+        console.error('agregar-sam:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** DESARROLLO pasa a ser DESARROLLO LOMAS / LANUS / BROWN, segun el partido.
  *
  *  Un desarrollo no se reparte en una localidad, pero si pertenece a un
