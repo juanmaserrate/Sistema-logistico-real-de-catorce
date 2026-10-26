@@ -7209,6 +7209,87 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
     }
 });
 
+/** Quien visito de verdad una parada.
+ *
+ *  Sirve para contestar "esta ruta, ¿de que reparto es?" mirando los viajes
+ *  que ya pasaron en vez de deducirlo del nombre de la plantilla, que puede
+ *  estar mal escrito.
+ *
+ *  Solo lee.
+ *  POST /api/admin/quien-visita { key, paradas: ["NOMBRE", ...], desde?, hasta? } */
+app.post('/api/admin/quien-visita', async (req: any, res: any) => {
+    const { key, paradas, desde, hasta } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!Array.isArray(paradas) || !paradas.length) return res.status(400).json({ error: 'Faltan paradas' });
+
+    const DIAS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
+
+    try {
+        const buscadas = paradas.map((p: any) => normClientNameForMatch(p)).filter(Boolean);
+        const clientes = await prisma.client.findMany({ select: { id: true, name: true } });
+        const ids = clientes
+            .filter((c) => buscadas.includes(normClientNameForMatch(c.name)))
+            .map((c) => ({ id: c.id, name: c.name }));
+        if (!ids.length) return res.json({ encontradas: 0, paradas: [], aviso: 'Ninguna de esas paradas existe en el directorio' });
+
+        const where: any = { clientId: { in: ids.map((x) => x.id) } };
+        if (desde || hasta) {
+            where.route = { date: {} };
+            if (desde) where.route.date.gte = new Date(String(desde) + 'T00:00:00.000Z');
+            if (hasta) where.route.date.lte = new Date(String(hasta) + 'T23:59:59.999Z');
+        }
+
+        const stops = await prisma.stop.findMany({
+            where,
+            select: {
+                ruta: true,
+                client: { select: { name: true } },
+                route: {
+                    select: {
+                        date: true,
+                        trip: { select: { id: true, date: true, reparto: true, driver: true, businessUnit: true } }
+                    }
+                }
+            }
+        });
+
+        // Resumen: por reparto y por dia de la semana
+        const porReparto = new Map<string, any>();
+        const detalle: any[] = [];
+        for (const st of stops as any[]) {
+            const t = st.route?.trip;
+            if (!t) continue;
+            const ymd = new Date(t.date).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+            const [aa, mm, dd] = ymd.split('-').map(Number);
+            const dia = DIAS[new Date(Date.UTC(aa, mm - 1, dd)).getUTCDay()];
+            const rep = String(t.reparto || 'SIN REPARTO').trim().toUpperCase();
+
+            const k = `${rep}|${dia}`;
+            const v = porReparto.get(k) || { reparto: rep, dia, viajes: new Set(), paradas: 0 };
+            v.viajes.add(t.id);
+            v.paradas++;
+            porReparto.set(k, v);
+
+            detalle.push({
+                tripId: t.id, fecha: ymd, dia, reparto: t.reparto,
+                chofer: t.driver, parada: st.client?.name, rutaDeLaParada: st.ruta || null
+            });
+        }
+
+        res.json({
+            encontradas: ids.length,
+            paradas: ids.map((x) => x.name),
+            resumen: [...porReparto.values()]
+                .map((v) => ({ reparto: v.reparto, dia: v.dia, viajes: v.viajes.size, paradas: v.paradas }))
+                .sort((a, b) => b.viajes - a.viajes),
+            detalle: detalle.sort((a, b) => String(b.fecha).localeCompare(String(a.fecha))).slice(0, 120)
+        });
+    } catch (e: any) {
+        console.error('quien-visita:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Le agrega a cada viaje la ruta SAM que le corresponde, como SEGUNDA ruta.
  *
  *  Las rutas SAM se llaman diciendo cuando van y con que reparto:
