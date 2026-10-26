@@ -7223,7 +7223,7 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
  *
  *  POST /api/admin/agregar-sam { key, desde, hasta, dryRun? } */
 app.post('/api/admin/agregar-sam', async (req: any, res: any) => {
-    const { key, desde, hasta, dryRun } = req.body || {};
+    const { key, desde, hasta, dryRun, excluir } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(String(desde || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(hasta || ''))) {
         return res.status(400).json({ error: 'Faltan desde y hasta (YYYY-MM-DD)' });
@@ -7254,6 +7254,8 @@ app.post('/api/admin/agregar-sam', async (req: any, res: any) => {
             for (const p of palabras) if (DIAS[p] !== undefined) { dia = DIAS[p]; break; }
             const reparto = palabras[palabras.length - 1];
             if (dia === null || !reparto) continue;
+            // Plantillas que se piden dejar afuera: duplicadas o mal nombradas.
+            if (Array.isArray(excluir) && excluir.some((e: any) => norm(e) === n)) continue;
             sams.push({ nombre: String(t.name).trim(), dia, reparto, unidad: norm(t.businessUnit), stops: t.stops || [] });
         }
 
