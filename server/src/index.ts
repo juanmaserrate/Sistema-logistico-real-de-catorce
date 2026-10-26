@@ -6224,7 +6224,9 @@ app.post('/api/admin/create-trip-from-template', async (req: any, res: any) => {
                 tripType: template.name,
                 vehicleType: vehicleType ? String(vehicleType) : null,
                 zone: zone ? String(zone) : null,
-                businessUnit: businessUnit ? String(businessUnit) : null,
+                // La unidad sale de la ruta predefinida. Se puede pisar a mano,
+                // pero no se deja vacia: la ruta ya sabe de quien es.
+                businessUnit: businessUnit ? String(businessUnit) : (template.businessUnit || null),
                 contractType: contractType ? String(contractType) : 'Propio',
                 status: 'PENDING',
                 priority: '1'
@@ -6238,12 +6240,19 @@ app.post('/api/admin/create-trip-from-template', async (req: any, res: any) => {
         // Vuelta al deposito como ultima parada: sin ella el viaje no cierra solo
         const base = await ensureBaseClient(tenantId);
         if (base && clientIds[clientIds.length - 1] !== base.id) clientIds.push(base.id);
-        await prisma.$transaction(clientIds.map((clientId, idx) => prisma.stop.create({
-            data: {
-                routeId: route.id, clientId, sequence: idx + 1, status: 'PENDING',
-                isReturnToBase: !!base && clientId === base.id && idx === clientIds.length - 1
-            }
-        })));
+        // Cada parada se queda con la ruta de la que vino. Sin eso, despues
+        // nadie puede decir de que unidad de negocio es: ni la hoja de ruta, ni
+        // el reparto de horas, ni el exportable. El deposito no es de ninguna.
+        await prisma.$transaction(clientIds.map((clientId, idx) => {
+            const esBase = !!base && clientId === base.id && idx === clientIds.length - 1;
+            return prisma.stop.create({
+                data: {
+                    routeId: route.id, clientId, sequence: idx + 1, status: 'PENDING',
+                    ruta: esBase ? null : template.name,
+                    isReturnToBase: esBase
+                }
+            });
+        }));
 
         io.emit('trip:created', { trip });
         notifyDriver(chofer.username, 'Nuevo viaje asignado', `Tenés un viaje asignado para ${ymd}`, { tripId: trip.id });
@@ -8031,10 +8040,11 @@ app.post('/api/admin/sumar-paradas-de-ruta', async (req: any, res: any) => {
  *
  *  POST /api/admin/paradas-rellenar-ruta { key, ids: [tripId], dryRun? } */
 app.post('/api/admin/paradas-rellenar-ruta', async (req: any, res: any) => {
-    const { key, ids, dryRun } = req.body || {};
+    const { key, ids, desde, hasta, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     const lista = Array.isArray(ids) ? ids.map(Number).filter(Number.isFinite) : [];
-    if (!lista.length) return res.status(400).json({ error: 'Faltan ids' });
+    const porFecha = /^\d{4}-\d{2}-\d{2}$/.test(String(desde || '')) && /^\d{4}-\d{2}-\d{2}$/.test(String(hasta || ''));
+    if (!lista.length && !porFecha) return res.status(400).json({ error: 'Faltan ids o desde/hasta' });
 
     const norm = (x: any) => String(x ?? '')
         .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -8054,7 +8064,14 @@ app.post('/api/admin/paradas-rellenar-ruta', async (req: any, res: any) => {
         }
 
         const viajes = await prisma.trip.findMany({
-            where: { id: { in: lista } },
+            where: lista.length
+                ? { id: { in: lista } }
+                : {
+                    date: {
+                        gte: new Date(String(desde) + 'T00:00:00.000Z'),
+                        lte: new Date(String(hasta) + 'T23:59:59.999Z')
+                    }
+                },
             select: {
                 id: true, date: true, reparto: true, businessUnit: true,
                 linkedRoute: {
@@ -8075,19 +8092,27 @@ app.post('/api/admin/paradas-rellenar-ruta', async (req: any, res: any) => {
             const plant = porNombre.get(rep);
             if (!plant) { saltados.push({ id: t.id, reparto: t.reparto, motivo: 'el reparto no es una ruta predefinida' }); continue; }
             const unidades = unidadesDeTexto(t.businessUnit);
-            // La "otra" unidad: la del viaje que no es la de la ruta
+            // La "otra" unidad: la del viaje que no es la de la ruta.
+            //
+            // Con UNA sola unidad no hay "otra", y esta bien: todas las paradas
+            // son del reparto. Antes esos viajes se saltaban enteros y se
+            // quedaban sin la ruta estampada, que es justo lo que despues hace
+            // falta para repartir las horas y para imprimir la hoja.
             const otras = unidades.filter((u) => u !== plant.unidad);
-            if (otras.length !== 1) {
-                saltados.push({ id: t.id, reparto: t.reparto, motivo: `no hay UNA sola otra unidad (${t.businessUnit})` });
+            if (otras.length > 1) {
+                saltados.push({ id: t.id, reparto: t.reparto, motivo: `hay mas de una otra unidad (${t.businessUnit})` });
                 continue;
             }
-            const otra = otras[0];
+            const otra = otras[0] || null;
 
             const cambios: any[] = [];
             for (const p of (t.linkedRoute?.stops || [])) {
                 if (esBase(p.client?.name)) continue;
                 if (String(p.ruta || '').trim()) continue;         // ya tiene, no se pisa
                 const dentro = plant.paradas.has(norm(p.client?.name));
+                // Una parada que no esta en la plantilla y no hay otra unidad a
+                // la cual mandarla se deja como esta: inventarle una seria peor.
+                if (!dentro && !otra) continue;
                 const ruta = dentro ? String(t.reparto).trim() : otra;
                 cambios.push({ stopId: p.id, parada: p.client?.name, dentroDeLaRuta: dentro, ruta });
             }

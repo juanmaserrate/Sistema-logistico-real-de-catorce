@@ -16766,10 +16766,15 @@
                     alert(j.message || 'No se pudo cargar la plantilla.');
                     return;
                 }
+                // La parada se queda con la ruta de la que vino. Sin esto, traer
+                // la plantilla desde aca le borraba la ruta a todas y el viaje
+                // volvia a quedar SIN UNIDAD.
                 weeklyTripStopsBuffers[tripId] = j.stops.map((s) => ({
                     clientId: s.clientId,
                     name: s.name,
-                    address: s.address || ''
+                    address: s.address || '',
+                    ruta: String(reparto || '').trim().toUpperCase() || null,
+                    unidad: null
                 }));
                 weeklyTripStopsFetched[tripId] = true;
                 if (j.unmatched && j.unmatched.length && typeof addNotification === 'function') {
