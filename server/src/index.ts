@@ -6303,6 +6303,114 @@ app.get('/api/admin/clients-dump', async (req: any, res: any) => {
  *
  *  POST /api/admin/clientes-set-coordenadas
  *       { key, coords: [{ id, lat, lon, origen? }], dryRun?, pisar? } */
+/** Donde estuvo el camion cuando el chofer marco esta parada.
+ *
+ *  Para un establecimiento al que nadie le cargo la direccion, el rastro del
+ *  GPS es lo unico que dice donde queda de verdad. Se juntan los puntos de
+ *  todas las visitas y se buscan los que estan quietos: un camion parado
+ *  varios minutos en el mismo lugar esta entregando.
+ *
+ *  OJO: esto NO vale si el chofer cerro la parada desde otro lado (pasa
+ *  cuando marca varias juntas al volver al deposito). Por eso devuelve las
+ *  visitas una por una, con su hora y su velocidad, para poder mirarlas
+ *  antes de creerles.
+ *
+ *  Solo lee. No escribe ninguna coordenada.
+ *  POST /api/admin/rastro-de-parada { key, nombres: ["J. LUCECITAS", ...] } */
+app.post('/api/admin/rastro-de-parada', async (req: any, res: any) => {
+    const { key, nombres } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!Array.isArray(nombres) || !nombres.length) return res.status(400).json({ error: 'Faltan nombres' });
+
+    const hhmm = (d: Date | null) => d
+        ? new Date(d).toLocaleString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires',
+            day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false })
+        : '--';
+    /** Metros entre dos puntos. */
+    const metros = (a: any, b: any) => {
+        const R = 6371000, g = Math.PI / 180;
+        const dLat = (b.lat - a.lat) * g, dLon = (b.lon - a.lon) * g;
+        const x = Math.sin(dLat / 2) ** 2
+            + Math.cos(a.lat * g) * Math.cos(b.lat * g) * Math.sin(dLon / 2) ** 2;
+        return 2 * R * Math.asin(Math.sqrt(x));
+    };
+
+    try {
+        const clientes = await prisma.client.findMany({
+            select: { id: true, name: true, latitude: true, longitude: true }
+        });
+        const buscados = nombres.map((n: any) => normClientNameForMatch(n));
+        const elegidos = clientes.filter((c) => buscados.includes(normClientNameForMatch(c.name)));
+        if (!elegidos.length) return res.json({ error: 'Ninguno de esos nombres esta en el directorio' });
+
+        const salida: any[] = [];
+        for (const c of elegidos) {
+            const paradas = await prisma.stop.findMany({
+                where: { clientId: c.id, actualArrival: { not: null } },
+                orderBy: { actualArrival: 'desc' },
+                take: 40,
+                select: {
+                    actualArrival: true, actualDeparture: true,
+                    route: { select: { id: true, trip: { select: { id: true, reparto: true, driver: true } } } }
+                }
+            });
+
+            const visitas: any[] = [];
+            for (const p of paradas as any[]) {
+                if (!p.route?.id) continue;
+                const desde = new Date(new Date(p.actualArrival).getTime() - 3 * 60000);
+                const hasta = new Date(new Date(p.actualDeparture || p.actualArrival).getTime() + 3 * 60000);
+                const puntos = await prisma.deviceLocation.findMany({
+                    where: { routeId: p.route.id, timestamp: { gte: desde, lte: hasta } },
+                    orderBy: { timestamp: 'asc' },
+                    select: { latitude: true, longitude: true, speed: true, accuracy: true, timestamp: true }
+                });
+                if (!puntos.length) continue;
+                // El centro de lo que se quedo quieto
+                const quietos = puntos.filter((x: any) => x.speed == null || x.speed < 1.5);
+                const base = quietos.length ? quietos : puntos;
+                const lat = base.reduce((a: number, x: any) => a + x.latitude, 0) / base.length;
+                const lon = base.reduce((a: number, x: any) => a + x.longitude, 0) / base.length;
+                const disperso = Math.max(0, ...base.map((x: any) => metros({ lat, lon }, { lat: x.latitude, lon: x.longitude })));
+                visitas.push({
+                    viaje: p.route.trip?.id, reparto: p.route.trip?.reparto, chofer: p.route.trip?.driver,
+                    cuando: hhmm(p.actualArrival),
+                    puntos: puntos.length, quietos: quietos.length,
+                    lat: Number(lat.toFixed(6)), lon: Number(lon.toFixed(6)),
+                    dispersionM: Math.round(disperso)
+                });
+            }
+
+            // Si varias visitas caen en el mismo lugar, ese lugar es el bueno
+            let propuesta: any = null;
+            const firmes = visitas.filter((v) => v.dispersionM <= 150 && v.quietos >= 2);
+            if (firmes.length >= 2) {
+                const lat = firmes.reduce((a, v) => a + v.lat, 0) / firmes.length;
+                const lon = firmes.reduce((a, v) => a + v.lon, 0) / firmes.length;
+                const entreSi = Math.max(0, ...firmes.map((v) => metros({ lat, lon }, v)));
+                propuesta = {
+                    lat: Number(lat.toFixed(6)), lon: Number(lon.toFixed(6)),
+                    visitasQueCoinciden: firmes.length, separacionM: Math.round(entreSi),
+                    confiable: entreSi <= 120
+                };
+            }
+
+            salida.push({
+                nombre: c.name,
+                yaUbicada: c.latitude != null && c.longitude != null,
+                visitasConRastro: visitas.length,
+                propuesta,
+                visitas: visitas.slice(0, 15)
+            });
+        }
+
+        res.json({ resultados: salida });
+    } catch (e: any) {
+        console.error('rastro-de-parada:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/admin/clientes-set-coordenadas', async (req: any, res: any) => {
     const { key, coords, dryRun, pisar } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
