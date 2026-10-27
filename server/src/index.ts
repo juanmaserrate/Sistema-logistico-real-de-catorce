@@ -8313,6 +8313,8 @@ app.get('/api/admin/paradas-de-viajes', async (req: any, res: any) => {
             select: {
                 id: true, date: true, reparto: true, driver: true, businessUnit: true,
                 exitTime: true, returnTime: true, contractType: true, value: true,
+                rutas: true, auxiliar: true, auxiliar2: true, auxiliar3: true,
+                vehicleType: true, isRefrigerated: true, temperature: true,
                 linkedRoute: {
                     select: {
                         actualStartTime: true, actualEndTime: true,
@@ -8320,6 +8322,7 @@ app.get('/api/admin/paradas-de-viajes', async (req: any, res: any) => {
                             orderBy: { sequence: 'asc' },
                             select: {
                                 id: true, sequence: true, status: true, ruta: true,
+                                isReturnToBase: true,
                                 actualArrival: true, actualDeparture: true,
                                 client: { select: { name: true } }
                             }
@@ -8334,11 +8337,16 @@ app.get('/api/admin/paradas-de-viajes', async (req: any, res: any) => {
                 fecha: new Date(t.date).toISOString().slice(0, 10),
                 reparto: t.reparto, chofer: t.driver, unidad: t.businessUnit,
                 contrato: t.contractType, valor: Number(t.value) || 0,
+                rutas: t.rutas ?? null,
+                auxiliar: [t.auxiliar, t.auxiliar2, t.auxiliar3].filter(Boolean).join(' / ') || null,
+                vehiculo: t.vehicleType || null,
+                refrigerado: !!t.isRefrigerated, temperatura: t.temperature ?? null,
                 exitTime: t.exitTime, returnTime: t.returnTime,
                 gpsInicio: t.linkedRoute?.actualStartTime ?? null,
                 gpsFin: t.linkedRoute?.actualEndTime ?? null,
                 paradas: (t.linkedRoute?.stops || []).map((p: any) => ({
                     sec: p.sequence, nombre: p.client?.name || '', estado: p.status, ruta: p.ruta,
+                    deposito: !!p.isReturnToBase,
                     llegada: p.actualArrival, salida: p.actualDeparture
                 }))
             }))

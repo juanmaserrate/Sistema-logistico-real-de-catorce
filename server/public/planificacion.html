@@ -18081,7 +18081,7 @@
   .stops td { height: 24px; }
   .stops .n { width: 22px; text-align: center; color: #888; }
   .stops .dest { font-weight: bold; }
-  .stops .hr { width: 70px; }
+  .stops .hr { width: 70px; text-align: center; font-weight: bold; color: #1B2559; }
   .stops .mot { width: 96px; text-align: center; color: #b45309; font-weight: bold; font-size: 9px; line-height: 1.15; }
   .depot td { background: #F4F7FE; font-weight: bold; }
   .bloque td { background: #E8ECF8; color: #1B2559; font-weight: bold; font-size: 9px; height: 16px;
@@ -18191,8 +18191,22 @@
             // entero. En un viaje que reparte para dos unidades, poner la misma
             // en todas las filas seria mentir, y esa columna es justamente la
             // que mira el deposito para saber a quien le corresponde cada cosa.
+            // Hora de Buenos Aires. Una hoja que se imprime a las 7 de la
+            // manana no puede decir 10:14 porque el dato viene en UTC.
+            const hora = (iso) => {
+                if (!iso) return '';
+                try {
+                    return new Date(iso).toLocaleTimeString('es-AR', {
+                        timeZone: 'America/Argentina/Buenos_Aires',
+                        hour: '2-digit', minute: '2-digit', hour12: false
+                    });
+                } catch (_) { return ''; }
+            };
+
             const paradas = (stops || []).map((s) => ({
                 name: s.name || s.clientId || '',
+                llegada: hora(s.actualArrival),
+                salida: hora(s.actualDeparture),
                 ruta: String(s.ruta || '').trim(),
                 // Cuando no se puede saber de cual es -- una parada vieja sin
                 // ruta en un viaje de dos unidades -- se imprimen todas las del
@@ -18204,7 +18218,8 @@
             const variasRutas = new Set(paradas.map((p) => p.ruta).filter(Boolean)).size > 1;
 
             // Filas: depósito (salida) + paradas. 1ra fila tacha HR LLEGADA; última tacha HR SALIDA.
-            const rows = [{ name: 'REAL DE CATORCE — SALIDA DEPÓSITO', depot: true }];
+            const rows = [{ name: 'REAL DE CATORCE — SALIDA DEPÓSITO', depot: true,
+                            salida: hora(trip.routeActualStart) }];
             let rutaAnterior = null;
             let nro = 0;
             for (const p of paradas) {
@@ -18222,8 +18237,11 @@
                 if (r.bloque) {
                     return `<tr class="bloque"><td colspan="6">${esc(r.name)}${r.unidad ? ' &middot; ' + esc(r.unidad) : ''}</td></tr>`;
                 }
-                const lleg = i === 0 ? '<td class="hr na"></td>' : '<td class="hr"></td>';
-                const sal = i === last ? '<td class="hr na"></td>' : '<td class="hr"></td>';
+                // Un viaje ya hecho es un registro, no un formulario: las horas
+                // que marco el chofer van impresas. Las que faltan quedan en
+                // blanco, asi la misma hoja sirve para salir y para archivar.
+                const lleg = i === 0 ? '<td class="hr na"></td>' : `<td class="hr">${esc(r.llegada || '')}</td>`;
+                const sal = i === last ? '<td class="hr na"></td>' : `<td class="hr">${esc(r.salida || '')}</td>`;
                 return `<tr class="${r.depot ? 'depot' : ''}">
                     <td class="n">${r.depot ? '' : r.nro}</td>
                     <td class="dest">${esc(r.name)}</td>
