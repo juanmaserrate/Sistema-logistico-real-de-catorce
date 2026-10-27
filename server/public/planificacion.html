@@ -1003,7 +1003,7 @@
                         <h3 class="text-2xl font-bold text-[#1B2559]">Panel logístico</h3>
                     </div>
                     <div class="flex flex-wrap items-center gap-3">
-                        <select id="dashboard-month-select" onchange="syncPlanningMonth(this.value)" class="bg-white border-0 rounded-2xl px-5 py-4 text-xs font-bold text-[#1B2559] shadow-sm outline-none hover:bg-[#F4F7FE] cursor-pointer">
+                        <select id="dashboard-month-select" onchange="syncPlanningMonth(this.value)" class="bg-white border-0 rounded-2xl px-5 py-4 text-xs font-bold text-[#1B2559] shadow-sm outline-none hover:bg-[#F4F7FE] cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">
                             <option value="enero">Enero 2026</option>
                             <option value="febrero">Febrero 2026</option>
                             <option value="marzo">Marzo 2026</option>
@@ -1017,6 +1017,12 @@
                             <option value="noviembre">Noviembre 2026</option>
                             <option value="diciembre">Diciembre 2026</option>
                         </select>
+                        <div class="flex bg-[#F4F7FE] rounded-full p-1" title="Todo el panel — tarjetas, gráficos y tablas — se arma con el período que elijas acá">
+                            <button type="button" id="btn-unidades-mes" onclick="verUnidades('mes')"
+                                    class="px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider">Mes</button>
+                            <button type="button" id="btn-unidades-anio" onclick="verUnidades('anio')"
+                                    class="px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider">Año</button>
+                        </div>
                         <button type="button" onclick="refreshLogisticsDashboard()" class="px-5 py-4 rounded-2xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 flex items-center gap-2">
                             <i data-lucide="refresh-cw" class="w-4 h-4"></i> Actualizar
                         </button>
@@ -1051,7 +1057,7 @@
                     <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-6">
                         <div>
                             <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest">Evolución de costo logístico</h4>
-                            <p class="text-xs text-[#A3AED0] font-medium mt-1">Propio y tercerizado por día (áreas superpuestas)</p>
+                            <p id="dash-overlap-sub" class="text-xs text-[#A3AED0] font-medium mt-1">Propio y tercerizado por día (áreas superpuestas)</p>
                         </div>
                     </div>
                     <div class="relative h-[320px] w-full">
@@ -1152,6 +1158,24 @@
                                 </table>
                             </div>
                         </div>
+                    </div>
+                </div>
+
+                <!-- COSTO POR UNIDAD DE NEGOCIO (vino del Motor de Costos) -->
+                <div class="card-dark p-5">
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-[#F4F7FE]">
+                        <div class="min-w-0">
+                            <h4 class="text-base font-black text-[#1B2559] tracking-tight">Costo por unidad de negocio</h4>
+                            <p class="text-[11px] text-[#A3AED0] font-medium mt-0.5">
+                                El costo que los viajes tienen cargado hoy, abierto por quién lo gastó. Un viaje
+                                que reparte para dos unidades le deja a cada una sus horas: las partes suman el
+                                total, no lo repiten. Lo calcula el servidor, no esta pantalla.
+                            </p>
+                        </div>
+                        <span id="costs-unidades-cuando" class="text-[10px] font-bold text-[#A3AED0]"></span>
+                    </div>
+                    <div class="overflow-x-auto">
+                        <table class="w-full text-[11px] border-collapse" id="costs-unidades-tabla"></table>
                     </div>
                 </div>
 
@@ -1743,31 +1767,6 @@
                     </div>
                 </div>
 
-                <!-- COSTO POR UNIDAD DE NEGOCIO -->
-                <div class="card-dark p-5">
-                    <div class="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-[#F4F7FE]">
-                        <div class="min-w-0">
-                            <h4 class="text-base font-black text-[#1B2559] tracking-tight">Costo por unidad de negocio</h4>
-                            <p class="text-[11px] text-[#A3AED0] font-medium mt-0.5">
-                                El costo que los viajes tienen cargado hoy, abierto por quién lo gastó. Un viaje
-                                que reparte para dos unidades le deja a cada una sus horas: las partes suman el
-                                total, no lo repiten. Lo calcula el servidor, no esta pantalla.
-                            </p>
-                        </div>
-                        <div class="flex items-center gap-3">
-                            <div class="flex bg-[#F4F7FE] rounded-full p-1">
-                                <button type="button" id="btn-unidades-mes" onclick="verUnidades('mes')"
-                                        class="px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider">Mes</button>
-                                <button type="button" id="btn-unidades-anio" onclick="verUnidades('anio')"
-                                        class="px-4 py-1.5 rounded-full text-[10px] font-black uppercase tracking-wider">Año</button>
-                            </div>
-                            <span id="costs-unidades-cuando" class="text-[10px] font-bold text-[#A3AED0]"></span>
-                        </div>
-                    </div>
-                    <div class="overflow-x-auto">
-                        <table class="w-full text-[11px] border-collapse" id="costs-unidades-tabla"></table>
-                    </div>
-                </div>
             </div>
 
 
@@ -4102,9 +4101,6 @@
                 }
                 costsDirtyMonth = null;
             }
-            // La apertura por unidad del mes que se esta mirando. Por aca pasan
-            // las dos puertas: abrir la pantalla y cambiar de mes.
-            cargarCostosPorUnidad();
             try {
                 const res = await fetch(`${API_URL}/settings/costs_data`, { cache: 'no-store' });
                 if (res.ok) {
@@ -23928,7 +23924,40 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         function verUnidades(cual) {
             _vistaUnidades = (cual === 'anio') ? 'anio' : 'mes';
             try { localStorage.setItem('r14.unidades_vista', _vistaUnidades); } catch (_) {}
-            cargarCostosPorUnidad();
+            // El periodo vale para TODA la pantalla, no para una tabla sola:
+            // tener las tarjetas en septiembre y el cuadro de abajo en el ano
+            // era la forma mas facil de sacar una conclusion equivocada.
+            if (document.getElementById('view-dashboard')?.classList.contains('hidden') === false) {
+                refreshLogisticsDashboard();
+            } else {
+                cargarCostosPorUnidad();
+            }
+        }
+
+        /** El periodo que esta mirando el panel. */
+        function dashEsAnio() { return _vistaUnidades === 'anio'; }
+
+        /** Los viajes del periodo elegido: el mes del selector, o el ano entero.
+         *
+         *  Con el ano, el mes no filtra nada -- pero el ano SI, porque el store
+         *  puede tener mas de un ano cargado y sumarlos todos daria un total
+         *  que no es de ningun ano. */
+        function dashViajesDelPeriodo() {
+            const anio = nowBuenosAires().year;
+            if (!dashEsAnio()) {
+                const sel = document.getElementById('dashboard-month-select')
+                    || document.getElementById('planning-month-select');
+                return filterTripsByPlanningMonth(planningData, sel ? sel.value : 'enero')
+                    .filter((t) => _dashAnioDelViaje(t) === anio);
+            }
+            return (planningData || []).filter((t) => _dashAnioDelViaje(t) === anio);
+        }
+
+        function _dashAnioDelViaje(t) {
+            if (!t || !t.date) return null;
+            const limpia = t.date.includes(' ') ? t.date.replace(/ /g, 'T') : t.date;
+            const d = new Date(limpia);
+            return isNaN(d.getTime()) ? null : d.getFullYear();
         }
 
         function pintarBotonesUnidades() {
@@ -23953,7 +23982,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             pintarBotonesUnidades();
             if (_vistaUnidades === 'anio') return cargarCostosPorUnidadAnual();
 
-            const mes = document.getElementById('costs-month-select')?.value || '';
+            // El bloque vive en el Panel Logistico, asi que el mes es el de
+            // ese selector. Se deja el del Motor como respaldo por si alguien
+            // vuelve a poner el cuadro del otro lado.
+            const mes = document.getElementById('dashboard-month-select')?.value
+                || document.getElementById('costs-month-select')?.value || '';
             if (!mes) { tabla.innerHTML = ''; return; }
 
             tabla.innerHTML = '<tbody><tr><td class="py-4 text-[#A3AED0] font-bold">Cargando...</td></tr></tbody>';
@@ -25041,30 +25074,43 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             await _dashAsegurarMesDelPanel();
             renderLogisticsDashboard();
             renderMetricasOperativas();
+            // El costo por unidad lo calcula el servidor, asi que va por su
+            // cuenta: no se cuelga del resto ni lo hace esperar.
+            cargarCostosPorUnidad();
         }
 
         /** Se asegura de que los viajes del mes que muestra el panel esten en
          *  el store. No toca la tabla semanal: esa sigue con su propio filtro. */
         async function _dashAsegurarMesDelPanel() {
-            const mes = (document.getElementById('dashboard-month-select')
-                || document.getElementById('planning-month-select'))?.value;
-            if (!mes) return;
-            const key = String(mes).toLowerCase() + '-' + nowBuenosAires().year;
+            const anio = nowBuenosAires().year;
+            const meses = dashEsAnio()
+                ? [...MESES_COSTOS]
+                : [(document.getElementById('dashboard-month-select')
+                    || document.getElementById('planning-month-select'))?.value];
 
-            const ts = __weeklyMonthsLoaded.get(key);
-            if (ts && (Date.now() - ts) < WEEKLY_CACHE_TTL_MS) return;
-            if (__weeklyMonthsLoading.has(key)) return;
+            let trajo = false;
+            for (const mes of meses) {
+                if (!mes) continue;
+                const key = String(mes).toLowerCase() + '-' + anio;
 
-            __weeklyMonthsLoading.add(key);
-            try {
-                const n = await _weeklyFetchMonth(key);
-                console.log('[Panel] ' + key + ': ' + n + ' viajes');
-                _weeklyRebuildPlanningData();
-            } catch (e) {
-                console.warn('[Panel] no se pudo traer', key, e);
-            } finally {
-                __weeklyMonthsLoading.delete(key);
+                const ts = __weeklyMonthsLoaded.get(key);
+                if (ts && (Date.now() - ts) < WEEKLY_CACHE_TTL_MS) continue;
+                if (__weeklyMonthsLoading.has(key)) continue;
+
+                __weeklyMonthsLoading.add(key);
+                try {
+                    const n = await _weeklyFetchMonth(key);
+                    console.log('[Panel] ' + key + ': ' + n + ' viajes');
+                    trajo = true;
+                } catch (e) {
+                    console.warn('[Panel] no se pudo traer', key, e);
+                } finally {
+                    __weeklyMonthsLoading.delete(key);
+                }
             }
+            // Una sola vez al final: rearmar la tabla doce veces seguidas
+            // congelaba la pantalla mientras cargaba el ano.
+            if (trajo) _weeklyRebuildPlanningData();
         }
 
         // ─── LO OPERATIVO: lo que cargan los choferes ────────────────────────
@@ -25072,18 +25118,43 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         // asi que los calcula el servidor y aca solo se dibujan.
         let __metricasCache = {};
 
-        async function renderMetricasOperativas() {
-            const mes = (document.getElementById('dashboard-month-select')
-                || document.getElementById('planning-month-select'))?.value || 'enero';
-            const anio = nowBuenosAires().year;
+        async function _metricasDelMes(mes, anio) {
             const clave = anio + '-' + mes;
+            if (!__metricasCache[clave]) {
+                const res = await fetch(`${API_URL}/dashboard/metricas?month=${mes}&year=${anio}`, { headers: getActorHeaders() });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                __metricasCache[clave] = await res.json();
+            }
+            return __metricasCache[clave];
+        }
+
+        async function renderMetricasOperativas() {
+            const anio = nowBuenosAires().year;
             try {
-                if (!__metricasCache[clave]) {
-                    const res = await fetch(`${API_URL}/dashboard/metricas?month=${mes}&year=${anio}`, { headers: getActorHeaders() });
-                    if (!res.ok) throw new Error('HTTP ' + res.status);
-                    __metricasCache[clave] = await res.json();
+                if (!dashEsAnio()) {
+                    const mes = (document.getElementById('dashboard-month-select')
+                        || document.getElementById('planning-month-select'))?.value || 'enero';
+                    pintarMetricasOperativas(await _metricasDelMes(mes, anio));
+                    return;
                 }
-                pintarMetricasOperativas(__metricasCache[clave]);
+                // El ano: se piden los doce meses juntos y se promedia pesando
+                // por cuantos viajes midio cada uno. Promediar los promedios
+                // le daria el mismo peso a un mes de 200 viajes que a uno de 3.
+                const todos = await Promise.all(MESES_COSTOS.map(
+                    (m) => _metricasDelMes(m, anio).catch(() => null)));
+                let horas = 0, medidos = 0;
+                for (const m of todos) {
+                    const d = m?.duracion;
+                    if (!d || !d.viajesMedidos) continue;
+                    horas += (d.promedioHoras || 0) * d.viajesMedidos;
+                    medidos += d.viajesMedidos;
+                }
+                pintarMetricasOperativas({
+                    duracion: {
+                        promedioHoras: medidos ? horas / medidos : null,
+                        viajesMedidos: medidos
+                    }
+                });
             } catch (e) {
                 console.warn('[dash] metricas operativas:', e);
             }
@@ -25385,9 +25456,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         /** SEGUNDA VUELTA: una sola tabla con items definidos en config */
         function renderLogisticsDashboard() {
-            const monthEl = document.getElementById('dashboard-month-select') || document.getElementById('planning-month-select');
-            const month = monthEl ? monthEl.value : 'enero';
-            const trips = filterTripsByPlanningMonth(planningData, month);
+            pintarBotonesUnidades();
+            // Con el ano elegido el selector de mes no decide nada: se apaga
+            // para que nadie lo mueva esperando que pase algo.
+            const selMes = document.getElementById('dashboard-month-select');
+            if (selMes) selMes.disabled = dashEsAnio();
+
+            const trips = dashViajesDelPeriodo();
 
             let totalPropio = 0;
             let totalTerc = 0;
@@ -25414,23 +25489,31 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 return;
             }
 
+            // Por dia dentro del mes; por mes cuando se mira el ano. Trescientas
+            // sesenta y cinco barras no se leen, doce si.
             const byDay = {};
             trips.forEach(t => {
-                const key = getTripLocalDateKey(t);
-                if (!key) return;
+                const fecha = getTripLocalDateKey(t);
+                if (!fecha) return;
+                const key = dashEsAnio() ? fecha.slice(0, 7) : fecha;
                 if (!byDay[key]) byDay[key] = { propio: 0, terc: 0 };
                 const c = getTripLogisticCost(t);
                 if (tripIsPropioForCost(t)) byDay[key].propio += c;
                 else byDay[key].terc += c;
             });
             const sortedDays = Object.keys(byDay).sort();
+            const MES_CORTO = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
             const labelsDay = sortedDays.map(k => {
                 const parts = k.split('-');
+                if (dashEsAnio()) return MES_CORTO[Number(parts[1]) - 1] || k;
                 return parts.length === 3 ? `${parts[2]}/${parts[1]}` : k;
             });
             const dataPropioDay = sortedDays.map(k => byDay[k].propio);
             const dataTercDay = sortedDays.map(k => byDay[k].terc);
 
+            _txt('dash-overlap-sub', dashEsAnio()
+                ? 'Propio y tercerizado por mes (áreas superpuestas)'
+                : 'Propio y tercerizado por día (áreas superpuestas)');
             const ctxOverlap = document.getElementById('dash-chart-cost-overlap');
             if (ctxOverlap) {
                 dashboardChartInstances.overlap = new Chart(ctxOverlap, {
