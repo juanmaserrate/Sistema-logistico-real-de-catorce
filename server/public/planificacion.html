@@ -1722,15 +1722,15 @@
 
             <!-- VIEW: MOTOR DE COSTOS (BASED ON IMAGE) -->
             <div id="view-costs" class="hidden view-animate space-y-8">
-                <div class="card-dark p-8 flex flex-col md:flex-row md:items-center justify-between gap-6">
-                    <div>
-                        <h3 class="text-2xl font-bold text-[#1B2559]">Motor de Costos Operativos</h3>
-                        <p class="text-sm text-[#A3AED0] font-medium">Desglose financiero por unidad y período</p>
+                <div class="card-dark p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                    <div class="min-w-0">
+                        <h3 class="text-base font-black text-[#1B2559] tracking-tight">Motor de Costos Operativos</h3>
+                        <p class="text-[11px] text-[#A3AED0] font-medium mt-0.5">Desglose financiero por unidad y período</p>
                     </div>
-                    <div class="flex items-center gap-4">
+                    <div class="flex items-center gap-2 flex-wrap">
                         <!-- El anio ya no va escrito en el nombre del mes: se elige aparte -->
-                        <select id="costs-year-select" onchange="cambiarAnioDeCostos()" class="bg-[#F4F7FE] border-0 rounded-2xl px-5 py-4 text-xs font-black text-[#1B2559] outline-none"></select>
-                        <select id="costs-month-select" onchange="loadCostsData()" class="bg-[#F4F7FE] border-0 rounded-2xl px-6 py-4 text-xs font-bold text-[#1B2559] outline-none">
+                        <select id="costs-year-select" onchange="cambiarAnioDeCostos()" class="bg-[#F4F7FE] border-0 rounded-xl px-3 py-2 text-[11px] font-black text-[#1B2559] outline-none"></select>
+                        <select id="costs-month-select" onchange="loadCostsData()" class="bg-[#F4F7FE] border-0 rounded-xl px-3 py-2 text-[11px] font-bold text-[#1B2559] outline-none">
                             <option value="enero">Enero</option>
                             <option value="febrero">Febrero</option>
                             <option value="marzo">Marzo</option>
@@ -1744,33 +1744,33 @@
                             <option value="noviembre">Noviembre</option>
                             <option value="diciembre">Diciembre</option>
                         </select>
-                        <div class="flex items-center gap-3 bg-indigo-50 px-6 py-4 rounded-2xl">
-                            <span class="text-[10px] font-bold text-indigo-600 uppercase tracking-widest">Horas Reales:</span>
-                            <input type="text" inputmode="decimal" id="cost-horas-reales" oninput="calculateCosts()" onblur="formatearMontoAR(this); calculateCosts()" class="w-20 bg-transparent border-none text-sm font-extrabold text-indigo-700 outline-none">
+                        <div class="flex items-center gap-2 bg-indigo-50 px-3 py-2 rounded-xl">
+                            <span class="text-[9px] font-black text-indigo-600 uppercase tracking-wider">Horas reales</span>
+                            <input type="text" inputmode="decimal" id="cost-horas-reales" oninput="calculateCosts()" onblur="formatearMontoAR(this); calculateCosts()" class="w-14 bg-transparent border-none text-[13px] font-extrabold text-indigo-700 outline-none">
                         </div>
-                        <div class="flex items-center gap-3 bg-amber-50 px-6 py-4 rounded-2xl" title="Horas que se asumen para un viaje propio cuando no tiene horario de salida/llegada cargado ni GPS. Antes era fijo en 8.">
-                            <span class="text-[10px] font-bold text-amber-600 uppercase tracking-widest">Hs viaje sin horario:</span>
-                            <input type="number" id="cost-fallback-hours" min="1" max="24" step="0.5" oninput="calculateCosts()" class="w-16 bg-transparent border-none text-sm font-extrabold text-amber-700 outline-none">
+                        <div class="flex items-center gap-2 bg-amber-50 px-3 py-2 rounded-xl" title="Horas que se asumen para un viaje propio cuando no tiene horario de salida/llegada cargado ni GPS. Antes era fijo en 8.">
+                            <span class="text-[9px] font-black text-amber-600 uppercase tracking-wider">Hs sin horario</span>
+                            <input type="number" id="cost-fallback-hours" min="1" max="24" step="0.5" oninput="calculateCosts()" class="w-11 bg-transparent border-none text-[13px] font-extrabold text-amber-700 outline-none">
                         </div>
                         <button type="button" id="btn-auto-horas" onclick="autoFillHorasReales()"
                             title="Suma automaticamente las horas de TODOS los viajes Propios del mes (las que antes sumabas a mano)"
-                            class="px-5 py-4 rounded-2xl bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-black uppercase tracking-wide shadow-lg shadow-emerald-100 flex items-center gap-2">
-                            <i data-lucide="zap" class="w-4 h-4"></i> Traer horas del mes
+                            class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-wide shadow-sm flex items-center gap-1.5 whitespace-nowrap">
+                            <i data-lucide="zap" class="w-3.5 h-3.5"></i> Traer horas
                         </button>
                         <button type="button" id="btn-traer-flota" onclick="abrirTraerDeFlota()"
                             title="Suma los gastos que se cargaron uno por uno en Gastos de Flota y los pone en los rubros de este mes. Antes de pisar nada te muestra que va a poner."
-                            class="px-5 py-4 rounded-2xl bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-black uppercase tracking-wide shadow-lg shadow-sky-100 flex items-center gap-2">
-                            <i data-lucide="download" class="w-4 h-4"></i> Traer de Gastos de Flota
+                            class="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[10px] font-black uppercase tracking-wide shadow-sm flex items-center gap-1.5 whitespace-nowrap">
+                            <i data-lucide="download" class="w-3.5 h-3.5"></i> Traer de flota
                         </button>
                         <button type="button" onclick="copyCostsFromPrevMonth()"
                             title="Copia los gastos fijos/variables guardados del mes anterior para no recargarlos a mano. Despues ajustas solo lo que cambio."
-                            class="px-5 py-4 rounded-2xl bg-white border border-[#E0E5F2] hover:bg-[#F4F7FE] text-[#1B2559] text-[11px] font-black uppercase tracking-wide flex items-center gap-2">
-                            <i data-lucide="copy" class="w-4 h-4"></i> Copiar mes anterior
+                            class="px-3.5 py-2 rounded-xl bg-white border border-[#E0E5F2] hover:bg-[#F4F7FE] text-[#1B2559] text-[10px] font-black uppercase tracking-wide flex items-center gap-1.5 whitespace-nowrap">
+                            <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copiar mes anterior
                         </button>
                         <button type="button" id="btn-save-costs" onclick="guardarCostosDelMes()"
                             title="Guarda los datos de este mes para que los vean todos los usuarios (no recalcula los viajes)"
-                            class="px-5 py-4 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-black uppercase tracking-wide shadow-lg shadow-indigo-100 flex items-center gap-2">
-                            <i data-lucide="save" class="w-4 h-4"></i> Guardar
+                            class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-wide shadow-sm flex items-center gap-1.5 whitespace-nowrap">
+                            <i data-lucide="save" class="w-3.5 h-3.5"></i> Guardar
                         </button>
                     </div>
                 </div>
@@ -1779,10 +1779,13 @@
 
                 <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
                     <!-- COSTOS FIJOS -->
-                    <div class="card-dark p-8">
-                        <div class="flex justify-between items-center mb-8 pb-4 border-b border-[#F4F7FE]">
-                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Estructura Fija (Mes)</h4>
-                            <span class="text-[10px] font-bold text-[#A3AED0]">USD / ARS</span>
+                    <div class="card-dark p-5">
+                        <div class="flex flex-wrap items-center justify-between gap-3 mb-5 pb-3 border-b border-[#F4F7FE]">
+                            <div class="min-w-0">
+                                <h4 class="text-base font-black text-[#1B2559] tracking-tight">Estructura fija</h4>
+                                <p class="text-[11px] text-[#A3AED0] font-medium mt-0.5">Lo que se paga todos los meses, pase lo que pase</p>
+                            </div>
+                            <span class="text-[9px] font-black text-[#A3AED0] uppercase tracking-wider">USD / ARS</span>
                         </div>
                         <div class="space-y-6">
                             <!-- Las filas las arma pintarRubrosDelMes() desde RUBROS_COSTOS,
@@ -1800,9 +1803,13 @@
                     </div>
 
                     <!-- COSTOS VARIABLES -->
-                    <div class="card-dark p-8">
-                        <div class="flex justify-between items-center mb-8 pb-4 border-b border-[#F4F7FE]">
-                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Estructura Variable (Dinámica)</h4>
+                    <div class="card-dark p-5">
+                        <div class="flex flex-wrap items-center justify-between gap-3 mb-5 pb-3 border-b border-[#F4F7FE]">
+                            <div class="min-w-0">
+                                <h4 class="text-base font-black text-[#1B2559] tracking-tight">Estructura variable</h4>
+                                <p class="text-[11px] text-[#A3AED0] font-medium mt-0.5">Lo que cambia con cuánto se sale a repartir</p>
+                            </div>
+                            <span class="text-[9px] font-black text-[#A3AED0] uppercase tracking-wider">USD / ARS</span>
                         </div>
                         <div class="space-y-6">
                             <div id="costs-var-rows" class="space-y-6"></div>
@@ -1842,22 +1849,22 @@
 
                 <!-- VISTA ANUAL: los 12 meses juntos, como la planilla de Gastos Logistica -->
                 <div class="card-dark overflow-hidden">
-                    <div class="p-6 border-b border-[#F4F7FE] flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                        <div>
-                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Gastos logística — <span id="costs-anual-anio">año completo</span></h4>
-                            <p class="text-[11px] text-[#A3AED0] font-medium mt-1">Los mismos rubros de arriba, con los doce meses a la vez. Escribí en cualquier casillero y después guardá.</p>
+                    <div class="p-5 border-b border-[#F4F7FE] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                        <div class="min-w-0">
+                            <h4 class="text-base font-black text-[#1B2559] tracking-tight">Gastos logística — <span id="costs-anual-anio">año completo</span></h4>
+                            <p class="text-[11px] text-[#A3AED0] font-medium mt-0.5">Los mismos rubros de arriba, con los doce meses a la vez. Escribí en cualquier casillero y después guardá.</p>
                         </div>
                         <div class="flex items-center gap-2 flex-wrap">
                             <span id="costs-anual-estado" class="text-[11px] font-bold text-[#A3AED0]"></span>
                             <button type="button" id="btn-traer-flota-anual" onclick="abrirTraerDeFlotaAnual()"
                                     title="Trae de Gastos de Flota los doce meses de una. Lo que trae queda escrito en el cuadro y se puede corregir antes de guardar."
-                                    class="px-4 py-2.5 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[11px] font-black uppercase shadow-lg shadow-sky-100 flex items-center gap-2">
-                                <i data-lucide="download" class="w-3.5 h-3.5"></i> Traer de Gastos de Flota
+                                    class="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[10px] font-black uppercase tracking-wide shadow-sm flex items-center gap-1.5 whitespace-nowrap">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i> Traer de flota
                             </button>
                             <button type="button" onclick="cargarVistaAnual()"
-                                    class="px-4 py-2.5 rounded-xl bg-white border border-[#E0E5F2] text-[11px] font-black text-[#1B2559] uppercase hover:bg-[#F4F7FE]">Recargar</button>
+                                    class="px-3.5 py-2 rounded-xl bg-white border border-[#E0E5F2] text-[10px] font-black text-[#1B2559] uppercase tracking-wide hover:bg-[#F4F7FE] whitespace-nowrap">Recargar</button>
                             <button type="button" id="btn-guardar-anual" onclick="guardarVistaAnual()"
-                                    class="px-5 py-2.5 rounded-xl bg-indigo-600 text-white text-[11px] font-black uppercase hover:bg-indigo-700 shadow-lg shadow-indigo-100">Guardar los meses tocados</button>
+                                    class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-wide shadow-sm whitespace-nowrap">Guardar meses tocados</button>
                         </div>
                     </div>
                     <div class="overflow-x-auto">
@@ -1866,10 +1873,10 @@
                 </div>
 
                 <!-- COSTO POR UNIDAD DE NEGOCIO -->
-                <div class="card-dark p-6">
-                    <div class="flex flex-wrap items-center justify-between gap-3 mb-4">
-                        <div>
-                            <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-wider">Costo por unidad de negocio</h4>
+                <div class="card-dark p-5">
+                    <div class="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-[#F4F7FE]">
+                        <div class="min-w-0">
+                            <h4 class="text-base font-black text-[#1B2559] tracking-tight">Costo por unidad de negocio</h4>
                             <p class="text-[11px] text-[#A3AED0] font-medium mt-0.5">
                                 El costo que los viajes tienen cargado hoy, abierto por quién lo gastó. Un viaje
                                 que reparte para dos unidades le deja a cada una sus horas: las partes suman el
@@ -1917,13 +1924,13 @@
                      mano en el Motor" es el control: si los dos numeros no dan
                      igual, uno de los dos esta mal. -->
                 <div class="card-dark overflow-hidden">
-                    <div class="p-6 border-b border-[#F4F7FE] flex flex-col lg:flex-row lg:items-center justify-between gap-4">
-                        <div>
-                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Gastos de flota — <span id="flota-anual-anio">año completo</span></h4>
-                            <p class="text-[11px] text-[#A3AED0] font-medium mt-1 max-w-3xl">Sale solo de los gastos cargados acá abajo: no se escribe nada en esta tabla. Es la flota sola, sin sueldos.</p>
+                    <div class="p-5 border-b border-[#F4F7FE] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                        <div class="min-w-0">
+                            <h4 class="text-base font-black text-[#1B2559] tracking-tight">Gastos de flota — <span id="flota-anual-anio">año completo</span></h4>
+                            <p class="text-[11px] text-[#A3AED0] font-medium mt-0.5 max-w-3xl">Sale solo de los gastos cargados acá abajo: no se escribe nada en esta tabla. Es la flota sola, sin sueldos.</p>
                         </div>
                         <button type="button" onclick="cargarGastosDeFlota()"
-                                class="px-4 py-2.5 rounded-xl bg-white border border-[#E0E5F2] text-[11px] font-black text-[#1B2559] uppercase hover:bg-[#F4F7FE] whitespace-nowrap">Recargar</button>
+                                class="px-3.5 py-2 rounded-xl bg-white border border-[#E0E5F2] text-[10px] font-black text-[#1B2559] uppercase tracking-wide hover:bg-[#F4F7FE] whitespace-nowrap">Recargar</button>
                     </div>
                     <div class="overflow-x-auto">
                         <table class="w-full text-[11px] border-collapse" id="flota-anual-tabla"></table>
