@@ -5,7 +5,11 @@
 builder = "NIXPACKS"
 
 [deploy]
-releaseCommand = "npx prisma db push --accept-data-loss"
+# Sin --accept-data-loss: si un cambio de schema.prisma borraria columnas o
+# tablas con datos (renombrar o sacar un campo, cambiarle el tipo, o volver a
+# un deploy viejo que no conoce columnas nuevas), el arranque falla en vez de
+# borrar datos. Ese tipo de cambio se hace a mano y a proposito.
+releaseCommand = "npx prisma db push"
 startCommand = "npm run start"
 healthcheckPath = "/api/health"
 healthcheckTimeout = 120
