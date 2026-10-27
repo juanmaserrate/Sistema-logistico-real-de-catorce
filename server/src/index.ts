@@ -7434,25 +7434,28 @@ app.get('/api/v1/costs/unidades-anual', async (req: any, res: any) => {
  *
  *  Corre el Motor en simulacion, asi que NO escribe nada: ni parametros, ni
  *  `Trip.value`, ni la foto por unidad. */
-async function _costosPropiosDeHoy(mes: string, anio: number): Promise<Map<number, number>> {
+async function _costosPropiosDeHoy(mes: string, anio: number): Promise<{ costos: Map<number, number>; pudo: boolean }> {
     const salida = new Map<number, number>();
     try {
         const guardado = await prisma.appSettings.findUnique({ where: { key: 'costs_data' } });
-        if (!guardado) return salida;
+        if (!guardado) return { costos: salida, pudo: false };
         const todos = JSON.parse(guardado.value || '{}');
         const params = todos[claveCostos(mes, anio)];
-        if (!params || !(Number(params.horas_reales) > 0)) return salida;
+        if (!params || !(Number(params.horas_reales) > 0)) return { costos: salida, pudo: false };
 
         const r = await correrMotorDeCostos(mes, anio, params, null, true);
-        if (!r || r._malPedido) return salida;
+        if (!r || r._malPedido) return { costos: salida, pudo: false };
         // `costoPorViaje` viene completo; `trips` viene cortado en 300.
         for (const [id, valor] of Object.entries(r.costoPorViaje || {})) {
             if (Number.isFinite(Number(id))) salida.set(Number(id), Number(valor) || 0);
         }
     } catch (e: any) {
         console.warn('costos propios en vivo:', e?.message || e);
+        return { costos: salida, pudo: false };
     }
-    return salida;
+    // `pudo` es que habia con que calcular, no que haya salido algo: un mes
+    // sin viajes propios calcula bien y da cero, y eso no es estar desactualizado.
+    return { costos: salida, pudo: true };
 }
 
 /** La apertura por unidad de negocio del costo de un mes.
@@ -7503,7 +7506,7 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
         const costoVivo = await _costosPropiosDeHoy(mes, anio);
         const acc = aperturaPorUnidad(
             sinViajesDePrueba(viajes as any[]), mapaU,
-            (t) => costoVivo.get(Number(t?.id)) ?? (Number(t?.value) || 0)
+            (t) => costoVivo.costos.get(Number(t?.id)) ?? (Number(t?.value) || 0)
         );
         const unidades = aperturaEnFilas(acc);
 
@@ -7518,7 +7521,7 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
             // De donde sale el costo de los propios: 'vivo' si se pudo
             // recalcular con los parametros de hoy, 'guardado' si no habia
             // parametros del mes y quedo lo que escribio el Motor.
-            origenPropios: costoVivo.size ? 'vivo' : 'guardado',
+            origenPropios: costoVivo.pudo ? 'vivo' : 'guardado',
             unidades
         });
     } catch (e: any) {
