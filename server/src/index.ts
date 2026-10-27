@@ -8295,6 +8295,147 @@ app.get('/api/admin/paradas-de-viajes', async (req: any, res: any) => {
  *  POST /api/admin/set-horarios
  *    { key, cambios: [{id, gpsInicio?, gpsFin?, exitTime?, returnTime?}], dryRun? }
  *  Las horas van en ISO completo. null vacia el campo. */
+/** Corrige la llegada y la salida de cada parada de UN viaje.
+ *
+ *  La app del chofer no siempre marca cuando pasa: a veces cierra varias
+ *  paradas juntas al final del recorrido, o toca dos en el mismo segundo. Eso
+ *  deja horarios que no se pueden leer -- paradas que terminan antes de la
+ *  anterior, o seis en el mismo minuto -- y de ahi sale el reparto de horas por
+ *  unidad de negocio y la hoja impresa.
+ *
+ *  No deja escribir cualquier cosa. Antes de tocar nada revisa que:
+ *   - cada llegada sea anterior o igual a su salida,
+ *   - ninguna parada arranque antes de que termine la anterior,
+ *   - todo caiga dentro del arranque y el cierre del viaje.
+ *  Si algo de eso no da, no escribe NADA de ese viaje y dice que fallo.
+ *
+ *  POST /api/admin/paradas-set-horarios
+ *       { key, id, horarios: [{ sec, llegada, salida }], dryRun? } */
+app.post('/api/admin/paradas-set-horarios', async (req: any, res: any) => {
+    const { key, id, horarios, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!Number.isFinite(Number(id))) return res.status(400).json({ error: 'Falta id' });
+    if (!Array.isArray(horarios) || !horarios.length) return res.status(400).json({ error: 'Falta "horarios"' });
+
+    const fecha = (v: any): Date | null => {
+        if (v === null || v === undefined || v === '') return null;
+        const d = new Date(String(v));
+        return isNaN(d.getTime()) ? null : d;
+    };
+    const hhmm = (d: Date | null) => d
+        ? d.toLocaleTimeString('es-AR', { timeZone: 'America/Argentina/Buenos_Aires', hour: '2-digit', minute: '2-digit', hour12: false })
+        : '--:--';
+
+    try {
+        const viaje = await prisma.trip.findUnique({
+            where: { id: Number(id) },
+            select: {
+                id: true, date: true, reparto: true, driver: true,
+                linkedRoute: {
+                    select: {
+                        id: true, actualStartTime: true, actualEndTime: true,
+                        stops: {
+                            orderBy: { sequence: 'asc' },
+                            select: { id: true, sequence: true, actualArrival: true, actualDeparture: true, client: { select: { name: true } } }
+                        }
+                    }
+                }
+            }
+        });
+        if (!viaje) return res.status(404).json({ error: 'El viaje no existe' });
+        if (!viaje.linkedRoute) return res.status(400).json({ error: 'El viaje no tiene paradas cargadas' });
+
+        const porSec = new Map((viaje.linkedRoute.stops || []).map((p: any) => [p.sequence, p]));
+        const arranque = viaje.linkedRoute.actualStartTime;
+        const cierre = viaje.linkedRoute.actualEndTime;
+
+        // 1. Armar la lista pedida, resolviendo cada parada
+        const pedidos: any[] = [];
+        const problemas: string[] = [];
+        for (const h of horarios) {
+            const sec = Number(h?.sec);
+            const p: any = porSec.get(sec);
+            if (!p) { problemas.push(`no hay parada #${sec} en este viaje`); continue; }
+            const lleg = fecha(h?.llegada);
+            const sal = fecha(h?.salida);
+            if (h?.llegada && !lleg) { problemas.push(`#${sec} ${p.client?.name}: no se entiende la llegada`); continue; }
+            if (h?.salida && !sal) { problemas.push(`#${sec} ${p.client?.name}: no se entiende la salida`); continue; }
+            pedidos.push({ sec, stopId: p.id, nombre: p.client?.name || '', antes: p, llegada: lleg, salida: sal });
+        }
+
+        // 2. Los controles, sobre como queda el viaje ENTERO (lo pedido mas lo
+        //    que no se toca): un horario suelto puede estar bien y aun asi
+        //    dejar la secuencia dada vuelta.
+        const pedidoPorSec = new Map(pedidos.map((x) => [x.sec, x]));
+        const linea = (viaje.linkedRoute.stops || []).map((p: any) => {
+            const q = pedidoPorSec.get(p.sequence);
+            return {
+                sec: p.sequence, nombre: p.client?.name || '',
+                llegada: q ? q.llegada : p.actualArrival,
+                salida: q ? q.salida : p.actualDeparture,
+                tocada: !!q
+            };
+        });
+
+        for (const x of linea) {
+            if (x.llegada && x.salida && x.llegada.getTime() > x.salida.getTime()) {
+                problemas.push(`#${x.sec} ${x.nombre}: sale ${hhmm(x.salida)} antes de llegar ${hhmm(x.llegada)}`);
+            }
+            if (arranque && x.llegada && x.llegada.getTime() < arranque.getTime()) {
+                problemas.push(`#${x.sec} ${x.nombre}: llega ${hhmm(x.llegada)}, antes de que arranque el viaje (${hhmm(arranque)})`);
+            }
+            if (cierre && x.salida && x.salida.getTime() > cierre.getTime()) {
+                problemas.push(`#${x.sec} ${x.nombre}: sale ${hhmm(x.salida)}, despues de que cierre el viaje (${hhmm(cierre)})`);
+            }
+        }
+        for (let i = 1; i < linea.length; i++) {
+            const ant = linea[i - 1], act = linea[i];
+            if (ant.salida && act.llegada && act.llegada.getTime() < ant.salida.getTime()) {
+                problemas.push(`#${act.sec} ${act.nombre} llega ${hhmm(act.llegada)}, antes de que #${ant.sec} ${ant.nombre} salga (${hhmm(ant.salida)})`);
+            }
+        }
+
+        if (problemas.length) {
+            return res.status(400).json({ error: 'No se escribio nada: los horarios no cierran', problemas });
+        }
+
+        const cambios = pedidos
+            .filter((x) => String(x.antes.actualArrival ?? '') !== String(x.llegada ?? '')
+                        || String(x.antes.actualDeparture ?? '') !== String(x.salida ?? ''))
+            .map((x) => ({
+                sec: x.sec, nombre: x.nombre,
+                antes: { llegada: hhmm(x.antes.actualArrival), salida: hhmm(x.antes.actualDeparture) },
+                despues: { llegada: hhmm(x.llegada), salida: hhmm(x.salida) },
+                _stopId: x.stopId, _llegada: x.llegada, _salida: x.salida
+            }));
+
+        if (!dryRun) {
+            for (const c of cambios) {
+                await prisma.stop.update({
+                    where: { id: (c as any)._stopId },
+                    data: { actualArrival: (c as any)._llegada, actualDeparture: (c as any)._salida }
+                });
+            }
+            if (cambios.length) {
+                await logAction(req, 'UPDATE', 'Stop', String(viaje.id),
+                    `horarios corregidos en ${cambios.length} parada(s) del viaje ${viaje.id}`, null,
+                    { viaje: viaje.id, detalle: cambios.map(({ _stopId, _llegada, _salida, ...r }: any) => r) });
+            }
+        }
+
+        res.json({
+            dryRun: !!dryRun,
+            viaje: { id: viaje.id, reparto: viaje.reparto, chofer: viaje.driver, arranque: hhmm(arranque), cierre: hhmm(cierre) },
+            cambian: cambios.length,
+            cambios: cambios.map(({ _stopId, _llegada, _salida, ...r }: any) => r),
+            comoQueda: linea.map((x) => ({ sec: x.sec, nombre: x.nombre, llegada: hhmm(x.llegada), salida: hhmm(x.salida) }))
+        });
+    } catch (e: any) {
+        console.error('paradas-set-horarios:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/admin/set-horarios', async (req: any, res: any) => {
     const { key, cambios, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
