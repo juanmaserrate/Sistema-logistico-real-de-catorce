@@ -18021,7 +18021,9 @@
                     // El servidor lo devuelve ya dibujado, asi que si tarda o
                     // falla la HDR sale igual, solo que sin el recorrido.
                     try {
-                        const rm = await fetch(`${API_URL}/trips/${id}/mapa-hdr`, { headers: getActorHeaders() });
+                        // Alto para que el mapa llene la hoja A4 vertical, que
+                        // es lo unico que va en ella.
+                        const rm = await fetch(`${API_URL}/trips/${id}/mapa-hdr?w=1000&h=1150`, { headers: getActorHeaders() });
                         if (rm.ok) {
                             const mapa = await rm.json();
                             if (mapa && mapa.ok) pages.push(hdrMapaPageHtml(trip, stops, logo, mapa));
@@ -18098,8 +18100,8 @@
      garantiza lugar para firmar aunque la hoja venga llena de paradas. */
   .firmas { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: auto; padding-top: 22mm; }
   .firmas .f { border-top: 1px solid #111; padding-top: 4px; font-size: 10px; text-transform: uppercase; color: #555; text-align: center; font-weight: bold; }
-  /* Hoja del recorrido. El mapa manda: se lleva todo el alto que sobra y la
-     referencia de abajo solo ocupa lo que necesita. */
+  /* Hoja del recorrido: solo el mapa, que se lleva toda la hoja. Los nombres
+     de las paradas ya estan numerados en la tabla de la primera hoja. */
   .mapa-caja { border: 1.5px solid #1B2559; border-radius: 6px; overflow: hidden; margin-top: 6px; }
   .mapa-caja img { display: block; width: 100%; height: auto;
                    -webkit-print-color-adjust: exact; print-color-adjust: exact; }
@@ -18109,15 +18111,12 @@
   .mapa-aviso { border: 1px solid #e0a800; background: #fff8e1; border-radius: 4px;
                 padding: 4px 7px; font-size: 9px; color: #7a5b00; margin-top: 5px;
                 -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .ref { columns: 3; column-gap: 14px; margin-top: 6px; font-size: 9.5px; }
-  .ref div { break-inside: avoid; padding: 1px 0; }
-  .ref .num { display: inline-block; min-width: 15px; font-weight: bold; color: #e03131; }
-  .ref .dep { color: #1B2559; }
 </style></head><body>${body}</body></html>`;
         }
 
         /** La hoja del recorrido: el mapa con las paradas numeradas y el camino
-         *  por las calles, mas la referencia de que numero es cada escuela.
+         *  por las calles. El numero de cada pinche es el mismo que en la
+         *  tabla de la primera hoja, asi que no hace falta repetir la lista.
          *
          *  Va aparte y no abajo de la tabla porque la primera hoja ya esta
          *  llena de filas para completar a mano. Un mapa chico metido ahi no
@@ -18129,15 +18128,6 @@
                 : (trip.tripType || trip.reparto || '—');
             let fecha = ''; try { fecha = trip.date ? new Date(trip.date).toLocaleDateString('es-AR') : ''; } catch (_) {}
 
-            // Mismo numero que en la tabla de la primera hoja y que en el
-            // pinche del mapa: de 1 a n, la vuelta al deposito incluida.
-            let nro = 0;
-            const ref = (stops || []).map((p) => {
-                const n = ++nro;
-                const dep = p.isReturnToBase ? ' class="dep"' : '';
-                return `<div${dep}><span class="num">${n}</span>${esc(p.name || '')}</div>`;
-            }).join('');
-
             const datos = [
                 mapa.km != null ? `<span><b>${mapa.km}</b> km de recorrido</span>` : '',
                 mapa.minutos != null ? `<span><b>${Math.floor(mapa.minutos / 60)}h ${String(mapa.minutos % 60).padStart(2, '0')}m</b> de manejo</span>` : '',
@@ -18148,9 +18138,8 @@
             if (mapa.rectas) {
                 avisos.push('No se pudo calcular el camino por calle en parte del recorrido: ese tramo está dibujado como línea recta. No es la calle real.');
             }
-            if (Array.isArray(mapa.sinCoordenadas) && mapa.sinCoordenadas.length) {
-                avisos.push(`Sin ubicación cargada, no figuran en el mapa: ${mapa.sinCoordenadas.map(esc).join(', ')}.`);
-            }
+            // Las paradas sin ubicacion cargada no se avisan en la hoja: el
+            // chofer ya las tiene en la tabla de la primera hoja.
 
             return `<div class="hdr">
                 <div class="hdr-top">
@@ -18164,8 +18153,6 @@
                 <div class="mapa-datos">${datos}</div>
                 <div class="mapa-caja"><img src="${mapa.imagen}" alt="Recorrido del viaje ${esc(trip.id)}"></div>
                 ${avisos.map((t) => `<div class="mapa-aviso">${esc(t)}</div>`).join('')}
-                <div class="sec-title" style="margin-top:8px">Referencia de paradas</div>
-                <div class="obs" style="border-top:none"><div class="ref">${ref}</div></div>
             </div>`;
         }
 
