@@ -1023,10 +1023,15 @@
                     </div>
                 </div>
 
-                <div class="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
                     <div class="card-dark p-5 border border-[#F4F7FE]">
                         <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">Viajes (mes)</p>
                         <p id="dash-kpi-trips" class="text-2xl font-black text-[#1B2559]">0</p>
+                    </div>
+                    <div class="card-dark p-5 border border-[#F4F7FE]">
+                        <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">Duración media</p>
+                        <p id="dash-kpi-duracion" class="text-2xl font-black text-[#1B2559]">—</p>
+                        <p id="dash-kpi-duracion-det" class="text-[10px] text-[#A3AED0] font-medium mt-1">por viaje</p>
                     </div>
                     <div class="card-dark p-5 border border-indigo-100 bg-gradient-to-br from-indigo-50/80 to-white">
                         <p class="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">Costo propio</p>
@@ -1040,61 +1045,6 @@
                         <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">Costo total</p>
                         <p id="dash-kpi-total" class="text-2xl font-black text-[#1B2559]">$ 0</p>
                     </div>
-                </div>
-
-                <!-- Operativo: lo que cargan los choferes -->
-                <div class="grid grid-cols-2 lg:grid-cols-5 gap-4">
-                    <div class="card-dark p-5 border border-emerald-100 bg-gradient-to-br from-emerald-50/70 to-white">
-                        <p class="text-[10px] font-black text-emerald-700 uppercase tracking-widest mb-1">Cumplimiento</p>
-                        <p id="dash-kpi-cumplimiento" class="text-2xl font-black text-emerald-700">—</p>
-                        <p id="dash-kpi-cumplimiento-det" class="text-[10px] text-[#A3AED0] font-medium mt-1">paradas entregadas</p>
-                    </div>
-                    <div class="card-dark p-5 border border-[#F4F7FE]">
-                        <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">No entregadas</p>
-                        <p id="dash-kpi-no-entregadas" class="text-2xl font-black text-rose-600">0</p>
-                        <p class="text-[10px] text-[#A3AED0] font-medium mt-1">paradas del mes</p>
-                    </div>
-                    <div class="card-dark p-5 border border-[#F4F7FE]">
-                        <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">Duración media</p>
-                        <p id="dash-kpi-duracion" class="text-2xl font-black text-[#1B2559]">—</p>
-                        <p id="dash-kpi-duracion-det" class="text-[10px] text-[#A3AED0] font-medium mt-1">por viaje</p>
-                    </div>
-                    <div class="card-dark p-5 border border-amber-100 bg-gradient-to-br from-amber-50/70 to-white">
-                        <p class="text-[10px] font-black text-amber-700 uppercase tracking-widest mb-1">Cajones con seña sin volver</p>
-                        <p id="dash-kpi-cajones" class="text-2xl font-black text-amber-700">0</p>
-                        <p id="dash-kpi-cajones-det" class="text-[10px] text-[#A3AED0] font-medium mt-1">saldo del mes</p>
-                    </div>
-                    <div class="card-dark p-5 border border-[#F4F7FE]">
-                        <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">Sin cerrar</p>
-                        <p id="dash-kpi-sin-cerrar" class="text-2xl font-black text-[#1B2559]">0</p>
-                        <p id="dash-kpi-sin-cerrar-det" class="text-[10px] text-[#A3AED0] font-medium mt-1">viajes del mes</p>
-                    </div>
-                </div>
-
-                <div class="grid grid-cols-1 xl:grid-cols-2 gap-8">
-                    <div class="card-dark p-6 md:p-8">
-                        <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-1">Cumplimiento por reparto</h4>
-                        <p class="text-xs text-[#A3AED0] font-medium mb-4">Paradas entregadas sobre planificadas · de peor a mejor</p>
-                        <div class="relative h-[380px] w-full">
-                            <canvas id="dash-chart-cumplimiento"></canvas>
-                        </div>
-                    </div>
-                    <div class="card-dark p-6 md:p-8">
-                        <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-1">Envases: salen y vuelven</h4>
-                        <p class="text-xs text-[#A3AED0] font-medium mb-4">Cajones con seña dejados y retirados por día</p>
-                        <div class="relative h-[380px] w-full">
-                            <canvas id="dash-chart-cajones"></canvas>
-                        </div>
-                    </div>
-                </div>
-
-                <div class="card-dark p-6 md:p-8">
-                    <div class="flex items-center justify-between gap-3 flex-wrap mb-1">
-                        <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest">Escuelas con cajones con seña sin devolver</h4>
-                        <span id="dash-cajones-total" class="text-[11px] font-black text-amber-700"></span>
-                    </div>
-                    <p class="text-xs text-[#A3AED0] font-medium mb-4">Diferencia entre lo que se dejó y lo que se retiró en el mes</p>
-                    <div id="dash-cajones-escuelas" class="overflow-x-auto custom-scrollbar"></div>
                 </div>
 
                 <div class="card-dark p-6 md:p-8">
@@ -1140,12 +1090,12 @@
                     </div>
                 </div>
 
-                <!-- Recuento de viajes Propios vs Tercerizados: 3 tablas (Localidad, Zona, Unidad de negocio) -->
+                <!-- Recuento de viajes Propios vs Tercerizados: unidad de negocio y, abajo, partido -->
                 <div class="card-dark p-6 md:p-8">
                     <div class="flex items-center justify-between mb-6 gap-4 flex-wrap">
                         <div>
                             <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-1">Recuento de viajes</h4>
-                            <p class="text-xs text-[#A3AED0] font-medium">Propios vs Tercerizados — desglosado por Partido, Localidad y Unidad de negocio</p>
+                            <p class="text-xs text-[#A3AED0] font-medium">Propios vs Tercerizados — por unidad de negocio y por partido</p>
                         </div>
                         <div class="flex items-center gap-3 text-[10px] font-bold uppercase tracking-widest">
                             <span class="inline-flex items-center gap-2 text-indigo-600"><span class="w-3 h-3 rounded-full bg-indigo-500"></span>Propios</span>
@@ -1153,63 +1103,7 @@
                         </div>
                     </div>
 
-                    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                        <!-- Por Localidad -->
-                        <div class="bg-[#FAFBFF] rounded-2xl p-5">
-                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-widest mb-3">Por Partido</h5>
-                            <div class="overflow-x-auto custom-scrollbar">
-                                <table class="w-full text-left text-sm">
-                                    <thead>
-                                        <tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">
-                                            <th class="py-2 pr-2">Partido</th>
-                                            <th class="py-2 px-2 text-right">Propios</th>
-                                            <th class="py-2 px-2 text-right">Terc.</th>
-                                            <th class="py-2 pl-2 text-right">Total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="dash-table-loc-body" class="divide-y divide-[#F4F7FE]">
-                                        <tr><td colspan="4" class="py-6 text-center text-xs text-[#A3AED0] font-medium">Sin datos</td></tr>
-                                    </tbody>
-                                    <tfoot>
-                                        <tr id="dash-table-loc-total" class="hidden border-t-2 border-[#E0E5F2] bg-white">
-                                            <td class="py-2 pr-2 text-[10px] font-black text-[#1B2559] uppercase tracking-widest">Total</td>
-                                            <td class="py-2 px-2 text-right text-xs font-black text-indigo-700" id="dash-table-loc-tp">0</td>
-                                            <td class="py-2 px-2 text-right text-xs font-black text-purple-700" id="dash-table-loc-tt">0</td>
-                                            <td class="py-2 pl-2 text-right text-xs font-black text-[#1B2559]" id="dash-table-loc-ta">0</td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-                        </div>
-
-                        <!-- Por Zona -->
-                        <div class="bg-[#FAFBFF] rounded-2xl p-5">
-                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-widest mb-3">Por Localidad</h5>
-                            <div class="overflow-x-auto custom-scrollbar">
-                                <table class="w-full text-left text-sm">
-                                    <thead>
-                                        <tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">
-                                            <th class="py-2 pr-2">Localidad</th>
-                                            <th class="py-2 px-2 text-right">Propios</th>
-                                            <th class="py-2 px-2 text-right">Terc.</th>
-                                            <th class="py-2 pl-2 text-right">Total</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="dash-table-zone-body" class="divide-y divide-[#F4F7FE]">
-                                        <tr><td colspan="4" class="py-6 text-center text-xs text-[#A3AED0] font-medium">Sin datos</td></tr>
-                                    </tbody>
-                                    <tfoot>
-                                        <tr id="dash-table-zone-total" class="hidden border-t-2 border-[#E0E5F2] bg-white">
-                                            <td class="py-2 pr-2 text-[10px] font-black text-[#1B2559] uppercase tracking-widest">Total</td>
-                                            <td class="py-2 px-2 text-right text-xs font-black text-indigo-700" id="dash-table-zone-tp">0</td>
-                                            <td class="py-2 px-2 text-right text-xs font-black text-purple-700" id="dash-table-zone-tt">0</td>
-                                            <td class="py-2 pl-2 text-right text-xs font-black text-[#1B2559]" id="dash-table-zone-ta">0</td>
-                                        </tr>
-                                    </tfoot>
-                                </table>
-                            </div>
-                        </div>
-
+                    <div class="grid grid-cols-1 gap-6">
                         <!-- Por Unidad de negocio -->
                         <div class="bg-[#FAFBFF] rounded-2xl p-5">
                             <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-widest mb-3">Por Unidad de negocio</h5>
@@ -1237,53 +1131,37 @@
                                 </table>
                             </div>
                         </div>
+
+                        <!-- Por Partido -->
+                        <div class="bg-[#FAFBFF] rounded-2xl p-5">
+                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-widest mb-3">Por Partido</h5>
+                            <div class="overflow-x-auto custom-scrollbar">
+                                <table class="w-full text-left text-sm">
+                                    <thead>
+                                        <tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">
+                                            <th class="py-2 pr-2">Partido</th>
+                                            <th class="py-2 px-2 text-right">Propios</th>
+                                            <th class="py-2 px-2 text-right">Terc.</th>
+                                            <th class="py-2 pl-2 text-right">Total</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dash-table-loc-body" class="divide-y divide-[#F4F7FE]">
+                                        <tr><td colspan="4" class="py-6 text-center text-xs text-[#A3AED0] font-medium">Sin datos</td></tr>
+                                    </tbody>
+                                    <tfoot>
+                                        <tr id="dash-table-loc-total" class="hidden border-t-2 border-[#E0E5F2] bg-white">
+                                            <td class="py-2 pr-2 text-[10px] font-black text-[#1B2559] uppercase tracking-widest">Total</td>
+                                            <td class="py-2 px-2 text-right text-xs font-black text-indigo-700" id="dash-table-loc-tp">0</td>
+                                            <td class="py-2 px-2 text-right text-xs font-black text-purple-700" id="dash-table-loc-tt">0</td>
+                                            <td class="py-2 pl-2 text-right text-xs font-black text-[#1B2559]" id="dash-table-loc-ta">0</td>
+                                        </tr>
+                                    </tfoot>
+                                </table>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
-                <!-- =========================================================== -->
-                <!-- CONTEO DE VIAJES POR UN SEGUN LOCALIDAD (estilo Excel GASTOS TRAFICO) -->
-                <!-- =========================================================== -->
-                <div class="card-dark p-6 md:p-8" id="dash-excel-block">
-                    <div class="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3 mb-6">
-                        <div>
-                            <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-1">Conteo de viajes por UN segun localidad</h4>
-                            <p class="text-xs text-[#A3AED0] font-medium">Formato Excel GASTOS TRAFICO. Distincion Propios / Tercerizados / MESA. Cuenta por mes.</p>
-                        </div>
-                        <div class="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest">
-                            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-emerald-50 text-emerald-700"><span class="w-2 h-2 rounded-full bg-emerald-500"></span>Mapeado</span>
-                            <span class="inline-flex items-center gap-1 px-2 py-1 rounded-md bg-amber-50 text-amber-700"><span class="w-2 h-2 rounded-full bg-amber-500"></span>Pendiente</span>
-                        </div>
-                    </div>
-
-                    <!-- Tabs: Propios | Tercerizados | MESA -->
-                    <div class="flex items-center gap-2 mb-4 border-b border-[#F4F7FE]">
-                        <button id="dash-excel-tab-propio" type="button" onclick="dashExcelSetTab('propio')"
-                            class="px-4 py-2 text-xs font-black uppercase tracking-widest border-b-2 border-indigo-600 text-indigo-700">
-                            Propios
-                        </button>
-                        <button id="dash-excel-tab-tercerizado" type="button" onclick="dashExcelSetTab('tercerizado')"
-                            class="px-4 py-2 text-xs font-black uppercase tracking-widest border-b-2 border-transparent text-[#A3AED0] hover:text-[#1B2559]">
-                            Tercerizados
-                        </button>
-                        <button id="dash-excel-tab-mesa" type="button" onclick="dashExcelSetTab('mesa')"
-                            class="px-4 py-2 text-xs font-black uppercase tracking-widest border-b-2 border-transparent text-[#A3AED0] hover:text-[#1B2559]">
-                            MESA / MAE
-                        </button>
-                    </div>
-
-                    <!-- Tablas por region (renderizadas dinamicamente) -->
-                    <div id="dash-excel-tables" class="space-y-6"></div>
-
-                    <!-- Footer: viajes sin clasificar -->
-                    <div id="dash-excel-unclassified" class="mt-8 pt-6 border-t border-dashed border-[#E0E5F2]">
-                        <h5 class="text-xs font-black text-amber-700 uppercase tracking-widest mb-3 flex items-center gap-2">
-                            <i data-lucide="alert-circle" class="w-4 h-4"></i>
-                            Viajes sin clasificar
-                        </h5>
-                        <p class="text-[11px] text-[#A3AED0] mb-3">Estos viajes no entraron en ninguna categoria del Excel. Usar para ajustar el archivo de configuracion.</p>
-                        <div id="dash-excel-unclassified-list" class="text-xs"></div>
-                    </div>
-                </div>
             </div>
 
             <!-- VIEW: EMPLOYEE SALARIES -->
@@ -25223,107 +25101,21 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (el) el.textContent = valor;
         }
 
+        /** La duracion media del mes. El resto de las metricas operativas que
+         *  llegan del servidor -- cumplimiento, cajones, viajes sin cerrar --
+         *  ya no se muestran en el panel, pero siguen viniendo: se usan en
+         *  otras pantallas y no cuesta nada traerlas. */
         function pintarMetricasOperativas(m) {
             const nro = (n) => Number(n || 0).toLocaleString('es-AR');
-
-            _txt('dash-kpi-cumplimiento', m.paradas.cumplimiento != null ? m.paradas.cumplimiento + '%' : '—');
-            _txt('dash-kpi-cumplimiento-det', `${nro(m.paradas.entregadas)} de ${nro(m.paradas.planificadas)} paradas`);
-            _txt('dash-kpi-no-entregadas', nro(m.paradas.noEntregadas));
             _txt('dash-kpi-duracion', m.duracion.promedioHoras != null ? m.duracion.promedioHoras.toFixed(2).replace('.', ',') + ' h' : '—');
             _txt('dash-kpi-duracion-det', `medido en ${nro(m.duracion.viajesMedidos)} viajes`);
-            _txt('dash-kpi-cajones', nro(m.cajones.saldo));
-            _txt('dash-kpi-cajones-det', `salieron ${nro(m.cajones.dejados)}, volvieron ${nro(m.cajones.retirados)}`);
-            _txt('dash-kpi-sin-cerrar', nro(m.viajes.sinCerrar));
-            _txt('dash-kpi-sin-cerrar-det', `de ${nro(m.viajes.total)} viajes`);
-
-            // Tabla de escuelas con saldo: es el listado para ir a buscar los cajones
-            const host = document.getElementById('dash-cajones-escuelas');
-            if (host) {
-                const esc = m.cajones.escuelas || [];
-                _txt('dash-cajones-total', esc.length ? `${nro(m.cajones.saldo)} cajones · recupero ${m.cajones.recupero}%` : '');
-                host.innerHTML = esc.length ? `<table class="w-full text-left">
-                    <thead><tr class="bg-[#FAFBFF]">
-                        <th class="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#A3AED0]">Escuela</th>
-                        <th class="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#A3AED0]">Localidad</th>
-                        <th class="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#A3AED0] text-right">Dejados</th>
-                        <th class="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#A3AED0] text-right">Retirados</th>
-                        <th class="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#A3AED0] text-right">Saldo</th>
-                    </tr></thead>
-                    <tbody>${esc.map(e => `<tr class="hover:bg-[#FAFBFF] border-t border-[#F4F7FE]">
-                        <td class="px-3 py-2 text-[11px] font-bold text-[#1B2559]">${escapeHtml(e.escuela)}</td>
-                        <td class="px-3 py-2 text-[11px] text-[#A3AED0]">${escapeHtml(e.localidad || '—')}</td>
-                        <td class="px-3 py-2 text-[11px] text-right">${e.dejados}</td>
-                        <td class="px-3 py-2 text-[11px] text-right">${e.retirados}</td>
-                        <td class="px-3 py-2 text-[11px] text-right font-black text-amber-700">${e.saldo}</td>
-                    </tr>`).join('')}</tbody></table>`
-                    : '<p class="text-[11px] text-emerald-600 font-bold py-3">No quedaron cajones sin devolver en el mes.</p>';
-            }
-
-            // Los graficos necesitan Chart.js; los numeros y la tabla de arriba no.
-            if (typeof Chart === 'undefined') return;
-
-            // Cumplimiento por reparto: los 15 peores, que son los que hay que mirar
-            const ctxCump = document.getElementById('dash-chart-cumplimiento');
-            if (ctxCump) {
-                try { dashboardChartInstances.cumplimiento?.destroy(); } catch (_) {}
-                const filas = (m.porReparto || []).filter(r => r.planificadas >= 5).slice(0, 15);
-                dashboardChartInstances.cumplimiento = new Chart(ctxCump, {
-                    type: 'bar',
-                    data: {
-                        labels: filas.map(r => r.reparto),
-                        datasets: [{
-                            label: '% entregado',
-                            data: filas.map(r => r.cumplimiento),
-                            backgroundColor: filas.map(r => r.cumplimiento >= 95 ? 'rgba(16,185,129,.75)'
-                                : r.cumplimiento >= 85 ? 'rgba(245,158,11,.75)' : 'rgba(244,63,94,.75)'),
-                            borderRadius: 6
-                        }]
-                    },
-                    options: {
-                        indexAxis: 'y', responsive: true, maintainAspectRatio: false,
-                        plugins: {
-                            legend: { display: false },
-                            tooltip: {
-                                callbacks: {
-                                    label: (c) => {
-                                        const r = filas[c.dataIndex];
-                                        return `${r.cumplimiento}% — ${r.entregadas} de ${r.planificadas} paradas`;
-                                    }
-                                }
-                            }
-                        },
-                        scales: { x: { max: 100, ticks: { callback: (v) => v + '%' } } }
-                    }
-                });
-            }
-
-            // Envases por dia: si la linea de retirados corre muy por debajo, hay plata parada
-            const ctxCaj = document.getElementById('dash-chart-cajones');
-            if (ctxCaj) {
-                try { dashboardChartInstances.cajones?.destroy(); } catch (_) {}
-                const dias = (m.porDia || []).filter(d => d.dejados || d.retirados);
-                dashboardChartInstances.cajones = new Chart(ctxCaj, {
-                    type: 'bar',
-                    data: {
-                        labels: dias.map(d => d.dia.slice(8) + '/' + d.dia.slice(5, 7)),
-                        datasets: [
-                            { label: 'Dejados', data: dias.map(d => d.dejados), backgroundColor: 'rgba(79,70,229,.8)', borderRadius: 4 },
-                            { label: 'Retirados', data: dias.map(d => d.retirados), backgroundColor: 'rgba(16,185,129,.8)', borderRadius: 4 }
-                        ]
-                    },
-                    options: {
-                        responsive: true, maintainAspectRatio: false,
-                        plugins: { legend: { position: 'bottom' } },
-                        scales: { x: { grid: { display: false } } }
-                    }
-                });
-            }
-
         }
 
         function renderTripsBreakdownTables(trips) {
-            // Calcula 3 mapas: localidad, zona, BU -> { propio, terc }
-            const mapLoc = {}, mapZone = {}, mapBu = {};
+            // Dos mapas: partido y unidad de negocio -> { propio, terc }.
+            // La tabla por localidad se saco del panel: el detalle que se mira
+            // es el partido, no la localidad.
+            const mapLoc = {}, mapBu = {};
             (trips || []).forEach(t => {
                 const isP = (typeof tripIsPropioForCost === 'function') && tripIsPropioForCost(t);
                 const k = isP ? 'propio' : 'terc';
@@ -25333,10 +25125,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     : 'S/D';
                 if (!mapLoc[loc]) mapLoc[loc] = { propio: 0, terc: 0 };
                 mapLoc[loc][k] += 1;
-
-                const z = ((t.zone || '').toString().trim()) || 'S/D';
-                if (!mapZone[z]) mapZone[z] = { propio: 0, terc: 0 };
-                mapZone[z][k] += 1;
 
                 // Un viaje con varias unidades cuenta 1 en cada una
                 const unidades = unidadesDeNegocio(t.businessUnit);
@@ -25348,7 +25136,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             });
 
             renderBreakdownTable(mapLoc, 'dash-table-loc-body', 'dash-table-loc-total', 'dash-table-loc-tp', 'dash-table-loc-tt', 'dash-table-loc-ta');
-            renderBreakdownTable(mapZone, 'dash-table-zone-body', 'dash-table-zone-total', 'dash-table-zone-tp', 'dash-table-zone-tt', 'dash-table-zone-ta');
             renderBreakdownTable(mapBu, 'dash-table-bu-body', 'dash-table-bu-total', 'dash-table-bu-tp', 'dash-table-bu-tt', 'dash-table-bu-ta');
         }
 
@@ -25392,7 +25179,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         // /js/trip-categories-config.json para que el usuario pueda ajustar
         // mapeos (especialmente sub-zonas por reparto) sin tocar codigo.
         let __tripCategoriesConfig = null;
-        let __dashExcelActiveTab = 'propio'; // 'propio' | 'tercerizado' | 'mesa'
 
         async function loadTripCategoriesConfig() {
             if (__tripCategoriesConfig) return __tripCategoriesConfig;
@@ -25605,243 +25391,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         /** SEGUNDA VUELTA: una sola tabla con items definidos en config */
-        function _buildSecondVueltaMatrix(trips, cfg, contractType) {
-            const items = cfg.segunda_vuelta?.items || {};
-            const conteo = new Map();
-            Object.keys(items).forEach(k => conteo.set(k, new Array(12).fill(0)));
-            trips.forEach(t => {
-                if (contractType && !_matchesContract(t, contractType)) return;
-                const usDelViaje = unidadesDeNegocio(t.businessUnit).map(_norm);
-                for (const [label, bus] of Object.entries(items)) {
-                    if ((bus || []).some(b => usDelViaje.includes(_norm(b)))) {
-                        const m = _getTripMonthIdx(t);
-                        if (m >= 0) conteo.get(label)[m] += 1;
-                        return;
-                    }
-                }
-            });
-            const filas = [];
-            const totalPorMes = new Array(12).fill(0);
-            for (const [nombre, arr] of conteo.entries()) {
-                const tot = arr.reduce((a,b)=>a+b,0);
-                if (tot === 0) continue; // ocultar items vacios
-                arr.forEach((v,i) => totalPorMes[i] += v);
-                filas.push({ nombre, conteoPorMes: arr, total: tot });
-            }
-            return { filas, totalPorMes, totalGeneral: totalPorMes.reduce((a,b)=>a+b,0) };
-        }
-
-        /** Construye una tabla HTML estilo Excel: filas (categoria) x columnas (Ene..Dic, Total) */
-        function _renderExcelTable(titulo, matrix, opts) {
-            opts = opts || {};
-            const pendiente = !!opts.pendiente;
-            if (!matrix || matrix.filas.length === 0) {
-                return `<div class="bg-white rounded-xl border border-[#F4F7FE] p-4">
-                    <div class="flex items-center justify-between gap-2 mb-2">
-                        <h6 class="text-xs font-black uppercase tracking-widest text-[#A3AED0]">${titulo}</h6>
-                        ${pendiente ? '<span class="text-[9px] font-black uppercase tracking-widest text-amber-700 bg-amber-50 px-2 py-1 rounded-md">PENDIENTE configurar repartos</span>' : ''}
-                    </div>
-                    <p class="text-[11px] text-[#A3AED0] py-3">Sin viajes en esta categoria.</p>
-                </div>`;
-            }
-            const tdMes = (n) => n > 0 ? `<td class="px-2 py-1.5 text-right text-[11px] font-bold text-[#1B2559]">${n}</td>` : `<td class="px-2 py-1.5 text-right text-[11px] text-[#E0E5F2]">·</td>`;
-            const rowsHtml = matrix.filas.map(f => `
-                <tr class="hover:bg-[#FAFBFF]">
-                    <td class="px-3 py-1.5 text-[11px] font-bold text-[#1B2559] whitespace-nowrap">${f.nombre}</td>
-                    ${f.conteoPorMes.map(tdMes).join('')}
-                    <td class="px-3 py-1.5 text-right text-[11px] font-black text-indigo-700 border-l border-[#F4F7FE]">${f.total}</td>
-                </tr>`).join('');
-            const totalRow = `<tr class="bg-[#F4F7FE] border-t-2 border-[#E0E5F2]">
-                <td class="px-3 py-2 text-[10px] font-black uppercase tracking-widest text-[#1B2559]">Total</td>
-                ${matrix.totalPorMes.map(n => `<td class="px-2 py-2 text-right text-[11px] font-black text-[#1B2559]">${n || ''}</td>`).join('')}
-                <td class="px-3 py-2 text-right text-[12px] font-black text-indigo-900 border-l border-[#E0E5F2]">${matrix.totalGeneral}</td>
-            </tr>`;
-            return `<div class="bg-white rounded-xl border border-[#F4F7FE] overflow-hidden">
-                <div class="flex items-center justify-between gap-2 px-4 py-3 bg-gradient-to-r from-indigo-50 to-white border-b border-[#F4F7FE]">
-                    <h6 class="text-xs font-black uppercase tracking-widest text-[#1B2559]">${titulo}</h6>
-                    ${pendiente ? '<span class="text-[9px] font-black uppercase tracking-widest text-amber-700 bg-amber-50 px-2 py-1 rounded-md">PENDIENTE configurar repartos</span>' : ''}
-                    <span class="text-[10px] font-black text-indigo-700">${matrix.totalGeneral} viajes</span>
-                </div>
-                <div class="overflow-x-auto custom-scrollbar">
-                    <table class="w-full text-left">
-                        <thead class="bg-[#FAFBFF]">
-                            <tr>
-                                <th class="px-3 py-2 text-[9px] font-black uppercase tracking-widest text-[#A3AED0] whitespace-nowrap">Categoria</th>
-                                ${_MES_MAP.map(m => `<th class="px-2 py-2 text-right text-[9px] font-black uppercase tracking-widest text-[#A3AED0]">${m}</th>`).join('')}
-                                <th class="px-3 py-2 text-right text-[9px] font-black uppercase tracking-widest text-indigo-700 border-l border-[#F4F7FE]">Total</th>
-                            </tr>
-                        </thead>
-                        <tbody class="divide-y divide-[#F4F7FE]">
-                            ${rowsHtml}
-                            ${totalRow}
-                        </tbody>
-                    </table>
-                </div>
-            </div>`;
-        }
-
-        function dashExcelSetTab(tab) {
-            __dashExcelActiveTab = tab;
-            ['propio','tercerizado','mesa'].forEach(t => {
-                const el = document.getElementById('dash-excel-tab-' + t);
-                if (!el) return;
-                if (t === tab) {
-                    el.className = 'px-4 py-2 text-xs font-black uppercase tracking-widest border-b-2 border-indigo-600 text-indigo-700';
-                } else {
-                    el.className = 'px-4 py-2 text-xs font-black uppercase tracking-widest border-b-2 border-transparent text-[#A3AED0] hover:text-[#1B2559]';
-                }
-            });
-            // Re-render con los datos ya cacheados del año
-            renderExcelStyleDashboard(__dashExcelYearTripsCache || []);
-        }
-
-        // Cache de los viajes del año entero para el panel Excel (separado del cache mensual
-        // porque necesitamos los 12 meses, no solo el activo).
-        let __dashExcelYearTripsCache = null;
-        let __dashExcelYearCachedAt = 0;
-        const DASH_EXCEL_CACHE_TTL = 5 * 60 * 1000; // 5 min
-
-        async function loadAndRenderExcelDashboard() {
-            const host = document.getElementById('dash-excel-tables');
-            if (!host) return;
-            const year = nowBuenosAires().year;
-
-            // Cache hit
-            if (__dashExcelYearTripsCache && (Date.now() - __dashExcelYearCachedAt) < DASH_EXCEL_CACHE_TTL) {
-                renderExcelStyleDashboard(__dashExcelYearTripsCache);
-                return;
-            }
-
-            // Mostrar spinner mientras carga
-            host.innerHTML = '<div class="py-8 text-center"><div class="inline-flex items-center gap-3"><div class="w-5 h-5 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin"></div><span class="text-xs font-bold text-[#A3AED0]">Cargando datos del año...</span></div></div>';
-
-            try {
-                const res = await fetch(`${API_URL}/trips?year=${year}`, { headers: getActorHeaders() });
-                if (!res.ok) throw new Error('HTTP ' + res.status);
-                const yearTrips = await res.json();
-                __dashExcelYearTripsCache = yearTrips;
-                __dashExcelYearCachedAt = Date.now();
-                console.log(`[DashExcel] Cargados ${yearTrips.length} viajes del año ${year}`);
-                renderExcelStyleDashboard(yearTrips);
-            } catch (e) {
-                console.error('Error cargando viajes del año:', e);
-                host.innerHTML = `<p class="text-rose-600 text-xs font-bold">Error: ${e.message}</p>`;
-            }
-        }
-
-        async function renderExcelStyleDashboard(trips) {
-            const host = document.getElementById('dash-excel-tables');
-            if (!host) return;
-            const cfg = await loadTripCategoriesConfig();
-            if (!cfg) {
-                host.innerHTML = '<p class="text-rose-600 text-xs font-bold">No se pudo cargar la configuracion de categorias.</p>';
-                return;
-            }
-
-            const tab = __dashExcelActiveTab;
-            let html = '';
-
-            if (tab === 'mesa') {
-                // MESA/MAE: una tabla por region (Brown, Lomas, Quilmes, Lanus)
-                const mesa = _buildMesaMatrix(trips, cfg);
-                const regionNames = { Brown: 'Brown MESA', Lomas: 'Lomas MESA', Quilmes: 'Quilmes MESA', Lanus: 'Lanus MESA' };
-                let any = false;
-                for (const [regKey, label] of Object.entries(regionNames)) {
-                    if (mesa[regKey]) { html += _renderExcelTable(label, mesa[regKey], {}); any = true; }
-                    else html += _renderExcelTable(label, { filas: [], totalPorMes: [], totalGeneral: 0 }, {});
-                }
-                if (!any) html = '<p class="text-xs text-[#A3AED0] font-medium">No hay viajes con BU=MAE/MESA en el periodo.</p>' + html;
-            } else {
-                // Propios o Tercerizados
-                const labels = {
-                    SAE_BROWN: 'SAE BROWN ' + tab.toUpperCase(),
-                    SAE_LOMAS: 'SAE LOMAS ' + tab.toUpperCase(),
-                    SAE_QUILMES: 'SAE QUILMES ' + tab.toUpperCase(),
-                    SAE_LANUS: 'SAE LANUS ' + tab.toUpperCase(),
-                    LOMAS_JARDINES: 'LOMAS JARDINES ' + tab.toUpperCase()
-                };
-                // Marca los viajes que ya conto una tabla. No se muestra en pantalla:
-                // sirve para que ninguno se cuente dos veces.
-                const contados = new Set();
-                // Primero las que matchean por reparto exacto: si no, la fila de
-                // respaldo de SAE LOMAS se quedaria con los viajes de R18/R19/R20.
-                const ORDEN_CALCULO = ['SAE_BROWN','LOMAS_JARDINES','SAE_LOMAS','SAE_QUILMES','SAE_LANUS'];
-                const ORDEN_PANTALLA = ['SAE_BROWN','SAE_LOMAS','SAE_QUILMES','SAE_LANUS','LOMAS_JARDINES'];
-                const matrices = {};
-                for (const regionKey of ORDEN_CALCULO) {
-                    matrices[regionKey] = _buildRegionMatrix(trips, cfg, regionKey, tab, contados);
-                }
-                for (const regionKey of ORDEN_PANTALLA) {
-                    const region = cfg.regiones[regionKey];
-                    const pendiente = !!(region.subzonas_por_reparto &&
-                        Object.values(region.subzonas_por_reparto).every(arr => (!arr || arr.length === 0)) &&
-                        regionKey !== 'LOMAS_JARDINES');
-                    html += _renderExcelTable(labels[regionKey], matrices[regionKey], { pendiente });
-                }
-
-                // SEGUNDA VUELTA - solo en tab Propio (se mezclan ambos? El Excel no separa)
-                if (tab === 'propio') {
-                    const sv = _buildSecondVueltaMatrix(trips, cfg, null); // null = ambos
-                    html += _renderExcelTable('SEGUNDA VUELTA (Propios + Tercerizados)', sv, {});
-                }
-            }
-            host.innerHTML = html;
-
-            // Lista de "sin clasificar" para ayudar al usuario a ver qué falta
-            _renderUnclassifiedList(trips, cfg);
-        }
-
-        function _renderUnclassifiedList(trips, cfg) {
-            const host = document.getElementById('dash-excel-unclassified-list');
-            if (!host) return;
-
-            // Construir set de BUs y combinaciones que SI estan categorizadas
-            const knownBUs = new Set();
-            (cfg.businessUnits_MESA || []).forEach(b => knownBUs.add(_norm(b)));
-            (cfg.businessUnits_REPOSICION || []).forEach(b => knownBUs.add(_norm(b)));
-            for (const items of Object.values(cfg.segunda_vuelta?.items || {})) {
-                (items || []).forEach(b => knownBUs.add(_norm(b)));
-            }
-            (cfg.desarrollo?.fallback_bu || []).forEach(b => knownBUs.add(_norm(b)));
-
-            // BUs que asumimos forman parte de SAE (Brown/Lomas/Quilmes/Lanus): DMC, SAE, etc.
-            // Las cuatro SAE regionales van explicitas desde que se dividio SAE
-            // por partido: sin esto los 825 viajes aparecian como "sin clasificar",
-            // aunque el panel los cuenta bien (los agrupa por localidad, no por unidad).
-            ['DMC','SAE','SAE BROWN','SAE LOMAS','SAE LANUS','SAE QUILMES','DMC+SAM','DMC + SAM']
-                .forEach(b => knownBUs.add(_norm(b)));
-            // Las que tienen fila propia en alguna region tampoco son "sin clasificar"
-            for (const region of Object.values(cfg.regiones || {})) {
-                for (const unidades of Object.values(region.subzonas_por_bu || {})) {
-                    (unidades || []).forEach(b => knownBUs.add(_norm(b)));
-                }
-            }
-
-            const unclassified = {};
-            trips.forEach(t => {
-                const unidades = unidadesDeNegocio(t.businessUnit).map(_norm);
-                for (const bu of (unidades.length ? unidades : ['SIN_BU'])) {
-                    if (knownBUs.has(bu)) continue;
-                    if (!unclassified[bu]) unclassified[bu] = 0;
-                    unclassified[bu] += 1;
-                }
-            });
-
-            const entries = Object.entries(unclassified).sort((a,b) => b[1] - a[1]);
-            if (entries.length === 0) {
-                host.innerHTML = '<p class="text-[11px] text-emerald-600 font-bold">Todos los viajes estan clasificados.</p>';
-                return;
-            }
-            host.innerHTML = `<div class="grid grid-cols-2 md:grid-cols-4 gap-2">` +
-                entries.map(([bu, n]) => `
-                    <div class="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-                        <p class="text-[10px] text-amber-700 font-bold uppercase truncate" title="${bu}">${bu}</p>
-                        <p class="text-sm font-black text-amber-900">${n} viajes</p>
-                    </div>`).join('') +
-                `</div>
-                <p class="text-[10px] text-[#A3AED0] mt-3 italic">Para clasificar estas UN, edita <code class="bg-[#F4F7FE] px-1 rounded">/js/trip-categories-config.json</code> en el servidor.</p>`;
-        }
-
         function renderLogisticsDashboard() {
             const monthEl = document.getElementById('dashboard-month-select') || document.getElementById('planning-month-select');
             const month = monthEl ? monthEl.value : 'enero';
@@ -26014,10 +25563,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
             // Tablas de recuento de viajes Propios vs Tercerizados por Localidad / Zona / BU
             renderTripsBreakdownTables(trips);
-
-            // Bloque "Conteo de viajes por UN segun localidad" - estilo Excel GASTOS TRAFICO
-            // Necesita los 12 meses del año (no solo el mes activo). Hace fetch propia y cacheada.
-            try { loadAndRenderExcelDashboard(); } catch (e) { console.warn('loadAndRenderExcelDashboard:', e); }
 
             const ctxBuTrips = document.getElementById('dash-chart-bu-trips');
             if (ctxBuTrips) {
