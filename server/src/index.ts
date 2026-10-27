@@ -7325,7 +7325,12 @@ type AperturaUnidad = { horas: number; propio: number; terc: number; viajes: num
  *  costo que les corresponde. Las partes suman el costo del viaje, no lo
  *  repiten: por eso cualquier total de esta apertura da igual al del mes.
  */
-function aperturaPorUnidad(viajes: any[], mapaU: Map<string, string>): Record<string, AperturaUnidad> {
+function aperturaPorUnidad(
+    viajes: any[], mapaU: Map<string, string>,
+    /** De donde sale el costo de un viaje. Por defecto, el que tiene cargado.
+     *  El costo por unidad le pasa otra para los propios: el que vale hoy. */
+    costoDelViaje: (t: any) => number = (t) => Number(t?.value) || 0
+): Record<string, AperturaUnidad> {
     const acc: Record<string, AperturaUnidad> = {};
     const sumar = (u: string, horas: number, monto: number, esPropio: boolean) => {
         if (!acc[u]) acc[u] = { horas: 0, propio: 0, terc: 0, viajes: 0 };
@@ -7339,7 +7344,7 @@ function aperturaPorUnidad(viajes: any[], mapaU: Map<string, string>): Record<st
             { ...t, routeActualStart: r?.actualStartTime ?? null, routeActualEnd: r?.actualEndTime ?? null } as any,
             0
         );
-        const monto = Number(t?.value) || 0;
+        const monto = costoDelViaje(t);
         const esPropio = String(t?.contractType || '').toLowerCase() === 'propio';
         const reparto = repartirHoras(
             {
@@ -7423,6 +7428,33 @@ app.get('/api/v1/costs/unidades-anual', async (req: any, res: any) => {
     }
 });
 
+/** Lo que cuesta hoy cada viaje propio de un mes, segun los parametros
+ *  guardados. Devuelve vacio si el mes no tiene parametros cargados: ahi no
+ *  hay con que calcular y vale lo que haya escrito el Motor.
+ *
+ *  Corre el Motor en simulacion, asi que NO escribe nada: ni parametros, ni
+ *  `Trip.value`, ni la foto por unidad. */
+async function _costosPropiosDeHoy(mes: string, anio: number): Promise<Map<number, number>> {
+    const salida = new Map<number, number>();
+    try {
+        const guardado = await prisma.appSettings.findUnique({ where: { key: 'costs_data' } });
+        if (!guardado) return salida;
+        const todos = JSON.parse(guardado.value || '{}');
+        const params = todos[claveCostos(mes, anio)];
+        if (!params || !(Number(params.horas_reales) > 0)) return salida;
+
+        const r = await correrMotorDeCostos(mes, anio, params, null, true);
+        if (!r || r._malPedido) return salida;
+        // `costoPorViaje` viene completo; `trips` viene cortado en 300.
+        for (const [id, valor] of Object.entries(r.costoPorViaje || {})) {
+            if (Number.isFinite(Number(id))) salida.set(Number(id), Number(valor) || 0);
+        }
+    } catch (e: any) {
+        console.warn('costos propios en vivo:', e?.message || e);
+    }
+    return salida;
+}
+
 /** La apertura por unidad de negocio del costo de un mes.
  *
  *  Se calcula EN EL SERVIDOR sobre los costos que los viajes tienen cargados
@@ -7461,7 +7493,18 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
         });
 
         const mapaU = await unidadesPorRutaCacheado();
-        const acc = aperturaPorUnidad(sinViajesDePrueba(viajes as any[]), mapaU);
+
+        // Los PROPIOS se costean en vivo, con los parametros que estan
+        // guardados hoy. `Trip.value` lo escribe el Motor cuando corre, asi
+        // que apenas alguien corrige las horas de un viaje el cuadro se
+        // quedaba viejo mientras las tarjetas de arriba ya mostraban otra
+        // cosa. Es el mismo calculo del Motor, no una copia: corre su funcion
+        // sin escribir nada.
+        const costoVivo = await _costosPropiosDeHoy(mes, anio);
+        const acc = aperturaPorUnidad(
+            sinViajesDePrueba(viajes as any[]), mapaU,
+            (t) => costoVivo.get(Number(t?.id)) ?? (Number(t?.value) || 0)
+        );
         const unidades = aperturaEnFilas(acc);
 
         const foto = await prisma.appSettings.findUnique({
@@ -7470,7 +7513,14 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
         let calculadoEl: string | null = null;
         try { calculadoEl = foto ? (JSON.parse(foto.value || '{}')?.calculadoEl ?? null) : null; } catch { /* */ }
 
-        res.json({ mes, anio, calculadoEl, unidades });
+        res.json({
+            mes, anio, calculadoEl,
+            // De donde sale el costo de los propios: 'vivo' si se pudo
+            // recalcular con los parametros de hoy, 'guardado' si no habia
+            // parametros del mes y quedo lo que escribio el Motor.
+            origenPropios: costoVivo.size ? 'vivo' : 'guardado',
+            unidades
+        });
     } catch (e: any) {
         console.error('costs/unidades:', e);
         res.status(500).json({ error: e?.message || 'Error' });
@@ -12573,13 +12623,30 @@ app.post('/api/v1/costs/params', async (req: any, res: any) => {
     }
 });
 
-app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
-    try {
-        const { month, year: yearArg, costsParams, salariesData, dryRun } = req.body || {};
-        if (!month || !costsParams) return res.status(400).json({ error: 'Faltan month o costsParams' });
+/** Lo que hace el Motor de Costos, sin la ruta alrededor.
+ *
+ *  Se saco de su endpoint para que el cuadro de costo por unidad pueda
+ *  calcular EN VIVO con el mismo criterio. Tener dos copias del calculo es
+ *  tener dos respuestas distintas a la misma pregunta, tarde o temprano.
+ *
+ *  Con `dryRun` no escribe nada: ni los parametros, ni `Trip.value`, ni la
+ *  foto por unidad. Solo calcula y devuelve.
+ *
+ *  Devuelve `{ error }` cuando el pedido no se entiende (mes invalido, horas
+ *  en cero); quien lo llama decide que hacer con eso. */
+type SalidaDelMotor = any;
+function _malPedido(x: any): SalidaDelMotor { return { ...x, _malPedido: true }; }
+function _resultado(x: any): SalidaDelMotor { return x; }
+
+async function correrMotorDeCostos(
+    month: any, yearArg: any, costsParams: any, salariesData: any, dryRun: boolean,
+    quienLoCorre: string | null = null
+): Promise<SalidaDelMotor> {
+
+                if (!month || !costsParams) return _malPedido({ error: 'Faltan month o costsParams' });
 
         const monthNum = MONTH_TO_NUM[month.toLowerCase()];
-        if (monthNum === undefined) return res.status(400).json({ error: 'Mes inválido' });
+        if (monthNum === undefined) return _malPedido({ error: 'Mes inválido' });
 
         // 1. Guardar parámetros en settings (en simulacion no se guarda nada)
         if (dryRun) { /* no persistimos parametros */ }
@@ -12590,7 +12657,7 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
         if (!dryRun) allCosts[claveCostos(month, anioDelCalculo)] = {
             ...costsParams,
             savedAt: new Date().toISOString(),
-            savedBy: String(req.headers['x-actor-name'] || '').trim().slice(0, 80) || null,
+            savedBy: quienLoCorre,
         };
         if (!dryRun) await prisma.appSettings.upsert({
             where: { key: 'costs_data' },
@@ -12603,7 +12670,7 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
         // pisa el value de TODOS los viajes propios del mes. Rechazamos con error claro.
         const horasReales = parseFloat(costsParams.horas_reales);
         if (!Number.isFinite(horasReales) || horasReales <= 0) {
-            return res.status(400).json({ error: 'horas_reales debe ser un numero mayor a 0. Revisa el formulario de costos.' });
+            return _malPedido({ error: 'horas_reales debe ser un numero mayor a 0. Revisa el formulario de costos.' });
         }
         const totalFijo = Object.values(costsParams.fijo || {}).reduce((s: number, v: any) => s + Number(v), 0);
         const totalVar = Object.values(costsParams.variable || {}).reduce((s: number, v: any) => s + Number(v), 0);
@@ -12658,7 +12725,7 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
             routeActualEnd: t.linkedRoute?.actualEndTime ?? null
         }));
 
-        if (trips.length === 0) return res.json({ updated: 0, trips: [], message: 'No hay viajes propios en ese mes' });
+        if (trips.length === 0) return _resultado({ updated: 0, trips: [], message: 'No hay viajes propios en ese mes' });
 
         // 4. Sueldos del mes. Se leen de la base; si el mes no tiene nada cargado,
         // se usa lo que mande el navegador (compatibilidad con la pantalla vieja).
@@ -12872,13 +12939,18 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
             .map((x) => ({ nombre: x.nombre, viajes: x.viajes, dias: x.dias.size }))
             .sort((a, b) => b.dias - a.dias || b.viajes - a.viajes);
 
-        res.json({
+        return _resultado({
             unidades,
             auxiliaresSinSueldo,
             dryRun: !!dryRun,
             updated: dryRun ? 0 : updates.length,
             simulados: dryRun ? updates.length : 0,
             trips: updates.slice(0, 300),
+            // Lo mismo que `trips` pero SIN cortar y solo con lo que importa
+            // para costear: id -> cuanto sale ese viaje. `trips` viene cortado
+            // en 300 para no mandar una respuesta enorme a la pantalla, y en
+            // un mes grande eso dejaria viajes afuera sin que nadie lo note.
+            costoPorViaje: Object.fromEntries(updates.map((u: any) => [u.id, u.value])),
             vehicleHourlyRate: Math.round(vehicleHourlyRate),
             auxTotalHours,
             // Para que la pantalla pueda avisar antes de pisar los viajes
@@ -12893,6 +12965,17 @@ app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
             costoInventado: Math.round(viajesSinHorario * fallbackHours * vehicleHourlyRate),
             fallbackHours
         });
+}
+
+app.post('/api/v1/costs/calculate-month', async (req: any, res: any) => {
+    try {
+        const { month, year: yearArg, costsParams, salariesData, dryRun } = req.body || {};
+        if (!month || !costsParams) return res.status(400).json({ error: 'Faltan month o costsParams' });
+        const r = await correrMotorDeCostos(
+            month, yearArg, costsParams, salariesData, !!dryRun,
+            String(req.headers['x-actor-name'] || '').trim().slice(0, 80) || null);
+        if (r && r._malPedido) { const { _malPedido, ...e } = r; return res.status(400).json(e); }
+        res.json(r);
     } catch (e: any) {
         console.error('[calculate-month]', e);
         res.status(500).json({ error: e?.message || 'Error calculando costos' });

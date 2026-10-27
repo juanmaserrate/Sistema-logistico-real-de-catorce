@@ -24004,9 +24004,21 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
             const filas = d.unidades || [];
             if (cuando) {
-                cuando.textContent = d.calculadoEl
-                    ? 'Motor corrido el ' + new Date(d.calculadoEl).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })
-                    : 'El Motor todavía no corrió este mes';
+                // "Motor corrido el 22/10" hacia parecer que el cuadro era una
+                // foto de ese dia. No lo es: se recalcula cada vez que se abre.
+                // Lo que importa decir es con que se calculo, no cuando.
+                const fecha = d.calculadoEl
+                    ? new Date(d.calculadoEl).toLocaleString('es-AR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+                    : null;
+                if (d.origenPropios === 'vivo') {
+                    cuando.innerHTML = '<span class="text-emerald-600">&#9679; Al día</span>'
+                        + ' <span class="font-medium text-[#A3AED0]">· recalculado recién con los gastos cargados'
+                        + (fecha ? '. Motor: ' + fecha : '') + '</span>';
+                } else {
+                    cuando.innerHTML = '<span class="text-amber-600">&#9679; Sin gastos del mes</span>'
+                        + ' <span class="font-medium text-[#A3AED0]">· muestra lo último que dejó el Motor'
+                        + (fecha ? ' el ' + fecha : '') + '</span>';
+                }
             }
             if (!filas.length) {
                 tabla.innerHTML = `<tbody><tr><td class="py-6 text-[#A3AED0] text-[11px] font-bold">
