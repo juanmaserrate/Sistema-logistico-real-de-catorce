@@ -5198,8 +5198,10 @@
 
         function getAllProfileAssignments() {
             const stored = getStoredProfiles();
-            const hardcoded = { juanma: 'SUPERADMIN', german: 'SUPERADMIN', gabriel: 'SUPERADMIN' };
-            return { ...stored, ...hardcoded };
+            // Los fijos salen de USER_PROFILES y no de una copia aparte: con dos
+            // listas, agregar una cuenta en una y olvidarse de la otra dejaba la
+            // tabla mostrando permisos que no eran los que el sistema aplicaba.
+            return { ...stored, ...USER_PROFILES };
         }
 
         const ALL_MODULES = ['control','drivers-status','crates','crates-sim','stock-cajones','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
@@ -5208,7 +5210,7 @@
             const tbody = document.getElementById('profile-assignments-body');
             if (!tbody) return;
             const all = getAllProfileAssignments();
-            const hardcoded = ['juanma', 'german', 'gabriel'];
+            const hardcoded = Object.keys(USER_PROFILES);
 
             const rows = Object.entries(all).sort((a, b) => a[0].localeCompare(b[0]));
             if (rows.length === 0) {

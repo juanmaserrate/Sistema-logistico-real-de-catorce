@@ -1,5 +1,6 @@
 
 import express from 'express';
+import crypto from 'crypto';
 import { mapaUnidadPorRuta, unidadDeParada, unidadesDeTexto, repartirHoras, esVueltaAlDeposito, SIN_UNIDAD } from './unidadesDelViaje';
 import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail, limpiarTokenMail } from './mailer';
 import { armarReporte, filasViajesPorIds, mesDeFecha, esCuentaDePrueba, TIPOS_DE_ENVASE, sumaDeLosTipos, sinLocalidadPorUnidad, TEXTO_SIN_LOCALIDAD, sinViajesDePrueba } from './reporteTorre';
@@ -6818,6 +6819,70 @@ app.get('/api/admin/personal', async (req: any, res: any) => {
             }))
         });
     } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Crea una cuenta que solo ve el Stock de cajones.
+ *
+ *  Nace SIN contraseña con la que se pueda entrar: se guarda el hash de un
+ *  valor al azar que nadie anota ni ve. La cuenta ya figura en Usuarios, con
+ *  sus permisos puestos, pero recien entra cuando alguien le pone una clave
+ *  desde "Resetear contraseña". Asi la clave la elige una persona, no un
+ *  script, y no viaja por ningun lado para llegar hasta aca.
+ *
+ *  POST /api/admin/crear-cuenta-stock { key, username, fullName? } */
+app.post('/api/admin/crear-cuenta-stock', async (req: any, res: any) => {
+    const { key, username, fullName } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const uname = String(username || '').trim().toLowerCase();
+    if (!uname) return res.status(400).json({ error: 'Falta username' });
+
+    try {
+        const existe = await prisma.user.findFirst({
+            where: { username: { equals: uname, mode: 'insensitive' } },
+            select: { id: true, username: true, role: true, active: true }
+        });
+        if (existe) return res.status(409).json({ error: `"${existe.username}" ya existe`, cuenta: existe });
+
+        await prisma.tenant.upsert({
+            where: { id: 'default-tenant' },
+            update: {},
+            create: { id: 'default-tenant', name: 'Real de Catorce' }
+        });
+
+        // Clave al azar que se descarta en el acto: solo queda su hash.
+        const alAzar = crypto.randomBytes(32).toString('hex');
+        const user = await prisma.user.create({
+            data: {
+                username: uname,
+                password: await hashPassword(alAzar),
+                fullName: String(fullName || uname).trim(),
+                role: 'ADMIN',
+                tenantId: 'default-tenant'
+            },
+            select: { id: true, username: true, fullName: true, role: true, active: true }
+        });
+
+        // Los permisos, en la misma lista que usa la pantalla de Usuarios
+        const guardados = await prisma.appSettings.findUnique({ where: { key: 'user_profiles' } });
+        const perfiles = guardados ? JSON.parse(guardados.value) : {};
+        perfiles[uname] = ['stock-cajones'];
+        await prisma.appSettings.upsert({
+            where: { key: 'user_profiles' },
+            update: { value: JSON.stringify(perfiles) },
+            create: { key: 'user_profiles', value: JSON.stringify(perfiles) }
+        });
+
+        await logAction(req, 'CREATE', 'user', 0, `cuenta ${uname} (solo Stock de cajones, sin clave)`, null, user);
+        res.json({
+            ok: true,
+            cuenta: user,
+            modulos: perfiles[uname],
+            siguiente: 'Entra con clave recien cuando alguien se la ponga desde Usuarios > Resetear contraseña.'
+        });
+    } catch (e: any) {
+        console.error('crear-cuenta-stock:', e);
         res.status(500).json({ error: e?.message || 'Error' });
     }
 });
