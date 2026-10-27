@@ -1075,13 +1075,6 @@
                         </div>
                     </div>
                     <div class="card-dark p-6 md:p-8">
-                        <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-1">Viajes por localidad</h4>
-                        <p class="text-xs text-[#A3AED0] font-medium mb-4">Conteo por localidad de la ruta</p>
-                        <div class="relative h-[340px] w-full">
-                            <canvas id="dash-chart-zone-trips"></canvas>
-                        </div>
-                    </div>
-                    <div class="card-dark p-6 md:p-8">
                         <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest mb-1">Viajes por partido</h4>
                         <p class="text-xs text-[#A3AED0] font-medium mb-4">Localidades agrupadas por partido</p>
                         <div class="relative h-[340px] w-full">
@@ -25609,43 +25602,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                 border: { display: false },
                                 ticks: { font: { size: 11, weight: 'bold' }, color: '#1B2559' }
                             }
-                        }
-                    }
-                });
-            }
-
-            const zoneMap = {};
-            trips.forEach(t => {
-                const z = (t.zone || '').toString().trim() || 'S/D';
-                zoneMap[z] = (zoneMap[z] || 0) + 1;
-            });
-            const zoneSorted = Object.entries(zoneMap).sort((a, b) => b[1] - a[1]).slice(0, 20);
-            const ctxZone = document.getElementById('dash-chart-zone-trips');
-            if (ctxZone) {
-                dashboardChartInstances.zoneTrips = new Chart(ctxZone, {
-                    type: 'bar',
-                    data: {
-                        labels: zoneSorted.length ? zoneSorted.map(x => x[0]) : ['Sin datos'],
-                        datasets: [{
-                            label: 'Viajes',
-                            data: zoneSorted.length ? zoneSorted.map(x => x[1]) : [0],
-                            backgroundColor: 'rgba(14, 165, 233, 0.75)'
-                        }]
-                    },
-                    options: {
-                        responsive: true,
-                        maintainAspectRatio: false,
-                        plugins: { legend: { display: false } },
-                        scales: {
-                            x: {
-                                ticks: {
-                                    maxRotation: 45,
-                                    minRotation: 45,
-                                    autoSkip: true,
-                                    maxTicksLimit: 14
-                                }
-                            },
-                            y: { beginAtZero: true, ticks: { stepSize: 1 } }
                         }
                     }
                 });
