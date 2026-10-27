@@ -8326,8 +8326,22 @@ app.post('/api/admin/set-horarios', async (req: any, res: any) => {
  *  rehacerlo si hiciera falta.
  *
  *  POST /api/admin/fusionar-viajes { key, principal, secundario, dryRun? } */
+/** Fusiona dos viajes que en realidad fueron uno: el principal se queda con
+ *  las paradas, las unidades de negocio y las rutas del secundario, y el
+ *  secundario se borra (con copia completa en la auditoria).
+ *
+ *  Las paradas del secundario entran ANTES de la vuelta al deposito del
+ *  principal. La vuelta al deposito del secundario no se pasa si el chofer no
+ *  la toco: el viaje termina una sola vez.
+ *
+ *  marcarEntregadas: true marca como entregadas las paradas del secundario que
+ *  no tienen ningun progreso. Sirve cuando el chofer las entrego pero no las
+ *  pudo marcar porque ya habia cerrado el viaje.
+ *
+ *  POST /api/admin/fusionar-viajes { key, principal, secundario, marcarEntregadas?, dryRun? } */
 app.post('/api/admin/fusionar-viajes', async (req: any, res: any) => {
     const { key, principal, secundario, dryRun } = req.body || {};
+    const marcarEntregadas = req.body?.marcarEntregadas === true;
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     const idA = Number(principal), idB = Number(secundario);
     if (!Number.isFinite(idA) || !Number.isFinite(idB) || idA === idB) {
@@ -8340,7 +8354,13 @@ app.post('/api/admin/fusionar-viajes', async (req: any, res: any) => {
             linkedRoute: {
                 select: {
                     id: true, actualStartTime: true, actualEndTime: true, totalKm: true,
-                    stops: { orderBy: { sequence: 'asc' as const }, select: { id: true, sequence: true, ruta: true, clientId: true, status: true } }
+                    stops: {
+                        orderBy: { sequence: 'asc' as const },
+                        select: {
+                            id: true, sequence: true, ruta: true, clientId: true, status: true, isReturnToBase: true,
+                            actualArrival: true, actualDeparture: true, proofPhotoUrl: true, signatureUrl: true, retryCount: true
+                        }
+                    }
                 }
             }
         };
@@ -8367,32 +8387,57 @@ app.post('/api/admin/fusionar-viajes', async (req: any, res: any) => {
 
         const paradasA = A.linkedRoute.stops || [];
         const paradasB = B.linkedRoute?.stops || [];
+        const sinProgreso = (p: any) =>
+            String(p.status || 'PENDING').toUpperCase() === 'PENDING' &&
+            !p.actualArrival && !p.actualDeparture && !p.proofPhotoUrl && !p.signatureUrl && !(p.retryCount > 0);
+
+        // La vuelta al deposito del principal va al final, despues de todo.
+        // La del secundario sobra si el chofer nunca la toco.
+        const vueltaA = paradasA.filter((p: any) => p.isReturnToBase);
+        const restoA = paradasA.filter((p: any) => !p.isReturnToBase);
+        const vueltaBQueSobra = paradasB.filter((p: any) => p.isReturnToBase && sinProgreso(p));
+        const pasanDeB = paradasB.filter((p: any) => !vueltaBQueSobra.includes(p));
+        const seMarcanEntregadas = marcarEntregadas
+            ? pasanDeB.filter((p: any) => !p.isReturnToBase && sinProgreso(p))
+            : [];
+        const ordenFinal = [
+            ...restoA.map((p: any) => ({ id: p.id, de: A.id, ruta: String(p.ruta || '').trim() || nom(A) })),
+            ...pasanDeB.map((p: any) => ({ id: p.id, de: B.id, ruta: String(p.ruta || '').trim() || nom(B) })),
+            ...vueltaA.map((p: any) => ({ id: p.id, de: A.id, ruta: String(p.ruta || '').trim() || nom(A) }))
+        ].map((p, i) => ({ ...p, sequence: i + 1 }));
+
         const plan = {
             principal: { id: A.id, reparto: A.reparto, paradas: paradasA.length },
             secundario: { id: B.id, reparto: B.reparto, paradas: paradasB.length },
             unidadNueva: unidades.join(', '),
             rutasNuevas: rutas,
             gpsNuevo: { inicio: nuevoInicio, fin: nuevoFin },
-            paradasQueSeMueven: paradasB.length,
+            paradasQueSeMueven: pasanDeB.length,
+            vueltaAlDepositoQueSeBorra: vueltaBQueSobra.map((p: any) => p.id),
+            paradasQueSeMarcanEntregadas: seMarcanEntregadas.map((p: any) => p.id),
+            ordenFinal,
             // Todo lo del secundario, por si hubiera que rehacerlo
             respaldoDelSecundario: B
         };
         if (dryRun) return res.json({ dryRun: true, plan });
 
         await prisma.$transaction(async (tx: any) => {
-            // 1. cada parada con su ruta
-            for (const p of paradasA) {
-                if (!String(p.ruta || '').trim()) {
-                    await tx.stop.update({ where: { id: p.id }, data: { ruta: nom(A) } });
-                }
+            // 1. la vuelta al deposito del segundo, si nadie la toco, sobra
+            for (const p of vueltaBQueSobra) {
+                await tx.stop.delete({ where: { id: p.id } });
             }
-            // 2. las del segundo se mudan, numeradas despues de las del primero
-            let orden = paradasA.length;
-            for (const p of paradasB) {
-                orden++;
+            // 2. todas las paradas en su ruta y en su lugar: las del primero,
+            //    las del segundo, y al final la vuelta al deposito del primero
+            for (const p of ordenFinal) {
                 await tx.stop.update({
                     where: { id: p.id },
-                    data: { routeId: A.linkedRoute.id, sequence: orden, ruta: String(p.ruta || '').trim() || nom(B) }
+                    data: { routeId: A.linkedRoute.id, sequence: p.sequence, ruta: p.ruta }
+                });
+            }
+            if (seMarcanEntregadas.length) {
+                await tx.stop.updateMany({
+                    where: { id: { in: seMarcanEntregadas.map((p: any) => p.id) } },
+                    data: { status: 'COMPLETED' }
                 });
             }
             // 3. el viaje principal se queda con todo
@@ -8409,8 +8454,13 @@ app.post('/api/admin/fusionar-viajes', async (req: any, res: any) => {
                     }
                 });
             }
-            // 4. chau el segundo (su ruta se va con el, ya sin paradas)
+            // 4. chau el segundo, y su ruta, que ya quedo sin paradas
+            //    (borrar el viaje no se la lleva: quedaria huerfana)
             await tx.trip.delete({ where: { id: B.id } });
+            if (B.linkedRoute?.id) {
+                const quedan = await tx.stop.count({ where: { routeId: B.linkedRoute.id } });
+                if (quedan === 0) await tx.route.delete({ where: { id: B.linkedRoute.id } });
+            }
         });
 
         await logAction(req, 'DELETE', 'Trip', String(B.id),
