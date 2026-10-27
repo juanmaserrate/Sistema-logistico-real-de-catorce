@@ -6288,6 +6288,75 @@ app.get('/api/admin/clients-dump', async (req: any, res: any) => {
  *  Al cambiar la direccion se borran las coordenadas viejas (quedaban apuntando
  *  al lugar equivocado); se vuelven a geocodificar cuando haga falta.
  *  POST /api/admin/update-client-addresses { key, updates: [{id, address, localidad?}], dryRun? } */
+/** Pone coordenadas ya resueltas en los establecimientos.
+ *
+ *  Hace falta porque los dos geocodificadores que usan OpenStreetMap
+ *  (Overpass para esquinas, Nominatim para el resto) no contestan desde el
+ *  servidor, pero si desde afuera. Asi se puede resolver la direccion donde
+ *  haya salida a internet y traer el resultado para guardarlo.
+ *
+ *  Un establecimiento mal ubicado manda al chofer al lugar equivocado, asi que
+ *  no entra cualquier par de numeros:
+ *   - tiene que caer dentro del AMBA,
+ *   - el que ya tiene ubicacion no se pisa salvo que se pida de prepo.
+ *  Antes de escribir guarda como estaba todo, por si hay que volver.
+ *
+ *  POST /api/admin/clientes-set-coordenadas
+ *       { key, coords: [{ id, lat, lon, origen? }], dryRun?, pisar? } */
+app.post('/api/admin/clientes-set-coordenadas', async (req: any, res: any) => {
+    const { key, coords, dryRun, pisar } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!Array.isArray(coords) || !coords.length) return res.status(400).json({ error: 'Falta "coords"' });
+
+    // El mismo recuadro que usan los geocodificadores de aca.
+    const [oesteX, surX, esteX, norteX] = GEO_BBOX_AMBA.split(',').map(Number);
+
+    try {
+        const ids = coords.map((c: any) => String(c?.id));
+        const actuales = await prisma.client.findMany({
+            where: { id: { in: ids } },
+            select: { id: true, name: true, address: true, latitude: true, longitude: true }
+        });
+        const porId = new Map(actuales.map((c) => [c.id, c]));
+
+        const cambios: any[] = [], rechazados: any[] = [];
+        for (const c of coords as any[]) {
+            const actual: any = porId.get(String(c?.id));
+            if (!actual) { rechazados.push({ id: c?.id, motivo: 'no existe ese establecimiento' }); continue; }
+            const lat = Number(c?.lat), lon = Number(c?.lon);
+            if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+                rechazados.push({ id: actual.id, name: actual.name, motivo: 'coordenadas que no son numeros' }); continue;
+            }
+            if (lat < surX || lat > norteX || lon < oesteX || lon > esteX) {
+                rechazados.push({ id: actual.id, name: actual.name, motivo: `cae fuera del AMBA (${lat}, ${lon})` }); continue;
+            }
+            if (actual.latitude != null && actual.longitude != null && !pisar) {
+                rechazados.push({ id: actual.id, name: actual.name, motivo: 'ya tiene ubicacion; mandar pisar:true para cambiarla' }); continue;
+            }
+            cambios.push({ id: actual.id, name: actual.name, direccion: actual.address, lat, lon, origen: c?.origen || null });
+        }
+
+        if (dryRun) return res.json({ dryRun: true, cambian: cambios.length, cambios, rechazados });
+
+        const respaldo = `clients_coords_backup_${new Date().toISOString().replace(/[:.]/g, '-')}`;
+        await prisma.appSettings.create({ data: { key: respaldo, value: JSON.stringify(actuales) } });
+
+        for (const c of cambios) {
+            await prisma.client.update({ where: { id: c.id }, data: { latitude: c.lat, longitude: c.lon } });
+        }
+        if (cambios.length) {
+            await logAction(req, 'UPDATE', 'Client', cambios.map((c: any) => c.id).join(','),
+                `ubicacion puesta en ${cambios.length} establecimiento(s)`, null,
+                { respaldo, detalle: cambios.slice(0, 300) });
+        }
+
+        res.json({ ok: true, ubicados: cambios.length, rechazados, respaldo, cambios: cambios.slice(0, 300) });
+    } catch (e: any) {
+        console.error('clientes-set-coordenadas:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/admin/update-client-addresses', async (req: any, res: any) => {
     const { key, updates, dryRun, keepCoords } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
