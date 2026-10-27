@@ -23204,7 +23204,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             { id: 'licencias',   tipo: 'fijo',     nombre: 'Licencias y certificados' },
             { id: 'patentes',    tipo: 'fijo',     nombre: 'Patentes' },
             { id: 'multas',      tipo: 'fijo',     nombre: 'Multas' },
-            { id: 'chofer',      tipo: 'fijo',     nombre: 'Costo Chofer / Nómina' },
+            // Solo en el formulario del mes. En la grilla anual NO va: esa
+            // grilla pisa con lo que haya en cada casillero, y como la nomina
+            // no se carga ahi el casillero sale vacio y guardaba un cero
+            // encima del sueldo. La nomina sale de Liquidacion de Sueldos.
+            { id: 'chofer',      tipo: 'fijo',     nombre: 'Costo Chofer / Nómina', soloMensual: true },
             { id: 'combustible', tipo: 'variable', nombre: 'Combustible' },
             { id: 'prev',        tipo: 'variable', nombre: 'Reparación y mant. Preventivo' },
             { id: 'refrig',      tipo: 'variable', nombre: 'Reparación y mant. Refrigeración' },
@@ -23216,6 +23220,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                               'julio','agosto','septiembre','octubre','noviembre','diciembre'];
 
         function rubrosDe(tipo) { return RUBROS_COSTOS.filter(r => r.tipo === tipo); }
+
+        /** Los rubros que se cargan en la grilla anual de Gastos Logistica.
+         *  Deja afuera los que solo se cargan mes a mes. */
+        function rubrosAnuales(tipo) { return rubrosDe(tipo).filter(r => !r.soloMensual); }
 
         /** Arma las filas del formulario del mes desde RUBROS_COSTOS. */
         function pintarRubrosDelMes() {
@@ -23306,15 +23314,17 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 </tr>`;
 
             const filaTotal = `<tr class="r14-fila-total text-white">
-                    <td class="px-3 py-2 font-black uppercase tracking-wider sticky left-0">Total</td>
+                    <td class="px-3 py-2 font-black uppercase tracking-wider sticky left-0">Total
+                        <span class="block text-[8px] font-bold opacity-70 normal-case tracking-normal">sin la n&oacute;mina &middot; el Motor la suma aparte</span>
+                    </td>
                     ${MESES_COSTOS.map(m => `<td class="px-2 py-2 text-right font-black" id="anual-total-${m}">$ 0</td>`).join('')}
                 </tr>`;
 
             tabla.innerHTML = cab + '<tbody>'
                 + `<tr class="r14-fila-grupo"><td class="px-3 py-1 font-black text-[9px] text-[#A3AED0] uppercase tracking-widest sticky left-0" colspan="13">Estructura fija</td></tr>`
-                + rubrosDe('fijo').map(filaRubro).join('')
+                + rubrosAnuales('fijo').map(filaRubro).join('')
                 + `<tr class="r14-fila-grupo"><td class="px-3 py-1 font-black text-[9px] text-[#A3AED0] uppercase tracking-widest sticky left-0" colspan="13">Estructura variable</td></tr>`
-                + rubrosDe('variable').map(filaRubro).join('')
+                + rubrosAnuales('variable').map(filaRubro).join('')
                 + filaHoras + filaTotal + '</tbody>';
 
             const rotuloAnio = document.getElementById('costs-anual-anio');
@@ -23370,7 +23380,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     fallback_hours: Number(previo.fallback_hours) || 8
                 };
                 document.querySelectorAll(`[data-anual-mes="${m}"][data-anual-id]`).forEach(i => {
-                    p[i.getAttribute('data-anual-tipo')][i.getAttribute('data-anual-id')] = leerNumeroAR(i.value);
+                    const id = i.getAttribute('data-anual-id');
+                    // Un rubro que no se carga aca no se pisa, aunque alguien
+                    // vuelva a dibujar la fila: el casillero sale vacio y
+                    // guardaria un cero encima del dato bueno.
+                    const r = RUBROS_COSTOS.find(x => x.id === id);
+                    if (r && r.soloMensual) return;
+                    p[i.getAttribute('data-anual-tipo')][id] = leerNumeroAR(i.value);
                 });
                 const hs = document.querySelector(`[data-anual-mes="${m}"][data-anual-horas]`);
                 if (hs) p.horas_reales = leerNumeroAR(hs.value);
