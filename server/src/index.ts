@@ -6822,6 +6822,23 @@ app.get('/api/admin/personal', async (req: any, res: any) => {
     }
 });
 
+/** Las cuentas con las que se entra al sistema. NO devuelve contraseñas:
+ *  solo quien existe, con que rol y si esta activa.
+ *  GET /api/admin/cuentas?key=... */
+app.get('/api/admin/cuentas', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const users = await prisma.user.findMany({
+            where: { NOT: { role: { in: ['CHOFER', 'AUXILIAR'] } } },
+            select: { username: true, fullName: true, role: true, active: true, createdAt: true },
+            orderBy: { username: 'asc' }
+        });
+        res.json({ total: users.length, cuentas: users });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Sueldos cargados, para auditar antes de tocar nada.
  *  GET /api/admin/salaries-dump?key=...&month=septiembre */
 app.get('/api/admin/salaries-dump', async (req: any, res: any) => {

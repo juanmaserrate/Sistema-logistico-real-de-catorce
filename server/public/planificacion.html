@@ -4944,7 +4944,13 @@
         const USER_PROFILES = {
             juanma: 'SUPERADMIN',
             german: 'SUPERADMIN',
-            gabriel: 'SUPERADMIN'
+            gabriel: 'SUPERADMIN',
+            // Cuentas de conteo de cajones. Van escritas aca y no en la lista
+            // guardada porque un usuario que no figura en ningun lado cae en
+            // SUPERADMIN: si la lista no llegara a cargar, estos verian todo.
+            controladores: 'STOCK',
+            recepcion: 'STOCK',
+            brian: 'STOCK'
         };
 
         let currentUserProfile = null;
