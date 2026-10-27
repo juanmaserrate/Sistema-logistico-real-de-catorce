@@ -7428,6 +7428,128 @@ app.get('/api/v1/costs/unidades-anual', async (req: any, res: any) => {
     }
 });
 
+/** Revisa que los numeros del Panel Logistico cierren entre si.
+ *
+ *  El panel muestra lo mismo contado de varias maneras: tarjetas arriba,
+ *  cuatro graficos, dos tablas de recuento y la apertura por unidad. Si dos
+ *  de esas cuentas no dan igual, una esta mal -- y mirando la pantalla no se
+ *  nota, porque cada cuadro parece razonable por su cuenta.
+ *
+ *  Cuidado con una trampa: un viaje que reparte para dos unidades aparece en
+ *  las DOS filas de la apertura. Sumar esa columna da mas que la cantidad de
+ *  viajes, y eso NO es un error: son viajes-por-unidad, otra cosa. La plata
+ *  si tiene que dar igual, porque se parte y no se repite.
+ *
+ *  Solo lee. No escribe nada.
+ *  GET /api/admin/panel-coherencia?key=...&month=septiembre&year=2026 */
+app.get('/api/admin/panel-coherencia', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const mes = String(req.query.month || '').toLowerCase();
+        const mesNum = MONTH_TO_NUM[mes];
+        if (mesNum === undefined) return res.status(400).json({ error: 'Mes invalido' });
+        const anio = Number(req.query.year) > 0 ? Number(req.query.year) : new Date().getFullYear();
+
+        const ini = new Date(anio, mesNum, 1);
+        const fin = new Date(anio, mesNum + 1, 0, 23, 59, 59);
+        const crudos = await prisma.trip.findMany({
+            where: { date: { gte: ini, lte: fin } },
+            include: {
+                linkedRoute: {
+                    select: {
+                        actualStartTime: true, actualEndTime: true,
+                        stops: { select: { sequence: true, ruta: true, actualArrival: true, actualDeparture: true, isReturnToBase: true } }
+                    }
+                }
+            }
+        });
+        const viajes = sinViajesDePrueba(crudos as any[]);
+
+        const vivo = await _costosPropiosDeHoy(mes, anio);
+        const costoDe = (t: any) => vivo.costos.get(Number(t?.id)) ?? (Number(t?.value) || 0);
+        const esPropio = (t: any) => String(t?.contractType || '').toLowerCase() === 'propio';
+        const horasDe = (t: any) => parseTripDurationHrs({
+            ...t,
+            routeActualStart: t?.linkedRoute?.actualStartTime ?? null,
+            routeActualEnd: t?.linkedRoute?.actualEndTime ?? null
+        } as any, 0);
+
+        // ── Contado viaje por viaje, que es como lo hacen las tarjetas ──
+        const tarjetas = { viajes: viajes.length, propio: 0, terc: 0, horas: 0, propios: 0, tercerizados: 0 };
+        for (const t of viajes as any[]) {
+            const c = costoDe(t);
+            if (esPropio(t)) { tarjetas.propio += c; tarjetas.propios++; }
+            else { tarjetas.terc += c; tarjetas.tercerizados++; }
+            tarjetas.horas += horasDe(t);
+        }
+
+        // ── Contado por unidad de negocio, que es como lo hace el cuadro ──
+        const mapaU = await unidadesPorRutaCacheado();
+        const filas = aperturaEnFilas(aperturaPorUnidad(viajes as any[], mapaU, costoDe));
+        const cuadro = filas.reduce((a: any, f: any) => ({
+            viajes: a.viajes + f.viajes, propio: a.propio + f.propio,
+            terc: a.terc + f.tercerizado, horas: a.horas + f.horas
+        }), { viajes: 0, propio: 0, terc: 0, horas: 0 });
+
+        // Cuantos viajes reparten para mas de una unidad: es lo que explica
+        // que la columna de viajes del cuadro de mas alta que la tarjeta.
+        let conVariasUnidades = 0, unidadesSumadas = 0;
+        for (const t of viajes as any[]) {
+            const n = unidadesDeTexto(t.businessUnit).length;
+            if (n > 1) conVariasUnidades++;
+            unidadesSumadas += Math.max(1, n);
+        }
+
+        // ── Viajes sin horario: a esos el costo se les inventa ──
+        const sinHorario = (viajes as any[]).filter((t) => horasDe(t) <= 0);
+        const sinUnidad = filas.find((f: any) => f.unidad === SIN_UNIDAD) || null;
+
+        const redondeo = (x: number) => Math.round(x * 100) / 100;
+        const difPlata = redondeo((cuadro.propio + cuadro.terc) - (tarjetas.propio + tarjetas.terc));
+        const difHoras = redondeo(cuadro.horas - tarjetas.horas);
+
+        res.json({
+            mes, anio,
+            tarjetas: {
+                viajes: tarjetas.viajes, propios: tarjetas.propios, tercerizados: tarjetas.tercerizados,
+                costoPropio: Math.round(tarjetas.propio), costoTercerizado: Math.round(tarjetas.terc),
+                costoTotal: Math.round(tarjetas.propio + tarjetas.terc),
+                horas: redondeo(tarjetas.horas)
+            },
+            cuadroPorUnidad: {
+                filas: filas.length,
+                viajes: cuadro.viajes, costoPropio: Math.round(cuadro.propio),
+                costoTercerizado: Math.round(cuadro.terc),
+                costoTotal: Math.round(cuadro.propio + cuadro.terc),
+                horas: redondeo(cuadro.horas)
+            },
+            controles: {
+                laPlataCierra: Math.abs(difPlata) < 1,
+                diferenciaDePlata: difPlata,
+                lasHorasCierran: Math.abs(difHoras) < 0.5,
+                diferenciaDeHoras: difHoras,
+                // Esto NO es un error: son viajes-por-unidad contra viajes.
+                viajesDelCuadroMenosTarjeta: cuadro.viajes - tarjetas.viajes,
+                viajesConVariasUnidades: conVariasUnidades,
+                sumaDeUnidadesPorViaje: unidadesSumadas,
+                loExplicaElReparto: unidadesSumadas === cuadro.viajes
+            },
+            avisos: {
+                viajesSinHorario: sinHorario.length,
+                detalleSinHorario: sinHorario.slice(0, 20).map((t: any) => ({
+                    id: t.id, fecha: new Date(t.date).toISOString().slice(0, 10),
+                    reparto: t.reparto, chofer: t.driver, contrato: t.contractType
+                })),
+                sinUnidad: sinUnidad ? { viajes: sinUnidad.viajes, costo: sinUnidad.costo, horas: sinUnidad.horas } : null,
+                origenPropios: vivo.pudo ? 'vivo' : 'guardado'
+            }
+        });
+    } catch (e: any) {
+        console.error('panel-coherencia:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Lo que cuesta hoy cada viaje propio de un mes, segun los parametros
  *  guardados. Devuelve vacio si el mes no tiene parametros cargados: ahi no
  *  hay con que calcular y vale lo que haya escrito el Motor.
