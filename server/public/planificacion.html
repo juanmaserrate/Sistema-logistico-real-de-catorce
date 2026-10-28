@@ -15199,10 +15199,17 @@
                     });
                     const data = await res.json().catch(() => ({}));
                     if (!res.ok) throw new Error(data.error || 'Error del servidor');
-                    // Guardamos el valor que devolvio el server: es el que quedo en la base
-                    cliente[campo] = data[campo] !== undefined ? data[campo] : (nuevo === '' ? null : nuevo);
+                    // Nos quedamos con la ficha entera que devolvio el server: es la
+                    // que quedo en la base. Importa para la direccion, que al
+                    // cambiar le borra las coordenadas viejas.
+                    if (data && data.id) Object.assign(cliente, data);
+                    else cliente[campo] = nuevo === '' ? null : nuevo;
                     filterSchools();
                     addNotification('success', 'Cliente actualizado', `${cliente.name}: ${campo} guardado.`);
+                    if (campo === 'address') {
+                        addNotification('warning', 'Quedó sin ubicar',
+                            `${cliente.name}: cambió la dirección, así que el punto viejo del mapa se borró. Hay que volver a ubicarla.`);
+                    }
                 } catch (err) {
                     td.innerHTML = original;
                     addNotification('error', 'No se pudo guardar', err.message || String(err));
@@ -17023,7 +17030,7 @@
                         <li draggable="true" data-idx="${i}" class="weekly-stop-item flex items-center gap-2 bg-white border border-[#E0E5F2] rounded-xl px-3 py-2 text-sm font-bold text-[#2B3674] cursor-grab shadow-sm">
                             <i data-lucide="grip-vertical" class="w-4 h-4 text-[#A3AED0] shrink-0"></i>
                             <span class="text-[#A3AED0] text-xs w-5">${i + 1}</span>
-                            <span class="flex-1 min-w-0 truncate" title="${escapeHtmlWeekly(row.address || '')}">${escapeHtmlWeekly(row.name)}</span>
+                            <span class="flex-1 min-w-0 truncate" title="${escapeHtmlWeekly(_dirDeCliente(row.clientId) || row.address || '')}">${escapeHtmlWeekly(row.name)}</span>
                             ${esParadaDeposito(row.name) ? '' : _weeklySelectorDeUnidad(tripId, row, i)}
                             ${esParadaDeposito(row.name) ? '' : direccionBotonHtml('semana-' + tripId, row.clientId)}
                             ${esParadaDeposito(row.name) ? '' : contactoBotonHtml('semana-' + tripId, row.clientId)}
@@ -26167,7 +26174,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 <li draggable="true" data-idx="${i}" class="trip-delivery-item flex items-center gap-2 bg-[#F8FAFF] border border-[#F4F7FE] rounded-xl px-3 py-2 text-sm font-bold text-[#2B3674] cursor-grab active:cursor-grabbing">
                     <i data-lucide="grip-vertical" class="w-4 h-4 text-[#A3AED0] shrink-0"></i>
                     <span class="text-[#A3AED0] text-xs w-5">${i + 1}</span>
-                    <span class="flex-1 min-w-0 truncate" title="${escapeHtmlTrip(row.address || '')}">${escapeHtmlTrip(row.name)}</span>
+                    <span class="flex-1 min-w-0 truncate" title="${escapeHtmlTrip(_dirDeCliente(row.clientId) || row.address || '')}">${escapeHtmlTrip(row.name)}</span>
                     ${(row.ruta && tripRutas.length > 1) ? `<span class="shrink-0 px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[9px] font-black uppercase tracking-wider">${escapeHtmlTrip(row.ruta)}</span>` : ''}
                     ${esParadaDeposito(row.name) ? '' : direccionBotonHtml('modal', row.clientId)}
                     ${esParadaDeposito(row.name) ? '' : contactoBotonHtml('modal', row.clientId)}
@@ -26456,6 +26463,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             else if (lista.startsWith('semana-')) renderWeeklyTripStopsPanel(Number(lista.slice(7)));
         }
 
+        /** Lo que se esta guardando ahora mismo, por cliente. «Ubicar» lo espera:
+         *  el servidor busca en el mapa la dirección que tiene GUARDADA, así que
+         *  si el guardado todavía está en camino buscaría la vieja. */
+        const _cliGuardando = new Map();
+
         /** Guarda UN campo de la ficha del cliente desde la fila de la parada.
          *  Sirve igual para el contacto y para la direccion. */
         async function guardarCampoDelCliente(input, lista) {
@@ -26465,7 +26477,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const cliente = (allSchools || []).find(x => String(x.id) === String(clientId));
             if (cliente && String(cliente[campo] || '') === valor) return;
             input.classList.add('opacity-60');
-            try {
+            const pedido = (async () => {
                 const res = await fetch(`${API_URL}/clients/${clientId}`, {
                     method: 'PATCH',
                     headers: getActorHeaders(),
@@ -26473,7 +26485,15 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data.error || 'Error del servidor');
-                if (cliente) cliente[campo] = valor || null;
+                return data;
+            })();
+            _cliGuardando.set(String(clientId), pedido.catch(() => null));
+            try {
+                const data = await pedido;
+                // La ficha que devuelve el servidor manda: al cambiar la dirección
+                // borra las coordenadas viejas, y acá hay que enterarse.
+                if (cliente && data && data.id) Object.assign(cliente, data);
+                else if (cliente) cliente[campo] = valor || null;
                 input.classList.remove('border-[#E0E5F2]');
                 input.classList.add('border-emerald-400');
                 // Actualiza los resumenes de la fila sin cerrar el formulario
@@ -26481,9 +26501,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 if (rc) rc.textContent = contactoResumen(cliente) || 'Sin contacto';
                 const rd = document.querySelector(`[data-dir-resumen="${lista}|${clientId}"]`);
                 if (rd) rd.textContent = (cliente && cliente.address) || 'Sin dirección';
-                // Si cambio la direccion, el punto que esta marcado en el mapa
-                // es el de la direccion vieja: hay que volver a ubicarla.
-                if (DIRECCION_CAMPOS.some(f => f.campo === campo)) _dirPintarPin(clientId, lista, 'cambio');
+                // Dirección nueva: el punto viejo ya no sirve y el servidor lo
+                // borró. Se busca el nuevo solo, que es lo que uno iba a hacer.
+                if (campo === 'address') await ubicarParada(clientId, lista);
+                else if (DIRECCION_CAMPOS.some(f => f.campo === campo)) _dirPintarPin(clientId, lista, 'cambio');
             } catch (err) {
                 input.classList.add('border-rose-400');
                 if (typeof addNotification === 'function') addNotification('error', 'Ficha', 'No se pudo guardar: ' + (err.message || err));
@@ -26558,12 +26579,20 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         function _dirPintarPin(clientId, lista, aviso) {
             const zona = document.querySelector(`[data-dir-pin="${lista}|${clientId}"]`);
             if (zona) zona.innerHTML = _dirPinHtml(clientId, lista, aviso);
+            // El botón de la fila también cambia de color. Se reemplaza solo él
+            // y no toda la lista: redibujarla le borraría a la persona lo que
+            // esté escribiendo en otro campo de la ficha.
+            const boton = document.querySelector(`[data-dir-boton="${lista}|${clientId}"]`);
+            if (boton) boton.outerHTML = direccionBotonHtml(lista, clientId);
         }
 
         /** Busca la dirección en el mapa y guarda el punto en la ficha.
          *  El servidor controla que la calle que encuentra sea la que se pidió:
          *  si no coincide no guarda nada, y acá se dice por qué. */
         async function ubicarParada(clientId, lista) {
+            // Si la dirección se está guardando en este momento, primero eso: el
+            // servidor busca la que tiene guardada, no la que está en pantalla.
+            try { await _cliGuardando.get(String(clientId)); } catch (_) {}
             _dirPintarPin(clientId, lista, 'buscando');
             try {
                 const res = await fetch(`${API_URL}/clients/${clientId}/ubicar`, {
@@ -26579,6 +26608,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     }
                 }
                 _dirPintarPin(clientId, lista, data.ok ? null : (data.motivo || 'el buscador no encontró esa dirección'));
+                if (!data.ok && typeof addNotification === 'function') {
+                    addNotification('warning', 'No se pudo ubicar',
+                        `${(cliente && cliente.name) || 'La parada'}: ${data.motivo || 'el buscador no encontró esa dirección'}.`);
+                }
             } catch (err) {
                 _dirPintarPin(clientId, lista, err.message || 'error de red');
             }
@@ -26590,6 +26623,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             redibujarListaDeParadas(lista);
         }
 
+        /** La dirección que tiene HOY la ficha del cliente. La que viaja en la
+         *  lista de paradas es la de cuando se cargó, y queda vieja al corregirla. */
+        function _dirDeCliente(clientId) {
+            const c = (allSchools || []).find(x => String(x.id) === String(clientId));
+            return (c && c.address) || '';
+        }
+
         /** Botón + dirección actual, para poner dentro de la fila de una parada. */
         function direccionBotonHtml(lista, clientId) {
             const c = (allSchools || []).find(x => String(x.id) === String(clientId));
@@ -26599,7 +26639,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             // Ámbar = falta algo: o no hay dirección, o no está marcada en el mapa.
             const color = (!dir || sinPunto) ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700';
             return `<button type="button" onclick="toggleDireccionParada('${lista}', '${clientId}')"
-                class="shrink-0 max-w-[45%] truncate text-[10px] font-bold px-2 py-0.5 rounded-lg ${color} hover:bg-indigo-50"
+                data-dir-boton="${lista}|${clientId}"
+                class="min-w-0 max-w-[30%] truncate text-[10px] font-bold px-2 py-0.5 rounded-lg ${color} hover:bg-indigo-50"
                 title="${dir ? 'Dirección: ' + dir.replace(/"/g, '&quot;') : 'Sin dirección cargada'}${sinPunto ? ' · sin marcar en el mapa' : ''}">
                 📍 <span data-dir-resumen="${lista}|${clientId}">${dir ? dir.replace(/</g, '&lt;') : 'Sin dirección'}</span> ${abierto ? '▴' : '▾'}
             </button>`;

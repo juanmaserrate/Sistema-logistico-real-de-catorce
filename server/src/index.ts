@@ -1048,6 +1048,19 @@ app.patch('/api/v1/clients/:id', async (req, res) => {
         }
         // Leer estado anterior para registrar historial de cambios visibles
         const prevClient = await prisma.client.findUnique({ where: { id: String(id) } });
+        // Coordenadas viejas = direccion vieja: el punto del mapa queda apuntando
+        // a otro lado y el chofer lo ve asi en el telefono. Se limpian, igual que
+        // en la correccion en lote. Si el mismo pedido trae coordenadas, no: eso
+        // es mover el punto a mano, no cambiar la direccion.
+        if (prevClient && data.address !== undefined
+            && data.latitude === undefined && data.longitude === undefined
+            // Si antes no tenia direccion, el punto no salio de ella: lo puso
+            // alguien a mano en el mapa y hay que dejarlo.
+            && String(prevClient.address ?? '').trim()
+            && String(prevClient.address ?? '') !== String(data.address ?? '')) {
+            data.latitude = null;
+            data.longitude = null;
+        }
         const updatedClient = await prisma.client.update({
             where: { id: String(id) },
             data
