@@ -26642,7 +26642,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 data-dir-boton="${lista}|${clientId}"
                 class="min-w-0 max-w-[30%] truncate text-[10px] font-bold px-2 py-0.5 rounded-lg ${color} hover:bg-indigo-50"
                 title="${dir ? 'Dirección: ' + dir.replace(/"/g, '&quot;') : 'Sin dirección cargada'}${sinPunto ? ' · sin marcar en el mapa' : ''}">
-                📍 <span data-dir-resumen="${lista}|${clientId}">${dir ? dir.replace(/</g, '&lt;') : 'Sin dirección'}</span> ${abierto ? '▴' : '▾'}
+                📍 <span data-dir-resumen="${lista}|${clientId}" class="hidden sm:inline">${dir ? dir.replace(/</g, '&lt;') : 'Sin dirección'}</span> ${abierto ? '▴' : '▾'}
             </button>`;
         }
 
