@@ -2264,6 +2264,54 @@
 
                     <!-- ══ DEPOSITO ══ -->
                     <div id="stk-pane-stock" class="hidden p-6 bg-white space-y-5">
+
+                        <!-- ── PASO 1: contar a ciegas ──
+                             Un tipo, un casillero grande y nada mas. El numero
+                             del sistema NO se muestra: si lo ves, lo copias. -->
+                        <div id="stk-contar" class="hidden">
+                            <div class="flex flex-wrap items-center gap-3 mb-5">
+                                <div class="min-w-0">
+                                    <h5 class="text-base font-black text-[#1B2559] tracking-tight">Cont&aacute; el dep&oacute;sito</h5>
+                                    <p class="text-[11px] text-[#A3AED0] font-medium mt-0.5">
+                                        Escrib&iacute; cu&aacute;ntos hay de cada uno. Lo que dejes vac&iacute;o no se toca.
+                                    </p>
+                                </div>
+                                <div class="ml-auto text-right">
+                                    <p id="stk-contar-progreso" class="text-[11px] font-black text-[#451ebb]">0 de 0</p>
+                                    <p class="text-[10px] text-[#A3AED0] font-medium">contados</p>
+                                </div>
+                            </div>
+
+                            <div id="stk-contar-lista" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"></div>
+
+                            <div class="flex flex-wrap gap-2 justify-end mt-6 pt-4 border-t border-[#F4F7FE]">
+                                <button onclick="stkModoInventario(false)" class="bg-[#F4F7FE] text-[#1B2559] rounded-xl px-5 py-3 text-[13px] font-bold">Cancelar</button>
+                                <button onclick="stkRevisarConteo()" id="stk-btn-revisar" class="bg-[#451ebb] text-white rounded-xl px-6 py-3 text-[13px] font-bold">Ver diferencias</button>
+                            </div>
+                        </div>
+
+                        <!-- ── PASO 2: comparar y confirmar ── -->
+                        <div id="stk-revisar" class="hidden">
+                            <div class="mb-5">
+                                <h5 class="text-base font-black text-[#1B2559] tracking-tight">Revis&aacute; antes de guardar</h5>
+                                <p class="text-[11px] text-[#A3AED0] font-medium mt-0.5">
+                                    Esto es lo que vas a corregir. Si alg&uacute;n n&uacute;mero no te cierra, volv&eacute; y cont&aacute; de nuevo.
+                                </p>
+                            </div>
+                            <div id="stk-revisar-lista" class="overflow-x-auto"></div>
+                            <div class="flex flex-col lg:flex-row lg:items-end gap-3 mt-5 pt-4 border-t border-[#F4F7FE]">
+                                <label class="flex-1 text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">
+                                    Nota (opcional)
+                                    <input id="stk-inv-nota" placeholder="Qui&eacute;n cont&oacute;, d&oacute;nde, qu&eacute; pas&oacute;..." class="block w-full mt-1 bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559] normal-case">
+                                </label>
+                                <div class="flex gap-2">
+                                    <button onclick="stkVolverAContar()" class="bg-[#F4F7FE] text-[#1B2559] rounded-xl px-5 py-3 text-[13px] font-bold">Volver a contar</button>
+                                    <button onclick="stkGuardarInventario()" id="stk-btn-inv" class="bg-[#451ebb] text-white rounded-xl px-6 py-3 text-[13px] font-bold">Confirmar inventario</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div id="stk-vista-stock" class="space-y-5">
                         <div class="flex flex-wrap items-center gap-2">
                             <h5 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest">Lo que hay de cada tipo</h5>
                             <div class="flex flex-wrap gap-2 ml-auto">
@@ -2281,27 +2329,10 @@
                                 <th class="py-2 px-2 text-right">En la calle</th>
                                 <th class="py-2 px-2 text-right">Total</th>
                                 <th class="py-2 px-2">&Uacute;ltimo inventario</th>
-                                <th class="py-2 px-2 text-right stk-col-contar hidden w-28">Cont&eacute;</th>
-                                <th class="py-2 px-2 text-right stk-col-contar hidden w-24">Diferencia</th>
                             </tr></thead>
                             <tbody id="stk-tipos"></tbody>
                         </table></div>
-
-                        <!-- La barra del inventario aparece solo cuando se esta contando -->
-                        <div id="stk-barra-inv" class="hidden flex flex-col lg:flex-row lg:items-end gap-3 pt-4 border-t border-[#F4F7FE]">
-                            <label class="flex-1 text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">
-                                Nota del inventario
-                                <input id="stk-inv-nota" placeholder="Qui&eacute;n cont&oacute;, d&oacute;nde, qu&eacute; pas&oacute;..." class="block w-full mt-1 bg-[#F4F7FE] border-0 rounded-xl p-2.5 text-sm font-bold text-[#1B2559] normal-case">
-                            </label>
-                            <div class="flex gap-2">
-                                <button onclick="stkModoInventario(false)" class="bg-[#F4F7FE] text-[#1B2559] rounded-xl px-4 py-2.5 text-[12px] font-bold">Cancelar</button>
-                                <button onclick="stkGuardarInventario()" id="stk-btn-inv" class="bg-[#451ebb] text-white rounded-xl px-5 py-2.5 text-[12px] font-bold">Guardar inventario</button>
-                            </div>
                         </div>
-                        <p id="stk-pie-inv" class="hidden text-[10px] text-[#A3AED0]">
-                            Escrib&iacute; lo que contaste en <b>Cont&eacute;</b>. Los que dejes en blanco no se tocan.
-                            Guardar no pisa el historial: deja asentada la diferencia y con qu&eacute; n&uacute;mero se corrigi&oacute;.
-                        </p>
                     </div>
 
                     <!-- ══ HISTORIAL ══ -->
@@ -6098,7 +6129,7 @@
             if (!body) return;
 
             if (!_stkTipos.length) {
-                body.innerHTML = '<tr><td colspan="8" class="py-6 px-2 text-center text-[#A3AED0]">Todavía no hay tipos de cajón.</td></tr>';
+                body.innerHTML = '<tr><td colspan="6" class="py-6 px-2 text-center text-[#A3AED0]">Todavía no hay tipos de cajón.</td></tr>';
                 return;
             }
 
@@ -6119,49 +6150,107 @@
                     <td class="py-2.5 px-2 text-[11px] text-[#A3AED0]">
                         ${inv ? `${_stkFecha(inv.fecha)} · contó ${_stkNro(inv.contado)} <span class="font-black ${colorDif}">${difInv}</span>` : 'nunca'}
                     </td>
-                    <td class="py-2.5 px-2 text-right stk-col-contar ${_stkContando ? '' : 'hidden'}">
-                        <input type="number" min="0" data-stk-conteo="${_stkEsc(t.key)}" oninput="stkPintarDiferencia('${_stkEsc(t.key)}')"
-                               class="w-24 bg-[#F4F7FE] border-0 rounded-xl p-2 text-sm font-bold text-[#1B2559] text-right" placeholder="—">
-                    </td>
-                    <td class="py-2.5 px-2 text-right font-black text-[#A3AED0] stk-col-contar ${_stkContando ? '' : 'hidden'}" id="stk-dif-${_stkEsc(t.key)}">—</td>
                 </tr>`;
             }).join('');
         }
 
-        /** Entra o sale del modo inventario. Mientras no se esta contando, la
-         *  tabla se mira limpia: los casilleros de conteo no estan. */
-        function stkModoInventario(prender) {
-            _stkContando = !!prender;
-            document.querySelectorAll('.stk-col-contar').forEach(e => e.classList.toggle('hidden', !prender));
-            document.getElementById('stk-barra-inv')?.classList.toggle('hidden', !prender);
-            document.getElementById('stk-pie-inv')?.classList.toggle('hidden', !prender);
-            document.getElementById('stk-btn-contar')?.classList.toggle('hidden', !!prender);
-            if (!prender) {
-                document.querySelectorAll('[data-stk-conteo]').forEach(i => { i.value = ''; });
-                _stkTipos.forEach(t => stkPintarDiferencia(t.key));
-                const n = document.getElementById('stk-inv-nota');
-                if (n) n.value = '';
-            } else {
-                document.querySelector('[data-stk-conteo]')?.focus();
+        /** Muestra UNA de las tres pantallas del Deposito: el stock, el conteo
+         *  o la revision. */
+        function _stkMostrar(cual) {
+            const panes = { stock: 'stk-vista-stock', contar: 'stk-contar', revisar: 'stk-revisar' };
+            for (const [nombre, id] of Object.entries(panes)) {
+                document.getElementById(id)?.classList.toggle('hidden', nombre !== cual);
             }
         }
 
-        /** La diferencia se ve mientras se escribe: contar y enterarse después
-         *  de guardar no sirve para nada. */
-        function stkPintarDiferencia(key) {
-            const input = document.querySelector(`[data-stk-conteo="${key}"]`);
-            const celda = document.getElementById('stk-dif-' + key);
-            const tipo = _stkTipos.find(t => t.key === key);
-            if (!input || !celda || !tipo) return;
-            if (input.value === '') {
-                celda.textContent = '—';
-                celda.className = celda.className.replace(/text-\S+/g, '') + ' text-[#A3AED0]';
+        /** Entra o sale del modo inventario.
+         *
+         *  Contar es su propia pantalla, no dos columnas mas en la tabla. Dos
+         *  razones: en el telefono -- que es con lo que se cuenta, parado en el
+         *  deposito -- una tabla de ocho columnas no entra; y ver el numero del
+         *  sistema al lado del casillero hace que lo copies en vez de contar. */
+        function stkModoInventario(prender) {
+            _stkContando = !!prender;
+            document.getElementById('stk-btn-contar')?.classList.toggle('hidden', !!prender);
+            if (!prender) {
+                const n = document.getElementById('stk-inv-nota');
+                if (n) n.value = '';
+                _stkMostrar('stock');
                 return;
             }
-            const dif = Math.round(Number(input.value) || 0) - tipo.stock;
-            celda.textContent = dif > 0 ? `+${dif}` : String(dif);
-            celda.className = 'py-2.5 px-2 text-right font-black stk-col-contar ' +
-                (dif === 0 ? 'text-emerald-600' : (dif < 0 ? 'text-rose-600' : 'text-amber-600'));
+            stkPintarConteo();
+            _stkMostrar('contar');
+            document.querySelector('[data-stk-conteo]')?.focus();
+        }
+
+        /** Los casilleros para contar: el nombre y el numero, nada mas. */
+        function stkPintarConteo() {
+            const host = document.getElementById('stk-contar-lista');
+            if (!host) return;
+            const activos = _stkTipos.filter(t => t.activo);
+            if (!activos.length) {
+                host.innerHTML = '<p class="text-[13px] text-[#A3AED0] font-bold">No hay tipos de cajón cargados.</p>';
+                return;
+            }
+            host.innerHTML = activos.map(t => `
+                <label class="block bg-[#FAFBFF] rounded-2xl p-4 border border-[#F4F7FE] cursor-text">
+                    <span class="block text-[12px] font-black text-[#1B2559] uppercase tracking-wide leading-tight">${_stkEsc(t.name)}</span>
+                    <input type="number" min="0" inputmode="numeric" data-stk-conteo="${_stkEsc(t.key)}"
+                           oninput="stkContarProgreso()" placeholder="—"
+                           class="w-full mt-2 bg-white border border-[#E0E5F2] rounded-xl px-3 py-3 text-2xl font-black text-[#1B2559] text-center outline-none focus:border-[#451ebb]">
+                </label>`).join('');
+            stkContarProgreso();
+        }
+
+        /** Cuantos lleva contados. Es lo unico que se le muestra mientras cuenta. */
+        function stkContarProgreso() {
+            const inputs = [...document.querySelectorAll('[data-stk-conteo]')];
+            const hechos = inputs.filter(i => i.value !== '').length;
+            const el = document.getElementById('stk-contar-progreso');
+            if (el) el.textContent = `${hechos} de ${inputs.length}`;
+        }
+
+        function stkVolverAContar() { _stkMostrar('contar'); }
+
+        /** Paso 2: lo contado contra lo que decia el sistema. */
+        function stkRevisarConteo() {
+            const items = [];
+            document.querySelectorAll('[data-stk-conteo]').forEach(i => {
+                if (i.value !== '') items.push({ key: i.dataset.stkConteo, contado: Math.round(Number(i.value) || 0) });
+            });
+            if (!items.length) {
+                _stkAviso('warning', 'Inventario', 'Todavía no cargaste ningún número.');
+                return;
+            }
+            const host = document.getElementById('stk-revisar-lista');
+            const faltan = _stkTipos.filter(t => t.activo && !items.some(i => i.key === t.key));
+
+            const filas = items.map(it => {
+                const t = _stkTipos.find(x => x.key === it.key) || { name: it.key, stock: 0 };
+                const dif = it.contado - t.stock;
+                const color = dif === 0 ? 'text-emerald-600' : (dif < 0 ? 'text-rose-600' : 'text-amber-600');
+                const texto = dif === 0 ? 'da justo' : (dif < 0 ? `faltan ${_stkNro(-dif)}` : `sobran ${_stkNro(dif)}`);
+                return `<tr class="border-b border-[#F4F7FE]">
+                    <td class="py-3 px-2 font-bold text-[#1B2559]">${_stkEsc(t.name)}</td>
+                    <td class="py-3 px-2 text-right font-black text-[#1B2559] text-[15px]">${_stkNro(it.contado)}</td>
+                    <td class="py-3 px-2 text-right font-bold text-[#A3AED0]">${_stkNro(t.stock)}</td>
+                    <td class="py-3 px-2 text-right font-black ${color}">${dif > 0 ? '+' : ''}${_stkNro(dif)}</td>
+                    <td class="py-3 px-2 text-[11px] font-bold ${color}">${texto}</td>
+                </tr>`;
+            }).join('');
+
+            host.innerHTML = `<table class="w-full text-sm">
+                <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left border-b border-[#F4F7FE]">
+                    <th class="py-2 px-2">Tipo de cajón</th>
+                    <th class="py-2 px-2 text-right">Contaste</th>
+                    <th class="py-2 px-2 text-right">Decía el sistema</th>
+                    <th class="py-2 px-2 text-right">Diferencia</th>
+                    <th class="py-2 px-2"></th>
+                </tr></thead><tbody>${filas}</tbody></table>`
+                + (faltan.length
+                    ? `<p class="mt-3 text-[11px] font-bold text-amber-600">Sin contar, no se tocan: ${faltan.map(t => _stkEsc(t.name)).join(', ')}.</p>`
+                    : '');
+            _stkMostrar('revisar');
         }
 
         async function stkGuardarInventario() {
@@ -6173,12 +6262,8 @@
                 _stkAviso('warning', 'Inventario', 'No cargaste ningún número.');
                 return;
             }
-            const faltan = _stkTipos.filter(t => t.activo && !items.some(i => i.key === t.key));
-            const aviso = faltan.length
-                ? `\n\nQuedan sin contar: ${faltan.map(t => t.name).join(', ')}. Esos no se tocan.`
-                : '';
-            if (!confirm(`Vas a guardar el conteo de ${items.length} tipo(s).${aviso}`)) return;
-
+            // Sin confirm(): la pantalla de revision, con las diferencias a la
+            // vista, es una pregunta mejor que un cartel que nadie lee.
             const btn = document.getElementById('stk-btn-inv');
             if (btn) { btn.disabled = true; btn.textContent = 'Guardando...'; }
             try {
@@ -6188,12 +6273,14 @@
                 });
                 stkModoInventario(false);
                 _stkAviso('success', 'Inventario guardado',
-                    `${r.contados} tipo(s) contados, ${r.conDiferencia} con diferencia.`);
+                    r.conDiferencia
+                        ? `${r.contados} tipo(s) contados · ${r.conDiferencia} con diferencia, ya quedó corregido.`
+                        : `${r.contados} tipo(s) contados · todo daba justo.`);
                 await stkCargarTipos();
             } catch (e) {
                 _stkAviso('error', 'No se pudo guardar', String(e.message || e));
             } finally {
-                if (btn) { btn.disabled = false; btn.textContent = 'Guardar inventario'; }
+                if (btn) { btn.disabled = false; btn.textContent = 'Confirmar inventario'; }
             }
         }
 

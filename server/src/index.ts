@@ -6173,8 +6173,28 @@ app.get('/api/v1/crates/historial', async (req: any, res: any) => {
  *  POST /api/admin/cajones-inventario
  *       { key, tipos: [{ nombre, contado }], desactivar?: [clave], nota?, dryRun? } */
 app.post('/api/admin/cajones-inventario', async (req: any, res: any) => {
-    const { key, tipos, desactivar, nota, dryRun } = req.body || {};
+    const { key, tipos, desactivar, renombrar, nota, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+
+    // Cambiarle el nombre visible a un tipo. La clave interna no se toca: es la
+    // que ata los movimientos, y tocarla dejaria el historial colgando. Por eso
+    // el nombre puede llevar tildes aunque la clave no.
+    if (Array.isArray(renombrar) && renombrar.length) {
+        const hechos: any[] = [];
+        for (const r of renombrar as any[]) {
+            const clave = String(r?.clave || '').trim();
+            const nombre = String(r?.nombre || '').trim();
+            if (!clave || !nombre) continue;
+            const antes = await prisma.crateType.findUnique({ where: { key: clave } });
+            if (!antes) { hechos.push({ clave, error: 'no existe' }); continue; }
+            if (!dryRun) await prisma.crateType.update({ where: { key: clave }, data: { name: nombre } });
+            hechos.push({ clave, antes: antes.name, ahora: nombre });
+        }
+        if (!Array.isArray(tipos) || !tipos.length) {
+            return res.json({ dryRun: !!dryRun, renombrados: hechos });
+        }
+    }
+
     if (!Array.isArray(tipos) || !tipos.length) return res.status(400).json({ error: 'Falta "tipos"' });
 
     try {
