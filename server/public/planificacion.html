@@ -2269,24 +2269,28 @@
                              Un tipo, un casillero grande y nada mas. El numero
                              del sistema NO se muestra: si lo ves, lo copias. -->
                         <div id="stk-contar" class="hidden">
-                            <div class="flex flex-wrap items-center gap-3 mb-5">
-                                <div class="min-w-0">
-                                    <h5 class="text-base font-black text-[#1B2559] tracking-tight">Cont&aacute; el dep&oacute;sito</h5>
-                                    <p class="text-[11px] text-[#A3AED0] font-medium mt-0.5">
-                                        Escrib&iacute; cu&aacute;ntos hay de cada uno. Lo que dejes vac&iacute;o no se toca.
-                                    </p>
+                            <div class="max-w-xl mx-auto">
+                                <div class="flex items-center gap-3 mb-4">
+                                    <button onclick="stkModoInventario(false)" title="Cancelar el conteo"
+                                            class="text-[11px] font-bold text-[#A3AED0] hover:text-[#1B2559]">&times; Cancelar</button>
+                                    <p id="stk-contar-progreso" class="ml-auto text-[11px] font-black text-[#451ebb]">0 de 0</p>
                                 </div>
-                                <div class="ml-auto text-right">
-                                    <p id="stk-contar-progreso" class="text-[11px] font-black text-[#451ebb]">0 de 0</p>
-                                    <p class="text-[10px] text-[#A3AED0] font-medium">contados</p>
+                                <div class="h-1.5 bg-[#F4F7FE] rounded-full overflow-hidden mb-6">
+                                    <div id="stk-contar-barra" class="h-full bg-[#451ebb] rounded-full transition-all" style="width:0%"></div>
                                 </div>
-                            </div>
 
-                            <div id="stk-contar-lista" class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-3"></div>
+                                <!-- La tarjeta del tipo que se esta contando -->
+                                <div id="stk-contar-tarjeta" class="text-center py-2"></div>
 
-                            <div class="flex flex-wrap gap-2 justify-end mt-6 pt-4 border-t border-[#F4F7FE]">
-                                <button onclick="stkModoInventario(false)" class="bg-[#F4F7FE] text-[#1B2559] rounded-xl px-5 py-3 text-[13px] font-bold">Cancelar</button>
-                                <button onclick="stkRevisarConteo()" id="stk-btn-revisar" class="bg-[#451ebb] text-white rounded-xl px-6 py-3 text-[13px] font-bold">Ver diferencias</button>
+                                <div class="flex gap-2 mt-8">
+                                    <button onclick="stkConteoAnterior()" id="stk-btn-antes"
+                                            class="bg-[#F4F7FE] text-[#1B2559] rounded-2xl px-5 py-4 text-[14px] font-bold disabled:opacity-30">Anterior</button>
+                                    <button onclick="stkConteoSiguiente()" id="stk-btn-sig"
+                                            class="flex-1 bg-[#451ebb] text-white rounded-2xl px-6 py-4 text-[15px] font-black">Siguiente</button>
+                                </div>
+                                <p class="text-[10px] text-[#A3AED0] text-center mt-3">
+                                    Si de alguno no contaste, dejalo vac&iacute;o y segu&iacute;: ese no se toca.
+                                </p>
                             </div>
                         </div>
 
@@ -6175,49 +6179,97 @@
             if (!prender) {
                 const n = document.getElementById('stk-inv-nota');
                 if (n) n.value = '';
+                _stkConteo = {};
+                _stkPaso = 0;
                 _stkMostrar('stock');
                 return;
             }
-            stkPintarConteo();
+            _stkConteo = {};
+            _stkPaso = 0;
             _stkMostrar('contar');
-            document.querySelector('[data-stk-conteo]')?.focus();
+            stkPintarConteo();
         }
 
-        /** Los casilleros para contar: el nombre y el numero, nada mas. */
+        /** Lo contado, por clave de tipo. Vive en memoria y no en la pantalla:
+         *  de a un tipo por vez, el casillero del anterior ya no existe. */
+        let _stkConteo = {};
+        let _stkPaso = 0;
+
+        function _stkTiposAContar() { return _stkTipos.filter(t => t.activo); }
+
+        /** Dibuja el tipo que toca. Uno por pantalla: contar es una sola cosa
+         *  a la vez, y de a uno no hay donde perderse ni adonde tocar de mas. */
         function stkPintarConteo() {
-            const host = document.getElementById('stk-contar-lista');
+            const host = document.getElementById('stk-contar-tarjeta');
             if (!host) return;
-            const activos = _stkTipos.filter(t => t.activo);
-            if (!activos.length) {
+            const lista = _stkTiposAContar();
+            if (!lista.length) {
                 host.innerHTML = '<p class="text-[13px] text-[#A3AED0] font-bold">No hay tipos de cajón cargados.</p>';
                 return;
             }
-            host.innerHTML = activos.map(t => `
-                <label class="block bg-[#FAFBFF] rounded-2xl p-4 border border-[#F4F7FE] cursor-text">
-                    <span class="block text-[12px] font-black text-[#1B2559] uppercase tracking-wide leading-tight">${_stkEsc(t.name)}</span>
-                    <input type="number" min="0" inputmode="numeric" data-stk-conteo="${_stkEsc(t.key)}"
-                           oninput="stkContarProgreso()" placeholder="—"
-                           class="w-full mt-2 bg-white border border-[#E0E5F2] rounded-xl px-3 py-3 text-2xl font-black text-[#1B2559] text-center outline-none focus:border-[#451ebb]">
-                </label>`).join('');
+            _stkPaso = Math.max(0, Math.min(_stkPaso, lista.length - 1));
+            const t = lista[_stkPaso];
+            const valor = _stkConteo[t.key];
+
+            host.innerHTML = `
+                <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-[0.2em]">Contá cuántos hay de</p>
+                <h3 class="text-2xl font-black text-[#1B2559] leading-tight mt-1 mb-6">${_stkEsc(t.name)}</h3>
+                <input type="number" min="0" inputmode="numeric" id="stk-contar-input"
+                       value="${valor === undefined ? '' : valor}" placeholder="—"
+                       onkeydown="if(event.key==='Enter'){event.preventDefault();stkConteoSiguiente();}"
+                       class="w-full bg-[#FAFBFF] border-2 border-[#E0E5F2] rounded-2xl px-4 py-6 text-5xl font-black text-[#1B2559] text-center outline-none focus:border-[#451ebb]">`;
+
+            const sig = document.getElementById('stk-btn-sig');
+            if (sig) sig.textContent = _stkPaso === lista.length - 1 ? 'Ver diferencias' : 'Siguiente';
+            const antes = document.getElementById('stk-btn-antes');
+            if (antes) antes.disabled = _stkPaso === 0;
+
             stkContarProgreso();
+            document.getElementById('stk-contar-input')?.focus();
         }
 
-        /** Cuantos lleva contados. Es lo unico que se le muestra mientras cuenta. */
+        /** Guarda lo que haya escrito en la tarjeta de ahora. */
+        function _stkGuardarPaso() {
+            const lista = _stkTiposAContar();
+            const t = lista[_stkPaso];
+            const input = document.getElementById('stk-contar-input');
+            if (!t || !input) return;
+            if (input.value === '') delete _stkConteo[t.key];
+            else _stkConteo[t.key] = Math.max(0, Math.round(Number(input.value) || 0));
+        }
+
+        function stkConteoSiguiente() {
+            _stkGuardarPaso();
+            const lista = _stkTiposAContar();
+            if (_stkPaso >= lista.length - 1) { stkRevisarConteo(); return; }
+            _stkPaso++;
+            stkPintarConteo();
+        }
+
+        function stkConteoAnterior() {
+            _stkGuardarPaso();
+            if (_stkPaso > 0) _stkPaso--;
+            stkPintarConteo();
+        }
+
+        /** Cuantos lleva contados, y la barra. Es lo unico que se le muestra
+         *  mientras cuenta: el numero del sistema no, si lo ve lo copia. */
         function stkContarProgreso() {
-            const inputs = [...document.querySelectorAll('[data-stk-conteo]')];
-            const hechos = inputs.filter(i => i.value !== '').length;
+            const lista = _stkTiposAContar();
+            const hechos = lista.filter(t => _stkConteo[t.key] !== undefined).length;
             const el = document.getElementById('stk-contar-progreso');
-            if (el) el.textContent = `${hechos} de ${inputs.length}`;
+            if (el) el.textContent = `${_stkPaso + 1} de ${lista.length}`;
+            const barra = document.getElementById('stk-contar-barra');
+            if (barra) barra.style.width = lista.length ? Math.round((hechos / lista.length) * 100) + '%' : '0%';
         }
 
-        function stkVolverAContar() { _stkMostrar('contar'); }
+        /** Volver del repaso a la tarjeta donde se habia quedado. */
+        function stkVolverAContar() { _stkMostrar('contar'); stkPintarConteo(); }
 
         /** Paso 2: lo contado contra lo que decia el sistema. */
         function stkRevisarConteo() {
-            const items = [];
-            document.querySelectorAll('[data-stk-conteo]').forEach(i => {
-                if (i.value !== '') items.push({ key: i.dataset.stkConteo, contado: Math.round(Number(i.value) || 0) });
-            });
+            _stkGuardarPaso();
+            const items = Object.entries(_stkConteo).map(([key, contado]) => ({ key, contado }));
             if (!items.length) {
                 _stkAviso('warning', 'Inventario', 'Todavía no cargaste ningún número.');
                 return;
@@ -6254,10 +6306,7 @@
         }
 
         async function stkGuardarInventario() {
-            const items = [];
-            document.querySelectorAll('[data-stk-conteo]').forEach(i => {
-                if (i.value !== '') items.push({ key: i.dataset.stkConteo, contado: Math.round(Number(i.value) || 0) });
-            });
+            const items = Object.entries(_stkConteo).map(([key, contado]) => ({ key, contado }));
             if (!items.length) {
                 _stkAviso('warning', 'Inventario', 'No cargaste ningún número.');
                 return;
