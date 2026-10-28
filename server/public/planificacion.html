@@ -18012,7 +18012,6 @@
         async function printHDR(ids) {
             try {
                 if (!Array.isArray(ids) || !ids.length) return;
-                const sinMapa = [];
                 let logo = '';
                 try { if (typeof budgetLoadLogo === 'function') logo = (await budgetLoadLogo('azul')) || ''; } catch (_) {}
                 const pages = [];
@@ -18025,19 +18024,6 @@
                         if (res.ok) { const d = await res.json(); stops = Array.isArray(d.stops) ? d.stops : []; }
                     } catch (e) { console.warn('HDR stops', id, e); }
                     pages.push(hdrPageHtml(trip, stops, logo));
-
-                    // El mapa va en su propia hoja: en la primera no entra sin
-                    // comerse las filas que el chofer tiene que completar a mano.
-                    // El servidor lo devuelve ya dibujado, asi que si tarda o
-                    // falla la HDR sale igual, solo que sin el recorrido.
-                    try {
-                        const rm = await fetch(`${API_URL}/trips/${id}/mapa-hdr`, { headers: getActorHeaders() });
-                        if (rm.ok) {
-                            const mapa = await rm.json();
-                            if (mapa && mapa.ok) pages.push(hdrMapaPageHtml(trip, stops, logo, mapa));
-                            else if (mapa && mapa.motivo) sinMapa.push(`#${id}: ${mapa.motivo}`);
-                        }
-                    } catch (e) { console.warn('HDR mapa', id, e); }
                 }
                 if (!pages.length) {
                     if (typeof addNotification === 'function') addNotification('error', 'HDR', 'No se encontraron viajes para imprimir.');
@@ -18053,9 +18039,6 @@
                 w.document.close();
                 w.onload = () => { try { w.focus(); w.print(); } catch (_) {} };
                 setTimeout(() => { try { if (!w.closed) { w.focus(); w.print(); } } catch (_) {} }, 700);
-                if (sinMapa.length && typeof addNotification === 'function') {
-                    addNotification('warning', 'HDR sin mapa', sinMapa.join(' · '));
-                }
             } catch (e) {
                 console.error('printHDR', e);
                 if (typeof addNotification === 'function') addNotification('error', 'HDR', e.message || String(e));
@@ -18108,75 +18091,7 @@
      garantiza lugar para firmar aunque la hoja venga llena de paradas. */
   .firmas { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: auto; padding-top: 22mm; }
   .firmas .f { border-top: 1px solid #111; padding-top: 4px; font-size: 10px; text-transform: uppercase; color: #555; text-align: center; font-weight: bold; }
-  /* Hoja del recorrido. El mapa manda: se lleva todo el alto que sobra y la
-     referencia de abajo solo ocupa lo que necesita. */
-  .mapa-caja { border: 1.5px solid #1B2559; border-radius: 6px; overflow: hidden; margin-top: 6px; }
-  .mapa-caja img { display: block; width: 100%; height: auto;
-                   -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .mapa-datos { display: flex; gap: 14px; flex-wrap: wrap; align-items: center;
-                font-size: 10px; color: #555; margin: 6px 0 2px; }
-  .mapa-datos b { color: #1B2559; }
-  .mapa-aviso { border: 1px solid #e0a800; background: #fff8e1; border-radius: 4px;
-                padding: 4px 7px; font-size: 9px; color: #7a5b00; margin-top: 5px;
-                -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .ref { columns: 3; column-gap: 14px; margin-top: 6px; font-size: 9.5px; }
-  .ref div { break-inside: avoid; padding: 1px 0; }
-  .ref .num { display: inline-block; min-width: 15px; font-weight: bold; color: #e03131; }
-  .ref .dep { color: #1B2559; }
 </style></head><body>${body}</body></html>`;
-        }
-
-        /** La hoja del recorrido: el mapa con las paradas numeradas y el camino
-         *  por las calles, mas la referencia de que numero es cada escuela.
-         *
-         *  Va aparte y no abajo de la tabla porque la primera hoja ya esta
-         *  llena de filas para completar a mano. Un mapa chico metido ahi no
-         *  se lee arriba de una camioneta, que es donde se usa. */
-        function hdrMapaPageHtml(trip, stops, logo, mapa) {
-            const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-            const reparto = (typeof rutasDelViaje === 'function')
-                ? rutasDelViaje(trip)
-                : (trip.tripType || trip.reparto || '—');
-            let fecha = ''; try { fecha = trip.date ? new Date(trip.date).toLocaleDateString('es-AR') : ''; } catch (_) {}
-
-            // Mismo numero que en la tabla de la primera hoja y que en el
-            // pinche del mapa: de 1 a n, la vuelta al deposito incluida.
-            let nro = 0;
-            const ref = (stops || []).map((p) => {
-                const n = ++nro;
-                const dep = p.isReturnToBase ? ' class="dep"' : '';
-                return `<div${dep}><span class="num">${n}</span>${esc(p.name || '')}</div>`;
-            }).join('');
-
-            const datos = [
-                mapa.km != null ? `<span><b>${mapa.km}</b> km de recorrido</span>` : '',
-                mapa.minutos != null ? `<span><b>${Math.floor(mapa.minutos / 60)}h ${String(mapa.minutos % 60).padStart(2, '0')}m</b> de manejo</span>` : '',
-                `<span><b>${mapa.paradas}</b> paradas en el mapa</span>`
-            ].filter(Boolean).join('');
-
-            const avisos = [];
-            if (mapa.rectas) {
-                avisos.push('No se pudo calcular el camino por calle en parte del recorrido: ese tramo está dibujado como línea recta. No es la calle real.');
-            }
-            if (Array.isArray(mapa.sinCoordenadas) && mapa.sinCoordenadas.length) {
-                avisos.push(`Sin ubicación cargada, no figuran en el mapa: ${mapa.sinCoordenadas.map(esc).join(', ')}.`);
-            }
-
-            return `<div class="hdr">
-                <div class="hdr-top">
-                    ${logo ? `<img src="${logo}" alt="Real de Catorce" style="height:56px;width:auto;object-fit:contain;-webkit-print-color-adjust:exact;print-color-adjust:exact;">` : ''}
-                    <div class="hdr-title">
-                        <h1>RECORRIDO</h1>
-                        <div class="sub">Viaje N° ${esc(trip.id)} · Reparto ${esc(reparto)} · ${esc(fecha)}</div>
-                    </div>
-                    <div class="viaje-n"><b>VIAJE N°</b><div class="nro">${esc(trip.id)}</div></div>
-                </div>
-                <div class="mapa-datos">${datos}</div>
-                <div class="mapa-caja"><img src="${mapa.imagen}" alt="Recorrido del viaje ${esc(trip.id)}"></div>
-                ${avisos.map((t) => `<div class="mapa-aviso">${esc(t)}</div>`).join('')}
-                <div class="sec-title" style="margin-top:8px">Referencia de paradas</div>
-                <div class="obs" style="border-top:none"><div class="ref">${ref}</div></div>
-            </div>`;
         }
 
         function hdrPageHtml(trip, stops, logo) {
