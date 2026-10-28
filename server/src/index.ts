@@ -6156,6 +6156,98 @@ app.get('/api/v1/crates/historial', async (req: any, res: any) => {
 /** Lo mismo que /crates/stock pero con la clave de servicio, para poder
  *  revisarlo sin iniciar sesion. Solo lee.
  *  POST /api/admin/cajones-stock { key } */
+/** Carga los tipos de cajon que existen de verdad y su conteo, de una vez.
+ *
+ *  La pantalla deja hacerlo a mano: "+ Tipo" uno por uno y despues "Hacer
+ *  inventario". Para arrancar de cero con ocho tipos eso son dieciseis pasos
+ *  y la primera oportunidad de equivocarse. Esto hace lo mismo en un paso.
+ *
+ *  Cada tipo que no existe se crea; el que ya existe se respeta. Despues se
+ *  asienta el conteo con el mismo camino que usa la pantalla, asi que la
+ *  diferencia queda en el historial igual que si se hubiera cargado a mano.
+ *
+ *  `desactivar` da de baja los tipos que sobran: no se borran, porque borrar
+ *  un tipo con movimientos deja el historial sin sentido. Dejan de aparecer
+ *  para cargar y listo.
+ *
+ *  POST /api/admin/cajones-inventario
+ *       { key, tipos: [{ nombre, contado }], desactivar?: [clave], nota?, dryRun? } */
+app.post('/api/admin/cajones-inventario', async (req: any, res: any) => {
+    const { key, tipos, desactivar, nota, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!Array.isArray(tipos) || !tipos.length) return res.status(400).json({ error: 'Falta "tipos"' });
+
+    try {
+        const existentes = await asegurarTiposDeCajon(prisma);
+        const porClave = new Map(existentes.map((t: any) => [t.key, t]));
+        const foto = await fotoDelStock(prisma);
+        const stockPorClave = new Map(foto.map((f: any) => [f.key, f.stock]));
+
+        const plan: any[] = [];
+        for (const t of tipos as any[]) {
+            const nombre = String(t?.nombre ?? '').trim();
+            const contado = enteroDeCajones(t?.contado);
+            if (!nombre) { plan.push({ nombre: t?.nombre, error: 'sin nombre' }); continue; }
+            if (contado === null || contado < 0) { plan.push({ nombre, error: 'cantidad invalida' }); continue; }
+            const clave = claveDeNombre(nombre);
+            const ya: any = porClave.get(clave);
+            const antes = ya ? (stockPorClave.get(clave) || 0) : 0;
+            plan.push({
+                nombre, clave, contado,
+                esNuevo: !ya, antes, diferencia: contado - antes
+            });
+        }
+
+        const bajas = (Array.isArray(desactivar) ? desactivar : [])
+            .map((k: any) => String(k || '').trim())
+            .filter((k: string) => porClave.has(k))
+            .map((k: string) => ({ clave: k, nombre: (porClave.get(k) as any).name, stock: stockPorClave.get(k) || 0 }));
+
+        if (dryRun) return res.json({ dryRun: true, plan, bajas });
+
+        const malos = plan.filter((p: any) => p.error);
+        if (malos.length) return res.status(400).json({ error: 'Hay tipos mal cargados', plan });
+
+        // 1. Los tipos que faltan
+        let orden = Math.max(-1, ...existentes.map((t: any) => Number(t.orden) || 0));
+        for (const p of plan) {
+            if (!p.esNuevo) continue;
+            await prisma.crateType.create({ data: { key: p.clave, name: p.nombre, orden: ++orden } });
+        }
+
+        // 2. El conteo, por el mismo camino que la pantalla
+        const hechos = await aplicarInventario(
+            prisma,
+            plan.map((p: any) => ({ key: p.clave, contado: p.contado })),
+            quienCarga(req),
+            String(nota || '').trim() || null
+        );
+
+        // 3. Los que sobran, de baja
+        for (const b of bajas) {
+            await prisma.crateType.update({ where: { key: b.clave }, data: { activo: false } });
+        }
+
+        await logAction(req, 'CREATE', 'CrateMovement', null,
+            `Inventario inicial: ${hechos.length} tipo(s)`, null, { hechos, bajas });
+
+        const despues = await fotoDelStock(prisma);
+        res.json({
+            ok: true,
+            creados: plan.filter((p: any) => p.esNuevo).length,
+            contados: hechos.length,
+            dadosDeBaja: bajas.length,
+            hechos,
+            stock: despues.filter((f: any) => f.activo).map((f: any) => ({
+                tipo: f.name, stock: f.stock, enLaCalle: f.enLaCalle, total: f.total
+            }))
+        });
+    } catch (e: any) {
+        console.error('cajones-inventario:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/admin/cajones-stock', async (req: any, res: any) => {
     if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     try {
