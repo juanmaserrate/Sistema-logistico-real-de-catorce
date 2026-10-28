@@ -6802,14 +6802,100 @@ function geoPartirDireccion(address: string, localidad?: string | null, partido?
     }
     return { calle, loc, muni, tieneAltura: /\d{2,5}\s*$/.test(calle) };
 }
+/** El token de Mapbox del servidor: primero el guardado, si no el del entorno. */
+async function tokenDeMapbox(): Promise<string> {
+    const setting = await prisma.appSettings.findUnique({ where: { key: 'mapbox_access_token_public' } });
+    let token = '';
+    try { const p = setting?.value ? JSON.parse(setting.value) : ''; if (typeof p === 'string') token = p.trim(); } catch {}
+    if (!token) token = String(process.env.MAPBOX_ACCESS_TOKEN || process.env.MAPBOX_TOKEN || '').trim();
+    return token;
+}
+
+/** Lo que se le pregunta al buscador por una direccion: el texto a buscar y el
+ *  recuadro del municipio donde tiene que caer. */
+function geoConsulta(address: string, localidad?: string | null, partido?: string | null) {
+    const { calle, loc, muni, tieneAltura } = geoPartirDireccion(address || '', localidad, partido);
+    const localidadTexto = loc ? loc.charAt(0) + loc.slice(1).toLowerCase() : null;
+    return {
+        calle, muni, tieneAltura,
+        bbox: (muni && GEO_BBOX[muni]) || GEO_BBOX_AMBA,
+        q: [calle, localidadTexto, 'Buenos Aires', 'Argentina'].filter(Boolean).join(', '),
+    };
+}
+
+/** Busca una direccion en el mapa y se asegura de que la calle que devuelve el
+ *  buscador sea la que se pidio. Si no coincide, no devuelve punto: una escuela
+ *  mal ubicada manda al chofer al lugar equivocado, y eso es peor que dejarla
+ *  sin ubicar. */
+async function ubicarDireccion(token: string, address: string, localidad?: string | null, partido?: string | null):
+    Promise<{ ok: boolean; lat?: number; lon?: number; calleDevuelta?: string; parecido?: number; busca: string; motivo?: string }> {
+    const { calle, bbox, q, tieneAltura } = geoConsulta(address, localidad, partido);
+    if (!tieneAltura) return { ok: false, busca: q, motivo: 'la direccion no tiene altura (es una esquina o una manzana)' };
+    let f: any = null;
+    for (const conTipo of [true, false]) {
+        const url = 'https://api.mapbox.com/search/geocode/v6/forward'
+            + `?q=${encodeURIComponent(q)}&country=ar&limit=1&language=es`
+            + (conTipo ? '&types=address' : '')
+            + `&bbox=${bbox}&access_token=${encodeURIComponent(token)}`;
+        const r = await fetchWithTimeout(url, {}, 8000);
+        const j: any = await r.json().catch(() => ({}));
+        f = j?.features?.[0] || null;
+        if (f) break;
+    }
+    if (!f) return { ok: false, busca: q, motivo: 'Mapbox no encontro esa direccion' };
+    const lon = f.properties?.coordinates?.longitude, lat = f.properties?.coordinates?.latitude;
+    const calleDevuelta = f.properties?.context?.street?.name || '';
+    const sinAltura = calle.replace(/\s*\d{1,5}\s*$/, '');
+    const pedidos = geoTokens(sinAltura);
+    const dados = geoTokens(calleDevuelta);
+    const comunes = [...pedidos].filter((t) => dados.has(t)).length;
+    const parecido = geoParecido(sinAltura, calleDevuelta);
+    const coincide = (pedidos.size > 0 && dados.size > 0
+            && (comunes === pedidos.size || comunes === dados.size || comunes / pedidos.size >= 0.6))
+        // Misma calle escrita distinto. El umbral es alto a proposito.
+        || parecido >= 0.62;
+    if (lat == null || lon == null || !coincide) {
+        return { ok: false, busca: q, calleDevuelta, parecido,
+            motivo: `Mapbox devolvio otra calle (${calleDevuelta || 'sin calle'}, parecido ${parecido.toFixed(2)})` };
+    }
+    return { ok: true, lat, lon, calleDevuelta, parecido, busca: q };
+}
+
+/** Ubica UN establecimiento desde la direccion que tiene cargada.
+ *
+ *  Es el boton "Ubicar" de la ficha de la parada: cuando alguien corrige una
+ *  direccion, el punto viejo del mapa queda apuntando a otro lado y el chofer
+ *  lo ve asi en el telefono. POST /api/v1/clients/:id/ubicar */
+app.post('/api/v1/clients/:id/ubicar', async (req: any, res: any) => {
+    try {
+        const c = await prisma.client.findUnique({ where: { id: String(req.params.id) } });
+        if (!c) return res.status(404).json({ error: 'No existe ese establecimiento' });
+        if (!c.address || !String(c.address).trim()) {
+            return res.json({ ok: false, motivo: 'no tiene dirección cargada' });
+        }
+        const token = await tokenDeMapbox();
+        if (!token) return res.status(400).json({ error: 'No hay token de Mapbox configurado' });
+        const u = await ubicarDireccion(token, c.address, c.localidad, c.partido);
+        if (!u.ok) return res.json({ ok: false, motivo: u.motivo, busca: u.busca });
+        await prisma.client.update({ where: { id: c.id }, data: { latitude: u.lat, longitude: u.lon } });
+        for (const [campo, viejo, nuevo] of [['latitude', c.latitude, u.lat], ['longitude', c.longitude, u.lon]] as const) {
+            if (String(viejo ?? '') !== String(nuevo ?? '')) {
+                await logHistorial(req, { clientId: c.id, clientName: c.name, category: 'DATOS',
+                    field: campo, oldValue: viejo, newValue: nuevo });
+            }
+        }
+        res.json({ ok: true, latitude: u.lat, longitude: u.lon, calleDevuelta: u.calleDevuelta, busca: u.busca });
+    } catch (e: any) {
+        console.error('clients/ubicar:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/admin/geocode-clients', async (req: any, res: any) => {
     const { key, dryRun, limit, ids } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     try {
-        const setting = await prisma.appSettings.findUnique({ where: { key: 'mapbox_access_token_public' } });
-        let token = '';
-        try { const p = setting?.value ? JSON.parse(setting.value) : ''; if (typeof p === 'string') token = p.trim(); } catch {}
-        if (!token) token = String(process.env.MAPBOX_ACCESS_TOKEN || process.env.MAPBOX_TOKEN || '').trim();
+        const token = await tokenDeMapbox();
         if (!token) return res.status(400).json({ error: 'No hay token de Mapbox configurado' });
 
         const clients = await prisma.client.findMany({
@@ -6825,47 +6911,18 @@ app.post('/api/admin/geocode-clients', async (req: any, res: any) => {
 
         const ubicados: any[] = [], sinUbicar: any[] = [];
         for (const c of clients) {
-            const { calle, loc, muni, tieneAltura } = geoPartirDireccion(c.address || '', c.localidad, c.partido);
-            if (!tieneAltura) {
-                sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: 'la direccion no tiene altura (es una esquina o una manzana)' });
+            if (dryRun) {
+                const { q, muni, tieneAltura } = geoConsulta(c.address || '', c.localidad, c.partido);
+                if (tieneAltura) ubicados.push({ id: c.id, name: c.name, busca: q, muni });
+                else sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: 'la direccion no tiene altura (es una esquina o una manzana)' });
                 continue;
             }
-            const bbox = (muni && GEO_BBOX[muni]) || GEO_BBOX_AMBA;
-            const localidadTexto = loc ? loc.charAt(0) + loc.slice(1).toLowerCase() : null;
-            const q = [calle, localidadTexto, 'Buenos Aires', 'Argentina'].filter(Boolean).join(', ');
-            if (dryRun) { ubicados.push({ id: c.id, name: c.name, busca: q, muni }); continue; }
             try {
-                let f: any = null;
-                for (const conTipo of [true, false]) {
-                    const url = 'https://api.mapbox.com/search/geocode/v6/forward'
-                        + `?q=${encodeURIComponent(q)}&country=ar&limit=1&language=es`
-                        + (conTipo ? '&types=address' : '')
-                        + `&bbox=${bbox}&access_token=${encodeURIComponent(token)}`;
-                    const r = await fetchWithTimeout(url, {}, 8000);
-                    const j: any = await r.json().catch(() => ({}));
-                    f = j?.features?.[0] || null;
-                    if (f) break;
-                }
-                if (!f) { sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: 'Mapbox no encontro esa direccion' }); continue; }
-                const lon = f.properties?.coordinates?.longitude, lat = f.properties?.coordinates?.latitude;
-                const calleDevuelta = f.properties?.context?.street?.name || '';
-                const pedidos = geoTokens(calle.replace(/\s*\d{1,5}\s*$/, ''));
-                const dados = geoTokens(calleDevuelta);
-                const comunes = [...pedidos].filter((t) => dados.has(t)).length;
-                const parecido = geoParecido(calle.replace(/\s*\d{1,5}\s*$/, ''), calleDevuelta);
-                const coincide = (pedidos.size > 0 && dados.size > 0
-                        && (comunes === pedidos.size || comunes === dados.size || comunes / pedidos.size >= 0.6))
-                    // Misma calle escrita distinto. El umbral es alto a proposito:
-                    // una escuela mal ubicada manda al chofer al lugar equivocado,
-                    // y eso es peor que dejarla sin ubicar.
-                    || parecido >= 0.62;
-                if (lat == null || lon == null || !coincide) {
-                    sinUbicar.push({ id: c.id, name: c.name, direccion: c.address,
-                        motivo: `Mapbox devolvio otra calle (${calleDevuelta || 'sin calle'}, parecido ${parecido.toFixed(2)})` });
-                    continue;
-                }
-                await prisma.client.update({ where: { id: c.id }, data: { latitude: lat, longitude: lon } });
-                ubicados.push({ id: c.id, name: c.name, direccion: c.address, calleDevuelta, lat, lon, parecido: Number(parecido.toFixed(2)) });
+                const u = await ubicarDireccion(token, c.address || '', c.localidad, c.partido);
+                if (!u.ok) { sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: u.motivo }); continue; }
+                await prisma.client.update({ where: { id: c.id }, data: { latitude: u.lat, longitude: u.lon } });
+                ubicados.push({ id: c.id, name: c.name, direccion: c.address, calleDevuelta: u.calleDevuelta,
+                    lat: u.lat, lon: u.lon, parecido: Number((u.parecido || 0).toFixed(2)) });
             } catch (e: any) {
                 sinUbicar.push({ id: c.id, name: c.name, direccion: c.address, motivo: e?.message || 'error de red' });
             }

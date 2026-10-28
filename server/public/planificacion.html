@@ -17025,9 +17025,11 @@
                             <span class="text-[#A3AED0] text-xs w-5">${i + 1}</span>
                             <span class="flex-1 min-w-0 truncate" title="${escapeHtmlWeekly(row.address || '')}">${escapeHtmlWeekly(row.name)}</span>
                             ${esParadaDeposito(row.name) ? '' : _weeklySelectorDeUnidad(tripId, row, i)}
+                            ${esParadaDeposito(row.name) ? '' : direccionBotonHtml('semana-' + tripId, row.clientId)}
                             ${esParadaDeposito(row.name) ? '' : contactoBotonHtml('semana-' + tripId, row.clientId)}
                             <button type="button" onclick="weeklyStopsRemove(${tripId},${i})" class="text-rose-500 font-bold px-2 py-0.5 rounded-lg hover:bg-rose-50 shrink-0" title="Quitar">✕</button>
                         </li>
+                        ${direccionAbierta.has('semana-' + tripId + '|' + row.clientId) ? `<li class="bg-white border border-indigo-100 rounded-xl px-3 py-2 -mt-1">${direccionFormHtml(row.clientId, 'semana-' + tripId)}</li>` : ''}
                         ${contactoAbierto.has('semana-' + tripId + '|' + row.clientId) ? `<li class="bg-white border border-indigo-100 rounded-xl px-3 py-2 -mt-1">${contactoFormHtml(row.clientId, 'semana-' + tripId)}</li>` : ''}
                     `
                         )
@@ -26167,9 +26169,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     <span class="text-[#A3AED0] text-xs w-5">${i + 1}</span>
                     <span class="flex-1 min-w-0 truncate" title="${escapeHtmlTrip(row.address || '')}">${escapeHtmlTrip(row.name)}</span>
                     ${(row.ruta && tripRutas.length > 1) ? `<span class="shrink-0 px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[9px] font-black uppercase tracking-wider">${escapeHtmlTrip(row.ruta)}</span>` : ''}
+                    ${esParadaDeposito(row.name) ? '' : direccionBotonHtml('modal', row.clientId)}
                     ${esParadaDeposito(row.name) ? '' : contactoBotonHtml('modal', row.clientId)}
                     <button type="button" onclick="tripDeliveryRemoveStop(${i})" class="text-rose-500 p-1 rounded-lg hover:bg-rose-50 font-bold" aria-label="Quitar">✕</button>
                 </li>
+                ${direccionAbierta.has('modal|' + row.clientId) ? `<li class="bg-white border border-indigo-100 rounded-xl px-3 py-2 -mt-1">${direccionFormHtml(row.clientId, 'modal')}</li>` : ''}
                 ${contactoAbierto.has('modal|' + row.clientId) ? `<li class="bg-white border border-indigo-100 rounded-xl px-3 py-2 -mt-1">${contactoFormHtml(row.clientId, 'modal')}</li>` : ''}
             `
                 )
@@ -26432,8 +26436,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 <label class="block">
                     <span class="block text-[9px] font-black uppercase tracking-widest text-[#A3AED0] mb-0.5">${f.label}</span>
                     <input type="${f.tipo}" value="${esc(c[f.campo])}" placeholder="${f.ph}"
-                        data-contacto-cliente="${esc(clientId)}" data-contacto-campo="${f.campo}"
-                        onchange="guardarContactoCampo(this, '${lista}')"
+                        data-cli-id="${esc(clientId)}" data-cli-campo="${f.campo}"
+                        onchange="guardarCampoDelCliente(this, '${lista}')"
                         onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
                         class="w-full bg-white border border-[#E0E5F2] rounded-lg px-2 py-1.5 text-xs font-bold text-[#1B2559] outline-none focus:border-indigo-400">
                 </label>`).join('')}
@@ -26444,17 +26448,19 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         function toggleContactoParada(lista, clientId) {
             const k = `${lista}|${clientId}`;
             if (contactoAbierto.has(k)) contactoAbierto.delete(k); else contactoAbierto.add(k);
-            redibujarListaContacto(lista);
+            redibujarListaDeParadas(lista);
         }
 
-        function redibujarListaContacto(lista) {
+        function redibujarListaDeParadas(lista) {
             if (lista === 'modal') renderTripDeliveryList();
             else if (lista.startsWith('semana-')) renderWeeklyTripStopsPanel(Number(lista.slice(7)));
         }
 
-        async function guardarContactoCampo(input, lista) {
-            const clientId = input.dataset.contactoCliente;
-            const campo = input.dataset.contactoCampo;
+        /** Guarda UN campo de la ficha del cliente desde la fila de la parada.
+         *  Sirve igual para el contacto y para la direccion. */
+        async function guardarCampoDelCliente(input, lista) {
+            const clientId = input.dataset.cliId;
+            const campo = input.dataset.cliCampo;
             const valor = String(input.value || '').trim();
             const cliente = (allSchools || []).find(x => String(x.id) === String(clientId));
             if (cliente && String(cliente[campo] || '') === valor) return;
@@ -26470,12 +26476,17 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 if (cliente) cliente[campo] = valor || null;
                 input.classList.remove('border-[#E0E5F2]');
                 input.classList.add('border-emerald-400');
-                // Actualiza el resumen de la fila sin cerrar el formulario
-                const resumen = document.querySelector(`[data-contacto-resumen="${lista}|${clientId}"]`);
-                if (resumen) resumen.textContent = contactoResumen(cliente) || 'Sin contacto';
+                // Actualiza los resumenes de la fila sin cerrar el formulario
+                const rc = document.querySelector(`[data-contacto-resumen="${lista}|${clientId}"]`);
+                if (rc) rc.textContent = contactoResumen(cliente) || 'Sin contacto';
+                const rd = document.querySelector(`[data-dir-resumen="${lista}|${clientId}"]`);
+                if (rd) rd.textContent = (cliente && cliente.address) || 'Sin dirección';
+                // Si cambio la direccion, el punto que esta marcado en el mapa
+                // es el de la direccion vieja: hay que volver a ubicarla.
+                if (DIRECCION_CAMPOS.some(f => f.campo === campo)) _dirPintarPin(clientId, lista, 'cambio');
             } catch (err) {
                 input.classList.add('border-rose-400');
-                if (typeof addNotification === 'function') addNotification('error', 'Contacto', 'No se pudo guardar: ' + (err.message || err));
+                if (typeof addNotification === 'function') addNotification('error', 'Ficha', 'No se pudo guardar: ' + (err.message || err));
             } finally {
                 input.classList.remove('opacity-60');
             }
@@ -26490,6 +26501,107 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 class="shrink-0 max-w-[45%] truncate text-[10px] font-bold px-2 py-0.5 rounded-lg ${resumen ? 'bg-emerald-50 text-emerald-700' : 'bg-[#F4F7FE] text-[#A3AED0]'} hover:bg-indigo-50"
                 title="${resumen ? 'Contacto: ' + resumen.replace(/"/g, '&quot;') : 'Cargar contacto'}">
                 👤 <span data-contacto-resumen="${lista}|${clientId}">${resumen ? resumen.replace(/</g, '&lt;') : 'Contacto'}</span> ${abierto ? '▴' : '▾'}
+            </button>`;
+        }
+
+        // ── Dirección del establecimiento ─────────────────────────────────
+        // Igual que el contacto: se corrige desde la parada pero se guarda en la
+        // ficha del cliente. La dirección es de la escuela, no del viaje: bien
+        // cargada una vez, queda bien para todos los viajes que pasen por ahí.
+        const DIRECCION_CAMPOS = [
+            { campo: 'address',   label: 'Dirección', ph: 'Calle y altura. Ej: Catamarca 4393', ancho: 'sm:col-span-2' },
+            { campo: 'localidad', label: 'Localidad', ph: 'Ej: Rafael Calzada', ancho: '' },
+            { campo: 'partido',   label: 'Partido',   ph: 'Ej: Almirante Brown', ancho: '' },
+        ];
+        // Paradas con el formulario de dirección abierto: `${lista}|${clientId}`
+        const direccionAbierta = new Set();
+
+        /** Los 3 campos de la dirección, más la línea del mapa. */
+        function direccionFormHtml(clientId, lista) {
+            const c = (allSchools || []).find(x => String(x.id) === String(clientId)) || {};
+            const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+            return `<div class="grid grid-cols-1 sm:grid-cols-4 gap-2 w-full" draggable="false">
+                ${DIRECCION_CAMPOS.map(f => `
+                <label class="block ${f.ancho}">
+                    <span class="block text-[9px] font-black uppercase tracking-widest text-[#A3AED0] mb-0.5">${f.label}</span>
+                    <input type="text" value="${esc(c[f.campo])}" placeholder="${f.ph}"
+                        data-cli-id="${esc(clientId)}" data-cli-campo="${f.campo}"
+                        onchange="guardarCampoDelCliente(this, '${lista}')"
+                        onkeydown="if(event.key==='Enter'){event.preventDefault();this.blur();}"
+                        class="w-full bg-white border border-[#E0E5F2] rounded-lg px-2 py-1.5 text-xs font-bold text-[#1B2559] outline-none focus:border-indigo-400">
+                </label>`).join('')}
+            </div>
+            <div class="flex flex-wrap items-center gap-2 mt-1.5" data-dir-pin="${esc(lista)}|${esc(clientId)}">${_dirPinHtml(clientId, lista, null)}</div>
+            <p class="text-[9px] text-[#A3AED0] mt-1">Se guarda en la ficha del establecimiento y sirve para todos los viajes.</p>`;
+        }
+
+        /** La línea del mapa. `aviso` manda cuando se acaba de tocar algo:
+         *  'cambio' (la dirección es otra y el punto viejo ya no sirve),
+         *  'buscando', o el motivo por el que no se pudo ubicar. */
+        function _dirPinHtml(clientId, lista, aviso) {
+            const c = (allSchools || []).find(x => String(x.id) === String(clientId)) || {};
+            const ubicada = c.latitude != null && c.longitude != null;
+            const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;');
+            let texto, clase;
+            if (aviso === 'buscando') { texto = 'Buscando la dirección en el mapa…'; clase = 'text-[#A3AED0]'; }
+            else if (aviso === 'cambio') { texto = '⚠️ Cambiaste la dirección: tocá «Ubicar» para corregir el punto del mapa.'; clase = 'text-amber-700'; }
+            else if (aviso) { texto = 'No se pudo ubicar: ' + esc(aviso); clase = 'text-rose-700'; }
+            else if (ubicada) { texto = '📍 Marcada en el mapa'; clase = 'text-emerald-700'; }
+            else { texto = '⚠️ Sin marcar en el mapa — el chofer no la ve en el mapa del teléfono'; clase = 'text-amber-700'; }
+            const boton = aviso === 'buscando' ? '' : `<button type="button" onclick="ubicarParada('${esc(clientId)}', '${esc(lista)}')"
+                    title="Busca la dirección en el mapa y marca el punto"
+                    class="text-[9px] font-black uppercase tracking-wider bg-indigo-50 text-indigo-700 border border-indigo-100 px-2 py-0.5 rounded-lg hover:bg-indigo-100">
+                    ${ubicada ? 'Ubicar de nuevo' : 'Ubicar'}</button>`;
+            return `<span class="text-[10px] font-bold ${clase}">${texto}</span>${boton}`;
+        }
+
+        function _dirPintarPin(clientId, lista, aviso) {
+            const zona = document.querySelector(`[data-dir-pin="${lista}|${clientId}"]`);
+            if (zona) zona.innerHTML = _dirPinHtml(clientId, lista, aviso);
+        }
+
+        /** Busca la dirección en el mapa y guarda el punto en la ficha.
+         *  El servidor controla que la calle que encuentra sea la que se pidió:
+         *  si no coincide no guarda nada, y acá se dice por qué. */
+        async function ubicarParada(clientId, lista) {
+            _dirPintarPin(clientId, lista, 'buscando');
+            try {
+                const res = await fetch(`${API_URL}/clients/${clientId}/ubicar`, {
+                    method: 'POST', headers: getActorHeaders()
+                });
+                const data = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(data.error || 'Error del servidor');
+                const cliente = (allSchools || []).find(x => String(x.id) === String(clientId));
+                if (data.ok) {
+                    if (cliente) { cliente.latitude = data.latitude; cliente.longitude = data.longitude; }
+                    if (typeof addNotification === 'function') {
+                        addNotification('success', 'Ubicada', `${(cliente && cliente.name) || 'La parada'} quedó marcada en el mapa.`);
+                    }
+                }
+                _dirPintarPin(clientId, lista, data.ok ? null : (data.motivo || 'el buscador no encontró esa dirección'));
+            } catch (err) {
+                _dirPintarPin(clientId, lista, err.message || 'error de red');
+            }
+        }
+
+        function toggleDireccionParada(lista, clientId) {
+            const k = `${lista}|${clientId}`;
+            if (direccionAbierta.has(k)) direccionAbierta.delete(k); else direccionAbierta.add(k);
+            redibujarListaDeParadas(lista);
+        }
+
+        /** Botón + dirección actual, para poner dentro de la fila de una parada. */
+        function direccionBotonHtml(lista, clientId) {
+            const c = (allSchools || []).find(x => String(x.id) === String(clientId));
+            const dir = String((c && c.address) || '').trim();
+            const abierto = direccionAbierta.has(`${lista}|${clientId}`);
+            const sinPunto = !c || c.latitude == null || c.longitude == null;
+            // Ámbar = falta algo: o no hay dirección, o no está marcada en el mapa.
+            const color = (!dir || sinPunto) ? 'bg-amber-50 text-amber-700' : 'bg-emerald-50 text-emerald-700';
+            return `<button type="button" onclick="toggleDireccionParada('${lista}', '${clientId}')"
+                class="shrink-0 max-w-[45%] truncate text-[10px] font-bold px-2 py-0.5 rounded-lg ${color} hover:bg-indigo-50"
+                title="${dir ? 'Dirección: ' + dir.replace(/"/g, '&quot;') : 'Sin dirección cargada'}${sinPunto ? ' · sin marcar en el mapa' : ''}">
+                📍 <span data-dir-resumen="${lista}|${clientId}">${dir ? dir.replace(/</g, '&lt;') : 'Sin dirección'}</span> ${abierto ? '▴' : '▾'}
             </button>`;
         }
 
