@@ -119,7 +119,7 @@ function filaXml(nro: number, celdas: Celda[], nivel = 0): string {
 /** Las columnas de las hojas por contrato: las mismas de «Viajes» con una
  *  adelante que dice si la fila es el viaje o una de sus partes. Sin eso, al
  *  copiar las filas a otro lado no hay forma de distinguirlas. */
-const COLUMNAS_CONTRATO = ['Fila', ...COLUMNAS_LIBRO];
+const COLUMNAS_CONTRATO = ['Fila', ...COLUMNAS_LIBRO, 'Corte de horas'];
 
 /**
  * Una hoja con los viajes de un tipo de contrato: la fila del viaje entero y,
@@ -138,6 +138,7 @@ function armarHojaDeContrato(filas: any[], estilos: Record<number, number>, esti
         const esHijo = f._tipo === 'hijo';
         const celdas: Celda[] = [{ valor: esHijo ? 'parte' : 'VIAJE', estilo: estiloComun }];
         COLUMNAS_LIBRO.forEach((nombre, c) => celdas.push({ valor: f[nombre], estilo: estilos[c + 1] ?? estiloComun }));
+        celdas.push({ valor: f['Reparto de horas'] || '', estilo: estiloComun });
         return filaXml(i + 2, celdas, esHijo ? 1 : 0);
     });
 
