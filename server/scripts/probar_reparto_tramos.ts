@@ -99,6 +99,38 @@ const sinCerrar = repartirHoras(
       inicio: INICIO, fin: FIN }, mapaU, TOTAL);
 esperar('un tramo sin cerrar tampoco', sinCerrar.metodo !== 'por los tramos del chofer', sinCerrar.metodo);
 
+// ── 3b. El caso 8181: el chofer cierra los dos tramos en el mismo segundo ──
+console.log('\n3b. Los dos tramos cerrados juntos (el caso 8181)');
+const cerradosJuntos = repartirHoras(
+    { businessUnit: 'SAE BROWN, RETIRO', stops: paradas8192,
+      tramos: [{ ruta: 'R6', inicio: INICIO, fin: '2026-10-29T11:46:40Z' },
+               { ruta: 'RETIRO', inicio: '2026-10-29T11:46:40Z', fin: FIN }],
+      inicio: INICIO, fin: FIN }, mapaU, TOTAL);
+console.log('   metodo:', cerradosJuntos.metodo);
+Object.entries(cerradosJuntos.horas).forEach(([u, h]) => console.log('     ', u.padEnd(11), r2(h), '=', hm(h)));
+esperar('no se usan esos tramos', cerradosJuntos.metodo !== 'por los tramos del chofer', cerradosJuntos.metodo);
+esperar('RETIRO no queda en cero', (cerradosJuntos.horas['RETIRO'] || 0) > 0.1, cerradosJuntos.horas);
+
+// Un tramo cortito pero creible SI se usa: una parada, veinte minutos
+const cortoPeroReal = repartirHoras(
+    { businessUnit: 'SAE BROWN, RETIRO', stops: paradas8192, tramos: tramos8192, inicio: INICIO, fin: FIN },
+    mapaU, TOTAL);
+esperar('un tramo corto pero creible si se usa (0:20 para una parada)',
+    cortoPeroReal.metodo === 'por los tramos del chofer', cortoPeroReal.metodo);
+
+// Siete paradas en dos minutos: no da
+const sieteParadas = [
+    ...Array.from({ length: 7 }, (_, i) => ({ sequence: i + 1, ruta: 'SAM', actualDeparture: '2026-10-29T12:58:00Z' })),
+    { sequence: 8, ruta: 'R13', actualDeparture: '2026-10-29T11:01:00Z' },
+] as any[];
+const apurado = repartirHoras(
+    { businessUnit: 'SAE LANUS, SAM', stops: sieteParadas,
+      tramos: [{ ruta: 'R13', inicio: '2026-10-29T08:30:00Z', fin: '2026-10-29T12:56:00Z' },
+               { ruta: 'SAM', inicio: '2026-10-29T12:56:00Z', fin: '2026-10-29T12:58:00Z' }],
+      inicio: '2026-10-29T08:30:00Z', fin: '2026-10-29T13:53:00Z' },
+    new Map([['R13', 'SAE LANUS'], ['SAM', 'SAM']]), 5.39);
+esperar('siete paradas en dos minutos de tramo no se cree', apurado.metodo !== 'por los tramos del chofer', apurado.metodo);
+
 // ── 4. Un viaje de una sola unidad no cambia ──
 console.log('\n4. Lo de siempre: un viaje de una sola unidad');
 const unaSola = repartirHoras(

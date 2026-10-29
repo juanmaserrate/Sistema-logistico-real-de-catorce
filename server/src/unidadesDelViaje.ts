@@ -185,7 +185,7 @@ export function repartirHoras(
     // explicitamente "hasta aca fue esta ruta". Cortar por la hora de la ultima
     // parada le regala a la unidad siguiente todo el rato en que el chofer
     // venia manejando sin cerrar nada.
-    const porTramos = horasDeLosTramos(viaje.tramos, unidadPorRuta, unidades);
+    const porTramos = horasDeLosTramos(viaje.tramos, unidadPorRuta, unidades, paradas);
     if (porTramos) {
         const repartido = Object.values(porTramos).reduce((a, b) => a + b, 0);
         if (repartido > 0) {
@@ -248,14 +248,17 @@ export function repartirHoras(
 /** Las horas de cada unidad segun los tramos, o null si los tramos no
  *  alcanzan para repartir.
  *
- *  Se exige que CADA unidad del viaje tenga su tramo. Si falta una, el chofer
- *  no separo lo que hizo para ella y usar los tramos la dejaria en cero,
- *  llevandose sus horas (y su costo) a otra. En ese caso es mejor el camino
- *  viejo, que al menos las reparte. */
+ *  Se exige que CADA unidad del viaje tenga su tramo y que ese tramo sea
+ *  creible: al menos un minuto por parada suya. Pasa seguido que el chofer
+ *  cierre dos tramos en el mismo segundo; entonces el tramo dice 0:00 y usarlo
+ *  dejaria a esa unidad sin horas, con sus paradas adentro, y sus horas (y su
+ *  costo) se las llevaria otra. En ese caso manda el horario de las paradas,
+ *  que es lo que de verdad paso. */
 function horasDeLosTramos(
     tramos: TramoParaReparto[] | null | undefined,
     unidadPorRuta: Map<string, string>,
-    unidades: string[]
+    unidades: string[],
+    paradasPorUnidad: Record<string, number>
 ): Record<string, number> | null {
     const utiles = (tramos || []).filter((t) => aFecha(t?.inicio) && aFecha(t?.fin));
     if (utiles.length < 2) return null;
@@ -271,8 +274,12 @@ function horasDeLosTramos(
         if (horas <= 0) continue;
         crudas[u] = (crudas[u] || 0) + horas;
     }
-    // Todas las unidades del viaje tienen que estar
-    if (unidades.some((u) => !(crudas[u] > 0))) return null;
+    // Todas las unidades del viaje tienen que estar, y con un tiempo creible.
+    const MINIMO_POR_PARADA = 1 / 60;   // un minuto
+    for (const u of unidades) {
+        const minimo = Math.max(MINIMO_POR_PARADA, (paradasPorUnidad[u] || 0) * MINIMO_POR_PARADA);
+        if (!(crudas[u] >= minimo)) return null;
+    }
     return crudas;
 }
 
