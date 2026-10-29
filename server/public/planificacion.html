@@ -1277,6 +1277,9 @@
                             Sin ubicar <span id="school-sin-ubicar-n" class="opacity-70"></span>
                         </button>
                         <button type="button" id="btn-clear-school-filters" onclick="clearSchoolFilters()" class="px-4 py-3 rounded-2xl bg-[#F4F7FE] text-[#1B2559] hover:bg-[#E8ECF8] text-xs font-bold transition-all whitespace-nowrap">Limpiar filtros</button>
+                        <button id="btn-edit-selected-schools" onclick="abrirEdicionMasiva()" class="hidden px-4 py-3 rounded-2xl bg-indigo-50 text-indigo-700 hover:bg-indigo-100 text-xs font-bold transition-all whitespace-nowrap">
+                            Editar seleccionados
+                        </button>
                         <button id="btn-delete-selected-schools" onclick="deleteSelectedSchools()" class="hidden px-4 py-3 rounded-2xl bg-rose-50 text-rose-600 hover:bg-rose-100 text-xs font-bold transition-all whitespace-nowrap">
                             Eliminar seleccionados
                         </button>
@@ -1289,9 +1292,30 @@
                     </div>
                 </div>
 
+                <!-- Cambiar un campo en todos los seleccionados de una -->
+                <div id="school-bulk-panel" class="hidden card-dark p-4">
+                    <div class="flex flex-wrap items-end gap-3">
+                        <label class="block">
+                            <span class="block text-[9px] font-black uppercase tracking-widest text-[#A3AED0] mb-1">Qué campo</span>
+                            <select id="school-bulk-campo" onchange="edicionMasivaPintarValor()"
+                                    class="bg-[#F4F7FE] border-0 rounded-xl py-2.5 px-3 text-[11px] font-bold text-[#1B2559] outline-none min-w-[180px]"></select>
+                        </label>
+                        <label class="block flex-1 min-w-[220px]">
+                            <span class="block text-[9px] font-black uppercase tracking-widest text-[#A3AED0] mb-1">Valor nuevo</span>
+                            <div id="school-bulk-valor" class="flex flex-wrap gap-2"></div>
+                        </label>
+                        <button type="button" onclick="aplicarEdicionMasiva()" id="school-bulk-aplicar"
+                                class="px-5 py-3 rounded-2xl bg-indigo-600 text-white text-xs font-black hover:bg-indigo-700 transition-all whitespace-nowrap">Aplicar</button>
+                        <button type="button" onclick="cerrarEdicionMasiva()"
+                                class="px-4 py-3 rounded-2xl bg-[#F4F7FE] text-[#1B2559] text-xs font-bold transition-all">Cancelar</button>
+                    </div>
+                    <p id="school-bulk-aviso" class="text-[10px] text-[#A3AED0] font-medium mt-2"></p>
+                </div>
+
                 <p class="text-[10px] text-[#A3AED0] font-medium px-2">
                     Tocá cualquier celda para editarla (Enter guarda, Esc cancela). El texto largo se ve completo al pasar el mouse.
                     <b>Ficha</b> abre el detalle: menú, cupos y unidades de negocio.
+                    Marcá varios con el ✓ de la izquierda para editarlos o borrarlos todos juntos.
                 </p>
                 <div class="card-dark overflow-hidden">
                     <table class="w-full table-fixed text-left text-[10px]">
@@ -1305,7 +1329,11 @@
                         </colgroup>
                         <thead class="bg-[#F8FAFF]">
                             <tr class="text-[#A3AED0] uppercase tracking-wide text-[9px]">
-                                <th class="px-1 py-2"></th>
+                                <th class="px-1 py-2">
+                                    <button type="button" id="school-check-todos" onclick="alternarTodosEnVista()"
+                                        class="w-3.5 h-3.5 rounded border bg-white border-[#E0E5F2] text-transparent flex items-center justify-center text-[8px] font-black"
+                                        title="Seleccionar todos los que se están viendo">✓</button>
+                                </th>
                                 <th class="px-1.5 py-2">Establecimiento</th>
                                 <th class="px-1.5 py-2">Dirección</th>
                                 <th class="px-1.5 py-2">Localidad</th>
@@ -4217,7 +4245,9 @@
         let activeFilter = 'ALL';
         let currentSchoolFilter = 'ALL';
         let allSchools = [];
-        let selectedSchoolsForDelete = new Set();
+        let schoolsSeleccionados = new Set();
+        // Los establecimientos que pasaron los filtros de arriba
+        let _schoolsEnVista = [];
         let currentlyEditingSchoolId = null;
         let creatingNewSchool = false;
         let allVehicles = [];
@@ -14903,8 +14933,8 @@
                 const res = await fetch(`${API_URL}/clients`, { headers: getActorHeaders() });
                 if (!res.ok) throw new Error('API unreachable');
                 allSchools = await res.json();
-                selectedSchoolsForDelete = new Set(
-                    [...selectedSchoolsForDelete].filter(id => allSchools.some(s => s.id === id))
+                schoolsSeleccionados = new Set(
+                    [...schoolsSeleccionados].filter(id => allSchools.some(s => s.id === id))
                 );
                 
                 const countBadge = document.getElementById('school-count');
@@ -15115,11 +15145,11 @@
                     : '<span class="text-[#C7CEE0]">—</span>';
                 const ubicado = c.latitude != null && c.longitude != null;
                 return `
-                <tr class="hover:bg-[#F8FAFF] ${selectedSchoolsForDelete.has(c.id) ? 'bg-rose-50/60' : ''}" data-school-row="${c.id}">
+                <tr class="hover:bg-[#F8FAFF] ${schoolsSeleccionados.has(c.id) ? 'bg-indigo-50/60' : ''}" data-school-row="${c.id}">
                     <td class="px-1 py-1.5">
                         <button type="button" onclick="toggleSchoolSelection('${c.id}', event)"
-                            class="w-3.5 h-3.5 rounded border ${selectedSchoolsForDelete.has(c.id) ? 'bg-rose-500 border-rose-500 text-white' : 'bg-white border-[#E0E5F2] text-transparent'} flex items-center justify-center text-[8px] font-black"
-                            title="Seleccionar para eliminar">✓</button>
+                            class="w-3.5 h-3.5 rounded border ${schoolsSeleccionados.has(c.id) ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-[#E0E5F2] text-transparent'} flex items-center justify-center text-[8px] font-black"
+                            title="Seleccionar, para editarlo o borrarlo junto con otros">✓</button>
                     </td>
                     ${celda(c.id, 'name', c.name, 'text', 'font-bold text-[#1B2559]')}
                     ${celda(c.id, 'address', c.address, 'text', 'text-[#2B3674]')}
@@ -15153,7 +15183,7 @@
                     </td>
                 </tr>`;
             }).join('') || '<tr><td colspan="17" class="px-4 py-6 text-center text-[#A3AED0] italic">No hay clientes para mostrar con estos filtros.</td></tr>';
-            updateSelectedSchoolsDeleteButton();
+            pintarBarraDeSeleccion();
         }
 
         /** Convierte una celda en input (o select) y guarda al salir o con Enter. */
@@ -15243,47 +15273,203 @@
 
         function toggleSchoolSelection(id, evt) {
             if (evt) evt.stopPropagation();
-            if (selectedSchoolsForDelete.has(id)) selectedSchoolsForDelete.delete(id);
-            else selectedSchoolsForDelete.add(id);
+            if (schoolsSeleccionados.has(id)) schoolsSeleccionados.delete(id);
+            else schoolsSeleccionados.add(id);
             filterSchools();
         }
 
-        function updateSelectedSchoolsDeleteButton() {
-            const btn = document.getElementById('btn-delete-selected-schools');
-            if (!btn) return;
-            const count = selectedSchoolsForDelete.size;
-            if (count === 0) {
-                btn.classList.add('hidden');
-                btn.innerText = 'Eliminar seleccionadas';
-                return;
+        /** Prende o apaga los botones de «varios a la vez» segun cuantos haya
+         *  marcados, y deja la marca de arriba acorde con lo que se ve. */
+        function pintarBarraDeSeleccion() {
+            const n = schoolsSeleccionados.size;
+            const editar = document.getElementById('btn-edit-selected-schools');
+            const borrar = document.getElementById('btn-delete-selected-schools');
+            if (editar) {
+                editar.classList.toggle('hidden', n === 0);
+                editar.innerText = `Editar seleccionados (${n})`;
             }
-            btn.classList.remove('hidden');
-            btn.innerText = `Eliminar seleccionadas (${count})`;
+            if (borrar) {
+                borrar.classList.toggle('hidden', n === 0);
+                borrar.innerText = `Eliminar seleccionados (${n})`;
+            }
+            if (n === 0) cerrarEdicionMasiva();
+
+            const todos = document.getElementById('school-check-todos');
+            if (todos) {
+                const vista = _schoolsEnVista || [];
+                const llenos = vista.length > 0 && vista.every(x => schoolsSeleccionados.has(x.id));
+                todos.className = 'w-3.5 h-3.5 rounded border flex items-center justify-center text-[8px] font-black '
+                    + (llenos ? 'bg-indigo-600 border-indigo-600 text-white' : 'bg-white border-[#E0E5F2] text-transparent');
+            }
+        }
+
+        /** Marca (o desmarca) todos los que pasaron los filtros. Sin esto, la
+         *  edicion de a muchos obliga a hacer clic en 80 filas de a una. */
+        function alternarTodosEnVista() {
+            const vista = _schoolsEnVista || [];
+            if (!vista.length) return;
+            const llenos = vista.every(x => schoolsSeleccionados.has(x.id));
+            vista.forEach(x => { if (llenos) schoolsSeleccionados.delete(x.id); else schoolsSeleccionados.add(x.id); });
+            filterSchools();
+        }
+
+        /** Dice CUALES fallaron y por que. «3 no se pudieron» no sirve: lo
+         *  normal es que esten en un viaje, y hay que saber cual es cual. */
+        function _avisarFallasMasivas(titulo, errores) {
+            if (!Array.isArray(errores) || !errores.length) return;
+            const lista = errores.slice(0, 4).map(e => `${e.name} (${e.motivo})`).join(' · ');
+            const resto = errores.length > 4 ? ` …y ${errores.length - 4} más` : '';
+            addNotification('warning', titulo, `${errores.length}: ${lista}${resto}`);
+            console.warn(titulo, errores);
         }
 
         async function deleteSelectedSchools() {
-            const ids = [...selectedSchoolsForDelete];
+            const ids = [...schoolsSeleccionados];
             if (!ids.length) return;
-            if (!confirm(`¿Eliminar ${ids.length} cliente(s) seleccionado(s)? Esta acción no se puede deshacer.`)) return;
-
+            if (!confirm(`¿Eliminar ${ids.length} establecimiento(s)? No se puede deshacer.`)) return;
             try {
-                const results = await Promise.allSettled(ids.map(id =>
-                    fetch(`${API_URL}/clients/${id}`, { method: 'DELETE' })
-                ));
-                const failed = results.filter(r => r.status === 'rejected' || (r.status === 'fulfilled' && !r.value.ok));
-                const okCount = ids.length - failed.length;
-
-                if (okCount > 0) {
-                    addNotification('success', 'Clientes eliminados', `Se eliminaron ${okCount} cliente(s).`);
-                }
-                if (failed.length > 0) {
-                    addNotification('warning', 'Eliminación parcial', `${failed.length} cliente(s) no se pudieron eliminar.`);
-                }
-                selectedSchoolsForDelete.clear();
+                const res = await fetch(`${API_URL}/clients/bulk-delete`, {
+                    method: 'POST', headers: getActorHeaders(), body: JSON.stringify({ ids })
+                });
+                const d = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(d.error || 'Error del servidor');
+                if (d.borrados) addNotification('success', 'Establecimientos eliminados', `Se eliminaron ${d.borrados}.`);
+                _avisarFallasMasivas('No se pudieron eliminar', d.errores);
+                schoolsSeleccionados.clear();
                 await loadSchools();
             } catch (e) {
                 console.error(e);
-                addNotification('error', 'Error', 'No se pudieron eliminar los clientes seleccionados.');
+                addNotification('error', 'Error', e.message || 'No se pudieron eliminar.');
+            }
+        }
+
+        // ── Cambiar un campo en todos los marcados ────────────────────────
+        // Afuera quedan el nombre, la direccion y los cupos: son de cada
+        // establecimiento, y ponerle el mismo a veinte no quiere decir nada.
+        // El servidor rechaza cualquier campo que no este en esta lista.
+        const CAMPOS_MASIVOS = [
+            { campo: 'localidad',          label: 'Localidad',           tipo: 'texto',  ph: 'Ej: Rafael Calzada' },
+            { campo: 'partido',            label: 'Partido',             tipo: 'texto',  ph: 'Ej: Almirante Brown' },
+            { campo: 'barrio',             label: 'Barrio',              tipo: 'texto',  ph: 'Ej: Don Orione' },
+            { campo: 'zone',               label: 'Zona',                tipo: 'texto',  ph: 'Ej: Sur' },
+            { campo: 'tipo',               label: 'Tipo',                tipo: 'lista',  opciones: () => SCHOOL_TIPOS },
+            { campo: 'menu',               label: 'Menú',                tipo: 'texto',  ph: 'Ej: General' },
+            { campo: 'serviceTime',        label: 'Minutos de servicio', tipo: 'numero', ph: '15' },
+            { campo: 'timeWindowStart',    label: 'Horario desde',       tipo: 'hora' },
+            { campo: 'timeWindowEnd',      label: 'Horario hasta',       tipo: 'hora' },
+            { campo: 'requiresProofPhoto', label: 'Foto obligatoria',    tipo: 'siNo' },
+            { campo: 'businessUnits',      label: 'Unidad de negocio',   tipo: 'unidad' },
+        ];
+
+        function _campoMasivoElegido() {
+            const v = document.getElementById('school-bulk-campo')?.value;
+            return CAMPOS_MASIVOS.find(c => c.campo === v) || CAMPOS_MASIVOS[0];
+        }
+
+        function abrirEdicionMasiva() {
+            if (!schoolsSeleccionados.size) return;
+            const sel = document.getElementById('school-bulk-campo');
+            if (sel && !sel.options.length) {
+                sel.innerHTML = CAMPOS_MASIVOS.map(c => `<option value="${c.campo}">${c.label}</option>`).join('');
+            }
+            document.getElementById('school-bulk-panel')?.classList.remove('hidden');
+            edicionMasivaPintarValor();
+        }
+
+        function cerrarEdicionMasiva() {
+            document.getElementById('school-bulk-panel')?.classList.add('hidden');
+        }
+
+        /** El casillero del valor cambia segun el campo: una hora no se escribe
+         *  igual que un tipo de establecimiento. */
+        function edicionMasivaPintarValor() {
+            const host = document.getElementById('school-bulk-valor');
+            if (!host) return;
+            const c = _campoMasivoElegido();
+            const clase = 'bg-[#F4F7FE] border-0 rounded-xl py-2.5 px-3 text-[11px] font-bold text-[#1B2559] outline-none';
+            if (c.tipo === 'lista') {
+                host.innerHTML = `<select id="school-bulk-v1" class="${clase} min-w-[180px]">
+                    <option value="">— dejar vacío —</option>
+                    ${c.opciones().map(o => `<option value="${o}">${o}</option>`).join('')}</select>`;
+            } else if (c.tipo === 'siNo') {
+                host.innerHTML = `<select id="school-bulk-v1" class="${clase} min-w-[120px]">
+                    <option value="si">Sí</option><option value="no">No</option></select>`;
+            } else if (c.tipo === 'unidad') {
+                host.innerHTML = `<select id="school-bulk-v1" class="${clase} min-w-[170px]">
+                        ${BU_UNIDADES.map(o => `<option value="${o}">${o}</option>`).join('')}</select>
+                    <input id="school-bulk-v2" type="text" placeholder="Reparto (ej: 14)" class="${clase} w-[150px]">`;
+            } else {
+                const tipoInput = c.tipo === 'numero' ? 'number' : c.tipo === 'hora' ? 'time' : 'text';
+                host.innerHTML = `<input id="school-bulk-v1" type="${tipoInput}" placeholder="${c.ph || ''}" class="${clase} w-full">`;
+            }
+            const aviso = document.getElementById('school-bulk-aviso');
+            if (aviso) {
+                aviso.textContent = c.tipo === 'unidad'
+                    ? `Le pone esta única unidad a los ${schoolsSeleccionados.size} marcados, y les saca las que tengan.`
+                    : `Se lo aplica a los ${schoolsSeleccionados.size} marcados. Los que ya lo tengan así no se tocan.`;
+            }
+        }
+
+        /** Lo que se va a mandar, o undefined si falta algo. '' = dejar vacío. */
+        function _valorMasivo(c) {
+            const v1 = document.getElementById('school-bulk-v1');
+            const v2 = document.getElementById('school-bulk-v2');
+            if (!v1) return undefined;
+            const txt = String(v1.value ?? '').trim();
+            if (c.tipo === 'siNo') return txt === 'si';
+            if (c.tipo === 'unidad') {
+                if (!txt) return undefined;
+                return [{ unidad: txt, reparto: String(v2?.value ?? '').trim() }];
+            }
+            if (c.tipo === 'numero') {
+                if (!txt) return undefined;
+                const n = parseInt(txt, 10);
+                return Number.isFinite(n) && n > 0 ? n : undefined;
+            }
+            return txt;
+        }
+
+        function _textoDelValor(c, valor) {
+            if (c.tipo === 'siNo') return valor ? 'Sí' : 'No';
+            if (c.tipo === 'unidad') return `${valor[0].unidad}${valor[0].reparto ? ' · R' + valor[0].reparto : ''}`;
+            return String(valor);
+        }
+
+        async function aplicarEdicionMasiva() {
+            const ids = [...schoolsSeleccionados];
+            if (!ids.length) return;
+            const c = _campoMasivoElegido();
+            const valor = _valorMasivo(c);
+            if (valor === undefined) {
+                addNotification('warning', 'Editar varios', 'Falta el valor nuevo.');
+                return;
+            }
+            // Vaciar un campo en veinte fichas de un saque es destructivo: se
+            // pregunta distinto, para que no pase por tocar Aplicar sin escribir.
+            const pregunta = valor === ''
+                ? `Vas a BORRAR «${c.label}» en ${ids.length} establecimiento(s). ¿Seguimos?`
+                : `Vas a poner «${c.label} = ${_textoDelValor(c, valor)}» en ${ids.length} establecimiento(s). ¿Seguimos?`;
+            if (!confirm(pregunta)) return;
+
+            const btn = document.getElementById('school-bulk-aplicar');
+            if (btn) { btn.disabled = true; btn.textContent = 'Aplicando…'; }
+            try {
+                const res = await fetch(`${API_URL}/clients/bulk`, {
+                    method: 'PATCH', headers: getActorHeaders(),
+                    body: JSON.stringify({ ids, data: { [c.campo]: valor === '' ? null : valor } })
+                });
+                const d = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(d.error || 'Error del servidor');
+                addNotification('success', 'Listo',
+                    `${d.cambiados} cambiado(s)` + (d.iguales ? ` · ${d.iguales} ya estaban así` : ''));
+                _avisarFallasMasivas('No se pudieron cambiar', d.errores);
+                cerrarEdicionMasiva();
+                await loadSchools();
+            } catch (e) {
+                console.error(e);
+                addNotification('error', 'Editar varios', e.message || 'No se pudo aplicar.');
+            } finally {
+                if (btn) { btn.disabled = false; btn.textContent = 'Aplicar'; }
             }
         }
 
@@ -15792,6 +15978,9 @@
             if (countBadge) countBadge.innerText = String(filtered.length);
             if (countLabel) countLabel.innerText = filtered.length === allSchools.length ? 'Clientes' : 'en vista';
 
+            // Lo que se esta viendo, para el "seleccionar todos": el filtro de
+            // arriba es lo que hace util la edicion de a muchos.
+            _schoolsEnVista = filtered;
             renderSchools(filtered);
         }
 

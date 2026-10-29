@@ -975,67 +975,202 @@ app.post('/api/v1/clients', async (req, res) => {
     }
 });
 
+/** Pasa lo que manda la pantalla a lo que entiende la base: recorta, deja en
+ *  null lo que queda vacio y guarda como texto lo que viaja en JSON. Lo usan el
+ *  guardado de a uno y el de a muchos, para que un campo se limpie igual por
+ *  los dos caminos. */
+function normalizarDatosDeCliente(raw: any): any {
+    const data: any = {};
+    if (raw.name !== undefined) data.name = String(raw.name).trim();
+    if (raw.address !== undefined) {
+        data.address = raw.address != null && String(raw.address).trim() ? String(raw.address).trim() : null;
+    }
+    if (raw.zone !== undefined) {
+        data.zone = raw.zone != null && String(raw.zone).trim() ? String(raw.zone).trim() : null;
+    }
+    if (raw.barrio !== undefined) {
+        data.barrio = raw.barrio != null && String(raw.barrio).trim() ? String(raw.barrio).trim() : null;
+    }
+    if (raw.timeWindowStart !== undefined) data.timeWindowStart = raw.timeWindowStart ? String(raw.timeWindowStart) : null;
+    if (raw.timeWindowEnd !== undefined) data.timeWindowEnd = raw.timeWindowEnd ? String(raw.timeWindowEnd) : null;
+    if (raw.serviceTime !== undefined) {
+        const st = parseInt(String(raw.serviceTime), 10);
+        data.serviceTime = Number.isFinite(st) && st > 0 ? st : 15;
+    }
+    if (raw.priority !== undefined) data.priority = parseInt(String(raw.priority), 10) || 0;
+    if (raw.menu !== undefined) {
+        data.menu = raw.menu != null && String(raw.menu).trim() ? String(raw.menu).trim() : null;
+    }
+    if (raw.cupos !== undefined) {
+        // Acepta objeto o string JSON. Lo persistimos como string JSON.
+        if (raw.cupos == null) {
+            data.cupos = null;
+        } else if (typeof raw.cupos === 'object') {
+            data.cupos = JSON.stringify(raw.cupos);
+        } else {
+            data.cupos = String(raw.cupos);
+        }
+    }
+    if (raw.businessUnits !== undefined) {
+        // Array de { unidad, reparto }. Lo persistimos como string JSON.
+        if (raw.businessUnits == null) {
+            data.businessUnits = null;
+        } else if (typeof raw.businessUnits === 'object') {
+            data.businessUnits = JSON.stringify(raw.businessUnits);
+        } else {
+            data.businessUnits = String(raw.businessUnits);
+        }
+    }
+    if (raw.tipo !== undefined) data.tipo = raw.tipo != null && String(raw.tipo).trim() ? String(raw.tipo).trim() : null;
+    if (raw.localidad !== undefined) data.localidad = raw.localidad != null && String(raw.localidad).trim() ? String(raw.localidad).trim() : null;
+    if (raw.partido !== undefined) data.partido = raw.partido != null && String(raw.partido).trim() ? String(raw.partido).trim() : null;
+    if (raw.contactName !== undefined) data.contactName = textoContacto(raw.contactName, 120);
+    if (raw.contactStaff !== undefined) data.contactStaff = textoContacto(raw.contactStaff, 120);
+    if (raw.contactPhone !== undefined) data.contactPhone = textoContacto(raw.contactPhone, 40);
+    if (raw.latitude !== undefined) {
+        const s = raw.latitude !== null && raw.latitude !== '' ? String(raw.latitude).trim().replace(',', '.') : '';
+        const n = s === '' ? NaN : Number(s);
+        data.latitude = Number.isFinite(n) ? n : null;
+    }
+    if (raw.longitude !== undefined) {
+        const s = raw.longitude !== null && raw.longitude !== '' ? String(raw.longitude).trim().replace(',', '.') : '';
+        const n = s === '' ? NaN : Number(s);
+        data.longitude = Number.isFinite(n) ? n : null;
+    }
+    if (raw.requiresProofPhoto !== undefined) data.requiresProofPhoto = Boolean(raw.requiresProofPhoto);
+    return data;
+}
+
+/** En que parte de la ficha cae cada campo, para el historial. */
+const CATEGORIA_DE_CAMPO: Record<string, 'DATOS' | 'MENU' | 'CUPOS'> = {
+
+            name:            'DATOS',
+            address:         'DATOS',
+            zone:            'DATOS',
+            barrio:          'DATOS',
+            timeWindowStart: 'DATOS',
+            timeWindowEnd:   'DATOS',
+            latitude:        'DATOS',
+            longitude:       'DATOS',
+            menu:            'MENU',
+            cupos:           'CUPOS',
+            businessUnits:   'DATOS',
+            tipo:            'DATOS',
+            localidad:       'DATOS',
+            partido:         'DATOS',
+            contactName:     'DATOS',
+            contactStaff:    'DATOS',
+            contactPhone:    'DATOS',
+    requiresProofPhoto: 'DATOS',
+};
+
+/** Deja anotado en el historial cada campo que cambio de verdad. */
+async function logCambiosDeCliente(req: any, prev: any, nuevo: any, data: any): Promise<void> {
+    if (!prev) return;
+    for (const [f, category] of Object.entries(CATEGORIA_DE_CAMPO)) {
+        if (data[f] !== undefined && String(prev[f] ?? '') !== String(nuevo[f] ?? '')) {
+            await logHistorial(req, {
+                clientId:   nuevo.id,
+                clientName: nuevo.name,
+                category,
+                field:      f,
+                oldValue:   prev[f],
+                newValue:   nuevo[f],
+            });
+        }
+    }
+}
+
+/** Los campos que se pueden cambiar de a muchos.
+ *
+ *  Quedan afuera a proposito el nombre, la direccion y las coordenadas: son de
+ *  cada establecimiento y ponerle el mismo a veinte no quiere decir nada. Los
+ *  cupos tampoco: son el numero de chicos de esa escuela. */
+const CAMPOS_MASIVOS = ['localidad', 'partido', 'barrio', 'zone', 'tipo', 'menu',
+    'serviceTime', 'timeWindowStart', 'timeWindowEnd', 'businessUnits', 'requiresProofPhoto'];
+const TOPE_MASIVO = 500;
+
+/** Cambia los mismos campos en varios establecimientos de una.
+ *  PATCH /api/v1/clients/bulk { ids: [], data: {} }
+ *  Va ANTES que /clients/:id: si no, Express toma "bulk" como un id. */
+app.patch('/api/v1/clients/bulk', async (req: any, res: any) => {
+    try {
+        const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : [];
+        const pedido = req.body?.data || {};
+        if (!ids.length) return res.status(400).json({ error: 'No hay establecimientos seleccionados' });
+        if (ids.length > TOPE_MASIVO) return res.status(400).json({ error: `Son demasiados de una: hasta ${TOPE_MASIVO}` });
+        const prohibidos = Object.keys(pedido).filter((k) => !CAMPOS_MASIVOS.includes(k));
+        if (prohibidos.length) {
+            return res.status(400).json({ error: `Estos campos no se cambian de a muchos: ${prohibidos.join(', ')}` });
+        }
+        const data = normalizarDatosDeCliente(pedido);
+        if (!Object.keys(data).length) return res.status(400).json({ error: 'Nada que cambiar' });
+
+        const antes = await prisma.client.findMany({ where: { id: { in: ids } } });
+        const porId = new Map(antes.map((c) => [c.id, c]));
+        const cambiados: any[] = [], iguales: any[] = [], errores: any[] = [];
+        for (const id of ids) {
+            const prev: any = porId.get(id);
+            if (!prev) { errores.push({ id, name: id, motivo: 'ya no existe' }); continue; }
+            // Los que ya tenian ese valor no se tocan: asi el historial queda
+            // con los que de verdad cambiaron y no con los veinte seleccionados.
+            const distinto = Object.keys(data).some((k) => String(prev[k] ?? '') !== String(data[k] ?? ''));
+            if (!distinto) { iguales.push({ id, name: prev.name }); continue; }
+            try {
+                const nuevo = await prisma.client.update({ where: { id }, data });
+                await logCambiosDeCliente(req, prev, nuevo, data);
+                cambiados.push({ id, name: nuevo.name });
+            } catch (e: any) {
+                errores.push({ id, name: prev.name, motivo: e?.message || 'error al guardar' });
+            }
+        }
+        res.json({ ok: true, cambiados: cambiados.length, iguales: iguales.length, errores, detalle: { cambiados, iguales } });
+    } catch (e: any) {
+        console.error('clients/bulk:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Borra varios establecimientos de una y dice por que no pudo con los que no.
+ *  El motivo importa: el que esta en una parada de un viaje no se puede borrar,
+ *  y sin saber cual es uno vuelve a intentarlo sin entender.
+ *  POST /api/v1/clients/bulk-delete { ids: [] } */
+app.post('/api/v1/clients/bulk-delete', async (req: any, res: any) => {
+    try {
+        const ids: string[] = Array.isArray(req.body?.ids) ? req.body.ids.map(String).filter(Boolean) : [];
+        if (!ids.length) return res.status(400).json({ error: 'No hay establecimientos seleccionados' });
+        if (ids.length > TOPE_MASIVO) return res.status(400).json({ error: `Son demasiados de una: hasta ${TOPE_MASIVO}` });
+        const antes = await prisma.client.findMany({ where: { id: { in: ids } }, select: { id: true, name: true } });
+        const porId = new Map(antes.map((c) => [c.id, c]));
+        const conParadas = await prisma.stop.groupBy({
+            by: ['clientId'], where: { clientId: { in: ids } }, _count: { _all: true }
+        });
+        const paradasDe = new Map(conParadas.map((g: any) => [g.clientId, g._count._all]));
+        const borrados: any[] = [], errores: any[] = [];
+        for (const id of ids) {
+            const c = porId.get(id);
+            if (!c) { errores.push({ id, name: id, motivo: 'ya no existe' }); continue; }
+            const n = Number(paradasDe.get(id) || 0);
+            if (n > 0) { errores.push({ id, name: c.name, motivo: `está en ${n} parada(s) de viajes` }); continue; }
+            try {
+                await prisma.client.delete({ where: { id } });
+                borrados.push({ id, name: c.name });
+            } catch (e: any) {
+                errores.push({ id, name: c.name, motivo: e?.message || 'error al borrar' });
+            }
+        }
+        res.json({ ok: true, borrados: borrados.length, errores, detalle: { borrados } });
+    } catch (e: any) {
+        console.error('clients/bulk-delete:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.patch('/api/v1/clients/:id', async (req, res) => {
     try {
         const { id } = req.params;
         const raw = req.body || {};
-        const data: any = {};
-        if (raw.name !== undefined) data.name = String(raw.name).trim();
-        if (raw.address !== undefined) {
-            data.address = raw.address != null && String(raw.address).trim() ? String(raw.address).trim() : null;
-        }
-        if (raw.zone !== undefined) {
-            data.zone = raw.zone != null && String(raw.zone).trim() ? String(raw.zone).trim() : null;
-        }
-        if (raw.barrio !== undefined) {
-            data.barrio = raw.barrio != null && String(raw.barrio).trim() ? String(raw.barrio).trim() : null;
-        }
-        if (raw.timeWindowStart !== undefined) data.timeWindowStart = raw.timeWindowStart ? String(raw.timeWindowStart) : null;
-        if (raw.timeWindowEnd !== undefined) data.timeWindowEnd = raw.timeWindowEnd ? String(raw.timeWindowEnd) : null;
-        if (raw.serviceTime !== undefined) {
-            const st = parseInt(String(raw.serviceTime), 10);
-            data.serviceTime = Number.isFinite(st) && st > 0 ? st : 15;
-        }
-        if (raw.priority !== undefined) data.priority = parseInt(String(raw.priority), 10) || 0;
-        if (raw.menu !== undefined) {
-            data.menu = raw.menu != null && String(raw.menu).trim() ? String(raw.menu).trim() : null;
-        }
-        if (raw.cupos !== undefined) {
-            // Acepta objeto o string JSON. Lo persistimos como string JSON.
-            if (raw.cupos == null) {
-                data.cupos = null;
-            } else if (typeof raw.cupos === 'object') {
-                data.cupos = JSON.stringify(raw.cupos);
-            } else {
-                data.cupos = String(raw.cupos);
-            }
-        }
-        if (raw.businessUnits !== undefined) {
-            // Array de { unidad, reparto }. Lo persistimos como string JSON.
-            if (raw.businessUnits == null) {
-                data.businessUnits = null;
-            } else if (typeof raw.businessUnits === 'object') {
-                data.businessUnits = JSON.stringify(raw.businessUnits);
-            } else {
-                data.businessUnits = String(raw.businessUnits);
-            }
-        }
-        if (raw.tipo !== undefined) data.tipo = raw.tipo != null && String(raw.tipo).trim() ? String(raw.tipo).trim() : null;
-        if (raw.localidad !== undefined) data.localidad = raw.localidad != null && String(raw.localidad).trim() ? String(raw.localidad).trim() : null;
-        if (raw.partido !== undefined) data.partido = raw.partido != null && String(raw.partido).trim() ? String(raw.partido).trim() : null;
-        if (raw.contactName !== undefined) data.contactName = textoContacto(raw.contactName, 120);
-        if (raw.contactStaff !== undefined) data.contactStaff = textoContacto(raw.contactStaff, 120);
-        if (raw.contactPhone !== undefined) data.contactPhone = textoContacto(raw.contactPhone, 40);
-        if (raw.latitude !== undefined) {
-            const s = raw.latitude !== null && raw.latitude !== '' ? String(raw.latitude).trim().replace(',', '.') : '';
-            const n = s === '' ? NaN : Number(s);
-            data.latitude = Number.isFinite(n) ? n : null;
-        }
-        if (raw.longitude !== undefined) {
-            const s = raw.longitude !== null && raw.longitude !== '' ? String(raw.longitude).trim().replace(',', '.') : '';
-            const n = s === '' ? NaN : Number(s);
-            data.longitude = Number.isFinite(n) ? n : null;
-        }
+        const data: any = normalizarDatosDeCliente(raw);
         const lat = data.latitude !== undefined ? data.latitude : undefined;
         const lng = data.longitude !== undefined ? data.longitude : undefined;
         const addr = data.address !== undefined ? data.address : undefined;
@@ -1065,40 +1200,7 @@ app.patch('/api/v1/clients/:id', async (req, res) => {
             where: { id: String(id) },
             data
         });
-        // Registrar cambios relevantes en el historial
-        if (prevClient) {
-            const fieldCategories: Record<string, 'DATOS' | 'MENU' | 'CUPOS'> = {
-                name:            'DATOS',
-                address:         'DATOS',
-                zone:            'DATOS',
-                barrio:          'DATOS',
-                timeWindowStart: 'DATOS',
-                timeWindowEnd:   'DATOS',
-                latitude:        'DATOS',
-                longitude:       'DATOS',
-                menu:            'MENU',
-                cupos:           'CUPOS',
-                businessUnits:   'DATOS',
-                tipo:            'DATOS',
-                localidad:       'DATOS',
-                partido:         'DATOS',
-                contactName:     'DATOS',
-                contactStaff:    'DATOS',
-                contactPhone:    'DATOS',
-            };
-            for (const [f, category] of Object.entries(fieldCategories)) {
-                if (data[f] !== undefined && String((prevClient as any)[f] ?? '') !== String((updatedClient as any)[f] ?? '')) {
-                    await logHistorial(req, {
-                        clientId:   updatedClient.id,
-                        clientName: updatedClient.name,
-                        category,
-                        field:      f,
-                        oldValue:   (prevClient as any)[f],
-                        newValue:   (updatedClient as any)[f],
-                    });
-                }
-            }
-        }
+        await logCambiosDeCliente(req, prevClient, updatedClient, data);
         res.json(updatedClient);
     } catch (e: any) {
         console.error("Error updating client:", e);
