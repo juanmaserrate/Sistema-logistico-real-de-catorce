@@ -23,6 +23,13 @@ import { unzipSync, zipSync } from 'fflate';
 const HOJA_RESUMEN = 'xl/worksheets/sheet1.xml';
 const HOJA_DATOS = 'xl/worksheets/sheet2.xml';
 const HOJA_CONTEO = 'xl/worksheets/sheet3.xml';
+// Las dos hojas por tipo de contrato se crean de cero: la plantilla no las
+// trae. Van al FINAL de la lista de hojas para no correr los indices, que es
+// por donde la dinamica y el filtro guardado referencian a «Viajes».
+const HOJAS_POR_CONTRATO = [
+    { archivo: 'xl/worksheets/sheet4.xml', nombre: 'Propios', contrato: 'propio', sheetId: 4, rel: 'rId7' },
+    { archivo: 'xl/worksheets/sheet5.xml', nombre: 'Tercerizados', contrato: 'tercerizado', sheetId: 5, rel: 'rId8' },
+];
 const CACHE_DINAMICA = 'xl/pivotCache/pivotCacheDefinition1.xml';
 
 // AG y no AF: entro "Horas por ruta" al final. Va al final y nunca en el medio
@@ -103,8 +110,74 @@ function celdaXml(fila: number, columna: number, c: Celda): string {
     return `<c r="${ref}" s="${estilo}" t="inlineStr"><is><t xml:space="preserve">${escapar(String(valor))}</t></is></c>`;
 }
 
-function filaXml(nro: number, celdas: Celda[]): string {
-    return `<row r="${nro}">${celdas.map((c, i) => celdaXml(nro, i + 1, c)).join('')}</row>`;
+function filaXml(nro: number, celdas: Celda[], nivel = 0): string {
+    // `outlineLevel` es lo que le pone a la fila el +/- de Excel.
+    const sangria = nivel > 0 ? ` outlineLevel="${nivel}"` : '';
+    return `<row r="${nro}"${sangria}>${celdas.map((c, i) => celdaXml(nro, i + 1, c)).join('')}</row>`;
+}
+
+/** Las columnas de las hojas por contrato: las mismas de «Viajes» con una
+ *  adelante que dice si la fila es el viaje o una de sus partes. Sin eso, al
+ *  copiar las filas a otro lado no hay forma de distinguirlas. */
+const COLUMNAS_CONTRATO = ['Fila', ...COLUMNAS_LIBRO];
+
+/**
+ * Una hoja con los viajes de un tipo de contrato: la fila del viaje entero y,
+ * colgando de ella, sus partes por unidad de negocio.
+ *
+ * `summaryBelow="0"` es lo que hace que el +/- quede en la fila de ARRIBA (el
+ * viaje). Con el valor por omision Excel lo pone en la de abajo, que seria el
+ * viaje siguiente.
+ */
+function armarHojaDeContrato(filas: any[], estilos: Record<number, number>, estiloComun: number, estiloTitulo: number): string {
+    const ultima = letra(COLUMNAS_CONTRATO.length);
+    const rango = `A1:${ultima}${Math.max(filas.length + 1, 2)}`;
+
+    const encabezado = filaXml(1, COLUMNAS_CONTRATO.map((n) => ({ valor: n, estilo: estiloTitulo })));
+    const cuerpo = filas.map((f, i) => {
+        const esHijo = f._tipo === 'hijo';
+        const celdas: Celda[] = [{ valor: esHijo ? 'parte' : 'VIAJE', estilo: estiloComun }];
+        COLUMNAS_LIBRO.forEach((nombre, c) => celdas.push({ valor: f[nombre], estilo: estilos[c + 1] ?? estiloComun }));
+        return filaXml(i + 2, celdas, esHijo ? 1 : 0);
+    });
+
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        + '<sheetPr><outlinePr summaryBelow="0" summaryRight="0"/></sheetPr>'
+        + `<dimension ref="${rango}"/>`
+        + '<sheetViews><sheetView workbookViewId="0">'
+        + '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
+        + '<sheetFormatPr defaultRowHeight="15" outlineLevelRow="1"/>'
+        + `<sheetData>${encabezado}${cuerpo.join('')}</sheetData>`
+        + `<autoFilter ref="${rango}"/>`
+        + '</worksheet>';
+}
+
+/** Deja las hojas nuevas anotadas donde Excel las busca: la lista de hojas del
+ *  libro, sus relaciones y los tipos de contenido del zip. */
+function registrarHojas(zip: Record<string, Uint8Array>, dec: TextDecoder, enc: TextEncoder): void {
+    let wb = dec.decode(zip['xl/workbook.xml']);
+    let rels = dec.decode(zip['xl/_rels/workbook.xml.rels']);
+    let tipos = dec.decode(zip['[Content_Types].xml']);
+    const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+
+    for (const h of HOJAS_POR_CONTRATO) {
+        if (!wb.includes(`name="${h.nombre}"`)) {
+            wb = wb.replace('</sheets>',
+                `<sheet xmlns:r="${R}" name="${h.nombre}" sheetId="${h.sheetId}" state="visible" r:id="${h.rel}"/></sheets>`);
+        }
+        if (!rels.includes(`Id="${h.rel}"`)) {
+            rels = rels.replace('</Relationships>',
+                `<Relationship Type="${R}/worksheet" Target="/${h.archivo}" Id="${h.rel}"/></Relationships>`);
+        }
+        if (!tipos.includes(`/${h.archivo}`)) {
+            tipos = tipos.replace('</Types>',
+                `<Override PartName="/${h.archivo}" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`);
+        }
+    }
+    zip['xl/workbook.xml'] = enc.encode(wb);
+    zip['xl/_rels/workbook.xml.rels'] = enc.encode(rels);
+    zip['[Content_Types].xml'] = enc.encode(tipos);
 }
 
 /**
@@ -201,11 +274,13 @@ export function armarLibroViajes(filas: any[], titulo?: string, analisis?: FilaC
     const estilos = estilosDeLaFila(hoja, 2);
     const estiloComun = estilos[3] ?? 0;
 
-    const cuerpo = filas.map((f, i) => filaXml(i + 2, COLUMNAS_LIBRO.map((nombre, c) => ({
+    // La dinamica suma esta hoja: las filas padre harian contar todo dos veces.
+    const soloPartes = filas.filter((f: any) => f._tipo !== 'padre');
+    const cuerpo = soloPartes.map((f, i) => filaXml(i + 2, COLUMNAS_LIBRO.map((nombre, c) => ({
         valor: f[nombre], estilo: estilos[c + 1] ?? estiloComun
     }))));
 
-    const ultimaFila = Math.max(filas.length + 1, 2);
+    const ultimaFila = Math.max(soloPartes.length + 1, 2);
     const rango = `A1:${ULTIMA_COLUMNA}${ultimaFila}`;
     const rangoDinamica = `A1:${ULTIMA_COLUMNA_DINAMICA}${ultimaFila}`;
 
@@ -237,6 +312,16 @@ export function armarLibroViajes(filas: any[], titulo?: string, analisis?: FilaC
     if (zip[HOJA_CONTEO]) {
         zip[HOJA_CONTEO] = enc.encode(armarHojaConteo(dec.decode(zip[HOJA_CONTEO]), analisis || []));
     }
+
+    // ── Hojas "Propios" y "Tercerizados" ───────────────────────────────────
+    // El viaje entero, como se ve en planificacion, con sus partes colgando.
+    const estiloTitulo = estilosDeLaFila(hoja, 1)[1] ?? estiloComun;
+    for (const h of HOJAS_POR_CONTRATO) {
+        const suyas = filas.filter((f: any) =>
+            String(f['Contrato'] || '').trim().toLowerCase() === h.contrato);
+        zip[h.archivo] = enc.encode(armarHojaDeContrato(suyas, estilos, estiloComun, estiloTitulo));
+    }
+    registrarHojas(zip as any, dec, enc);
 
     // ── Titulo del resumen ─────────────────────────────────────────────────
     if (titulo && zip[HOJA_RESUMEN]) {

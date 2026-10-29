@@ -7634,6 +7634,7 @@ function aperturaPorUnidad(
             {
                 businessUnit: t?.businessUnit,
                 stops: (r?.stops || []) as any,
+                tramos: (t?.tramos || []) as any,
                 inicio: r?.actualStartTime || t?.exitTime,
                 fin: r?.actualEndTime || t?.returnTime
             },
@@ -7691,7 +7692,10 @@ app.get('/api/v1/costs/unidades-anual', async (req: any, res: any) => {
                         actualStartTime: true, actualEndTime: true,
                         stops: { select: { sequence: true, ruta: true, actualArrival: true, actualDeparture: true, isReturnToBase: true } }
                     }
-                }
+                },
+                // Los tramos que cerro el chofer: son los que mandan al repartir
+                // las horas entre las unidades.
+                tramos: { orderBy: { orden: 'asc' } }
             }
         });
         const mapaU = await unidadesPorRutaCacheado();
@@ -7744,7 +7748,10 @@ app.get('/api/admin/panel-coherencia', async (req: any, res: any) => {
                         actualStartTime: true, actualEndTime: true,
                         stops: { select: { sequence: true, ruta: true, actualArrival: true, actualDeparture: true, isReturnToBase: true } }
                     }
-                }
+                },
+                // Los tramos que cerro el chofer: son los que mandan al repartir
+                // las horas entre las unidades.
+                tramos: { orderBy: { orden: 'asc' } }
             }
         });
         const viajes = sinViajesDePrueba(crudos as any[]);
@@ -7897,7 +7904,10 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
                         actualStartTime: true, actualEndTime: true,
                         stops: { select: { sequence: true, ruta: true, actualArrival: true, actualDeparture: true, isReturnToBase: true } }
                     }
-                }
+                },
+                // Los tramos que cerro el chofer: son los que mandan al repartir
+                // las horas entre las unidades.
+                tramos: { orderBy: { orden: 'asc' } }
             }
         });
 
@@ -13125,7 +13135,8 @@ async function correrMotorDeCostos(
                             }
                         }
                     }
-                }
+                },
+                tramos: { orderBy: { orden: 'asc' } }
             }
         })).map((t: any) => ({
             ...t,
@@ -13289,6 +13300,7 @@ async function correrMotorDeCostos(
                 {
                     businessUnit: t.businessUnit,
                     stops: (t.linkedRoute?.stops || []) as any,
+                    tramos: (t.tramos || []) as any,
                     inicio: t.routeActualStart || t.exitTime,
                     fin: t.routeActualEnd || t.returnTime
                 },

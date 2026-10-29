@@ -34,9 +34,20 @@ export interface ParadaParaReparto {
     actualDeparture?: Date | string | null;
 }
 
+/** Un tramo del viaje: una ruta con su hora de inicio y de cierre. Es lo que
+ *  cierra el chofer desde el telefono y lo que muestra el TMS. */
+export interface TramoParaReparto {
+    /** "R6", o "VUELTA AL DEPOSITO" para el ultimo. */
+    ruta?: string | null;
+    inicio?: Date | string | null;
+    fin?: Date | string | null;
+}
+
 export interface ViajeParaReparto {
     businessUnit?: string | null;
     stops: ParadaParaReparto[];
+    /** Los tramos cerrados, si los hay. Cuando estan completos mandan ellos. */
+    tramos?: TramoParaReparto[] | null;
     /** Momento en que arranco (fichaje, GPS o salida del deposito). */
     inicio?: Date | string | null;
     /** Momento en que termino. */
@@ -91,12 +102,22 @@ export function unidadDeParada(
     unidadPorRuta: Map<string, string>,
     unidadesDelViaje: string[]
 ): string {
-    const ruta = norm(parada?.ruta);
+    return unidadDeRuta(parada?.ruta, unidadPorRuta, unidadesDelViaje);
+}
+
+/** De que unidad es una ruta. Lo usan las paradas y los tramos, que dicen la
+ *  ruta de la misma forma. */
+export function unidadDeRuta(
+    rutaCruda: any,
+    unidadPorRuta: Map<string, string>,
+    unidadesDelViaje: string[]
+): string {
+    const ruta = norm(rutaCruda);
     if (ruta) {
         const u = unidadPorRuta.get(ruta);
         if (u) return u;
-        // La parada puede traer directamente el nombre de la unidad en vez del
-        // de una ruta. Pasa con los trabajos que NO son una ruta: un retiro, un
+        // La ruta puede traer directamente el nombre de la unidad en vez del de
+        // una ruta. Pasa con los trabajos que NO son una ruta: un retiro, un
         // evento. No tienen plantilla, asi que no hay ruta que ponerles, pero
         // igual hay que poder decir de quien son.
         const comoUnidad = unidadesDelViaje.find((x) => x === ruta);
@@ -114,7 +135,7 @@ export interface RepartoDeHoras {
     /** La duracion del viaje entero, en horas. */
     total: number;
     /** Como se repartio, para poder explicarlo. */
-    metodo: 'por horario de cada parada' | 'por cantidad de paradas' | 'una sola unidad' | 'sin datos';
+    metodo: 'por los tramos del chofer' | 'por horario de cada parada' | 'por cantidad de paradas' | 'una sola unidad' | 'sin datos';
 }
 
 /**
@@ -159,7 +180,25 @@ export function repartirHoras(
     const inicio = aFecha(viaje.inicio);
     const fin = aFecha(viaje.fin);
 
-    // ── Camino bueno: hay horarios de parada ──
+    // ── Camino bueno: el chofer cerro los tramos ──
+    // Es lo que muestra el TMS, y es el unico dato en que alguien dijo
+    // explicitamente "hasta aca fue esta ruta". Cortar por la hora de la ultima
+    // parada le regala a la unidad siguiente todo el rato en que el chofer
+    // venia manejando sin cerrar nada.
+    const porTramos = horasDeLosTramos(viaje.tramos, unidadPorRuta, unidades);
+    if (porTramos) {
+        const repartido = Object.values(porTramos).reduce((a, b) => a + b, 0);
+        if (repartido > 0) {
+            // Lo que sobra (la vuelta al deposito, y cualquier hueco entre
+            // tramos) se reparte en la misma proporcion, para que la suma de
+            // exacta la duracion del viaje.
+            const factor = total / repartido;
+            for (const u of Object.keys(porTramos)) horas[u] = porTramos[u] * factor;
+            return { horas, paradas, total, metodo: 'por los tramos del chofer' };
+        }
+    }
+
+    // ── Camino de respaldo: hay horarios de parada ──
     // La vuelta al deposito se saca del recorrido a proposito: su tramo pasa a
     // ser parte de lo que sobra, y lo que sobra se reparte en proporcion. Si se
     // dejara, ese tiempo se le cargaria entero a nadie (la parada del deposito
@@ -204,6 +243,37 @@ export function repartirHoras(
     // Sin paradas: se divide en partes iguales entre las unidades del viaje.
     for (const u of unidades) horas[u] = total / unidades.length;
     return { horas, paradas, total, metodo: 'por cantidad de paradas' };
+}
+
+/** Las horas de cada unidad segun los tramos, o null si los tramos no
+ *  alcanzan para repartir.
+ *
+ *  Se exige que CADA unidad del viaje tenga su tramo. Si falta una, el chofer
+ *  no separo lo que hizo para ella y usar los tramos la dejaria en cero,
+ *  llevandose sus horas (y su costo) a otra. En ese caso es mejor el camino
+ *  viejo, que al menos las reparte. */
+function horasDeLosTramos(
+    tramos: TramoParaReparto[] | null | undefined,
+    unidadPorRuta: Map<string, string>,
+    unidades: string[]
+): Record<string, number> | null {
+    const utiles = (tramos || []).filter((t) => aFecha(t?.inicio) && aFecha(t?.fin));
+    if (utiles.length < 2) return null;
+
+    const crudas: Record<string, number> = {};
+    for (const t of utiles) {
+        const ruta = norm(t?.ruta);
+        // La vuelta al deposito no es de ninguna unidad, igual que su parada.
+        if (!ruta || ruta === 'VUELTA AL DEPOSITO' || ruta === 'VUELTA_AL_DEPOSITO') continue;
+        const u = unidadDeRuta(ruta, unidadPorRuta, unidades);
+        if (u === SIN_UNIDAD) return null;   // un tramo que no se sabe de quien es
+        const horas = (aFecha(t.fin)!.getTime() - aFecha(t.inicio)!.getTime()) / 3600000;
+        if (horas <= 0) continue;
+        crudas[u] = (crudas[u] || 0) + horas;
+    }
+    // Todas las unidades del viaje tienen que estar
+    if (unidades.some((u) => !(crudas[u] > 0))) return null;
+    return crudas;
 }
 
 /** El mapa ruta -> unidad, leido una sola vez por reporte. */

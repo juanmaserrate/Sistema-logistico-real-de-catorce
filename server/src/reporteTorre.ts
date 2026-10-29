@@ -105,9 +105,11 @@ export async function filasViajes(prisma: Prisma, desde: Date, hasta: Date) {
 
 /** Los mismos viajes, pero eligiendo cuales por id. Lo usa el export de la web,
  *  que manda exactamente los que el operador tiene en pantalla. */
+/** Las filas para el exportable: ademas de las partes por unidad, la fila del
+ *  viaje entero, que es la que se ve en planificacion. */
 export async function filasViajesPorIds(prisma: Prisma, ids: number[]) {
     if (!ids.length) return [];
-    return filasViajesDe(prisma, { id: { in: ids } });
+    return filasViajesDe(prisma, { id: { in: ids } }, true);
 }
 
 /** Unidades de negocio que NO se reparten en una localidad.
@@ -168,7 +170,10 @@ function detalleDeTramos(tramos: any[]): string {
         .join(' · ');
 }
 
-async function filasViajesDe(prisma: Prisma, where: any) {
+/** `conPadres` agrega, antes de las partes de un viaje repartido, la fila del
+ *  viaje entero. El reporte semanal de la Torre NO la quiere: suma sus filas y
+ *  el padre haria contar todo dos veces. */
+async function filasViajesDe(prisma: Prisma, where: any, conPadres = false) {
     const viajes = await prisma.trip.findMany({
         where,
         include: {
@@ -241,13 +246,14 @@ async function filasViajesDe(prisma: Prisma, where: any) {
 
         // ── Un viaje que reparte para varias unidades sale en varias filas ──
         const unidades = unidadesDeTexto(t.businessUnit);
-        if (unidades.length < 2) return [fila];
+        // Un viaje de una sola unidad ya es su propia fila entera.
+        if (unidades.length < 2) return [{ ...fila, _tipo: 'unico' }];
 
         const inicio = r?.actualStartTime || t.startedAt;
         const fin = r?.actualEndTime || t.completedAt;
         const horasTotales = Number(fila['Duracion horas']) || 0;
         const reparto = repartirHoras(
-            { businessUnit: t.businessUnit, stops: (r?.stops || []) as any, inicio, fin },
+            { businessUnit: t.businessUnit, stops: (r?.stops || []) as any, tramos: t.tramos as any, inicio, fin },
             unidadPorRuta,
             horasTotales
         );
@@ -267,7 +273,7 @@ async function filasViajesDe(prisma: Prisma, where: any) {
             ...unidades
         ])];
 
-        return claves.map((u) => {
+        const partes = claves.map((u) => {
             const horas = reparto.horas[u] || 0;
             const parte = horasTotales > 0 ? horas / horasTotales : 1 / claves.length;
             const mias = deLaUnidad(u);
@@ -283,9 +289,13 @@ async function filasViajesDe(prisma: Prisma, where: any) {
                 'Costo': fila['Costo'] === '' ? '' : redondear2(Number(fila['Costo'] || 0) * parte),
                 // Para poder ver de un vistazo que esta fila es una parte
                 'Unidades del viaje': t.businessUnit || '',
-                'Reparto de horas': reparto.metodo
+                'Reparto de horas': reparto.metodo,
+                _tipo: 'hijo'
             };
         });
+        if (!conPadres) return partes;
+        // La fila del viaje entero va primero y sus partes cuelgan de ella.
+        return [{ ...fila, _tipo: 'padre', 'Reparto de horas': reparto.metodo }, ...partes];
     });
 }
 
