@@ -1594,27 +1594,12 @@
                     <!-- Assignments table with module checkboxes -->
                     <div class="overflow-x-auto custom-scrollbar rounded-2xl border border-[#F4F7FE]">
                         <table class="w-full text-left" id="profile-access-table">
-                            <thead>
-                                <tr>
-                                    <th class="px-4 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest bg-[#F8FAFF] sticky left-0 z-10">Usuario</th>
-                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Torre Control</th>
-                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Logística</th>
-                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Pagos</th>
-                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Panel</th>
-                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Mapa/Ruteo</th>
-                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Costos</th>
-                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Manten.</th>
-                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Rutas</th>
-                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Usuarios</th>
-                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Personal</th>
-                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Salarios</th>
-                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Clientes</th>
-                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Reportes</th>
-                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Inciden.</th>
-                                    <th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Auditoría</th>
-                                    <th class="px-3 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Acciones</th>
-                                </tr>
-                            </thead>
+                            <thead>
+                                <tr id="profile-assignments-head">
+                                    <!-- Los titulos los arma renderProfileAssignments
+                                         desde ALL_MODULES: escritos a mano se corrian. -->
+                                </tr>
+                            </thead>
                             <tbody id="profile-assignments-body" class="divide-y divide-[#F4F7FE]"></tbody>
                         </table>
                     </div>
@@ -5143,17 +5128,42 @@
             return { ...stored, ...USER_PROFILES };
         }
 
+        /** Como se llama cada modulo en el menu. Es lo que se ve arriba de cada
+         *  casillero en la tabla de permisos. */
+        const NOMBRES_DE_MODULO = {
+            'control': 'Torre de Control', 'drivers-status': 'Estado de Choferes',
+            'crates': 'Cajones', 'crates-sim': 'Cajones en tránsito', 'stock-cajones': 'Stock de cajones',
+            'hdr': 'HDR', 'weekly': 'Logística Semanal', 'payments': 'Planilla de Pagos',
+            'dashboard': 'Panel logístico', 'costs': 'Motor de Costos', 'fleet-costs': 'Gastos de Flota',
+            'tarifas': 'Choferes y tarifas', 'budget': 'Presupuestar', 'fleets': 'Flotas',
+            'routes': 'Rutas Predefinidas', 'users': 'Usuarios', 'ajustes': 'Ajustes',
+            'control-carga': 'Problemas de carga', 'employees': 'Personal',
+            // Salarios no tiene pantalla propia: se fusiono con Personal. El
+            // permiso sigue existiendo porque hay perfiles guardados que lo nombran.
+            'salaries': 'Salarios (sin pantalla)',
+            'schools': 'Clientes', 'reports': 'Reportes', 'incidents': 'Incidencias',
+            'audit': 'Auditoría', 'historial': 'Historial'
+        };
+
         const ALL_MODULES = ['control','drivers-status','crates','crates-sim','stock-cajones','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
 
         function renderProfileAssignments() {
             const tbody = document.getElementById('profile-assignments-body');
             if (!tbody) return;
+            // Los titulos salen de la misma lista que los casilleros: escritos
+            // a mano se desalineaban y cada tilde daba permiso a otro modulo.
+            const thead = document.getElementById('profile-assignments-head');
+            if (thead) {
+                thead.innerHTML = '<th class="px-4 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest bg-[#F8FAFF] sticky left-0 z-10">Usuario</th>'
+                    + ALL_MODULES.map(m => `<th class="px-2 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center align-bottom">${escapeHtml(NOMBRES_DE_MODULO[m] || m)}</th>`).join('')
+                    + '<th class="px-3 py-4 text-[9px] font-bold text-[#A3AED0] uppercase tracking-wider bg-[#F8FAFF] text-center">Acciones</th>';
+            }
             const all = getAllProfileAssignments();
             const hardcoded = Object.keys(USER_PROFILES);
 
             const rows = Object.entries(all).sort((a, b) => a[0].localeCompare(b[0]));
             if (rows.length === 0) {
-                tbody.innerHTML = `<tr><td colspan="16" class="px-6 py-12 text-center text-[#A3AED0] italic">No hay usuarios configurados. Agregá un usuario arriba.</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="${ALL_MODULES.length + 2}" class="px-6 py-12 text-center text-[#A3AED0] italic">No hay usuarios configurados. Agregá un usuario arriba.</td></tr>`;
                 return;
             }
             tbody.innerHTML = rows.map(([user, data]) => {
