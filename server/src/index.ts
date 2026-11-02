@@ -6494,6 +6494,221 @@ app.post('/api/admin/create-trip-from-template', async (req: any, res: any) => {
     }
 });
 
+/** Los dias habiles (lunes a viernes) de un mes "2026-11". */
+function diasHabilesDelMes(mes: string): string[] {
+    const [anio, m] = mes.split('-').map(Number);
+    const salida: string[] = [];
+    const ultimo = new Date(Date.UTC(anio, m, 0)).getUTCDate();
+    for (let d = 1; d <= ultimo; d++) {
+        const f = new Date(Date.UTC(anio, m - 1, d, 12));
+        if (f.getUTCDay() >= 1 && f.getUTCDay() <= 5) {
+            salida.push(`${anio}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`);
+        }
+    }
+    return salida;
+}
+const DIAS_SAM = ['DOMINGO', 'LUNES', 'MARTES', 'MIERCOLES', 'JUEVES', 'VIERNES', 'SABADO'];
+function diaDeLaSemana(ymd: string): number {
+    return new Date(`${ymd}T12:00:00.000Z`).getUTCDay();
+}
+function sinTildes(s: any): string {
+    return String(s ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase().trim();
+}
+
+/** El valor que mas se repite entre los viajes de referencia. Se usa el que
+ *  mas aparece y no el ultimo: si un dia fue otro chofer de reemplazo, el
+ *  habitual sigue siendo el habitual. */
+function masRepetido(viajes: any[], campo: string): any {
+    const cuenta = new Map<string, { v: any; n: number }>();
+    for (const t of viajes) {
+        const v = (t as any)[campo];
+        if (v === null || v === undefined || v === '') continue;
+        const k = String(v);
+        const y = cuenta.get(k) || { v, n: 0 };
+        y.n++;
+        cuenta.set(k, y);
+    }
+    let mejor: { v: any; n: number } | null = null;
+    for (const y of cuenta.values()) if (!mejor || y.n > mejor.n) mejor = y;
+    return mejor ? mejor.v : null;
+}
+
+/** Completa un mes con los viajes que faltan, copiando los datos del mes
+ *  anterior.
+ *
+ *  Cada reparto hace la ruta predefinida que se llama igual que el y, los dias
+ *  que corresponde, tambien la SAM de ese dia ("SAM 3 MIERCOLES R13"). La
+ *  unidad de negocio NO se copia del mes pasado: sale de las rutas, que es
+ *  donde esta bien cargada.
+ *
+ *  Los datos de la gente (chofer, auxiliares) y del lugar (zona, localidad,
+ *  subzona) salen de la ULTIMA SEMANA del mes de referencia que tenga viajes
+ *  de ese reparto, tomando el valor que mas se repite.
+ *
+ *  POST /api/admin/crear-viajes-faltantes
+ *  { key, mes: "2026-11", referencia?: "2026-10", repartos?: ["R18"], dryRun? } */
+app.post('/api/admin/crear-viajes-faltantes', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const mes = String(req.body?.mes || '').trim();
+    if (!/^\d{4}-\d{2}$/.test(mes)) return res.status(400).json({ error: 'Falta "mes" (YYYY-MM)' });
+    const [anioM, numM] = mes.split('-').map(Number);
+    const referencia = /^\d{4}-\d{2}$/.test(String(req.body?.referencia || ''))
+        ? String(req.body.referencia)
+        : `${numM === 1 ? anioM - 1 : anioM}-${String(numM === 1 ? 12 : numM - 1).padStart(2, '0')}`;
+    const soloEstos: string[] = Array.isArray(req.body?.repartos)
+        ? req.body.repartos.map((x: any) => sinTildes(x)).filter(Boolean) : [];
+    const aplicar = req.body?.dryRun === false;
+
+    try {
+        const rango = (m: string) => {
+            const [a, n] = m.split('-').map(Number);
+            return { gte: new Date(Date.UTC(a, n - 1, 1)), lte: new Date(Date.UTC(a, n, 0, 23, 59, 59)) };
+        };
+        const campos = {
+            id: true, date: true, reparto: true, driver: true, assignedMobileUser: true,
+            auxiliar: true, auxiliar2: true, auxiliar3: true, zone: true, locality: true, subzona: true,
+            contractType: true, provider: true, vehicleType: true, vehicle: true,
+            isRefrigerated: true, vuelta: true, priority: true
+        };
+        const [delMes, deRef, plantillas, clientes] = await Promise.all([
+            prisma.trip.findMany({ where: { date: rango(mes) }, select: { date: true, reparto: true } }),
+            prisma.trip.findMany({ where: { date: rango(referencia) }, select: campos, orderBy: { date: 'asc' } }),
+            (prisma as any).routeTemplate.findMany({ include: { stops: { orderBy: { sequence: 'asc' } } } }),
+            prisma.client.findMany({ select: { id: true, name: true } })
+        ]);
+
+        const ymd = (d: any) => new Date(d).toISOString().slice(0, 10);
+        const habiles = diasHabilesDelMes(mes);
+        const yaEsta = new Set(delMes.map((t: any) => `${sinTildes(t.reparto)}|${ymd(t.date)}`));
+
+        // Los repartos a completar: los que tuvieron viajes en la referencia.
+        // Por defecto solo los R<numero>: lo demas (LIBRE, retiros) se carga a
+        // mano cuando aparece, no todos los dias.
+        const repartosRef = [...new Set(deRef.map((t: any) => sinTildes(t.reparto)).filter(Boolean))]
+            .filter((r) => (soloEstos.length ? soloEstos.includes(r) : /^R\d+$/.test(r)))
+            .sort((a, b) => (Number(a.slice(1)) || 0) - (Number(b.slice(1)) || 0));
+
+        const porNombre = new Map<string, any>();
+        for (const t of plantillas as any[]) porNombre.set(sinTildes(t.name), t);
+        const porCliente = new Map<string, any>();
+        for (const c of clientes) {
+            const n = normClientNameForMatch(c.name);
+            if (n && !porCliente.has(n)) porCliente.set(n, c);
+        }
+        // "SAM 4 MIECOLES R17" aparece escrito de las dos formas en los datos
+        const plantillaSam = (reparto: string, dia: string) => {
+            for (const [nombre, t] of porNombre) {
+                if (!nombre.startsWith('SAM ')) continue;
+                if (!nombre.endsWith(' ' + reparto)) continue;
+                const d = sinTildes(dia);
+                if (!(nombre.includes(d) || (d === 'MIERCOLES' && nombre.includes('MIECOLES')))) continue;
+                // Las de una sola parada y sin unidad son cascaras vacias
+                if ((t.stops || []).length < 2) continue;
+                return t;
+            }
+            return null;
+        };
+
+        const plan: any[] = [], sinPlantilla: string[] = [], creados: any[] = [], fallados: any[] = [];
+        for (const reparto of repartosRef) {
+            const base = porNombre.get(reparto);
+            if (!base) { sinPlantilla.push(reparto); continue; }
+            const suyos = deRef.filter((t: any) => sinTildes(t.reparto) === reparto);
+            // La ultima semana con viajes de ese reparto
+            const ultimo = ymd(suyos[suyos.length - 1].date);
+            const desde = new Date(new Date(`${ultimo}T12:00:00.000Z`).getTime() - 6 * 86400000);
+            const semana = suyos.filter((t: any) => new Date(t.date) >= desde);
+            const muestra = semana.length ? semana : suyos;
+            const copia: any = {};
+            for (const c of ['driver', 'assignedMobileUser', 'auxiliar', 'auxiliar2', 'auxiliar3',
+                'zone', 'locality', 'subzona', 'contractType', 'provider', 'vehicleType', 'vehicle',
+                'isRefrigerated', 'vuelta', 'priority']) copia[c] = masRepetido(muestra, c);
+
+            for (const dia of habiles) {
+                if (yaEsta.has(`${reparto}|${dia}`)) continue;
+                const sam = plantillaSam(reparto, DIAS_SAM[diaDeLaSemana(dia)]);
+                const rutas = [base, ...(sam ? [sam] : [])];
+                const unidades = [...new Set(rutas.map((t: any) => String(t.businessUnit || '').trim()).filter(Boolean))];
+                const paradas: any[] = [];
+                const sinCliente: string[] = [];
+                for (const t of rutas) {
+                    for (const st of (t.stops || [])) {
+                        const c = porCliente.get(normClientNameForMatch(st.name));
+                        if (c) paradas.push({ clientId: c.id, nombre: c.name, ruta: t.name });
+                        else sinCliente.push(`${t.name}: ${st.name}`);
+                    }
+                }
+                plan.push({
+                    reparto, fecha: dia, diaSemana: DIAS_SAM[diaDeLaSemana(dia)],
+                    rutas: rutas.map((t: any) => t.name),
+                    unidadDeNegocio: unidades.join(', '),
+                    chofer: copia.driver, usuarioApp: copia.assignedMobileUser,
+                    auxiliar: [copia.auxiliar, copia.auxiliar2, copia.auxiliar3].filter(Boolean).join(' / ') || null,
+                    localidad: copia.zone, subzona: copia.subzona,
+                    contrato: copia.contractType, proveedor: copia.provider,
+                    paradas: paradas.length, sinCliente,
+                    _copia: copia, _paradas: paradas
+                });
+            }
+        }
+
+        if (!aplicar) {
+            return res.json({
+                dryRun: true, mes, referencia,
+                repartos: repartosRef, sinPlantilla,
+                viajesACrear: plan.length,
+                porReparto: Object.fromEntries(repartosRef.map((r) => [r, plan.filter((p) => p.reparto === r).length])),
+                detalle: plan.map(({ _copia, _paradas, ...x }) => x)
+            });
+        }
+
+        const tenantId = 'default-tenant';
+        const deposito = await ensureBaseClient(tenantId);
+        for (const p of plan) {
+            try {
+                const cuando = new Date(`${p.fecha}T15:00:00.000Z`);
+                const c = p._copia;
+                const trip = await prisma.trip.create({
+                    data: {
+                        date: cuando, reparto: p.reparto, tripType: p.reparto,
+                        rutas: p.rutas as any,
+                        businessUnit: p.unidadDeNegocio || null,
+                        driver: c.driver || null, assignedMobileUser: c.assignedMobileUser || null,
+                        auxiliar: c.auxiliar || null, auxiliar2: c.auxiliar2 || null, auxiliar3: c.auxiliar3 || null,
+                        zone: c.zone || null, locality: c.locality || null, subzona: c.subzona || null,
+                        contractType: c.contractType || 'Propio', provider: c.provider || null,
+                        vehicleType: c.vehicleType || null, vehicle: c.vehicle || null,
+                        isRefrigerated: c.isRefrigerated ?? null, vuelta: c.vuelta ?? null,
+                        priority: c.priority || '1',
+                        status: 'PENDING'
+                    } as any
+                });
+                const chofer = c.assignedMobileUser ? await findDriverUser(String(c.assignedMobileUser)) : null;
+                const route = await prisma.route.create({
+                    data: { tenantId, date: cuando, driverId: chofer ? chofer.id : null, status: 'PLANNED', tripId: trip.id } as any
+                });
+                const lista = [...p._paradas];
+                if (deposito) lista.push({ clientId: deposito.id, nombre: deposito.name, ruta: null });
+                await prisma.$transaction(lista.map((st: any, i: number) => prisma.stop.create({
+                    data: {
+                        routeId: route.id, clientId: st.clientId, sequence: i + 1, status: 'PENDING',
+                        ruta: st.ruta, isReturnToBase: !st.ruta
+                    }
+                })));
+                creados.push({ tripId: trip.id, reparto: p.reparto, fecha: p.fecha, paradas: lista.length, rutas: p.rutas });
+            } catch (e: any) {
+                fallados.push({ reparto: p.reparto, fecha: p.fecha, motivo: e?.message || 'error' });
+            }
+        }
+        await logAction(req, 'CREATE', 'trip', 0, `${creados.length} viajes de ${mes} creados desde ${referencia}`, null,
+            { mes, referencia, creados: creados.length, fallados: fallados.length });
+        res.json({ ok: true, mes, referencia, creados: creados.length, fallados, detalle: creados });
+    } catch (e: any) {
+        console.error('crear-viajes-faltantes:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Lista los clientes con su direccion (solo lectura, para auditar o comparar
  *  contra una planilla). GET /api/admin/clients-dump?key=...&q= */
 app.get('/api/admin/clients-dump', async (req: any, res: any) => {
