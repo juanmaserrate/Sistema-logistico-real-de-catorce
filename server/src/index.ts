@@ -6709,6 +6709,127 @@ app.post('/api/admin/crear-viajes-faltantes', async (req: any, res: any) => {
     }
 });
 
+/** Le agrega una ruta predefinida a viajes que ya existen.
+ *
+ *  Las paradas de la plantilla se meten ANTES de la vuelta al deposito, cada
+ *  una marcada con el nombre de la ruta: de ahi salen despues la unidad de
+ *  negocio de cada parada, el reparto de horas y los bloques de la hoja de
+ *  ruta. La unidad del viaje pasa a ser la union de las dos.
+ *
+ *  POST /api/admin/agregar-ruta-a-viajes
+ *  { key, plantilla: "CDI DIARIO", ids?: [1,2], mes?: "2026-11", reparto?: "R22", dryRun } */
+app.post('/api/admin/agregar-ruta-a-viajes', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const nombrePlantilla = String(req.body?.plantilla || '').trim();
+    if (!nombrePlantilla) return res.status(400).json({ error: 'Falta "plantilla"' });
+    const ids: number[] = Array.isArray(req.body?.ids) ? req.body.ids.map(Number).filter(Number.isFinite) : [];
+    const mes = String(req.body?.mes || '').trim();
+    const reparto = String(req.body?.reparto || '').trim();
+    if (!ids.length && !(mes && reparto)) {
+        return res.status(400).json({ error: 'Falta "ids", o "mes" y "reparto"' });
+    }
+    const aplicar = req.body?.dryRun === false;
+
+    try {
+        const plantillas = await (prisma as any).routeTemplate.findMany({ include: { stops: { orderBy: { sequence: 'asc' } } } });
+        const plantilla = plantillas.find((t: any) => sinTildes(t.name) === sinTildes(nombrePlantilla));
+        if (!plantilla) return res.status(404).json({ error: `No existe la ruta predefinida "${nombrePlantilla}"` });
+
+        const clientes = await prisma.client.findMany({ select: { id: true, name: true } });
+        const porNombre = new Map<string, any>();
+        for (const c of clientes) {
+            const n = normClientNameForMatch(c.name);
+            if (n && !porNombre.has(n)) porNombre.set(n, c);
+        }
+        const nuevas: any[] = [], sinCliente: string[] = [];
+        for (const st of (plantilla.stops || [])) {
+            const c = porNombre.get(normClientNameForMatch(st.name));
+            if (c) nuevas.push(c); else sinCliente.push(st.name);
+        }
+        if (!nuevas.length) return res.status(400).json({ error: 'Ninguna parada de la plantilla coincide con un cliente' });
+
+        let donde: any;
+        if (ids.length) donde = { id: { in: ids } };
+        else {
+            const [a, n] = mes.split('-').map(Number);
+            donde = {
+                date: { gte: new Date(Date.UTC(a, n - 1, 1)), lte: new Date(Date.UTC(a, n, 0, 23, 59, 59)) },
+                reparto: { equals: reparto, mode: 'insensitive' }
+            };
+        }
+        const viajes = await prisma.trip.findMany({
+            where: donde,
+            select: {
+                id: true, date: true, reparto: true, businessUnit: true, rutas: true,
+                linkedRoute: { select: { id: true, stops: { orderBy: { sequence: 'asc' }, select: { id: true, sequence: true, ruta: true, isReturnToBase: true, clientId: true } } } }
+            },
+            orderBy: { date: 'asc' }
+        });
+
+        const plan: any[] = [], saltados: any[] = [], hechos: any[] = [], fallados: any[] = [];
+        for (const t of viajes as any[]) {
+            const ruta = t.linkedRoute;
+            if (!ruta) { saltados.push({ id: t.id, motivo: 'el viaje no tiene ruta creada' }); continue; }
+            const stops = ruta.stops || [];
+            if (stops.some((p: any) => sinTildes(p.ruta) === sinTildes(plantilla.name))) {
+                saltados.push({ id: t.id, fecha: new Date(t.date).toISOString().slice(0, 10), motivo: 'ya la tiene' });
+                continue;
+            }
+            const unidades = [...new Set([
+                ...String(t.businessUnit || '').split(',').map((x) => x.trim()).filter(Boolean),
+                ...(plantilla.businessUnit ? [String(plantilla.businessUnit).trim()] : [])
+            ])];
+            const rutasAhora = Array.isArray(t.rutas) ? t.rutas.map(String) : (t.reparto ? [t.reparto] : []);
+            plan.push({
+                id: t.id, fecha: new Date(t.date).toISOString().slice(0, 10), reparto: t.reparto,
+                paradasAntes: stops.length, paradasDespues: stops.length + nuevas.length,
+                unidadAntes: t.businessUnit || '', unidadDespues: unidades.join(', '),
+                rutasDespues: [...new Set([...rutasAhora, plantilla.name])],
+                _stops: stops, _routeId: ruta.id, _unidades: unidades.join(', ')
+            });
+        }
+
+        if (!aplicar) {
+            return res.json({
+                dryRun: true, plantilla: plantilla.name, unidadDeLaPlantilla: plantilla.businessUnit || null,
+                paradasQueAgrega: nuevas.map((c) => c.name), sinCliente,
+                viajesAModificar: plan.length, saltados,
+                detalle: plan.map(({ _stops, _routeId, _unidades, ...x }) => x)
+            });
+        }
+
+        for (const p of plan) {
+            try {
+                // Las paradas nuevas van antes de la vuelta al deposito, que
+                // siempre cierra el viaje.
+                const previas = p._stops.filter((x: any) => !x.isReturnToBase);
+                const base = p._stops.filter((x: any) => x.isReturnToBase);
+                let n = 0;
+                await prisma.$transaction([
+                    ...previas.map((x: any) => prisma.stop.update({ where: { id: x.id }, data: { sequence: ++n } })),
+                    ...nuevas.map((c: any) => prisma.stop.create({
+                        data: { routeId: p._routeId, clientId: c.id, sequence: ++n, status: 'PENDING', ruta: plantilla.name, isReturnToBase: false }
+                    })),
+                    ...base.map((x: any) => prisma.stop.update({ where: { id: x.id }, data: { sequence: ++n } })),
+                    prisma.trip.update({
+                        where: { id: p.id },
+                        data: { businessUnit: p._unidades || null, rutas: p.rutasDespues as any }
+                    })
+                ]);
+                hechos.push({ id: p.id, fecha: p.fecha, paradas: n, unidad: p._unidades });
+            } catch (e: any) {
+                fallados.push({ id: p.id, fecha: p.fecha, motivo: e?.message || 'error' });
+            }
+        }
+        await logAction(req, 'UPDATE', 'trip', 0, `ruta ${plantilla.name} agregada a ${hechos.length} viajes`, null,
+            { plantilla: plantilla.name, viajes: hechos.length });
+        res.json({ ok: true, plantilla: plantilla.name, modificados: hechos.length, saltados, fallados, detalle: hechos });
+    } catch (e: any) {
+        console.error('agregar-ruta-a-viajes:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Lista los clientes con su direccion (solo lectura, para auditar o comparar
  *  contra una planilla). GET /api/admin/clients-dump?key=...&q= */
 app.get('/api/admin/clients-dump', async (req: any, res: any) => {
