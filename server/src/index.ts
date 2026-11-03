@@ -6835,6 +6835,83 @@ app.post('/api/admin/agregar-ruta-a-viajes', async (req: any, res: any) => {
     }
 });
 
+/** Cambia el nombre de una ruta en todos lados donde quedo escrito.
+ *
+ *  El nombre de una ruta vive en tres lugares, y si no coinciden la misma
+ *  ruta se cuenta dos veces en los reportes y en el reparto de horas:
+ *    - trip.reparto  (como se llama el viaje)
+ *    - trip.rutas    (la lista de rutas que lleva ese viaje)
+ *    - stop.ruta     (de que ruta es cada parada)
+ *
+ *  Hizo falta para "SAM 4 MIECOLES R17", que esta escrito sin la R en algunos
+ *  viajes. El codigo lo tolera en dos lugares, pero conviven dos nombres para
+ *  la misma ruta.
+ *
+ *  Compara sin tildes y sin mayusculas, asi que sirve igual para unificar
+ *  acentos. No crea nada: solo reescribe lo que ya existe.
+ *
+ *  POST /api/admin/renombrar-ruta { key, de, a, dryRun? } */
+app.post('/api/admin/renombrar-ruta', async (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const de = String(req.body?.de || '').trim();
+    const a = String(req.body?.a || '').trim();
+    if (!de || !a) return res.status(400).json({ error: 'Faltan "de" y "a"' });
+    if (sinTildes(de) === sinTildes(a) && de === a) return res.status(400).json({ error: '"de" y "a" son el mismo texto' });
+    const aplicar = req.body?.dryRun === false;
+
+    try {
+        const viajes = await prisma.trip.findMany({
+            select: { id: true, date: true, reparto: true, rutas: true, tripType: true },
+            orderBy: { date: 'asc' }
+        });
+        const paradas = await prisma.stop.findMany({
+            where: { ruta: { not: null } },
+            select: { id: true, ruta: true, routeId: true }
+        });
+
+        const esEl = (x: any) => !!x && sinTildes(String(x)) === sinTildes(de);
+        const tocaViaje: any[] = [];
+        for (const t of viajes as any[]) {
+            const rutasAhora = Array.isArray(t.rutas) ? t.rutas.map(String) : null;
+            const cambiaReparto = esEl(t.reparto);
+            const cambiaTipo = esEl(t.tripType);
+            const cambiaRutas = !!rutasAhora && rutasAhora.some(esEl);
+            if (!cambiaReparto && !cambiaRutas && !cambiaTipo) continue;
+            tocaViaje.push({
+                id: t.id, fecha: new Date(t.date).toISOString().slice(0, 10),
+                reparto: cambiaReparto ? { antes: t.reparto, despues: a } : null,
+                rutas: cambiaRutas ? { antes: rutasAhora, despues: rutasAhora!.map((x: string) => (esEl(x) ? a : x)) } : null,
+                tripType: cambiaTipo ? { antes: t.tripType, despues: a } : null
+            });
+        }
+        const tocaParada = paradas.filter((p: any) => esEl(p.ruta));
+
+        if (!aplicar) {
+            return res.json({
+                dryRun: true, de, a,
+                viajes: tocaViaje.length, paradas: tocaParada.length,
+                detalle: tocaViaje
+            });
+        }
+
+        for (const v of tocaViaje) {
+            const data: any = {};
+            if (v.reparto) data.reparto = a;
+            if (v.tripType) data.tripType = a;
+            if (v.rutas) data.rutas = v.rutas.despues;
+            await prisma.trip.update({ where: { id: v.id }, data });
+        }
+        if (tocaParada.length) {
+            await prisma.stop.updateMany({ where: { id: { in: tocaParada.map((p: any) => p.id) } }, data: { ruta: a } });
+        }
+        await logAction(req, 'UPDATE', 'trip', 0, `ruta "${de}" renombrada a "${a}"`, { de }, { a, viajes: tocaViaje.length, paradas: tocaParada.length });
+        res.json({ ok: true, de, a, viajes: tocaViaje.length, paradas: tocaParada.length, detalle: tocaViaje });
+    } catch (e: any) {
+        console.error('renombrar-ruta:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Lista los clientes con su direccion (solo lectura, para auditar o comparar
  *  contra una planilla). GET /api/admin/clients-dump?key=...&q= */
 app.get('/api/admin/clients-dump', async (req: any, res: any) => {
