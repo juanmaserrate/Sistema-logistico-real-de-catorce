@@ -6483,7 +6483,12 @@ app.post('/api/admin/create-trip-from-template', async (req: any, res: any) => {
         }));
 
         io.emit('trip:created', { trip });
-        notifyDriver(chofer.username, 'Nuevo viaje asignado', `Tenés un viaje asignado para ${ymd}`, { tripId: trip.id });
+        // Solo se avisa por un viaje que todavia no paso. Al completar un mes
+        // cerrado se crean decenas de viajes viejos: avisarle al chofer de un
+        // viaje que ya hizo no le sirve y le llena el celular.
+        if (ymd >= buenosAiresYmd()) {
+            notifyDriver(chofer.username, 'Nuevo viaje asignado', `Tenés un viaje asignado para ${ymd}`, { tripId: trip.id });
+        }
         res.json({
             ok: true, tripId: trip.id, routeId: route.id, fecha: ymd, reparto: template.name,
             chofer: chofer.username, paradas: clientIds.length, sinCliente
