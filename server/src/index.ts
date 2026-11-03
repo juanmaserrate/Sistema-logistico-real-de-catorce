@@ -9308,6 +9308,7 @@ app.get('/api/admin/paradas-de-viajes', async (req: any, res: any) => {
             select: {
                 id: true, date: true, reparto: true, driver: true, businessUnit: true,
                 exitTime: true, returnTime: true, contractType: true, value: true,
+                status: true, vuelta: true,
                 rutas: true, auxiliar: true, auxiliar2: true, auxiliar3: true,
                 vehicleType: true, isRefrigerated: true, temperature: true,
                 linkedRoute: {
@@ -9332,6 +9333,7 @@ app.get('/api/admin/paradas-de-viajes', async (req: any, res: any) => {
                 fecha: new Date(t.date).toISOString().slice(0, 10),
                 reparto: t.reparto, chofer: t.driver, unidad: t.businessUnit,
                 contrato: t.contractType, valor: Number(t.value) || 0,
+                estado: t.status, vuelta: t.vuelta ?? null,
                 rutas: t.rutas ?? null,
                 auxiliar: [t.auxiliar, t.auxiliar2, t.auxiliar3].filter(Boolean).join(' / ') || null,
                 vehiculo: t.vehicleType || null,
