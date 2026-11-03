@@ -9381,28 +9381,36 @@ app.post('/api/admin/paradas-set-horarios', async (req: any, res: any) => {
          *  problemas; cada uno empieza con la parada que lo causa, asi se
          *  pueden comparar dos lineas y ver cuales son nuevos. */
         const revisar = (lista: any[]) => {
-            const malos: string[] = [];
+            // Cada problema lleva una CLAVE que dice de que se trata y a que
+            // paradas afecta, sin las horas. Comparar los textos no sirve: al
+            // corregir una parada cambia la hora que aparece en el aviso de
+            // otra, y un problema viejo pasaria por nuevo.
+            const malos: { clave: string; texto: string }[] = [];
             for (const x of lista) {
                 if (x.llegada && x.salida && x.llegada.getTime() > x.salida.getTime()) {
-                    malos.push(`#${x.sec} ${x.nombre}: sale ${hhmm(x.salida)} antes de llegar ${hhmm(x.llegada)}`);
+                    malos.push({ clave: `invertida|${x.sec}`,
+                        texto: `#${x.sec} ${x.nombre}: sale ${hhmm(x.salida)} antes de llegar ${hhmm(x.llegada)}` });
                 }
                 if (arranque && x.llegada && x.llegada.getTime() < arranque.getTime()) {
-                    malos.push(`#${x.sec} ${x.nombre}: llega ${hhmm(x.llegada)}, antes de que arranque el viaje (${hhmm(arranque)})`);
+                    malos.push({ clave: `antes-del-arranque|${x.sec}`,
+                        texto: `#${x.sec} ${x.nombre}: llega ${hhmm(x.llegada)}, antes de que arranque el viaje (${hhmm(arranque)})` });
                 }
                 if (cierre && x.salida && x.salida.getTime() > cierre.getTime()) {
-                    malos.push(`#${x.sec} ${x.nombre}: sale ${hhmm(x.salida)}, despues de que cierre el viaje (${hhmm(cierre)})`);
+                    malos.push({ clave: `despues-del-cierre|${x.sec}`,
+                        texto: `#${x.sec} ${x.nombre}: sale ${hhmm(x.salida)}, despues de que cierre el viaje (${hhmm(cierre)})` });
                 }
             }
             for (let i = 1; i < lista.length; i++) {
                 const ant = lista[i - 1], act = lista[i];
                 if (ant.salida && act.llegada && act.llegada.getTime() < ant.salida.getTime()) {
-                    malos.push(`#${act.sec} ${act.nombre} llega ${hhmm(act.llegada)}, antes de que #${ant.sec} ${ant.nombre} salga (${hhmm(ant.salida)})`);
+                    malos.push({ clave: `orden|${ant.sec}|${act.sec}`,
+                        texto: `#${act.sec} ${act.nombre} llega ${hhmm(act.llegada)}, antes de que #${ant.sec} ${ant.nombre} salga (${hhmm(ant.salida)})` });
                 }
             }
             return malos;
         };
 
-        problemas.push(...revisar(linea));
+        problemas.push(...revisar(linea).map((x) => x.texto));
 
         // El chofer no visita las paradas en el orden en que estan numeradas:
         // cierra varias juntas y de a saltos. Por eso casi todos los viajes ya
@@ -9417,10 +9425,10 @@ app.post('/api/admin/paradas-set-horarios', async (req: any, res: any) => {
                     sec: p.sequence, nombre: p.client?.name || '',
                     llegada: p.actualArrival, salida: p.actualDeparture
                 }))
-            ));
-            const nuevos = problemas.filter((x) => !antes.has(x));
-            if (!nuevos.length) problemas.length = 0;
-            else { problemas.length = 0; problemas.push(...nuevos); }
+            ).map((x) => x.clave));
+            const nuevos = revisar(linea).filter((x) => !antes.has(x.clave));
+            problemas.length = 0;
+            problemas.push(...nuevos.map((x) => x.texto));
         }
 
         if (problemas.length) {
