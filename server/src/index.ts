@@ -5231,13 +5231,20 @@ app.post('/api/admin/cerrar-viajes-colgados', async (req: any, res: any) => {
         // la hoja de ruta y los reportes miran el estado de cada parada. Se
         // cierran SOLO las que tienen llegada y salida cargadas; una parada sin
         // horario es una que no se visito, y marcarla entregada seria mentir.
+        //
+        // Esto NO se limita a los viajes que cierra esta pasada: hay paradas
+        // abiertas en viajes que ya figuran cerrados, porque los cerro otro
+        // camino que no las toco. El estado de una parada no depende del estado
+        // del viaje, sino de que el recorrido haya terminado y ella tenga hora.
+        const dondeParadas: any = {
+            status: { notIn: ['COMPLETED', 'UNDELIVERABLE'] },
+            actualArrival: { not: null },
+            actualDeparture: { not: null },
+            route: { is: { actualEndTime: { not: null } } }
+        };
+        if (d1 && d2) dondeParadas.route.is.date = { gte: utcDayRange(d1).start, lte: utcDayRange(d2).end };
         const paradasAbiertas = await prisma.stop.findMany({
-            where: {
-                routeId: { in: rutas.map((r) => r.id) },
-                status: { notIn: ['COMPLETED', 'UNDELIVERABLE'] },
-                actualArrival: { not: null },
-                actualDeparture: { not: null }
-            },
+            where: dondeParadas,
             select: { id: true, routeId: true }
         });
 
