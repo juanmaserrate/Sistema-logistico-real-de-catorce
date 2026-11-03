@@ -9304,8 +9304,13 @@ app.get('/api/admin/paradas-de-viajes', async (req: any, res: any) => {
  *   - todo caiga dentro del arranque y el cierre del viaje.
  *  Si algo de eso no da, no escribe NADA de ese viaje y dice que fallo.
  *
+ *  Con modo "sin-empeorar" los controles se vuelven relativos: se acepta el
+ *  cambio si no agrega ningun problema que no estuviera ya. Hace falta para
+ *  corregir viajes viejos, que casi siempre traen la secuencia dada vuelta
+ *  porque el chofer cierra las paradas de a saltos.
+ *
  *  POST /api/admin/paradas-set-horarios
- *       { key, id, horarios: [{ sec, llegada, salida }], dryRun? } */
+ *       { key, id, horarios: [{ sec, llegada, salida }], modo?, dryRun? } */
 app.post('/api/admin/paradas-set-horarios', async (req: any, res: any) => {
     const { key, id, horarios, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
@@ -9372,22 +9377,50 @@ app.post('/api/admin/paradas-set-horarios', async (req: any, res: any) => {
             };
         });
 
-        for (const x of linea) {
-            if (x.llegada && x.salida && x.llegada.getTime() > x.salida.getTime()) {
-                problemas.push(`#${x.sec} ${x.nombre}: sale ${hhmm(x.salida)} antes de llegar ${hhmm(x.llegada)}`);
+        /** Los controles sobre una linea de paradas. Devuelve una lista de
+         *  problemas; cada uno empieza con la parada que lo causa, asi se
+         *  pueden comparar dos lineas y ver cuales son nuevos. */
+        const revisar = (lista: any[]) => {
+            const malos: string[] = [];
+            for (const x of lista) {
+                if (x.llegada && x.salida && x.llegada.getTime() > x.salida.getTime()) {
+                    malos.push(`#${x.sec} ${x.nombre}: sale ${hhmm(x.salida)} antes de llegar ${hhmm(x.llegada)}`);
+                }
+                if (arranque && x.llegada && x.llegada.getTime() < arranque.getTime()) {
+                    malos.push(`#${x.sec} ${x.nombre}: llega ${hhmm(x.llegada)}, antes de que arranque el viaje (${hhmm(arranque)})`);
+                }
+                if (cierre && x.salida && x.salida.getTime() > cierre.getTime()) {
+                    malos.push(`#${x.sec} ${x.nombre}: sale ${hhmm(x.salida)}, despues de que cierre el viaje (${hhmm(cierre)})`);
+                }
             }
-            if (arranque && x.llegada && x.llegada.getTime() < arranque.getTime()) {
-                problemas.push(`#${x.sec} ${x.nombre}: llega ${hhmm(x.llegada)}, antes de que arranque el viaje (${hhmm(arranque)})`);
+            for (let i = 1; i < lista.length; i++) {
+                const ant = lista[i - 1], act = lista[i];
+                if (ant.salida && act.llegada && act.llegada.getTime() < ant.salida.getTime()) {
+                    malos.push(`#${act.sec} ${act.nombre} llega ${hhmm(act.llegada)}, antes de que #${ant.sec} ${ant.nombre} salga (${hhmm(ant.salida)})`);
+                }
             }
-            if (cierre && x.salida && x.salida.getTime() > cierre.getTime()) {
-                problemas.push(`#${x.sec} ${x.nombre}: sale ${hhmm(x.salida)}, despues de que cierre el viaje (${hhmm(cierre)})`);
-            }
-        }
-        for (let i = 1; i < linea.length; i++) {
-            const ant = linea[i - 1], act = linea[i];
-            if (ant.salida && act.llegada && act.llegada.getTime() < ant.salida.getTime()) {
-                problemas.push(`#${act.sec} ${act.nombre} llega ${hhmm(act.llegada)}, antes de que #${ant.sec} ${ant.nombre} salga (${hhmm(ant.salida)})`);
-            }
+            return malos;
+        };
+
+        problemas.push(...revisar(linea));
+
+        // El chofer no visita las paradas en el orden en que estan numeradas:
+        // cierra varias juntas y de a saltos. Por eso casi todos los viajes ya
+        // vienen con la secuencia dada vuelta, y exigir que cierre impide
+        // corregir una sola parada de un viaje viejo.
+        //
+        // Con modo "sin-empeorar" se acepta el cambio si los problemas que
+        // quedan ya estaban antes: lo que no se puede es agregar uno nuevo.
+        if (problemas.length && String(req.body?.modo || '') === 'sin-empeorar') {
+            const antes = new Set(revisar(
+                (viaje.linkedRoute.stops || []).map((p: any) => ({
+                    sec: p.sequence, nombre: p.client?.name || '',
+                    llegada: p.actualArrival, salida: p.actualDeparture
+                }))
+            ));
+            const nuevos = problemas.filter((x) => !antes.has(x));
+            if (!nuevos.length) problemas.length = 0;
+            else { problemas.length = 0; problemas.push(...nuevos); }
         }
 
         if (problemas.length) {
