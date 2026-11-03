@@ -5227,6 +5227,20 @@ app.post('/api/admin/cerrar-viajes-colgados', async (req: any, res: any) => {
             yaTeniaReturnTime: !!r.trip?.returnTime
         }));
 
+        // Cerrar el viaje y dejarle las paradas abiertas es la mitad del arreglo:
+        // la hoja de ruta y los reportes miran el estado de cada parada. Se
+        // cierran SOLO las que tienen llegada y salida cargadas; una parada sin
+        // horario es una que no se visito, y marcarla entregada seria mentir.
+        const paradasAbiertas = await prisma.stop.findMany({
+            where: {
+                routeId: { in: rutas.map((r) => r.id) },
+                status: { notIn: ['COMPLETED', 'UNDELIVERABLE'] },
+                actualArrival: { not: null },
+                actualDeparture: { not: null }
+            },
+            select: { id: true, routeId: true }
+        });
+
         if (!dryRun) {
             for (const r of rutas) {
                 if (!r.tripId || !r.actualEndTime) continue;
@@ -5241,10 +5255,17 @@ app.post('/api/admin/cerrar-viajes-colgados', async (req: any, res: any) => {
                 }).catch((e: any) => console.warn('[colgados] trip ' + r.tripId + ':', e?.message || e));
                 io.emit('trip:updated', { tripId: r.tripId, hint: 'cerrado_por_reparacion' });
             }
+            if (paradasAbiertas.length) {
+                await prisma.stop.updateMany({
+                    where: { id: { in: paradasAbiertas.map((p) => p.id) } },
+                    data: { status: 'COMPLETED' }
+                });
+            }
             await logAction(req, 'UPDATE', 'Trip', rutas.map((r) => r.tripId).join(','),
-                `${rutas.length} viaje(s) colgados cerrados con la hora de su recorrido`, null, { detalle });
+                `${rutas.length} viaje(s) colgados cerrados con la hora de su recorrido`, null,
+                { detalle, paradasCerradas: paradasAbiertas.length });
         }
-        res.json({ dryRun: !!dryRun, encontrados: rutas.length, viajes: detalle });
+        res.json({ dryRun: !!dryRun, encontrados: rutas.length, paradasQueSeCierran: paradasAbiertas.length, viajes: detalle });
     } catch (e: any) {
         console.error('cerrar-viajes-colgados:', e);
         res.status(500).json({ error: e?.message || 'Error' });
