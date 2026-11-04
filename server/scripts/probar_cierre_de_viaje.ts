@@ -162,6 +162,19 @@ async function correr() {
         esperar('sin avisos de ventana', !tipos(inf).includes('ventana-no-achicada'));
     }
     {
+        // El caso de octubre de 2026: cinco viajes con el deposito en PENDING
+        // sin hora, cerrados por la ruta mas de una hora despues de la ultima
+        // entrega. La vuelta fue real aunque nadie la marco: no se achica.
+        console.log('\n5b. Igual, pero el deposito esta PENDING sin hora: el fin NO se achica (la vuelta no esta marcada)');
+        const sinE = viaje1.stops.filter((s: any) => s.id !== 16)
+            .map((s: any) => s.isReturnToBase ? { ...s, status: 'PENDING', actualArrival: null, actualDeparture: null } : s);
+        const { prisma } = prismaFalso(ruta(sinE, { actualEndTime: T('13:00') }));
+        const inf = await normalizarViajeAlCerrar(prisma, 100);
+        esperar('el fin se queda en 13:00', !inf.ventana || inf.ventana.despues.fin === ISO('13:00'), inf.ventana);
+        esperar('avisa ventana-no-achicada por el deposito sin hora',
+            inf.avisos.some((a) => a.tipo === 'ventana-no-achicada' && /deposito no tiene hora/.test(a.texto)), tipos(inf));
+    }
+    {
         console.log('\n6. Igual, pero el trip tiene una vuelta cargada a mano (12:30): no se toca y se avisa');
         const sinE = viaje1.stops.filter((s: any) => s.id !== 16);
         const { prisma, escrituras } = prismaFalso(ruta(sinE, {

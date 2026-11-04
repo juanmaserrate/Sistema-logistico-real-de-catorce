@@ -137,7 +137,10 @@ function hhmm(d: Date | null | undefined): string {
 }
 
 function mismaHora(a: Date | null | undefined, b: Date | null | undefined): boolean {
-    return (a ? a.getTime() : null) === (b ? b.getTime() : null);
+    if (!a || !b) return !a && !b;
+    // Un segundo de tolerancia: el cierre automatico y la vuelta del viaje se
+    // escriben con milisegundos distintos y son la misma hora.
+    return Math.abs(a.getTime() - b.getTime()) < 1000;
 }
 
 export async function normalizarViajeAlCerrar(
@@ -294,10 +297,20 @@ export async function normalizarViajeAlCerrar(
         if (!finAntes || ultima.getTime() > finAntes.getTime()) {
             finNuevo = ultima;
         } else if (ultima.getTime() < finAntes.getTime()) {
-            // Achicar es mas delicado que extender: si al achicar quedara
-            // afuera CUALQUIER parada con hora (aunque sea UNDELIVERABLE),
-            // se deja el fin como esta y se avisa. Que lo mire una persona.
-            const afuera = paradas.filter((p) => {
+            // Achicar es mas delicado que extender. Si el chofer nunca marco
+            // la vuelta al deposito, la ultima entrega NO es el fin del viaje:
+            // todavia tuvo que volver, y el cierre de la ruta es la unica
+            // prueba de cuando llego. En octubre de 2026 esto le habria sacado
+            // mas de una hora a cinco viajes con el deposito en PENDING.
+            const depositoConHora = paradas.some((p) => p.deposito && (p.salida || p.llegada));
+            if (!depositoConHora) {
+                avisar({ tipo: 'ventana-no-achicada', llegada: iso(inicioAntes), salida: iso(finAntes),
+                    texto: `La ultima entrega es ${hhmm(ultima)} pero el deposito no tiene hora: se deja el fin ${hhmm(finAntes)} (la vuelta no esta marcada)` });
+            }
+            // Y si al achicar quedara afuera CUALQUIER parada con hora (aunque
+            // sea UNDELIVERABLE), se deja el fin como esta y se avisa. Que lo
+            // mire una persona.
+            const afuera = !depositoConHora ? [] : paradas.filter((p) => {
                 const h = p.salida ?? p.llegada;
                 return h && h.getTime() > ultima.getTime();
             });
@@ -306,7 +319,7 @@ export async function normalizarViajeAlCerrar(
                     avisar({ tipo: 'ventana-no-achicada', sec: p.nuevaSec, nombre: p.nombre, llegada: iso(p.llegada), salida: iso(p.salida),
                         texto: `El fin deberia ser ${hhmm(ultima)} pero #${p.nuevaSec} ${p.nombre} (${p.estadoNuevo}) sale ${hhmm(p.salida ?? p.llegada)}: se deja ${hhmm(finAntes)}` });
                 }
-            } else {
+            } else if (depositoConHora) {
                 finNuevo = ultima;
             }
         }
