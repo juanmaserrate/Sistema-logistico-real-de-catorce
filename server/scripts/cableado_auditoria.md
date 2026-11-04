@@ -53,8 +53,8 @@ app.get('/api/admin/auditoria-mes', async (req: any, res: any) => {
 ## Cómo probarlo una vez pegado
 
 ```
-curl "http://localhost:3000/api/admin/auditoria-mes?key=r14-basestop-2026&mes=2026-10"
-curl "http://localhost:3000/api/admin/auditoria-mes?key=r14-basestop-2026&mes=2026-10&solo=Tarifa,Duplicados"
+curl "http://localhost:3002/api/admin/auditoria-mes?key=r14-basestop-2026&mes=2026-10"
+curl "http://localhost:3002/api/admin/auditoria-mes?key=r14-basestop-2026&mes=2026-10&solo=Tarifa,Duplicados"
 ```
 
 (Con otra clave o sin `mes` devuelve 403 / 400.) Sobre octubre 2026 tiene que dar un total del
