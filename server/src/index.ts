@@ -2,6 +2,9 @@
 import express from 'express';
 import crypto from 'crypto';
 import { mapaUnidadPorRuta, unidadDeParada, unidadesDeTexto, repartirHoras, esVueltaAlDeposito, SIN_UNIDAD } from './unidadesDelViaje';
+import { normalizarViajeAlCerrar } from './cierreDeViaje';
+import { auditarMes, filtrarInforme } from './auditoriaDeViajes';
+import { cerrarViajeAnteriorDelChofer, completarViajeCreadoParaFechaPasada, proveedoresParecidos } from './guardasDeViaje';
 import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail, limpiarTokenMail } from './mailer';
 import { armarReporte, filasViajesPorIds, mesDeFecha, esCuentaDePrueba, TIPOS_DE_ENVASE, sumaDeLosTipos, sinLocalidadPorUnidad, TEXTO_SIN_LOCALIDAD, sinViajesDePrueba } from './reporteTorre';
 import {
@@ -4224,20 +4227,25 @@ app.patch('/api/v1/routes/:id/recorrido', async (req, res) => {
                 }
                 return res.json(route);
             }
-            // Un chofer no puede estar en dos viajes a la vez. Desde la app se
-            // frena igual que desde la web: si arranca el segundo, las horas de
-            // los dos se cuentan por separado y el mes queda con horas que nadie
-            // trabajo. Solo cuenta el MISMO DIA: un viaje que quedo abierto de
-            // ayer no puede dejarlo parado en la calle.
+            // Un chofer no puede estar en dos viajes a la vez. Cuando arranca
+            // el segundo, el primero termina ahi: "el deposito es el cierre
+            // del viaje, no una parada". Antes se frenaba con 409, pero la app
+            // lo descartaba sin mostrarlo y el solape quedaba igual (en octubre
+            // de 2026, 6 veces con el mismo chofer). Solo el MISMO DIA: un
+            // viaje abierto de ayer es un error de carga viejo y lo arregla el
+            // operador.
             if (route.tripId) {
-                const ocupado = await choferYaEnOtroViaje(route.tripId);
-                if (ocupado) {
-                    return res.status(409).json({
-                        code: 'CHOFER_EN_OTRO_VIAJE',
-                        error: avisoChoferOcupado(ocupado),
-                        otroViaje: ocupado
-                    });
-                }
+                try {
+                    const cierre = await cerrarViajeAnteriorDelChofer(prisma, route.tripId, now);
+                    for (const c of [cierre.cerrado, ...cierre.otrosCerrados]) {
+                        if (!c) continue;
+                        io.emit('trip:updated', { tripId: c.tripId, hint: 'cerrado_por_arranque_siguiente' });
+                        logAction(req, 'UPDATE', 'trip', c.tripId,
+                            `Cerrado ${now.toISOString()} porque el chofer arranco el viaje #${route.tripId}`,
+                            { abiertoDesde: c.abiertoDesde }, { actualEndTime: now, status: 'COMPLETED' })
+                            .catch(() => {});
+                    }
+                } catch (e) { console.warn('[routes/recorrido start] cierre del anterior:', e); }
             }
             const updated = await prisma.route.update({
                 where: { id: routeId },
@@ -5072,6 +5080,12 @@ async function tryCloseRouteIfComplete(routeId: number): Promise<boolean> {
         data: { isActive: false }
     }).catch(() => {});
 
+    // Protocolo de cierre: la ruta ya quedo COMPLETED en la transaccion de
+    // arriba; esto ordena las paradas por hora, cierra las que tienen las dos
+    // horas y ajusta la ventana. Si falla, el viaje queda cerrado igual.
+    await normalizarViajeAlCerrar(prisma, route.id).catch((e: any) =>
+        console.warn('[cierre] no se pudo normalizar la ruta ' + route.id + ':', e?.message || e));
+
     console.log('[base-stop] Ruta ' + route.id + ' cerrada (' + closeAt.toISOString() + ')');
     io.emit('route:updated', { routeId: route.id, type: 'closed_at_base' });
     if (route.tripId) io.emit('trip:updated', { tripId: route.tripId });
@@ -5275,6 +5289,89 @@ app.post('/api/admin/cerrar-viajes-colgados', async (req: any, res: any) => {
         res.json({ dryRun: !!dryRun, encontrados: rutas.length, paradasQueSeCierran: paradasAbiertas.length, viajes: detalle });
     } catch (e: any) {
         console.error('cerrar-viajes-colgados:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Aplica el protocolo de cierre (paradas en orden de horario, cerradas las que
+ *  tienen las dos horas, ventana ajustada) a viajes que YA estan cerrados.
+ *  Sirve para los meses anteriores a que existiera el protocolo: el chofer
+ *  cerraba las paradas de a saltos y en octubre de 2026 la secuencia estaba
+ *  dada vuelta en 413 de 589 viajes. Nunca toca un viaje abierto (lo omite y
+ *  lo dice en los avisos).
+ *
+ *  POST /api/admin/normalizar-viajes { key, ids?: number[], mes?: "2026-10", dryRun? }
+ *    ids = ids de VIAJE (Trip). mes = todos los viajes del mes con recorrido.
+ *    Devuelve totales, el detalle de lo que cambio por viaje y los avisos que
+ *    necesitan un ojo humano (paradas de menos de 2 minutos, solapadas, etc). */
+app.post('/api/admin/normalizar-viajes', async (req: any, res: any) => {
+    const { key, ids, mes, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        // Solo rutas cerradas: con fin o en COMPLETED. La funcion vuelve a
+        // chequearlo, pero no vale la pena leer las abiertas.
+        const where: any = { OR: [{ actualEndTime: { not: null } }, { status: 'COMPLETED' }] };
+        if (Array.isArray(ids) && ids.length) {
+            const tripIds = ids.map(Number).filter(Number.isFinite);
+            if (!tripIds.length) return res.status(400).json({ error: '"ids" tiene que ser una lista de ids de viaje' });
+            where.tripId = { in: tripIds };
+        } else if (/^\d{4}-\d{2}$/.test(String(mes || ''))) {
+            const [y, m] = String(mes).split('-').map(Number);
+            where.date = { gte: new Date(Date.UTC(y, m - 1, 1)), lt: new Date(Date.UTC(y, m, 1)) };
+        } else {
+            return res.status(400).json({ error: 'Falta "ids" (ids de viaje) o "mes" (YYYY-MM)' });
+        }
+
+        const rutas = await prisma.route.findMany({
+            where,
+            select: { id: true, tripId: true, date: true },
+            orderBy: { id: 'asc' }
+        });
+
+        const totales = { viajes: rutas.length, tocados: 0, omitidos: 0, reordenadas: 0, cerradas: 0, ventanas: 0, conAvisos: 0, errores: 0 };
+        const cambios: any[] = [];
+        const avisos: any[] = [];
+        for (const r of rutas) {
+            try {
+                const inf = await normalizarViajeAlCerrar(prisma, r.id, { dryRun: !!dryRun });
+                if (inf.omitido) totales.omitidos++;
+                totales.reordenadas += inf.reordenadas;
+                totales.cerradas += inf.cerradas;
+                if (inf.ventana) totales.ventanas++;
+                const toco = inf.reordenadas > 0 || inf.cerradas > 0 || !!inf.ventana || inf.cambios.some((c) => c.tipo === 'viaje');
+                if (toco) {
+                    totales.tocados++;
+                    cambios.push({
+                        tripId: inf.tripId, routeId: inf.routeId,
+                        fecha: r.date ? new Date(r.date).toISOString().slice(0, 10) : null,
+                        reordenadas: inf.reordenadas, cerradas: inf.cerradas, ventana: inf.ventana,
+                        viaje: inf.cambios.find((c) => c.tipo === 'viaje') || null
+                    });
+                    if (!dryRun && inf.tripId) io.emit('trip:updated', { tripId: inf.tripId, hint: 'normalizado' });
+                }
+                if (inf.avisos.length) {
+                    totales.conAvisos++;
+                    avisos.push({
+                        tripId: inf.tripId, routeId: inf.routeId,
+                        fecha: r.date ? new Date(r.date).toISOString().slice(0, 10) : null,
+                        avisos: inf.avisos
+                    });
+                }
+            } catch (e: any) {
+                totales.errores++;
+                avisos.push({ tripId: r.tripId, routeId: r.id, error: e?.message || String(e) });
+            }
+        }
+
+        if (!dryRun && totales.tocados) {
+            await logAction(req, 'UPDATE', 'Trip',
+                Array.isArray(ids) && ids.length ? ids.join(',') : String(mes),
+                `protocolo de cierre aplicado a ${totales.tocados} de ${rutas.length} viaje(s)`, null,
+                { totales, cambios });
+        }
+        res.json({ dryRun: !!dryRun, totales, cambios, avisos });
+    } catch (e: any) {
+        console.error('normalizar-viajes:', e);
         res.status(500).json({ error: e?.message || 'Error' });
     }
 });
@@ -6517,9 +6614,22 @@ app.post('/api/admin/create-trip-from-template', async (req: any, res: any) => {
         if (ymd >= buenosAiresYmd()) {
             notifyDriver(chofer.username, 'Nuevo viaje asignado', `Tenés un viaje asignado para ${ymd}`, { tripId: trip.id });
         }
+        // Contrato y proveedor segun la ficha del chofer. El 'Propio' de arriba
+        // es un valor por defecto, no una eleccion: por eso se pisa con la
+        // ficha salvo que el que llamo haya mandado contractType a proposito.
+        // Y si el dia ya paso y la ruta tiene ventana, queda cerrado. Sin esto,
+        // los 91 viajes con que se completaron septiembre y octubre de 2026
+        // nacieron en PENDING, sin proveedor y con sus paradas abiertas.
+        let completado: any = null;
+        try {
+            completado = await completarViajeCreadoParaFechaPasada(prisma, trip.id, {
+                ficha: (c) => loQueEsElChofer(c, ymd),
+                pisarContratoConFicha: !contractType
+            });
+        } catch (e) { console.warn('create-trip-from-template: completar:', e); }
         res.json({
             ok: true, tripId: trip.id, routeId: route.id, fecha: ymd, reparto: template.name,
-            chofer: chofer.username, paradas: clientIds.length, sinCliente
+            chofer: chofer.username, paradas: clientIds.length, sinCliente, completado
         });
     } catch (e: any) {
         console.error('create-trip-from-template:', e);
@@ -6733,9 +6843,24 @@ app.post('/api/admin/crear-viajes-faltantes', async (req: any, res: any) => {
                 fallados.push({ reparto: p.reparto, fecha: p.fecha, motivo: e?.message || 'error' });
             }
         }
+        // Los viajes del mes copian contrato y proveedor del mes anterior; si
+        // quedo alguno tercerizado sin proveedor, lo pone la ficha del chofer.
+        // Los dias que ya pasaron se cierran si la ruta tiene ventana; recien
+        // creados no la tienen, asi que quedan listos para cuando se cargue.
+        const completados: any[] = [];
+        for (const c of creados) {
+            try {
+                const r = await completarViajeCreadoParaFechaPasada(prisma, c.tripId, {
+                    ficha: (ch) => loQueEsElChofer(ch, c.fecha)
+                });
+                if (r.cambios.contractType || r.cambios.provider || r.cambios.viajeCerrado) completados.push(r);
+            } catch (e: any) {
+                fallados.push({ reparto: c.reparto, fecha: c.fecha, motivo: 'completar: ' + (e?.message || 'error') });
+            }
+        }
         await logAction(req, 'CREATE', 'trip', 0, `${creados.length} viajes de ${mes} creados desde ${referencia}`, null,
             { mes, referencia, creados: creados.length, fallados: fallados.length });
-        res.json({ ok: true, mes, referencia, creados: creados.length, fallados, detalle: creados });
+        res.json({ ok: true, mes, referencia, creados: creados.length, fallados, detalle: creados, completados });
     } catch (e: any) {
         console.error('crear-viajes-faltantes:', e);
         res.status(500).json({ error: e?.message || 'Error' });
@@ -6952,6 +7077,32 @@ app.get('/api/admin/clients-dump', async (req: any, res: any) => {
             orderBy: { name: 'asc' }
         });
         res.json({ total: clients.length, clients });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Auditoria de los viajes de un mes: los 19 controles que en octubre 2026 se
+ *  corrieron con un script de afuera, adentro del sistema. Solo lee.
+ *
+ *  GET /api/admin/auditoria-mes?key=...&mes=2026-10
+ *      &solo=Tarifa,Duplicados   (opcional: deja solo esos controles; vale el
+ *                                 principio del nombre, "parada" trae los 4 de paradas)
+ *
+ *  Devuelve { mes, anio, viajes, paradas,
+ *             resumen: [{ control, hallazgos, viajes, queSignifica }],   // de mayor a menor
+ *             hallazgos: [{ control, viaje, fecha, reparto, chofer, contrato, valor, horas, detalle, dato }] } */
+app.get('/api/admin/auditoria-mes', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const m = /^(\d{4})-(\d{1,2})$/.exec(String(req.query.mes || '').trim());
+        if (!m) return res.status(400).json({ error: 'Falta mes=AAAA-MM (ej. 2026-10)' });
+        const anio = Number(m[1]), mes = Number(m[2]);
+        if (mes < 1 || mes > 12) return res.status(400).json({ error: 'Mes invalido: ' + req.query.mes });
+
+        const informe = await auditarMes(prisma, anio, mes);
+        const solo = String(req.query.solo || '').split(',').map((s: string) => s.trim()).filter(Boolean);
+        res.json(solo.length ? filtrarInforme(informe, solo) : informe);
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error' });
     }
@@ -11413,12 +11564,31 @@ app.get('/api/admin/proveedores-en-viajes', async (req: any, res: any) => {
             };
         }).sort((a, b) => Number(b.duplicado) - Number(a.duplicado) || b.viajes - a.viajes);
 
+        // Nombres que son la misma persona escrita con una letra distinta
+        // ("ALAM AMO" / "ALAN AMO"): la agrupacion de arriba no los ve porque
+        // normalizan a dos claves distintas. Se comparan los nombres reales
+        // de los viajes y los de las fichas, a 2 letras de distancia o menos.
+        const parecidos = proveedoresParecidos([
+            ...salida.map((g) => g.sugerido),
+            ...fichas.map((f) => f.name)
+        ]).map((p) => ({
+            ...p,
+            viajesA: salida.find((g) => g.normalizado === norm(p.a))?.viajes || 0,
+            viajesB: salida.find((g) => g.normalizado === norm(p.b))?.viajes || 0,
+            // Cual quedarse: el que tiene ficha; si los dos o ninguno, se decide a mano
+            sugerido: nombresFicha.has(norm(p.a)) && !nombresFicha.has(norm(p.b)) ? p.a
+                    : nombresFicha.has(norm(p.b)) && !nombresFicha.has(norm(p.a)) ? p.b
+                    : null
+        }));
+
         res.json({
             desde: desde || '(todo)', hasta: hasta || '(todo)',
             viajesConProveedor: viajes.length,
             nombresDistintos: [...new Set(viajes.map((t: any) => String(t.provider).trim()))].length,
             proveedoresReales: salida.length,
             duplicadosPorEscritura: salida.filter((x) => x.duplicado).length,
+            parecidos,
+            parecidosPorEscritura: parecidos.length,
             grupos: salida
         });
     } catch (e: any) {
@@ -12185,6 +12355,8 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
                         where: { routeId: stop.route.id, isActive: true },
                         data: { isActive: false }
                     });
+                    await normalizarViajeAlCerrar(prisma, stop.route.id).catch((e: any) =>
+                        console.warn('[cierre] no se pudo normalizar la ruta ' + stop.route.id + ':', e?.message || e));
                     console.log(`[auto-finish] Ruta ${stop.route.id} cerrada automaticamente (${allStops.length} paradas finalizadas)`);
                     io.emit('route:updated', { routeId: stop.route.id, type: 'auto_finished' });
                     if (stop.route.tripId) {
@@ -12301,6 +12473,14 @@ app.patch('/api/v1/routes/:id/horarios', async (req, res) => {
             actualEndTime: updated.actualEndTime?.toISOString() ?? null
         });
 
+        // Es el momento en que un viaje de un dia pasado recibe su ventana:
+        // si ya tiene inicio y fin, se cierra solo, con su proveedor segun la
+        // ficha. Sin esto habia que repasarlo a mano despues.
+        if (route.tripId) {
+            await completarViajeCreadoParaFechaPasada(prisma, route.tripId, {
+                ficha: (c) => loQueEsElChofer(c, route.date)
+            }).catch((e: any) => console.warn('[horarios] completar viaje ' + route.tripId + ':', e?.message || e));
+        }
         io.emit('route:updated', { routeId, type: 'horarios_editados' });
         if (route.tripId) io.emit('trip:updated', { tripId: route.tripId });
 
@@ -13521,6 +13701,11 @@ app.post('/api/v1/trips/:id/finalizar', async (req: any, res: any) => {
             where: { routeId: route.id, isActive: true }, data: { isActive: false }
         });
 
+        // Protocolo de cierre. Las paradas que quedaron sin marcar siguen
+        // PENDING (no tienen hora): solo se ordenan y se cierran las que si.
+        await normalizarViajeAlCerrar(prisma, route.id).catch((e: any) =>
+            console.warn('[cierre] no se pudo normalizar la ruta ' + route.id + ':', e?.message || e));
+
         await logAction(req, 'UPDATE', 'Trip', tripId,
             `Viaje finalizado${sinMarcar.length ? ` con ${sinMarcar.length} parada(s) sin marcar` : ''}`,
             null, { at: cuando.toISOString(), motivo: motivo || null });
@@ -14547,14 +14732,29 @@ app.patch('/api/v1/trips/:tripId/recorrido-operador', async (req, res) => {
             if (route.actualStartTime) {
                 return res.status(400).json({ error: 'El recorrido ya fue iniciado' });
             }
-            // Un chofer no puede estar en dos viajes a la vez.
-            const ocupado = await choferYaEnOtroViaje(tripId);
-            if (ocupado) {
-                return res.status(409).json({
-                    code: 'CHOFER_EN_OTRO_VIAJE',
-                    error: avisoChoferOcupado(ocupado),
-                    otroViaje: ocupado
-                });
+            // Un chofer no puede estar en dos viajes a la vez. Por defecto se
+            // frena y se avisa (el operador si ve el 409); si confirma, el
+            // anterior se cierra con esta hora y este arranca.
+            if (req.body?.cerrarAnterior === true) {
+                const cierre = await cerrarViajeAnteriorDelChofer(prisma, tripId, now);
+                for (const c of [cierre.cerrado, ...cierre.otrosCerrados]) {
+                    if (!c) continue;
+                    io.emit('trip:updated', { tripId: c.tripId, hint: 'cerrado_por_arranque_siguiente' });
+                    await logAction(req, 'UPDATE', 'trip', c.tripId,
+                        `Cerrado ${now.toISOString()} por el operador al arrancar el viaje #${tripId}`,
+                        { abiertoDesde: c.abiertoDesde }, { actualEndTime: now, status: 'COMPLETED' });
+                }
+            } else {
+                const ocupado = await choferYaEnOtroViaje(tripId);
+                if (ocupado) {
+                    return res.status(409).json({
+                        code: 'CHOFER_EN_OTRO_VIAJE',
+                        error: avisoChoferOcupado(ocupado),
+                        otroViaje: ocupado,
+                        // La web puede reintentar con { action: 'start', cerrarAnterior: true }
+                        sePuedeCerrarElAnterior: true
+                    });
+                }
             }
             const updated = await prisma.route.update({
                 where: { id: route.id },
@@ -14613,6 +14813,10 @@ app.patch('/api/v1/trips/:tripId/recorrido-operador', async (req, res) => {
                 // returnTime tambien: los otros dos caminos de cierre lo escriben y el Motor de Costos lo usa cuando el viaje no tiene GPS.
                 data: { status: 'COMPLETED', completedAt: now, returnTime: now }
             });
+            // Protocolo de cierre: paradas en orden de horario, cerradas las que
+            // tienen las dos horas, ventana ajustada a las paradas.
+            await normalizarViajeAlCerrar(prisma, route.id).catch((e: any) =>
+                console.warn('[cierre] no se pudo normalizar la ruta ' + route.id + ':', e?.message || e));
             io.emit('route:updated', { routeId: route.id, tripId, type: 'operator_finished' });
             io.emit('trip:updated', { tripId });
             return res.json({ route: updated });
@@ -14629,6 +14833,10 @@ app.patch('/api/v1/trips/:tripId/recorrido-operador', async (req, res) => {
         // El chofer marco la llegada al deposito y el operador cerro el viaje antes
         // de que tocara "Finalizar": la parada quedaba "En la parada" para siempre.
         await cerrarParadaDepositoEnLlegada(route.id, now);
+        // Protocolo de cierre. Va DESPUES de cerrar el deposito, para que la
+        // ventana se calcule con su hora de salida ya cargada.
+        await normalizarViajeAlCerrar(prisma, route.id).catch((e: any) =>
+            console.warn('[cierre] no se pudo normalizar la ruta ' + route.id + ':', e?.message || e));
         io.emit('route:updated', { routeId: route.id, tripId, type: 'operator_finished' });
         io.emit('trip:updated', { tripId });
         return res.json({ route: updated });
