@@ -12815,10 +12815,61 @@ async function aplicarTarifasAViajes(meses: string[], pisar: boolean, aplicar: b
                 date: { gte: new Date(Date.UTC(anio, m - 1, 1)), lte: new Date(Date.UTC(anio, m, 0, 23, 59, 59)) },
                 contractType: { equals: 'Tercerizado', mode: 'insensitive' }
             },
-            select: { id: true, date: true, reparto: true, driver: true, provider: true, value: true }
+            select: {
+                id: true, date: true, reparto: true, driver: true, provider: true, value: true,
+                exitTime: true, observations: true, notes: true,
+                linkedRoute: { select: { actualStartTime: true } }
+            }
         });
+
+        // La tarifa del tercerizado se paga POR DIA TRABAJADO, no por viaje: si
+        // el mismo chofer hace dos o mas viajes en el dia, cobra el primero.
+        // Sin esto, cada vez que alguien guarda la tabla de tarifas desde el
+        // panel se le volvia a poner la tarifa al segundo viaje del dia.
+        //
+        // La excepcion la deja el operador por escrito en el viaje: si en las
+        // observaciones o las notas dice "paga aparte", "se paga aparte" o
+        // "paga tambien", ese viaje cobra igual.
+        const diaDe = (t: any) => new Date(t.date).toLocaleDateString('en-CA', { timeZone: 'America/Argentina/Buenos_Aires' });
+        const arranqueDe = (t: any) => {
+            const v = t.linkedRoute?.actualStartTime || t.exitTime;
+            const n = v ? new Date(v).getTime() : NaN;
+            return Number.isFinite(n) ? n : Infinity;   // sin hora, al final del dia
+        };
+        const loAclaroElOperador = (t: any) =>
+            /PAGA\s+(APARTE|TAMBIEN)|SE\s+PAGA\s+APARTE/i.test(
+                String(t.observations || '') + ' ' + String(t.notes || ''));
+
+        const primeroDelDia = new Set<number>();
+        const porDiaYChofer = new Map<string, any[]>();
+        for (const t of viajes as any[]) {
+            const chofer = String(t.driver || '').trim().toUpperCase();
+            if (!chofer) { primeroDelDia.add(t.id); continue; }   // sin chofer no se puede agrupar
+            const k = diaDe(t) + '|' + chofer;
+            if (!porDiaYChofer.has(k)) porDiaYChofer.set(k, []);
+            porDiaYChofer.get(k)!.push(t);
+        }
+        for (const lista of porDiaYChofer.values()) {
+            lista.sort((a, b) => arranqueDe(a) - arranqueDe(b) || a.id - b.id);
+            primeroDelDia.add(lista[0].id);
+        }
+
         for (const t of viajes as any[]) {
             if (!pisar && Number(t.value) > 0) continue;
+            if (!primeroDelDia.has(t.id) && !loAclaroElOperador(t)) {
+                // No es el primer viaje del dia de ese chofer: la tarifa del dia
+                // ya se cobra en el primero.
+                if (Number(t.value) > 0) {
+                    cambios.push({
+                        tripId: t.id, mes, fecha: new Date(t.date).toISOString().slice(0, 10),
+                        reparto: t.reparto, chofer: t.driver, proveedor: t.provider,
+                        antes: Number(t.value) || 0, despues: 0,
+                        segun: 'no es el primer viaje del dia de ese chofer'
+                    });
+                    if (aplicar) await prisma.trip.update({ where: { id: t.id }, data: { value: 0 } });
+                }
+                continue;
+            }
             const tar = tarifaDe(t.provider, t.date);
             if (!tar) {
                 const k = String(t.provider || '(sin proveedor)');
