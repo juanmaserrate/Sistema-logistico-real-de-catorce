@@ -9498,7 +9498,7 @@ app.get('/api/admin/paradas-de-viajes', async (req: any, res: any) => {
                         stops: {
                             orderBy: { sequence: 'asc' },
                             select: {
-                                id: true, sequence: true, status: true, ruta: true,
+                                id: true, sequence: true, plannedSequence: true, status: true, ruta: true,
                                 isReturnToBase: true,
                                 actualArrival: true, actualDeparture: true,
                                 client: { select: { name: true } }
@@ -9526,7 +9526,10 @@ app.get('/api/admin/paradas-de-viajes', async (req: any, res: any) => {
                 exitTime: t.exitTime, returnTime: t.returnTime,
                 gpsInicio: t.linkedRoute?.actualStartTime ?? null,
                 gpsFin: t.linkedRoute?.actualEndTime ?? null,
+                // id y plan: sin el id de la parada no se puede restaurar un
+                // respaldo (hay nombres repetidos en un mismo viaje).
                 paradas: (t.linkedRoute?.stops || []).map((p: any) => ({
+                    id: p.id, plan: p.plannedSequence ?? null,
                     sec: p.sequence, nombre: p.client?.name || '', estado: p.status, ruta: p.ruta,
                     deposito: !!p.isReturnToBase,
                     llegada: p.actualArrival, salida: p.actualDeparture
