@@ -46,6 +46,9 @@ const TOLERANCIA_FUTURO_MS = 5 * 60 * 1000;
 
 const ESTADOS_FINALES = new Set(['COMPLETED', 'UNDELIVERABLE']);
 
+/** Margen para comparar horas: diferencias de menos de un segundo son ruido. */
+const TOLERANCIA_MS = 1000;
+
 export type TipoDeAviso =
     | 'permanencia-corta'         // escuela con menos de 2 minutos entre llegada y salida
     | 'salida-antes-de-llegada'   // la salida es anterior a la llegada
@@ -53,6 +56,7 @@ export type TipoDeAviso =
     | 'en-parada-sin-salida'      // quedo "En la parada" (ARRIVED) sin hora de salida
     | 'hora-fuera-de-rango'       // una hora que no se puede creer; se trata como si no estuviera
     | 'ventana-no-achicada'       // el fin deberia ser anterior, pero dejaria una parada afuera
+    | 'deposito-antes-de-entrega' // la vuelta al deposito marcada antes de la ultima entrega: se toma como sin hora
     | 'ventana-invertida'         // la ventana calculada termina antes de empezar; no se escribe
     | 'viaje-returnTime-distinto' // el trip tiene una vuelta cargada a mano, distinta a la ventana
     | 'viaje-abierto'             // la ruta no esta cerrada: no se toca nada
@@ -285,11 +289,32 @@ export async function normalizarViajeAlCerrar(
         if (!inicioAntes || primera.getTime() < inicioAntes.getTime()) inicioNuevo = primera;
     }
 
+    // La vuelta al deposito tiene que ser DESPUES de la ultima entrega. Si
+    // esta marcada antes, fue un toque mal hecho (8256, 1/10/2026: deposito
+    // 11:04 con una entrega a las 11:43) y se trata como si no tuviera hora:
+    // no marca el fin ni deja achicar. Si no, el viaje se cortaba en la
+    // ultima entrega y se perdia la vuelta (56 minutos en ese caso).
+    const entregadas = paradas
+        .filter((p) => !p.deposito && p.estadoNuevo.toUpperCase() === 'COMPLETED')
+        .map((p) => p.salida ?? p.llegada)
+        .filter((d): d is Date => !!d);
+    const ultimaEntrega = entregadas.length ? Math.max(...entregadas.map((d) => d.getTime())) : null;
+    const depositoValido = (p: (typeof paradas)[number]) => {
+        const h = p.salida ?? p.llegada;
+        return !!h && (ultimaEntrega == null || h.getTime() >= ultimaEntrega - TOLERANCIA_MS);
+    };
+    const depositoMalMarcado = paradas.filter((p) => p.deposito && (p.salida || p.llegada) && !depositoValido(p));
+    for (const p of depositoMalMarcado) {
+        avisar({ tipo: 'deposito-antes-de-entrega', sec: p.nuevaSec, nombre: p.nombre, llegada: iso(p.llegada), salida: iso(p.salida),
+            texto: `La vuelta al deposito esta marcada ${hhmm(p.salida ?? p.llegada)}, antes de la ultima entrega (${hhmm(new Date(ultimaEntrega!))}): se toma como sin hora` });
+    }
+
     // El fin lo marcan las paradas que cuentan: las entregadas (con el estado
-    // que les queda despues del paso 2) y el deposito. Una UNDELIVERABLE no
-    // extiende nunca: el chofer puede marcarla horas despues desde su casa.
+    // que les queda despues del paso 2) y el deposito bien marcado. Una
+    // UNDELIVERABLE no extiende nunca: el chofer puede marcarla horas despues
+    // desde su casa.
     const finesQueCuentan = paradas
-        .filter((p) => p.deposito || p.estadoNuevo.toUpperCase() === 'COMPLETED')
+        .filter((p) => (p.deposito && depositoValido(p)) || (!p.deposito && p.estadoNuevo.toUpperCase() === 'COMPLETED'))
         .map((p) => p.salida ?? p.llegada)
         .filter((d): d is Date => !!d);
     if (finesQueCuentan.length) {
@@ -302,10 +327,11 @@ export async function normalizarViajeAlCerrar(
             // todavia tuvo que volver, y el cierre de la ruta es la unica
             // prueba de cuando llego. En octubre de 2026 esto le habria sacado
             // mas de una hora a cinco viajes con el deposito en PENDING.
-            const depositoConHora = paradas.some((p) => p.deposito && (p.salida || p.llegada));
+            const depositoConHora = paradas.some((p) => p.deposito && depositoValido(p));
             if (!depositoConHora) {
+                const porQue = depositoMalMarcado.length ? 'el deposito esta marcado antes de esa entrega' : 'el deposito no tiene hora';
                 avisar({ tipo: 'ventana-no-achicada', llegada: iso(inicioAntes), salida: iso(finAntes),
-                    texto: `La ultima entrega es ${hhmm(ultima)} pero el deposito no tiene hora: se deja el fin ${hhmm(finAntes)} (la vuelta no esta marcada)` });
+                    texto: `La ultima entrega es ${hhmm(ultima)} pero ${porQue}: se deja el fin ${hhmm(finAntes)} (la vuelta no esta marcada)` });
             }
             // Y si al achicar quedara afuera CUALQUIER parada con hora (aunque
             // sea UNDELIVERABLE), se deja el fin como esta y se avisa. Que lo

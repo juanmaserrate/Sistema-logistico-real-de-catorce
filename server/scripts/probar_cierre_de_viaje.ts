@@ -175,6 +175,28 @@ async function correr() {
             inf.avisos.some((a) => a.tipo === 'ventana-no-achicada' && /deposito no tiene hora/.test(a.texto)), tipos(inf));
     }
     {
+        // El 8256 (1/10/2026): la vuelta al deposito marcada 11:04 y una entrega
+        // a las 11:43. Fue un toque mal hecho: el viaje no termino en la
+        // ultima entrega, todavia tuvo que volver. No se achica.
+        console.log('\n5c. Igual, pero hay una entrega DESPUES del deposito (11:20): el deposito cuenta como sin hora y el fin NO se achica');
+        const sinE = viaje1.stops.filter((s: any) => s.id !== 16)
+            .map((s: any) => s.id === 17 ? { ...s, status: 'COMPLETED', actualArrival: T('11:20'), actualDeparture: T('11:30') } : s);
+        const { prisma } = prismaFalso(ruta(sinE, { actualEndTime: T('13:00') }));
+        const inf = await normalizarViajeAlCerrar(prisma, 100);
+        esperar('el fin se queda en 13:00 (no baja a la ultima entrega 11:30)', !inf.ventana || inf.ventana.despues.fin === ISO('13:00'), inf.ventana);
+        esperar('avisa deposito-antes-de-entrega', tipos(inf).includes('deposito-antes-de-entrega'), tipos(inf));
+        esperar('avisa ventana-no-achicada diciendo por que',
+            inf.avisos.some((a) => a.tipo === 'ventana-no-achicada' && /deposito esta marcado antes/.test(a.texto)), inf.avisos.map((a) => a.texto));
+    }
+    {
+        console.log('\n5d. Entrega despues del deposito y la ruta cerrada antes (10:20): el fin pasa a la ultima entrega, no al deposito');
+        const sinE = viaje1.stops.filter((s: any) => s.id !== 16)
+            .map((s: any) => s.id === 17 ? { ...s, status: 'COMPLETED', actualArrival: T('11:20'), actualDeparture: T('11:30') } : s);
+        const { prisma } = prismaFalso(ruta(sinE, { actualEndTime: T('10:20') }));
+        const inf = await normalizarViajeAlCerrar(prisma, 100);
+        esperar('el fin se extiende a 11:30', inf.ventana?.despues.fin === ISO('11:30'), inf.ventana);
+    }
+    {
         console.log('\n6. Igual, pero el trip tiene una vuelta cargada a mano (12:30): no se toca y se avisa');
         const sinE = viaje1.stops.filter((s: any) => s.id !== 16);
         const { prisma, escrituras } = prismaFalso(ruta(sinE, {
