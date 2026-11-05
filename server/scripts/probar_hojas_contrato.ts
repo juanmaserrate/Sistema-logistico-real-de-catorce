@@ -8,13 +8,14 @@ import fs from 'fs';
 import path from 'path';
 import { unzipSync } from 'fflate';
 import * as XLSX from 'xlsx';
-import { armarLibroViajes } from '../src/libroViajes';
+import { armarLibroViajes, COLUMNAS_CONTRATO } from '../src/libroViajes';
 
 const SALIDA = path.join(__dirname, '..', '..', 'tmp_prueba_libro.xlsx');
 
 const base = (id: number, contrato: string, unidad: string, extra: any = {}) => ({
     'ID viaje': id, 'Fecha': new Date(Date.UTC(2026, 9, 29)), 'Mes': '10 Octubre',
-    'Reparto': 'R6', 'Localidad': 'RAFAEL CALZADA', 'Unidad de negocio': unidad,
+    'Reparto': 'R6', 'Localidad': 'RAFAEL CALZADA', 'Partido': 'ALMIRANTE BROWN', 'Unidad de negocio': unidad,
+    'Region UN': 'SUR', 'Categoria UN': 'SAE', 'Refrigerado': 'No',
     'Contrato': contrato, 'Proveedor': contrato === 'Propio' ? 'PROPIO' : 'JAVIER GAREIS',
     'Chofer': 'DIEGO GUIDA', 'Estado': 'Cerrado',
     'Salida deposito': '05:31', 'Llegada deposito': '08:46',
@@ -64,34 +65,39 @@ esperar('el costo no se duplico',
     viajes.reduce((a, f) => a + (Number(f['Costo']) || 0), 0) === 224000 + 26000 + 180000 + 193333 + 96667,
     viajes.reduce((a, f) => a + (Number(f['Costo']) || 0), 0));
 
-console.log('\n3. La hoja «Propios»');
+console.log('\n3. La hoja «Propios»: una fila por viaje, sin partes');
 const propios = leer('Propios');
-propios.forEach((f) => console.log('     ', String(f['Fila']).padEnd(6), f['ID viaje'], String(f['Unidad de negocio']).padEnd(20), f['Duracion horas']));
+propios.forEach((f) => console.log('     ', f['ID viaje'], String(f['Unidad de negocio']).padEnd(20), f['Duracion horas']));
 esperar('solo viajes propios', propios.every((f) => f['Contrato'] === 'Propio'));
-esperar('el viaje entero y sus dos partes, mas el de una sola unidad', propios.length === 4, propios.length);
-esperar('la primera fila es el viaje entero',
-    propios[0]['Fila'] === 'VIAJE' && propios[0]['Unidad de negocio'] === 'SAE BROWN, RETIRO' && propios[0]['Duracion horas'] === 3.26);
-esperar('debajo van sus partes', propios[1]['Fila'] === 'parte' && propios[2]['Fila'] === 'parte');
-esperar('las partes suman el viaje entero',
-    Math.abs(Number(propios[1]['Duracion horas']) + Number(propios[2]['Duracion horas']) - 3.26) < 0.001);
-esperar('el de una sola unidad va como VIAJE, sin partes', propios[3]['Fila'] === 'VIAJE' && propios[3]['ID viaje'] === 8200);
+esperar('dos viajes: el de dos unidades entero y el de una sola', propios.length === 2, propios.length);
+esperar('el de dos unidades va entero, con sus horas totales',
+    propios[0]['ID viaje'] === 8192 && propios[0]['Unidad de negocio'] === 'SAE BROWN, RETIRO' && propios[0]['Duracion horas'] === 3.26, propios[0]);
+esperar('no hay filas de partes', !propios.some((f) => f['Unidad de negocio'] === 'SAE BROWN' || f['Unidad de negocio'] === 'RETIRO'));
 esperar('la fecha quedo como fecha, no como numero', propios[0]['Fecha'] instanceof Date || typeof propios[0]['Fecha'] === 'number');
 
-console.log('\n4. La hoja «Tercerizados»');
-const terc = leer('Tercerizados');
-terc.forEach((f) => console.log('     ', String(f['Fila']).padEnd(6), f['ID viaje'], String(f['Unidad de negocio']).padEnd(20), f['Duracion horas']));
-esperar('solo tercerizados', terc.length === 3 && terc.every((f) => f['Contrato'] === 'Tercerizado'), terc.length);
-esperar('ningun propio se colo aca', !terc.some((f) => f['ID viaje'] === 8192 || f['ID viaje'] === 8200));
+console.log('\n4. Las columnas');
+const enc = (XLSX.utils.sheet_to_json<any[]>(wb.Sheets['Propios'], { header: 1 })[0] || []) as string[];
+console.log('    ', enc.join(' | '));
+esperar('son exactamente las de COLUMNAS_CONTRATO', JSON.stringify(enc) === JSON.stringify(COLUMNAS_CONTRATO), enc);
+esperar('Partido va antes que Localidad', enc.indexOf('Partido') < enc.indexOf('Localidad'));
+esperar('Unidad de negocio va justo despues de Localidad', enc.indexOf('Unidad de negocio') === enc.indexOf('Localidad') + 1);
+esperar('sin Region UN ni Categoria UN', !enc.includes('Region UN') && !enc.includes('Categoria UN'));
+esperar('sin Fila ni Corte de horas', !enc.includes('Fila') && !enc.includes('Corte de horas'));
+esperar('Refrigerado es la ultima', enc[enc.length - 1] === 'Refrigerado');
+esperar('los datos van en su columna',
+    propios[0]['Partido'] === 'ALMIRANTE BROWN' && propios[0]['Localidad'] === 'RAFAEL CALZADA' && propios[0]['Refrigerado'] === 'No', propios[0]);
 
-// ── El XML, que es lo que SheetJS no cuenta ──
-console.log('\n5. El +/- de Excel');
+console.log('\n5. La hoja «Tercerizados»');
+const terc = leer('Tercerizados');
+terc.forEach((f) => console.log('     ', f['ID viaje'], String(f['Unidad de negocio']).padEnd(20), f['Duracion horas']));
+esperar('un solo viaje tercerizado, entero', terc.length === 1 && terc[0]['ID viaje'] === 9001 && terc[0]['Contrato'] === 'Tercerizado', terc);
+
+console.log('\n5b. Sin el +/- de Excel');
 const zip = unzipSync(new Uint8Array(buffer));
 const dec = new TextDecoder();
 const sheet4 = dec.decode(zip['xl/worksheets/sheet4.xml']);
-esperar('las partes van con outlineLevel', (sheet4.match(/outlineLevel="1"/g) || []).length === 2,
-    (sheet4.match(/outlineLevel="1"/g) || []).length);
-esperar('el boton queda en la fila de arriba (summaryBelow=0)', sheet4.includes('summaryBelow="0"'));
-esperar('la hoja declara que tiene un nivel', sheet4.includes('outlineLevelRow="1"'));
+esperar('ninguna fila agrupada', !/outlineLevel/.test(sheet4));
+esperar('sin configuracion de esquema', !sheet4.includes('outlinePr'));
 esperar('el encabezado quedo congelado', sheet4.includes('state="frozen"'));
 
 console.log('\n6. El zip queda consistente');

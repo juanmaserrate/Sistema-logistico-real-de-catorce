@@ -116,39 +116,46 @@ function filaXml(nro: number, celdas: Celda[], nivel = 0): string {
     return `<row r="${nro}"${sangria}>${celdas.map((c, i) => celdaXml(nro, i + 1, c)).join('')}</row>`;
 }
 
-/** Las columnas de las hojas por contrato: las mismas de «Viajes» con una
- *  adelante que dice si la fila es el viaje o una de sus partes. Sin eso, al
- *  copiar las filas a otro lado no hay forma de distinguirlas. */
-const COLUMNAS_CONTRATO = ['Fila', ...COLUMNAS_LIBRO, 'Corte de horas'];
+/** Las columnas de las hojas por contrato, en el orden que pidio el operador
+ *  (nov 2026): Partido antes que Localidad, la unidad de negocio pegada a
+ *  ellas, sin Region UN ni Categoria UN (son del conteo, no del viaje) y
+ *  Refrigerado al final. Es solo el orden de ESTAS hojas: «Viajes» sigue con
+ *  COLUMNAS_LIBRO porque la dinamica la lee por numero de columna. */
+export const COLUMNAS_CONTRATO = [
+    'ID viaje', 'Fecha', 'Mes', 'Reparto', 'Partido', 'Localidad', 'Unidad de negocio', 'Subzona',
+    'Contrato', 'Proveedor', 'Chofer', 'Auxiliar 1', 'Auxiliar 2', 'Auxiliar 3',
+    'Patente', 'Tipo de vehiculo', 'Vuelta', 'Temperatura', 'Estado',
+    'Salida deposito', 'Llegada deposito', 'Duracion horas', 'Paradas planificadas',
+    'Paradas entregadas', 'Paradas no entregadas', 'Km recorridos', 'Costo',
+    'Estado de pago', 'Fecha de pago', 'Horas por ruta',
+    'Refrigerado'
+];
 
 /**
- * Una hoja con los viajes de un tipo de contrato: la fila del viaje entero y,
- * colgando de ella, sus partes por unidad de negocio.
+ * Una hoja con los viajes de un tipo de contrato: UNA fila por viaje, el viaje
+ * entero como se ve en planificacion. Antes colgaban debajo sus partes por
+ * unidad de negocio con el +/- de Excel; se saco a pedido (nov 2026). Las
+ * partes siguen en «Viajes», que es donde las suma la dinamica.
  *
- * `summaryBelow="0"` es lo que hace que el +/- quede en la fila de ARRIBA (el
- * viaje). Con el valor por omision Excel lo pone en la de abajo, que seria el
- * viaje siguiente.
+ * El formato de cada columna sale de la fila de ejemplo de «Viajes» buscando
+ * la columna por NOMBRE: aca el orden es otro.
  */
 function armarHojaDeContrato(filas: any[], estilos: Record<number, number>, estiloComun: number, estiloTitulo: number): string {
+    const viajes = filas.filter((f: any) => f._tipo !== 'hijo');
     const ultima = letra(COLUMNAS_CONTRATO.length);
-    const rango = `A1:${ultima}${Math.max(filas.length + 1, 2)}`;
+    const rango = `A1:${ultima}${Math.max(viajes.length + 1, 2)}`;
+    const estiloDe = (nombre: string) => estilos[COLUMNAS_LIBRO.indexOf(nombre) + 1] ?? estiloComun;
 
     const encabezado = filaXml(1, COLUMNAS_CONTRATO.map((n) => ({ valor: n, estilo: estiloTitulo })));
-    const cuerpo = filas.map((f, i) => {
-        const esHijo = f._tipo === 'hijo';
-        const celdas: Celda[] = [{ valor: esHijo ? 'parte' : 'VIAJE', estilo: estiloComun }];
-        COLUMNAS_LIBRO.forEach((nombre, c) => celdas.push({ valor: f[nombre], estilo: estilos[c + 1] ?? estiloComun }));
-        celdas.push({ valor: f['Reparto de horas'] || '', estilo: estiloComun });
-        return filaXml(i + 2, celdas, esHijo ? 1 : 0);
-    });
+    const cuerpo = viajes.map((f, i) =>
+        filaXml(i + 2, COLUMNAS_CONTRATO.map((nombre) => ({ valor: f[nombre], estilo: estiloDe(nombre) }))));
 
     return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
         + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-        + '<sheetPr><outlinePr summaryBelow="0" summaryRight="0"/></sheetPr>'
         + `<dimension ref="${rango}"/>`
         + '<sheetViews><sheetView workbookViewId="0">'
         + '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
-        + '<sheetFormatPr defaultRowHeight="15" outlineLevelRow="1"/>'
+        + '<sheetFormatPr defaultRowHeight="15"/>'
         + `<sheetData>${encabezado}${cuerpo.join('')}</sheetData>`
         + `<autoFilter ref="${rango}"/>`
         + '</worksheet>';
@@ -315,7 +322,7 @@ export function armarLibroViajes(filas: any[], titulo?: string, analisis?: FilaC
     }
 
     // ── Hojas "Propios" y "Tercerizados" ───────────────────────────────────
-    // El viaje entero, como se ve en planificacion, con sus partes colgando.
+    // Una fila por viaje: el viaje entero, como se ve en planificacion.
     const estiloTitulo = estilosDeLaFila(hoja, 1)[1] ?? estiloComun;
     for (const h of HOJAS_POR_CONTRATO) {
         const suyas = filas.filter((f: any) =>
