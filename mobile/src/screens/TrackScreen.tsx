@@ -1370,21 +1370,25 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           return st !== 'COMPLETED' && st !== 'UNDELIVERABLE';
         })}
         onClose={() => setDeliveryModalStop(null)}
-        onSaved={() => {
+        onSaved={(estado) => {
           const completedStop = deliveryModalStop;
           // OPTIMISTIC UPDATE: actualizar el state local del stop ANTES del refresh.
           // Antes el chofer veia "Finalizar entrega" persistir hasta que llegara el
           // refresh del server (que a veces no actualizaba bien por el cache).
           // Ahora marcamos el stop como COMPLETED al instante y despues confirmamos
           // con el server.
-          if (completedStop && selId != null) {
+          // Solo con el estado que se guardo: "No entregado" no es una entrega
+          // (antes las tres opciones se mostraban como ENTREGADA hasta que
+          // contestaba el servidor, y sin señal quedaba asi). "Vuelvo mas tarde"
+          // no cierra la parada: la reubica, y eso lo trae el refresco.
+          if (completedStop && selId != null && estado !== 'RETRY') {
             setRoutes((prev) => prev.map((r) => {
               if (r.id !== selId) return r;
               return {
                 ...r,
                 stops: r.stops.map((s) =>
                   s.id === completedStop.id
-                    ? { ...s, status: 'COMPLETED', actualDeparture: new Date().toISOString() }
+                    ? { ...s, status: estado, actualDeparture: new Date().toISOString() }
                     : s
                 )
               };

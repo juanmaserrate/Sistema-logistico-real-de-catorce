@@ -126,7 +126,9 @@ export function BotonToque({ children, style, escala = 0.96, ...resto }: {
     <Animated.View style={{ transform: [{ scale: v }] }}>
       <Pressable
         {...resto}
-        style={style as any}
+        style={sinMovimiento
+          ? ((({ pressed }: { pressed: boolean }) => [style, pressed && { opacity: 0.7 }]) as any)
+          : (style as any)}
         onPressIn={(e) => { a(escala); resto.onPressIn?.(e); }}
         onPressOut={(e) => { a(1); resto.onPressOut?.(e); }}
       >
@@ -233,7 +235,7 @@ export function Late({ children, activo, style }: {
     const anim = Animated.loop(Animated.sequence([
       Animated.timing(v, { toValue: 1, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
       Animated.timing(v, { toValue: 0, duration: 700, easing: Easing.inOut(Easing.quad), useNativeDriver: true }),
-    ]));
+    ]), { iterations: 3 });
     anim.start();
     return () => anim.stop();
   }, [activo, v, sinMovimiento]);
@@ -310,51 +312,16 @@ export function BarraProgreso({ porcentaje, alto = 6, color, fondo, style }: {
 // ─── 6. Los numeros que suben ───────────────────────────────────────────────
 
 /**
- * Devuelve el numero subiendo hasta el valor nuevo.
+ * El numero, sin conteo.
  *
- * El valor que devuelve al terminar es EXACTAMENTE el que se le paso: el
- * conteo es decoracion, el dato no se toca. Si llega un valor nuevo a mitad
- * del conteo, ese gana.
+ * Antes subia hasta el valor nuevo cuadro por cuadro, y cada cuadro volvia a
+ * dibujar la pantalla entera del recorrido con todas sus paradas: unas 30
+ * veces al abrir el dia, en celulares baratos, justo cuando el chofer toca.
+ * Con +1 por entrega el conteo ni se llegaba a ver. Se deja el nombre para no
+ * tocar a quien lo usa.
  */
 export function useNumero(valor: number): number {
-  const destino = Number.isFinite(valor) ? valor : 0;
-  const [visible, setVisible] = useState(destino);
-  // Lo que se esta MOSTRANDO ahora mismo, no el ultimo destino. Si llega un
-  // valor nuevo a mitad del conteo, el conteo nuevo tiene que arrancar desde
-  // el numero que el chofer esta viendo; arrancar desde el destino viejo hace
-  // que el contador vaya para atras.
-  const mostrado = useRef(destino);
-  const sinMovimiento = useQuieto();
-
-  const poner = useCallback((n: number) => {
-    mostrado.current = n;
-    setVisible(n);
-  }, []);
-
-  useEffect(() => {
-    if (sinMovimiento || mostrado.current === destino) {
-      poner(destino);
-      return;
-    }
-    const inicio = mostrado.current;
-    const t0 = Date.now();
-    let vivo = true;
-    const tic = () => {
-      if (!vivo) return;
-      const k = Math.min(1, (Date.now() - t0) / T.numero);
-      const suave = 1 - Math.pow(1 - k, 3);
-      if (k < 1) {
-        poner(Math.round(inicio + (destino - inicio) * suave));
-        requestAnimationFrame(tic);
-      } else {
-        poner(destino);                      // el valor real, sin redondeos raros
-      }
-    };
-    requestAnimationFrame(tic);
-    return () => { vivo = false; };
-  }, [destino, sinMovimiento, poner]);
-
-  return visible;
+  return Number.isFinite(valor) ? valor : 0;
 }
 
 // ─── 7. Entrada con rebote, para los carteles importantes ───────────────────

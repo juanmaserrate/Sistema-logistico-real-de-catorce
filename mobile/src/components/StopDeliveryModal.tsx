@@ -34,7 +34,8 @@ type Props = {
   /** Paradas que le quedan por hacer, para elegir dónde reintentar la pospuesta. */
   remainingStops?: Stop[];
   onClose: () => void;
-  onSaved: () => void;
+  /** Que se guardo: entregada, no entregada, o pospuesta para mas tarde. */
+  onSaved: (estado: 'COMPLETED' | 'UNDELIVERABLE' | 'RETRY') => void;
 };
 
 type Tab = 'delivered' | 'retry' | 'undeliverable';
@@ -180,7 +181,7 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
           'La entrega quedó guardada en el celular y se enviará sola al recuperar señal.'
         );
       }
-      onSaved();
+      onSaved('COMPLETED');
       onClose();
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo guardar');
@@ -219,7 +220,7 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
           : 'Te queda al final del recorrido, antes de volver al depósito.') +
           (result?.queued ? '\n\nSe envía sola al recuperar señal.' : '')
       );
-      onSaved();
+      onSaved('RETRY');
       onClose();
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo posponer la parada');
@@ -261,7 +262,7 @@ export default function StopDeliveryModal({ visible, stop, remainingStops = [], 
           'El estado quedó guardado en el celular y se enviará solo al recuperar señal.'
         );
       }
-      onSaved();
+      onSaved('UNDELIVERABLE');
       onClose();
     } catch (e) {
       Alert.alert('Error', e instanceof Error ? e.message : 'No se pudo guardar');
