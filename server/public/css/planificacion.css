@@ -139,13 +139,10 @@ h1, h2, h3, h4, h5, h6,
     background: var(--surface-container-lowest);
     border: none;
     border-radius: var(--radius-card);
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     box-shadow: var(--whisper);
 }
-.card-dark:hover {
-    transform: translateY(-2px);
-    box-shadow: var(--elevation-2);
-}
+/* Sin hover: una tarjeta que se levanta parece que se puede clickear, y la
+   tabla se corria justo antes del click. */
 
 .table-container {
     background: var(--surface-container-lowest);
@@ -229,14 +226,12 @@ a.bg-\[\#4318FF\] {
     font-family: 'Manrope', sans-serif;
     font-weight: 700;
     letter-spacing: 0.01em;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Outline / secondary → pill shape */
 button.border-indigo-600,
 button.border-2.border-indigo-600 {
     border-radius: var(--radius-pill) !important;
-    transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 /* Glass icon buttons */
@@ -252,11 +247,10 @@ button.border-2.border-indigo-600 {
     align-items: center;
     justify-content: center;
     color: white;
-    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: background-color 0.15s ease, transform 0.12s ease-out;
 }
-.btn-icon-glass:hover {
-    background: rgba(255, 255, 255, 0.18);
-    transform: scale(1.05);
+@media (hover: hover) and (pointer: fine) {
+    .btn-icon-glass:hover { background: rgba(255, 255, 255, 0.18); }
 }
 
 /* Segmented controls */
@@ -274,7 +268,7 @@ button.border-2.border-indigo-600 {
     padding: 10px 14px;
     font-weight: 600;
     color: var(--on-surface);
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
 }
 .cost-input:focus {
     border-color: rgba(69, 30, 187, 0.25);
@@ -301,7 +295,6 @@ td {
     color: var(--on-surface);
     border-bottom: none;
 }
-tbody tr { transition: background 0.15s ease; }
 tbody tr:nth-child(even) { background: var(--surface); }
 tbody tr:hover { background: var(--surface-container-low) !important; }
 
@@ -502,8 +495,8 @@ tfoot tr.payments-total-row span,
     font-size: 11px;
     font-weight: 700;
     font-family: 'Inter', sans-serif;
-    color: rgba(255, 255, 255, 0.50);
-    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    color: rgba(255, 255, 255, 0.72);
+    transition: color 0.15s ease, background-color 0.15s ease;
     white-space: nowrap;
     border: none;
     background: transparent;
@@ -658,7 +651,7 @@ tfoot tr.payments-total-row span,
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }
 }
-.view-animate { animation: fadeIn 0.35s cubic-bezier(0.4, 0, 0.2, 1) forwards; }
+/* .view-animate ya no anima: la entrada de pantalla la hace r14-motion.css */
 
 /* ---------- 16. COLUMN VISIBILITY ---------- */
 .filter-propio .col-proveedor,
@@ -781,7 +774,7 @@ tfoot tr.payments-total-row span,
     box-shadow: 0 0 0 3px rgba(180, 160, 240, 0.08);
 }
 [data-theme="dark"] input::placeholder,
-[data-theme="dark"] textarea::placeholder { color: var(--on-surface-muted) !important; }
+[data-theme="dark"] textarea::placeholder { color: #9aa0a8 !important; }
 
 /* Dark — header */
 [data-theme="dark"] .app-header { border-color: transparent !important; }
@@ -882,22 +875,20 @@ tfoot tr.payments-total-row span,
     from { opacity: 0; }
     to   { opacity: 1; }
 }
-[id$="-modal"]:not(.hidden),
-#modal-salary-edit:not(.hidden), #modal-unblock-role:not(.hidden), #modal-gasto-flota:not(.hidden), #modal-traer-flota:not(.hidden),
+[id$="-modal"]:not(.hidden):not(#global-search-modal),
+[id^="modal-"].fixed:not(.hidden),
 .modal-overlay:not(.hidden) {
     animation: r14BackdropIn 0.15s ease-out;
 }
-[id$="-modal"]:not(.hidden) > div:first-of-type,
-#modal-salary-edit:not(.hidden) > div:first-of-type,
-#modal-unblock-role:not(.hidden) > div:first-of-type,
-#modal-gasto-flota:not(.hidden) > div:first-of-type, #modal-traer-flota:not(.hidden) > div:first-of-type,
+[id$="-modal"]:not(.hidden):not(#global-search-modal) > div:first-of-type,
+[id^="modal-"].fixed:not(.hidden) > div:first-of-type,
 .modal-overlay:not(.hidden) > div:first-of-type {
-    animation: r14ModalPop 0.2s cubic-bezier(0.2, 0.8, 0.3, 1);
+    animation: r14ModalPop 0.2s cubic-bezier(0.23, 1, 0.32, 1);
 }
 
 /* Botones: feedback tactil al click + estados disabled coherentes */
 button {
-    transition: transform 0.12s ease, box-shadow 0.15s ease,
+    transition: transform 0.12s ease-out, box-shadow 0.15s ease,
                 background-color 0.15s ease, color 0.15s ease, opacity 0.15s ease;
 }
 button:active:not(:disabled) { transform: scale(0.97); }
@@ -907,8 +898,9 @@ button:disabled { opacity: 0.55; cursor: not-allowed; }
 :is(button, a, input, select, textarea):focus-visible {
     outline: 2px solid #4318FF;
     outline-offset: 2px;
-    border-radius: 8px;
 }
+/* Sobre el header violeta el anillo violeta no se ve */
+.app-header :focus-visible, header :focus-visible { outline-color: #fff !important; }
 [data-theme="dark"] :is(button, a, input, select, textarea):focus-visible {
     outline-color: #8a70ff;
 }
@@ -931,12 +923,11 @@ input, select, textarea { transition: box-shadow 0.15s ease, background-color 0.
 /* Respetar usuarios con animaciones reducidas */
 @media (prefers-reduced-motion: reduce) {
     [id$="-modal"]:not(.hidden) > div:first-of-type,
-    #modal-salary-edit:not(.hidden) > div:first-of-type, #modal-unblock-role:not(.hidden) > div:first-of-type, #modal-gasto-flota:not(.hidden) > div:first-of-type, #modal-traer-flota:not(.hidden) > div:first-of-type,
+    [id^="modal-"].fixed:not(.hidden) > div:first-of-type,
     .modal-overlay:not(.hidden) > div:first-of-type,
     [id$="-modal"]:not(.hidden),
-    #modal-salary-edit:not(.hidden), #modal-unblock-role:not(.hidden), #modal-gasto-flota:not(.hidden), #modal-traer-flota:not(.hidden),
-    .modal-overlay:not(.hidden),
-    .view-animate { animation: none !important; }
+    [id^="modal-"].fixed:not(.hidden),
+    .modal-overlay:not(.hidden) { animation: none !important; }
     button { transition: none; }
 }
 
@@ -1187,3 +1178,152 @@ tr.r14-fila-total > td * { color: #ffffff !important; }
 
 [data-theme="dark"] .stk-tab:hover { background: var(--surface-container, #1f2430); }
 [data-theme="dark"] .stk-mini { background: var(--surface-container-high, #272c38); color: var(--on-surface, #e6e8ef); }
+
+
+/* ==========================================================================
+   19. PULIDO (nov 2026) — detalles que no se notan uno por uno
+   ========================================================================== */
+
+/* Controles nativos (calendario de las fechas, desplegables, checkboxes)
+   del color del tema. Antes en oscuro el icono del calendario era negro
+   sobre fondo negro. */
+:root { color-scheme: light; }
+[data-theme="dark"] { color-scheme: dark; }
+
+/* Numeros alineados: en una columna de plata los digitos tienen que caer
+   uno debajo del otro, y un total no puede bailar cuando cambia. */
+table, [id*="kpi"], [id^="summary-"], .status-badge { font-variant-numeric: tabular-nums; }
+
+/* Seleccion de texto y checkboxes con el color de la marca, y un poco mas
+   grandes: la seleccion masiva se hace tildando de a muchos. */
+::selection { background: rgba(69, 30, 187, 0.18); }
+[data-theme="dark"] ::selection { background: rgba(180, 160, 240, 0.32); }
+input[type="checkbox"], input[type="radio"] { accent-color: var(--primary); }
+#view-weekly input[type="checkbox"] { width: 16px; height: 16px; }
+
+/* Placeholders legibles: aca dicen que hay que poner ("No cambiar", "Buscar
+   chofer"). El gris de Tailwind sobre el fondo de los inputs no se leia. */
+/* (input::placeholder: la base de Tailwind usa ese selector y le ganaba) */
+html input::placeholder, html textarea::placeholder { color: #6b7280; opacity: 1; }
+
+/* Los iconos grises no cambiaban de color al pasar el mouse: el gris tiene
+   !important y le ganaba al hover (la X de los modales, el tacho de cada
+   viaje). */
+@media (hover: hover) and (pointer: fine) {
+    .hover\:text-\[\#1B2559\]:hover { color: var(--on-surface) !important; }
+    :is(.hover\:text-indigo-600, .hover\:text-indigo-500):hover { color: var(--primary) !important; }
+    :is(.hover\:text-rose-600, .hover\:text-rose-500):hover { color: var(--danger) !important; }
+}
+
+/* --- Log Semanal ---------------------------------------------------------- */
+
+/* La columna "ID / Fecha" y el checkbox quedan fijos al correr la tabla a la
+   derecha. La clase sticky-col y sus fondos ya estaban; faltaba lo que la
+   hacia fija. Asi, mirando Costo o Estado, se sigue sabiendo que viaje es. */
+#view-weekly thead th.sticky-col,
+#view-weekly tbody tr.wk-row > td.sticky-col { position: sticky; left: 0; z-index: 2; }
+#view-weekly thead th.sticky-col { z-index: 21; }
+#view-weekly thead th.sticky-col + th.sticky-col,
+#view-weekly tbody tr.wk-row > td.sticky-col + td.sticky-col { left: 48px; }
+#view-weekly thead th.sticky-col:first-child,
+#view-weekly tbody tr.wk-row > td.sticky-col:first-child { width: 48px; min-width: 48px; max-width: 48px; }
+
+/* La fila tildada se nota: antes solo cambiaba la barra de arriba y no se
+   veia a que viajes les iba a pegar la edicion masiva. */
+#view-weekly tbody tr.wk-row:has(.weekly-trip-checkbox:checked),
+#view-weekly tbody tr.wk-row:has(.weekly-trip-checkbox:checked) > td,
+#view-weekly tbody tr.wk-row:has(.weekly-trip-checkbox:checked) > td.sticky-col {
+    background: var(--primary-tint) !important;
+}
+[data-theme="dark"] #view-weekly tbody tr.wk-row:has(.weekly-trip-checkbox:checked),
+[data-theme="dark"] #view-weekly tbody tr.wk-row:has(.weekly-trip-checkbox:checked) > td,
+[data-theme="dark"] #view-weekly tbody tr.wk-row:has(.weekly-trip-checkbox:checked) > td.sticky-col {
+    background: rgba(180, 160, 240, 0.16) !important;
+}
+
+/* El detalle de un viaje (paradas, incidencias) si corta en renglones. Una
+   incidencia larga en una sola linea estiraba todas las columnas. */
+#view-weekly tbody tr.wk-detail td { white-space: normal; overflow-wrap: anywhere; }
+
+/* --- Notificaciones ------------------------------------------------------- */
+
+/* El panel de la campana baja desde la campana, como los otros menus */
+#notif-panel[style*="block"] {
+    transform-origin: top right;
+    animation: r14MenuEntra 0.16s cubic-bezier(0.23, 1, 0.32, 1);
+}
+/* Un error del servidor con una URL larga no se sale del panel */
+#notif-list p { overflow-wrap: anywhere; }
+
+/* --- Mapa ----------------------------------------------------------------- */
+
+/* El cartelito de un camion crece desde el camion. Se anima el contenido, no
+   el contenedor: Mapbox ubica el contenedor con su propio transform. */
+@keyframes r14PopupEntra {
+    from { opacity: 0; transform: scale(0.96); }
+    to   { opacity: 1; transform: none; }
+}
+.mapboxgl-popup-content { animation: r14PopupEntra 0.14s cubic-bezier(0.23, 1, 0.32, 1); }
+.mapboxgl-popup-anchor-bottom .mapboxgl-popup-content { transform-origin: 50% 100%; }
+.mapboxgl-popup-anchor-top .mapboxgl-popup-content { transform-origin: 50% 0; }
+.mapboxgl-popup-anchor-left .mapboxgl-popup-content { transform-origin: 0 50%; }
+.mapboxgl-popup-anchor-right .mapboxgl-popup-content { transform-origin: 100% 50%; }
+
+/* --- Modo oscuro: colores que quedaban ilegibles ------------------------- */
+[data-theme="dark"] :is(.text-emerald-600, .text-emerald-700) { color: #6ee7b7 !important; }
+[data-theme="dark"] :is(.text-rose-600, .text-rose-700) { color: #fda4af !important; }
+[data-theme="dark"] :is(.text-amber-600, .text-amber-700) { color: #fcd34d !important; }
+[data-theme="dark"] :is(.text-indigo-700, .text-indigo-800, .text-indigo-900) { color: var(--primary) !important; }
+[data-theme="dark"] .bg-emerald-100 { background-color: rgba(52, 211, 153, 0.14) !important; }
+[data-theme="dark"] .bg-rose-100 { background-color: rgba(251, 113, 133, 0.14) !important; }
+[data-theme="dark"] .bg-amber-100 { background-color: rgba(251, 191, 36, 0.14) !important; }
+[data-theme="dark"] .bg-indigo-100 { background-color: rgba(180, 160, 240, 0.16) !important; }
+[data-theme="dark"] :is(.bg-sky-100, .bg-blue-100) { background-color: rgba(96, 165, 250, 0.14) !important; }
+[data-theme="dark"] :is(.bg-\[\#E8ECF8\], .bg-\[\#E0E5F2\]) { background-color: var(--surface-container-high) !important; }
+[data-theme="dark"] .bg-\[\#FAFBFF\] { background-color: var(--surface) !important; }
+[data-theme="dark"] .bg-\[\#1B2559\] { background-color: var(--surface-container-highest) !important; }
+/* Los guiones de "sin dato" eran lo mas brillante de la fila */
+[data-theme="dark"] :is(.text-\[\#E0E5F2\], .text-\[\#C7CEE0\], .text-\[\#D0D6E8\], .text-\[\#C4CBDC\]) { color: #4a4e56 !important; }
+
+/* --- Celular ---------------------------------------------------------------
+   Nada de esto cambia la computadora: lo de arriba de la media query solo
+   corrige el alto en el celular (en la compu dvh = vh), y el resto vive
+   adentro de (pointer: coarse), que es una pantalla tactil. */
+
+/* h-screen en el celular es mas alto que lo que se ve: la barra del
+   navegador tapaba los ultimos 60-80px de cada pantalla. */
+body.h-screen { height: 100vh; height: 100dvh; }
+/* Deslizar hacia abajo en Android recargaba la pagina entera (y se perdia lo
+   que estaba a medio cargar en un modal). */
+html, body { overscroll-behavior-y: none; }
+
+@media (pointer: coarse) {
+    /* iPhone agranda la pagina al tocar un campo con letra de menos de 16px y
+       no la vuelve a achicar. 319 de 320 campos eran mas chicos. */
+    input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
+    select, textarea { font-size: 16px !important; }
+
+    /* Sin zoom por doble toque en los botones, y apretar fuerte un boton no
+       selecciona su texto. */
+    a, button, label, select, input, textarea, [role="button"], [onclick] { touch-action: manipulation; }
+    button, [role="button"], .nav-menu-btn, .header-nav-item {
+        -webkit-user-select: none; user-select: none; -webkit-touch-callout: none;
+    }
+
+    /* Llegar al borde de una lista no arrastra a la pagina de atras */
+    #main-view, .overflow-y-auto, .overflow-auto { overscroll-behavior-y: contain; }
+    .overflow-x-auto { overscroll-behavior-x: contain; }
+
+    /* Los modales entran en la pantalla visible y se desplazan por dentro: el
+       boton Guardar y la X ya no quedan cortados. */
+    :is([id$="-modal"], [id^="modal-"], .modal-overlay).fixed { padding: 0.75rem !important; }
+    :is([id$="-modal"], [id^="modal-"], .modal-overlay).fixed > div:first-of-type:not(.absolute) {
+        max-height: 100% !important; overflow-y: auto; overscroll-behavior: contain;
+    }
+
+    /* El mapa de la Torre deja lugar para seguir bajando con el dedo */
+    #control-live-map { height: 60dvh !important; min-height: 280px !important; }
+
+    /* Botones que solo aparecian al pasar el mouse: en el celular no hay mouse */
+    .group .opacity-0.group-hover\:opacity-100 { opacity: 1; }
+}

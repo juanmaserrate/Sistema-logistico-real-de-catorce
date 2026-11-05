@@ -14,12 +14,14 @@
 
 :root {
     /* Curvas. La de "entrada" frena de golpe al final: se siente rapida. */
-    --r14-mov-entra: cubic-bezier(0.2, 0.8, 0.3, 1);
+    --r14-mov-entra: cubic-bezier(0.23, 1, 0.32, 1);
     --r14-mov-suave: cubic-bezier(0.4, 0, 0.2, 1);
-    --r14-mov-rebote: cubic-bezier(0.2, 1.4, 0.3, 1);
+    /* Sin curva con rebote: en un tablero que se usa todo el dia, rebotar
+       se siente a juguete. */
 
-    /* Duraciones */
-    --r14-mov-pantalla: 0.3s;
+    /* Duraciones. Cambiar de pantalla pasa decenas de veces por dia: tiene
+       que ser casi instantaneo. */
+    --r14-mov-pantalla: 0.18s;
     --r14-mov-fila: 0.26s;
     --r14-mov-chico: 0.16s;
 
@@ -41,7 +43,7 @@
    vez, al cargar la pagina. Ahora se vuelve a disparar en cada cambio.
    ========================================================================== */
 @keyframes r14PantallaEntra {
-    from { opacity: 0; transform: translateY(10px); }
+    from { opacity: 0; transform: translateY(4px); }
     to   { opacity: 1; transform: none; }
 }
 .r14-pantalla-entra { animation: r14PantallaEntra var(--r14-mov-pantalla) var(--r14-mov-entra) both; }
@@ -194,25 +196,24 @@ button.r14-btn-trabajando {
     from { box-shadow: 0 0 0 0 rgba(var(--r14-ok), 0.5); }
     to   { box-shadow: 0 0 0 14px rgba(var(--r14-ok), 0); }
 }
-@keyframes r14Pop {
-    50% { transform: scale(1.06); }
-}
+/* Solo el anillo verde. Antes el boton ademas saltaba (scale 1.06 con
+   rebote): se guarda cientos de veces por dia y el anillo ya alcanza. */
 button.r14-btn-ok {
-    animation: r14AnilloOk 0.8s ease-out, r14Pop 0.32s var(--r14-mov-rebote);
+    animation: r14AnilloOk 0.5s var(--r14-mov-entra);
 }
 
 @keyframes r14Tiembla {
     10%, 90% { transform: translateX(-2px); }
     20%, 80% { transform: translateX(3px); }
-    30%, 50%, 70% { transform: translateX(-5px); }
-    40%, 60% { transform: translateX(5px); }
+    30%, 50%, 70% { transform: translateX(-4px); }
+    40%, 60% { transform: translateX(4px); }
 }
 @keyframes r14AnilloMal {
     from { box-shadow: 0 0 0 0 rgba(var(--r14-mal), 0.45); }
     to   { box-shadow: 0 0 0 14px rgba(var(--r14-mal), 0); }
 }
 button.r14-btn-mal {
-    animation: r14Tiembla 0.42s var(--r14-mov-suave), r14AnilloMal 0.8s ease-out;
+    animation: r14Tiembla 0.36s var(--r14-mov-suave), r14AnilloMal 0.6s ease-out;
 }
 
 
@@ -234,6 +235,7 @@ button.r14-btn-mal {
 /* Cualquier desplegable del sistema (#...-dropdown), mismo criterio que usa
    planificacion.css con los modales (#...-modal). */
 [id$="-dropdown"]:not(.hidden) {
+    transform-origin: top left;
     animation: r14MenuEntra var(--r14-mov-chico) var(--r14-mov-entra);
 }
 
@@ -258,12 +260,12 @@ button.r14-btn-mal {
    ========================================================================== */
 @keyframes r14NumeroPop {
     0%   { transform: none; }
-    40%  { transform: scale(1.09); }
+    40%  { transform: scale(1.04); }
     100% { transform: none; }
 }
 .r14-numero-pop {
     display: inline-block;
-    animation: r14NumeroPop 0.34s var(--r14-mov-rebote);
+    animation: r14NumeroPop 0.26s var(--r14-mov-entra);
 }
 /* Mientras cuenta, el numero no debe empujar lo que tiene al lado */
 .r14-contando { font-variant-numeric: tabular-nums; }
@@ -279,7 +281,7 @@ button.r14-btn-mal {
 }
 .r14-barra-crece {
     transform-origin: left center;
-    animation: r14BarraCrece 0.55s var(--r14-mov-entra) both;
+    animation: r14BarraCrece 0.4s var(--r14-mov-entra) both;
 }
 
 
@@ -316,6 +318,9 @@ button.r14-btn-mal {
 [data-r14-motion="off"] button.r14-btn-trabajando,
 [data-r14-motion="off"] button.r14-btn-ok,
 [data-r14-motion="off"] button.r14-btn-mal,
+[data-r14-motion="off"] .nav-menu.is-open .nav-menu-panel,
+[data-r14-motion="off"] [id$="-dropdown"]:not(.hidden),
+[data-r14-motion="off"] .r14-anillo-parada,
 [data-r14-motion="off"] .r14-abre,
 [data-r14-motion="off"] .r14-numero-pop,
 [data-r14-motion="off"] .r14-barra-crece {
@@ -327,3 +332,27 @@ button.r14-btn-mal {
     animation: none !important;
 }
 [data-r14-motion="off"] #r14-barra-carga { display: none !important; }
+
+
+/* ==========================================================================
+   9. LA PARADA QUE SIGUE, EN EL MAPA
+   Antes latia el marcador entero con transform: scale(). Mapbox ubica cada
+   marcador escribiendo SU transform, y la animacion lo pisaba: la parada
+   que sigue se iba de su lugar. Ahora late un anillo hijo, adentro del
+   marcador, y solo con transform + opacity (no repinta el mapa).
+   ========================================================================== */
+@keyframes r14AnilloParada {
+    from { transform: scale(1);   opacity: 0.55; }
+    to   { transform: scale(1.9); opacity: 0; }
+}
+.r14-anillo-parada {
+    position: absolute;
+    inset: -3px;
+    border-radius: 50%;
+    border: 3px solid rgba(217, 119, 6, 0.9);
+    pointer-events: none;
+    animation: r14AnilloParada 1.6s var(--r14-mov-entra) infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .r14-anillo-parada { animation: none; opacity: 0; }
+}

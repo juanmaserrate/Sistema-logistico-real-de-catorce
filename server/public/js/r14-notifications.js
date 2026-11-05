@@ -7,10 +7,25 @@
  */
 
 let notifications = [];
+let _notifSiguienteId = 1;
 
 function cleanupOldNotifications() {
     const twentyFourHoursAgo = Date.now() - (24 * 60 * 60 * 1000);
-    notifications = notifications.filter(n => n.id >= twentyFourHoursAgo);
+    notifications = notifications.filter(n => (n.ts || n.id) >= twentyFourHoursAgo);
+}
+
+/** Nombres de choferes y errores del servidor van adentro del HTML: un "<"
+ *  en un nombre rompia el panel. */
+function _notifEsc(v) {
+    return (typeof escapeHtml === 'function') ? escapeHtml(v == null ? '' : String(v)) : String(v == null ? '' : v);
+}
+
+/** "Ahora", "hace 5 min", "hace 2 h". Antes decia "Ahora" para siempre. */
+function _notifHace(ts) {
+    const min = Math.floor((Date.now() - ts) / 60000);
+    if (!ts || min < 1) return 'Ahora';
+    if (min < 60) return `hace ${min} min`;
+    return `hace ${Math.floor(min / 60)} h`;
 }
 
 function toggleNotifications() {
@@ -25,25 +40,28 @@ function renderNotifications() {
     const total = document.getElementById('notif-total');
     const badge = document.getElementById('notif-count');
 
-    list.innerHTML = notifications.map(n => `
+    // Sin notificaciones: el cartel vuelve. Antes, despues de "Limpiar" la
+    // lista quedaba en blanco.
+    list.innerHTML = notifications.length ? notifications.map(n => `
         <div class="notification-item p-4 notif-${n.type} group relative">
-            <div class="flex justify-between items-start">
-                <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-tight">${n.title}</h5>
-                <div class="flex items-center gap-2">
-                    <span class="text-[9px] font-bold text-[#A3AED0]">${n.time}</span>
-                    <button onclick="removeNotification(${n.id})" class="p-1 text-[#A3AED0] hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-all">
+            <div class="flex justify-between items-start gap-2">
+                <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-tight min-w-0">${_notifEsc(n.title)}</h5>
+                <div class="flex items-center gap-2 shrink-0">
+                    <span class="text-[9px] font-bold text-[#A3AED0] whitespace-nowrap">${_notifHace(n.ts)}</span>
+                    <button onclick="removeNotification(${n.id})" aria-label="Quitar" class="p-1 text-[#A3AED0] hover:text-rose-500 opacity-0 group-hover:opacity-100 transition-colors">
                         <i data-lucide="x" class="w-3 h-3"></i>
                     </button>
                 </div>
             </div>
-            <p class="text-[11px] text-[#A3AED0] mt-1 leading-relaxed pr-6">${n.text}</p>
+            <p class="text-[11px] text-[#A3AED0] mt-1 leading-relaxed pr-6">${_notifEsc(n.text)}</p>
         </div>
-    `).join('');
+    `).join('') : '<div class="p-8 text-center text-[#A3AED0] text-xs italic">No hay notificaciones nuevas</div>';
 
-    total.innerText = `${notifications.length} Nuevas`;
+    const cant = notifications.length;
+    total.innerText = cant === 1 ? '1 nueva' : `${cant} nuevas`;
     if (badge) {
-        if (notifications.length > 0) {
-            badge.innerText = notifications.length;
+        if (cant > 0) {
+            badge.innerText = cant > 99 ? '99+' : cant;
             badge.classList.remove('hidden');
         } else {
             badge.classList.add('hidden');
@@ -53,10 +71,17 @@ function renderNotifications() {
 }
 
 function addNotification(type, title, text) {
-    const normalizedType = ['info', 'warning', 'critical', 'success'].includes(type) ? type : 'info';
-    notifications.unshift({ id: Date.now(), type: normalizedType, title, text, time: 'Ahora' });
+    // 'error' faltaba en la lista: los 25 avisos de error salian como info
+    // (violeta), iguales a un aviso comun.
+    const normalizedType = ['info', 'warning', 'critical', 'success', 'error'].includes(type) ? type : 'info';
+    // Id propio: con Date.now() dos avisos del mismo milisegundo tenian el
+    // mismo id y la X borraba los dos.
+    notifications.unshift({ id: _notifSiguienteId++, ts: Date.now(), type: normalizedType, title, text });
     renderNotifications();
-    avisarEnLaCampana();
+    // La campana solo se mueve para lo que hay que mirar. Un "guardado" que
+    // confirma lo que el operador acaba de hacer ya lo confirma el boton:
+    // ahi solo sube el numero.
+    if (normalizedType !== 'success' && normalizedType !== 'info') avisarEnLaCampana();
     showToastNotification(normalizedType, title, text);
 }
 
@@ -70,16 +95,18 @@ function avisarEnLaCampana() {
     if (!document.getElementById('r14-campana-css')) {
         const css = document.createElement('style');
         css.id = 'r14-campana-css';
-        css.textContent = '@keyframes r14Campana{0%,100%{transform:scale(1)}'
-            + '20%{transform:scale(1.25) rotate(-12deg)}40%{transform:scale(1.25) rotate(12deg)}'
-            + '60%{transform:scale(1.15) rotate(-6deg)}80%{transform:scale(1.1) rotate(4deg)}}'
-            + '.r14-campana-late{animation:r14Campana .7s ease-in-out 2}';
+        // Una sacudida corta (antes eran dos de 0.7s, casi un segundo y medio)
+        css.textContent = '@keyframes r14Campana{0%,100%{transform:none}'
+            + '25%{transform:scale(1.12) rotate(-8deg)}50%{transform:scale(1.12) rotate(8deg)}'
+            + '75%{transform:scale(1.05) rotate(-4deg)}}'
+            + '.r14-campana-late{animation:r14Campana .45s cubic-bezier(0.4,0,0.2,1)}'
+            + '@media (prefers-reduced-motion:reduce){.r14-campana-late{animation:none}}';
         document.head.appendChild(css);
     }
     campana.classList.remove('r14-campana-late');
     void campana.offsetWidth;          // reinicia la animacion si ya estaba corriendo
     campana.classList.add('r14-campana-late');
-    setTimeout(() => campana.classList.remove('r14-campana-late'), 1600);
+    setTimeout(() => campana.classList.remove('r14-campana-late'), 600);
 }
 
 function getToastContainer() {

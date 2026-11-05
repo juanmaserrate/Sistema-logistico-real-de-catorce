@@ -2,11 +2,25 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, interactive-widget=resizes-content">
+    <meta name="theme-color" content="#2d1178">
+    <script>
+      // Tema oscuro antes de pintar nada: antes se aplicaba recien en el body
+      // y cada recarga mostraba un destello blanco.
+      try {
+        if (localStorage.getItem('r14.theme') === 'dark') {
+          document.documentElement.setAttribute('data-theme', 'dark');
+          document.querySelector('meta[name="theme-color"]').content = '#1a1040';
+        }
+      } catch (_) {}
+    </script>
     <title>Real de Catorce | Gestión Logística</title>
     <link rel="icon" type="image/png" href="/img/r14-favicon.png">
     <link rel="apple-touch-icon" href="/img/r14-favicon.png">
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Los hover: de Tailwind solo con mouse. En el celular un toque dejaba
+         el boton "iluminado" hasta tocar otra cosa. -->
+    <script>tailwind.config = { future: { hoverOnlyWhenSupported: true } };</script>
     <script src="https://cdn.socket.io/4.7.5/socket.io.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <script src="https://unpkg.com/lucide@latest"></script>
@@ -20,24 +34,14 @@
          Plan gratuito: 50k cargas de mapa/mes. -->
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="/css/planificacion.css?v=20261022">
+    <link rel="stylesheet" href="/css/planificacion.css?v=20261105">
     <!-- Capa de movimiento: solo COMO aparecen las cosas, nada de colores ni
          tamanos. Sacando estas dos lineas (y el script de abajo) el sistema
          queda exactamente como estaba. -->
-    <link rel="stylesheet" href="/css/r14-motion.css?v=20261017">
-    <style>
-      /* La parada que sigue late, para encontrarla sin buscarla */
-      @keyframes r14PulsoParada {
-        0%, 100% { transform: scale(1);    box-shadow: 0 2px 6px rgba(0,0,0,.35); }
-        50%      { transform: scale(1.14); box-shadow: 0 0 0 7px rgba(217,119,6,.22), 0 2px 6px rgba(0,0,0,.35); }
-      }
-      @media (prefers-reduced-motion: reduce) {
-        .r14-stop-marker { animation: none !important; }
-      }
-    </style>
+    <link rel="stylesheet" href="/css/r14-motion.css?v=20261105">
     <script src="/js/r14-utils.js"></script>
-    <script src="/js/r14-notifications.js"></script>
-    <script src="/js/r14-motion.js?v=20261017"></script>
+    <script src="/js/r14-notifications.js?v=20261105"></script>
+    <script src="/js/r14-motion.js?v=20261105"></script>
 </head>
 <body class="flex h-screen overflow-hidden flex-col">
 
@@ -854,7 +858,7 @@
                                             <i data-lucide="chevron-down" class="w-3 h-3 text-[#A3AED0]"></i>
                                         </div>
                                     </th>
-                                    <th class="relative">
+                                    <th class="relative text-right">
                                         <div class="inline-flex items-center gap-1 cursor-pointer" onclick="toggleHeaderFilter('costo', this)">
                                             <span>Costo ($)</span>
                                             <i data-lucide="chevron-down" class="w-3 h-3 text-[#A3AED0]"></i>
@@ -3691,6 +3695,8 @@
             const newTheme = isDark ? 'light' : 'dark';
             document.documentElement.setAttribute('data-theme', newTheme);
             localStorage.setItem('r14.theme', newTheme);
+            const barra = document.querySelector('meta[name="theme-color"]');
+            if (barra) barra.content = newTheme === 'dark' ? '#1a1040' : '#2d1178';
             const icon = document.getElementById('dark-mode-icon');
             if (icon) { icon.setAttribute('data-lucide', isDark ? 'moon' : 'sun'); lucide.createIcons(); }
         }
@@ -3728,21 +3734,21 @@
                 // Viajes - invalidar cache antes de recargar para ver cambios al instante
                 _socket.on('trip:created', () => {
                     if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
-                    loadWeeklyData();
+                    loadWeeklyData({ silencioso: true });
                     const ctrl = document.getElementById('view-control');
                     if (ctrl && !ctrl.classList.contains('hidden')) loadControlLiveData();
                 });
                 _socket.on('trip:updated', () => {
                     if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
                     const weekly = document.getElementById('view-weekly');
-                    if (weekly && !weekly.classList.contains('hidden')) loadWeeklyData();
+                    if (weekly && !weekly.classList.contains('hidden')) loadWeeklyData({ silencioso: true });
                     const ctrl = document.getElementById('view-control');
                     if (ctrl && !ctrl.classList.contains('hidden')) loadControlLiveData();
                 });
                 _socket.on('trip:deleted', () => {
                     if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
                     const weekly = document.getElementById('view-weekly');
-                    if (weekly && !weekly.classList.contains('hidden')) loadWeeklyData();
+                    if (weekly && !weekly.classList.contains('hidden')) loadWeeklyData({ silencioso: true });
                     const ctrl = document.getElementById('view-control');
                     if (ctrl && !ctrl.classList.contains('hidden')) loadControlLiveData();
                 });
@@ -3756,7 +3762,7 @@
                 // Reordenamiento/carga de paradas desde el panel o la app: refresca semanal y control.
                 _socket.on('route:updated', (payload) => {
                     const weekly = document.getElementById('view-weekly');
-                    if (weekly && !weekly.classList.contains('hidden')) loadWeeklyData();
+                    if (weekly && !weekly.classList.contains('hidden')) loadWeeklyData({ silencioso: true });
                     const ctrl = document.getElementById('view-control');
                     if (ctrl && !ctrl.classList.contains('hidden')) loadControlLiveData();
                     // Si el chofer reordenó, avisar al operador
@@ -3840,7 +3846,8 @@
                         if (el) el.innerHTML = makeTruckIconSvg(bearing);
                     }
                 }
-                animateMarkerTo(marker, { lat, lng }, 4500);
+                if (typeof marker.setLngLat === 'function') animateControlMarker(marker, lng, lat, 4500);
+                else animateMarkerTo(marker, { lat, lng }, 4500);
                 marker.__lastPos = { lat, lng };
                 if (record.routeId != null && typeof appendPointToTrail === 'function') {
                     appendPointToTrail(record.routeId, lat, lng);
@@ -4823,6 +4830,20 @@
             ntActualizarTabParadas();
         }
 
+        /** Mismo chofer: igual, o uno contenido en el otro con al menos dos
+         *  palabras ("FACUNDO FERNANDEZ" / "FACUNDO FERNANDEZ GOMEZ"). Un
+         *  apellido solo coincide con media flota. */
+        function _mismoChoferParaPatente(nombreA, nombreB) {
+            const a = norm(nombreA || ''), b = norm(nombreB || '');
+            if (!a || !b) return false;
+            if (a === b) return true;
+            const cortoCrudo = a.length <= b.length ? nombreA : nombreB;
+            const corto = a.length <= b.length ? a : b;
+            const largo = corto === a ? b : a;
+            // norm() saca los espacios: las palabras se cuentan sobre el nombre original
+            return String(cortoCrudo).trim().split(/\s+/).length >= 2 && largo.includes(corto);
+        }
+
         function resolveTripPlate(t) {
             const rawPlate = (t?.vehicle || '').toString().trim().toUpperCase();
             if (rawPlate && rawPlate !== 'S/D' && rawPlate !== '--') return rawPlate;
@@ -4831,8 +4852,7 @@
             if (!driverNorm) return 'S/D';
 
             const fleetMatch = (allVehicles || []).find(v => {
-                const dNorm = norm(v?.driver || v?.driverName || '');
-                return dNorm && (dNorm.includes(driverNorm) || driverNorm.includes(dNorm));
+                return _mismoChoferParaPatente(v?.driver || v?.driverName, t?.driver);
             });
             const fleetPlate = (fleetMatch?.plate || '').toString().trim().toUpperCase();
             if (fleetPlate && fleetPlate !== 'S/D' && fleetPlate !== '--') return fleetPlate;
@@ -4841,8 +4861,7 @@
                 const maint = getMaintenanceData();
                 const byPlate = maint?.vehicles || {};
                 const maintMatchPlate = Object.keys(byPlate).find(p => {
-                    const dNorm = norm(byPlate[p]?.driverName || '');
-                    return dNorm && (dNorm.includes(driverNorm) || driverNorm.includes(dNorm));
+                    return _mismoChoferParaPatente(byPlate[p]?.driverName, t?.driver);
                 });
                 const maintPlate = (maintMatchPlate || '').toString().trim().toUpperCase();
                 if (maintPlate) return maintPlate;
@@ -4853,7 +4872,7 @@
             const tripMatch = (planningData || []).find(x => {
                 const dNorm = norm(x?.driver || '');
                 const p = (x?.vehicle || '').toString().trim().toUpperCase();
-                return dNorm && (dNorm.includes(driverNorm) || driverNorm.includes(dNorm)) && p && p !== 'S/D' && p !== '--';
+                return _mismoChoferParaPatente(x?.driver, t?.driver) && p && p !== 'S/D' && p !== '--';
             });
             const tripPlate = (tripMatch?.vehicle || '').toString().trim().toUpperCase();
             if (tripPlate && tripPlate !== 'S/D' && tripPlate !== '--') return tripPlate;
@@ -8109,7 +8128,7 @@
                             [CONTROL_BA_BOUNDS.east, CONTROL_BA_BOUNDS.north]  // NE
                         ],
                         attributionControl: true,
-                        cooperativeGestures: false
+                        cooperativeGestures: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches)
                     });
                     // Controles basicos: zoom + brujula + fullscreen
                     controlMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
@@ -8441,9 +8460,17 @@
                 el.style.fontWeight = '700';
                 el.style.cursor = 'pointer';
                 el.style.opacity = entregada ? '0.75' : '1';
-                if (isNext) el.style.animation = 'r14PulsoParada 1.6s ease-in-out infinite';
                 el.title = title;
                 el.textContent = dentro;
+                // La parada que sigue late, para encontrarla sin buscarla. Late
+                // un anillo HIJO: el marcador no se puede animar con transform
+                // porque Mapbox lo ubica con su propio transform (antes la
+                // parada se iba de su lugar en el mapa).
+                if (isNext) {
+                    const anillo = document.createElement('span');
+                    anillo.className = 'r14-anillo-parada';
+                    el.appendChild(anillo);
+                }
 
                 const m = new mapboxgl.Marker({ element: el, anchor: 'center' })
                     .setLngLat([st.lng, st.lat])
@@ -8809,10 +8836,11 @@
             if (apxKm > 5) { try { marker.setLngLat([lng, lat]); } catch (_) {} return; }
             const startTs = performance.now();
             const dur = Math.max(300, durationMs || 2500);
-            const easeInOut = (t) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
+            // Lineal a proposito: es movimiento continuo entre una señal y la
+            // siguiente. Con ease-in-out el camion frenaba en cada señal.
             const tick = (now) => {
                 const t = Math.min(1, (now - startTs) / dur);
-                const k = easeInOut(t);
+                const k = t;
                 try { marker.setLngLat([startLng + dLng * k, startLat + dLat * k]); } catch (_) {}
                 if (t < 1) marker.__animFrameId = requestAnimationFrame(tick);
                 else marker.__animFrameId = null;
@@ -16008,7 +16036,7 @@
                 body.innerHTML = data.map(t => `
                     <tr class="hover:bg-[#F4F7FE] transition-colors">
                         <td class="font-bold text-[#1B2559]">#${t.id}</td>
-                        <td class="text-xs text-[#A3AED0]">${new Date(t.date).toLocaleDateString()}</td>
+                        <td class="text-xs text-[#A3AED0]">${new Date(t.date).toLocaleDateString('es-AR')}</td>
                         <td>
                             <div class="font-bold text-[#1B2559]">${t.driver || 'N/A'}</div>
                             <div class="text-[10px] text-[#A3AED0] uppercase font-black">${t.provider || 'PROPIO'}</div>
@@ -16023,7 +16051,7 @@
                                 ${t.paymentStatus || 'PENDIENTE'}
                             </span>
                         </td>
-                        <td class="text-xs font-medium">${t.paymentDate ? new Date(t.paymentDate).toLocaleDateString() : '--'}</td>
+                        <td class="text-xs font-medium">${t.paymentDate ? new Date(t.paymentDate).toLocaleDateString('es-AR') : '--'}</td>
                         <td class="max-w-xs truncate text-xs italic text-[#A3AED0]">${t.observations || ''}</td>
                         <td class="px-8 text-right">
                              <button class="text-[#2B3674] hover:text-white transition-all"><i data-lucide="printer" class="w-4 h-4"></i></button>
@@ -17493,7 +17521,7 @@
                                 </button>
                                 <div>
                            <div class="text-[13px]">#${t.id}</div>
-                           <div class="text-[10px] text-[#A3AED0] uppercase font-black">${new Date(t.date).toLocaleDateString()}</div>
+                           <div class="text-[10px] text-[#A3AED0] uppercase font-black">${new Date(t.date).toLocaleDateString('es-AR')}</div>
                                 </div>
                            </div>
                         </td>
@@ -17519,7 +17547,7 @@
                         <td class="font-bold text-[#2B3674]">${(t.assignedMobileUser || '--').toString().toUpperCase()}</td>
                         <td><div class="text-[10px] text-amber-600 font-bold uppercase">${formatBusinessUnit(t.businessUnit)}</div></td>
                         <td>
-                            <span class="status-badge ${isPropio ? 'bg-indigo-100 text-indigo-600' : 'bg-indigo-100 text-indigo-600'}">
+                            <span class="status-badge ${isPropio ? 'bg-indigo-100 text-indigo-600' : 'bg-amber-100 text-amber-700'}">
                                 ${t.contractType || 'Externo'}
                             </span>
                         </td>
@@ -17536,10 +17564,10 @@
                         <td class="text-center text-[11px] font-bold text-[#2B3674]">
                             ${t.isRefrigerated ? (t.temperature ? `${t.temperature}°` : '<span class="text-[#A3AED0]">--</span>') : '<span class="text-[#A3AED0]">--</span>'}
                         </td>
-                        <td class="text-xs font-black text-indigo-600">
+                        <td class="text-xs font-black text-[#1B2559] text-right whitespace-nowrap">
                             ${isPropio
                                 ? `<span class="status-badge bg-emerald-100 text-emerald-700 text-[9px]" title="Flota propia — no se factura. Costo estimado: ${costoPropioTxt}">Propio</span>`
-                                : `$ ${cost.toLocaleString('es-AR')}`}
+                                : `$ ${cost.toLocaleString('es-AR')}`}
                         </td>
                         <td class="font-bold text-indigo-600">${resolveTripPlate(t)}</td>
                         <td class="align-top">${formatRouteRealCell(t)}</td>
@@ -17591,8 +17619,8 @@
             }
 
             // Actualizar resumen
-            document.getElementById('summary-total-trips').innerText = data.length.toLocaleString();
-            document.getElementById('summary-filtered-count').innerText = data.length.toLocaleString();
+            document.getElementById('summary-total-trips').innerText = (planningData || data).length.toLocaleString('es-AR');
+            document.getElementById('summary-filtered-count').innerText = data.length.toLocaleString('es-AR');
             applyColumnVisibility();
             lucide.createIcons();
         }
@@ -18756,7 +18784,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             cuentas = [...(cuentas || [])]
                 .sort((a, b) => (a.fullName || a.username).localeCompare(b.fullName || b.username));
             mobileSel.innerHTML = '<option value="">— No cambiar —</option>'
-                + cuentas.map(u => `<option value="${u.username}">${u.fullName || u.username}</option>`).join('');
+                // Con el usuario al lado: dos cuentas con el mismo nombre se veian
+                // iguales y la ruta podia ir al telefono equivocado.
+                + cuentas.map(u => {
+                    const nombre = u.fullName || u.username;
+                    const etiqueta = (u.fullName && u.fullName !== u.username) ? `${nombre} (${u.username})` : nombre;
+                    return `<option value="${escapeHtml(u.username)}">${escapeHtml(etiqueta)}</option>`;
+                }).join('');
 
             // Reset all fields
             document.getElementById('bulk-edit-contract').value = '';
@@ -18808,8 +18842,14 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 return;
             }
 
+            // Mientras aplica: boton apagado y avance a la vista. Con 600 viajes
+            // tardaba y un segundo click aplicaba todo dos veces.
+            const boton = document.getElementById('bulk-edit-apply');
+            const textoBoton = boton ? boton.textContent : '';
+            if (boton) boton.disabled = true;
             let ok = 0, fail = 0;
             for (const id of ids) {
+                if (boton) boton.textContent = `Aplicando ${ok + fail + 1} de ${ids.length}…`;
                 try {
                     const res = await fetch(`${API_URL}/trips/${id}`, {
                         method: 'PUT',
@@ -18825,13 +18865,19 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 } catch (_) { fail++; }
             }
 
+            if (boton) { boton.disabled = false; boton.textContent = textoBoton; }
             closeBulkEditModal();
             clearTripSelection();
             filterWeeklyData();
 
-            const changedFields = Object.keys(changes).join(', ');
+            const NOMBRES_CAMPO = {
+                driver: 'chofer', assignedMobileUser: 'usuario app', contractType: 'contrato',
+                businessUnit: 'unidad', tripType: 'reparto', zone: 'zona', plate: 'patente',
+                auxiliar: 'auxiliar', status: 'estado', provider: 'proveedor', vuelta: 'vuelta'
+            };
+            const changedFields = Object.keys(changes).map(k => NOMBRES_CAMPO[k] || k).join(', ');
             if (typeof addNotification === 'function') {
-                if (fail === 0) addNotification('success', 'Edición masiva', `${ok} viaje(s) actualizados. Campos: ${changedFields}`);
+                if (fail === 0) addNotification('success', 'Edición masiva', `${ok === 1 ? '1 viaje actualizado' : ok + ' viajes actualizados'}. Cambió: ${changedFields}`);
                 else addNotification('warning', 'Edición parcial', `${ok} actualizados, ${fail} con error.`);
             }
         }
@@ -19875,10 +19921,14 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 .map((col, idx) => {
                     if (!col.visible) {
                         const nthChild = idx + 1;
+                        // Solo la tabla del Log Semanal. Antes el encabezado no tenia
+                        // alcance: ocultar la columna 3 aca la ocultaba en TODAS las
+                        // tablas del sistema, y en la Planilla de Pagos los titulos
+                        // quedaban corridos una columna. Las celdas, solo de las filas
+                        // de viaje: no las de la tabla de paradas que va adentro.
                         return `
-                            #weekly-table-body tr > td:nth-child(${nthChild}) { display: none; }
-                            thead tr > th:nth-child(${nthChild}) { display: none; }
-                            #weekly-detail-row tr > td:nth-child(${nthChild}) { display: none; }
+                            #weekly-table-body > tr.wk-row > td:nth-child(${nthChild}) { display: none; }
+                            table:has(> #weekly-table-body) > thead > tr > th:nth-child(${nthChild}) { display: none; }
                         `;
                     }
                     return '';
@@ -29521,7 +29571,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 </div>
             </div>
             <div class="p-6 bg-[#F8FAFF] border-t border-[#F4F7FE] flex gap-4">
-                <button onclick="applyBulkEdit()" class="flex-1 bg-indigo-600 text-white py-3.5 rounded-2xl font-bold text-xs tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 uppercase">
+                <button id="bulk-edit-apply" onclick="applyBulkEdit()" class="flex-1 bg-indigo-600 text-white py-3.5 rounded-2xl font-bold text-xs tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 uppercase">
                     APLICAR CAMBIOS
                 </button>
                 <button onclick="closeBulkEditModal()" class="px-6 border border-[#E0E5F2] rounded-2xl font-bold text-[#1B2559] text-xs hover:bg-[#F4F7FE] transition-all">Cancelar</button>
@@ -30482,6 +30532,12 @@ async function renderHdrMap(detail) {
     // 2) ESC cierra el modal visible más alto
     document.addEventListener('keydown', function(ev) {
         if (ev.key !== 'Escape') return;
+        // Primero lo mas chico: si hay una lista de sugerencias abierta, o se
+        // esta editando una celda, Esc cierra ESO y no el modal. Antes cerraba
+        // el formulario entero (Nuevo Viaje) y se perdia lo escrito.
+        if (document.getElementById('ac-caja')) return;
+        const t = ev.target;
+        if (t && t.matches && t.matches('input, select, textarea') && t.closest('td')) return;
         const openMods = getOpenModals();
         if (openMods.length === 0) return;
         openMods.sort((a, b) => {

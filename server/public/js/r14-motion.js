@@ -59,18 +59,23 @@
     function engancharPantallas() {
         if (typeof window.showSection !== 'function' || window.showSection.__r14) return false;
         var original = window.showSection;
+        var ultimaVista = null;
         var parcheada = function () {
             var r = original.apply(this, arguments);
-            if (!apagado()) {
-                var vista = document.querySelector('#main-view > div[id^="view-"]:not(.hidden)');
-                disparar(vista, 'r14-pantalla-entra');
-                disparar(document.getElementById('header-title'), 'r14-titulo-entra');
-                disparar(document.getElementById('header-desc'), 'r14-titulo-entra');
-            }
-            // Por si la pantalla trae KPI o carteles que todavia no estaban
+            var vista = document.querySelector('#main-view > div[id^="view-"]:not(.hidden)');
+            // Solo cuando la pantalla cambio. Volver a tocar la misma pantalla
+            // (o el refresco automatico que la reabre) no anima nada.
+            // El titulo del header ya no se desliza: cambia junto con la
+            // pantalla y dos cosas moviendose a la vez es ruido.
+            if (vista && vista !== ultimaVista) disparar(vista, 'r14-pantalla-entra');
+            ultimaVista = vista;
+            // Por si la pantalla trae KPI que todavia no estaban.
+            // El barrido de carteles NO va aca: recorria todo el DOM (miles de
+            // celdas con el Log Semanal cargado) en cada cambio de pantalla.
+            // Los carteles escritos en el HTML se marcan una vez al arrancar y
+            // los nuevos los ve el observador.
             marcarGrillas();
             engancharNumeros();
-            barridoDeCarteles();
             return r;
         };
         parcheada.__r14 = true;
@@ -84,7 +89,7 @@
     // que haya dejado de estar oculto. Sirve igual para cualquier pestana que
     // se agregue manana.
 
-    var FUNCIONES_PESTANA = ['ntTab', 'budgetShowTab', 'dashExcelSetTab'];
+    var FUNCIONES_PESTANA = ['ntTab', 'budgetShowTab'];
 
     function engancharPestanas() {
         FUNCIONES_PESTANA.forEach(function (nombre) {
@@ -94,7 +99,8 @@
                 if (apagado()) return original.apply(this, arguments);
                 var observador = new MutationObserver(function () { /* se lee a mano */ });
                 observador.observe(document.body, {
-                    attributes: true, subtree: true, attributeFilter: ['class']
+                    attributes: true, subtree: true, attributeFilter: ['class'],
+                    attributeOldValue: true
                 });
                 var r, registros = [];
                 try {
@@ -105,7 +111,9 @@
                 }
                 for (var i = 0; i < registros.length; i++) {
                     var el = registros[i].target;
-                    if (el && el.nodeType === 1 && !el.classList.contains('hidden')) {
+                    var antes = registros[i].oldValue || '';
+                    if (el && el.nodeType === 1 && /(^|\s)hidden(\s|$)/.test(antes)
+                        && !el.classList.contains('hidden')) {
                         disparar(el, 'r14-panel-entra');
                     }
                 }
@@ -140,12 +148,50 @@
                 cont.classList.remove('r14-cascada', 'r14-entra-junto');
                 void cont.offsetWidth;
                 cont.classList.add(clase);
+                sacarAlTerminar(cont, clase);
             } else {
                 if (!cont.children.length) return;
                 disparar(cont, 'r14-cascada');
+                sacarAlTerminar(cont, 'r14-cascada');
             }
         });
         pendientes.clear();
+    }
+
+    /** La cascada mas larga dura ~480ms (215ms de demora + 260ms). Con la clase
+     *  puesta, cualquier fila que se agregue despues tambien entraria animada. */
+    function sacarAlTerminar(cont, clase) {
+        clearTimeout(cont.__r14fin);
+        cont.__r14fin = setTimeout(function () { cont.classList.remove(clase); }, 650);
+    }
+
+    /** Lo que se saco del contenedor era un cartel de espera ("Cargando...",
+     *  una ruedita, "Sin datos") o no habia nada: entonces llegan datos y vale
+     *  la pena que entren. Si lo que se saco eran datos, es un re-dibujo
+     *  (filtro, busqueda, aviso del socket, consulta automatica) y la tabla
+     *  tiene que quedarse quieta. */
+    function eraCartel(n) {
+        if (n.nodeType !== 1) return true;                 // texto suelto
+        if (n.classList && (n.classList.contains('r14-cargando')
+            || n.classList.contains('loading-spinner'))) return true;
+        if (n.tagName === 'TBODY') {
+            var f = n.rows ? n.rows.length : n.children.length;
+            if (f === 0) return true;
+            if (f > 1) return false;
+            n = n.rows[0];
+        }
+        if (n.tagName === 'TR' && n.cells && n.cells.length > 1) return false;
+        if (n.querySelector && n.querySelector('.animate-spin')) return true;
+        var txt = (n.textContent || '').trim();
+        return txt.length < 80 && /^(cargando|sin |no hay|ningun|ningún|—|-)/i.test(txt);
+    }
+
+    function esRedibujo(lote) {
+        var quitados = lote.removedNodes;
+        for (var k = 0; k < quitados.length; k++) {
+            if (!eraCartel(quitados[k])) return true;
+        }
+        return false;
     }
 
     function encolar(cont) {
@@ -185,6 +231,7 @@
         // Una celda que dice "Cargando..." es en realidad una fila entera
         // esperando: el barrido se ve mejor sobre la fila completa.
         if (el.tagName === 'TD' && el.parentNode && el.parentNode.tagName === 'TR') el = el.parentNode;
+        if (el.querySelector && el.querySelector('.animate-spin')) return;   // ya tiene su ruedita
 
         var clase = (el.tagName === 'TR') ? 'r14-cargando' : 'r14-cargando-txt';
         if (el.classList.contains(clase)) return;
@@ -206,22 +253,34 @@
         var raizObs = document.getElementById('main-view') || document.body;
         var obs = new MutationObserver(function (lotes) {
             if (apagado()) return;
+            // Todos los cambios de un mismo momento llegan juntos. Si en alguno
+            // se sacaron datos de un contenedor, lo que se le agregue en ese
+            // mismo momento es un re-dibujo (vaciar y volver a llenar fila por
+            // fila cuenta igual que reemplazar todo de una).
+            var redibujados = new Set();
+            for (var r = 0; r < lotes.length; r++) {
+                if (lotes[r].removedNodes.length && esRedibujo(lotes[r])) redibujados.add(lotes[r].target);
+            }
             for (var i = 0; i < lotes.length; i++) {
                 var nuevos = lotes[i].addedNodes;
+                var redibujo = redibujados.has(lotes[i].target);
                 for (var j = 0; j < nuevos.length; j++) {
                     var n = nuevos[j];
                     if (n.nodeType !== 1) continue;
                     switch (n.tagName) {
                         case 'TR':
-                            if (n.parentNode && n.parentNode.tagName === 'TBODY') encolar(n.parentNode);
-                            revisarCarga(n);
+                            if (!redibujo && n.parentNode && n.parentNode.tagName === 'TBODY') encolar(n.parentNode);
+                            // Los carteles de espera son filas de UNA celda. Leer el
+                            // texto de cada fila de datos (600 en el Log Semanal) era
+                            // trabajo tirado.
+                            if (n.cells && n.cells.length === 1) revisarCarga(n);
                             break;
                         case 'TBODY':
-                            encolar(n);
+                            if (!redibujo) encolar(n);
                             break;
                         case 'DIV':
                             revisarCarga(n);
-                            if (n.parentNode && n.parentNode.nodeType === 1
+                            if (!redibujo && n.parentNode && n.parentNode.nodeType === 1
                                 && n.parentNode.hasAttribute('data-r14-cascada')) encolar(n.parentNode);
                             break;
                         case 'P':
@@ -236,7 +295,7 @@
     }
 
     /** Grillas que se dibujan solas y merecen entrar en cascada. */
-    var GRILLAS = ['crates-kpis', 'crates-sim-kpis', 'ds-kpis', 'report-kpis'];
+    var GRILLAS = ['crates-kpis', 'crates-sim-kpis', 'report-kpis'];
     function marcarGrillas() {
         GRILLAS.forEach(function (id) {
             var el = document.getElementById(id);
@@ -246,8 +305,12 @@
 
     // ═════════════════════════════ 4. NUMEROS ════════════════════════════════
 
-    var SELECTOR_NUM = '[id^="dash-kpi-"],[id^="payments-kpi-"],[data-r14-num]';
-    var DURACION_NUM = 460;
+    // Antes: todos los KPI del Panel y de la Planilla de Pagos. Mientras
+    // contaban mostraban montos que no existen, y saltaban aunque el valor no
+    // hubiera cambiado (cada vez que se abria un proveedor en Pagos). Con
+    // numeros que se usan para decidir, sin animacion es mejor.
+    var SELECTOR_NUM = '[data-r14-num]';
+    var DURACION_NUM = 300;
     var yaVigilados = (typeof WeakSet === 'function') ? new WeakSet() : null;
 
     /** Devuelve el valor solo si el texto ES un numero (con $ o % a los
@@ -316,6 +379,7 @@
 
         var previo = el.__r14Previo;
         el.__r14Previo = actual;
+        if (actual === previo) return;            // re-escribieron lo mismo
         if (apagado() || el.children.length) return;
 
         var hasta = valorDe(actual);
@@ -361,7 +425,7 @@
         btn.classList.remove('r14-btn-ok', 'r14-btn-mal');
         void btn.offsetWidth;
         btn.classList.add(clase);
-        setTimeout(function () { btn.classList.remove(clase); }, 900);
+        setTimeout(function () { btn.classList.remove(clase); }, 600);
     }
 
     var barraEl = null;
@@ -409,18 +473,22 @@
             // La barra solo para llamadas al propio servidor. Los mapas piden
             // sus mosaicos con fetch todo el tiempo: si contaran, la barra
             // quedaria prendida para siempre en la Torre de Control.
-            var contar = url.indexOf('/api/') >= 0;
+            var contar = url.indexOf('/api/') >= 0
+                && (Date.now() - ultimoClick) < VENTANA_CLICK;
             var esGuardado = (metodo === 'POST' || metodo === 'PUT' || metodo === 'PATCH' || metodo === 'DELETE');
             var btn = (esGuardado && contar && ultimoBoton
                 && (Date.now() - ultimoClick) < VENTANA_CLICK
                 && ultimoBoton.isConnected && !apagado()) ? ultimoBoton : null;
 
             if (contar) subioUno();
-            if (btn) btn.classList.add('r14-btn-trabajando');
+            var latido = btn ? setTimeout(function () {
+                btn.classList.add('r14-btn-trabajando');
+            }, 300) : 0;
 
             var cerrar = function (bien) {
                 if (contar) bajoUno();
                 if (btn) {
+                    clearTimeout(latido);
                     btn.classList.remove('r14-btn-trabajando');
                     marcarResultado(btn, bien);
                 }
