@@ -32,6 +32,15 @@ const HOJAS_POR_CONTRATO = [
 ];
 const CACHE_DINAMICA = 'xl/pivotCache/pivotCacheDefinition1.xml';
 
+// La dinamica lee sus columnas por NUMERO de posicion, asi que la hoja de la
+// plantilla (sheet2) queda con el formato de siempre, renombrada y oculta. La
+// «Viajes» que ve el operador es una hoja nueva con el orden de columnas que
+// pidio (nov 2026). Va justo despues de la oculta: asi la pestania queda en el
+// mismo lugar de siempre y el filtro guardado (localSheetId="1") sigue
+// apuntando a la hoja 1, que es la oculta.
+const HOJA_BASE_NOMBRE = 'Base dinámica';
+const HOJA_VIAJES_VISIBLE = { archivo: 'xl/worksheets/sheet6.xml', nombre: 'Viajes', sheetId: 6, rel: 'rId9' };
+
 // AG y no AF: entro "Horas por ruta" al final. Va al final y nunca en el medio
 // porque la tabla dinamica de la plantilla referencia los campos por numero de
 // posicion, y correrlos desalinea el informe entero.
@@ -141,7 +150,11 @@ export const COLUMNAS_CONTRATO = [
  * la columna por NOMBRE: aca el orden es otro.
  */
 function armarHojaDeContrato(filas: any[], estilos: Record<number, number>, estiloComun: number, estiloTitulo: number): string {
-    const viajes = filas.filter((f: any) => f._tipo !== 'hijo');
+    return armarHojaPlana(filas.filter((f: any) => f._tipo !== 'hijo'), estilos, estiloComun, estiloTitulo);
+}
+
+/** Una fila por cada elemento de `viajes`, con las columnas de COLUMNAS_CONTRATO. */
+function armarHojaPlana(viajes: any[], estilos: Record<number, number>, estiloComun: number, estiloTitulo: number): string {
     const ultima = letra(COLUMNAS_CONTRATO.length);
     const rango = `A1:${ultima}${Math.max(viajes.length + 1, 2)}`;
     const estiloDe = (nombre: string) => estilos[COLUMNAS_LIBRO.indexOf(nombre) + 1] ?? estiloComun;
@@ -168,6 +181,20 @@ function registrarHojas(zip: Record<string, Uint8Array>, dec: TextDecoder, enc: 
     let rels = dec.decode(zip['xl/_rels/workbook.xml.rels']);
     let tipos = dec.decode(zip['[Content_Types].xml']);
     const R = 'http://schemas.openxmlformats.org/officeDocument/2006/relationships';
+
+    // La hoja de la plantilla pasa a ser la base oculta de la dinamica, y la
+    // «Viajes» visible entra justo despues de ella.
+    if (!wb.includes(`name="${HOJA_BASE_NOMBRE}"`)) {
+        const v = HOJA_VIAJES_VISIBLE;
+        wb = wb.replace(/<sheet ([^>]*?)name="Viajes"([^>]*?)state="visible"([^>]*?)\/>/, (m0, a, b, c) =>
+            `<sheet ${a}name="${HOJA_BASE_NOMBRE}"${b}state="hidden"${c}/>`
+            + `<sheet xmlns:r="${R}" name="${v.nombre}" sheetId="${v.sheetId}" state="visible" r:id="${v.rel}"/>`);
+        wb = wb.replace(/'Viajes'!/g, `'${HOJA_BASE_NOMBRE}'!`);
+        rels = rels.replace('</Relationships>',
+            `<Relationship Type="${R}/worksheet" Target="/${v.archivo}" Id="${v.rel}"/></Relationships>`);
+        tipos = tipos.replace('</Types>',
+            `<Override PartName="/${v.archivo}" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`);
+    }
 
     for (const h of HOJAS_POR_CONTRATO) {
         if (!wb.includes(`name="${h.nombre}"`)) {
@@ -311,6 +338,7 @@ export function armarLibroViajes(filas: any[], titulo?: string, analisis?: FilaC
     // ── La dinamica mira exactamente las filas que hay ──────────────────────
     let cache = dec.decode(zip[CACHE_DINAMICA]);
     cache = cache.replace(/<worksheetSource ref="[^"]*"/, `<worksheetSource ref="${rangoDinamica}"`);
+    cache = cache.replace(/(<worksheetSource [^>]*?)sheet="Viajes"/, `$1sheet="${HOJA_BASE_NOMBRE}"`);
     if (!/refreshOnLoad="1"/.test(cache)) {
         cache = cache.replace('<pivotCacheDefinition ', '<pivotCacheDefinition refreshOnLoad="1" ');
     }
@@ -324,6 +352,9 @@ export function armarLibroViajes(filas: any[], titulo?: string, analisis?: FilaC
     // ── Hojas "Propios" y "Tercerizados" ───────────────────────────────────
     // Una fila por viaje: el viaje entero, como se ve en planificacion.
     const estiloTitulo = estilosDeLaFila(hoja, 1)[1] ?? estiloComun;
+    // La «Viajes» visible: las mismas filas que suma la dinamica (un viaje de
+    // dos unidades va en dos filas, cada una con su parte), con el orden nuevo.
+    zip[HOJA_VIAJES_VISIBLE.archivo] = enc.encode(armarHojaPlana(soloPartes, estilos, estiloComun, estiloTitulo));
     for (const h of HOJAS_POR_CONTRATO) {
         const suyas = filas.filter((f: any) =>
             String(f['Contrato'] || '').trim().toLowerCase() === h.contrato);
@@ -338,6 +369,12 @@ export function armarLibroViajes(filas: any[], titulo?: string, analisis?: FilaC
             /<c r="A1"([^>]*)t="s"([^>]*)><v>\d+<\/v><\/c>/,
             `<c r="A1"$1t="inlineStr"$2><is><t>${escapar(titulo)}</t></is></c>`
         );
+        zip[HOJA_RESUMEN] = enc.encode(resumen);
+    }
+    if (zip[HOJA_RESUMEN]) {
+        const resumen = dec.decode(zip[HOJA_RESUMEN]).replace(
+            'Este cuadro sale de la hoja &#171;Viajes&#187;.',
+            'Este cuadro sale de los viajes de la hoja &#171;Viajes&#187; (los lee de una copia oculta, &#171;Base din&#225;mica&#187;, que no hay que tocar).');
         zip[HOJA_RESUMEN] = enc.encode(resumen);
     }
 

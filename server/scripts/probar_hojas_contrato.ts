@@ -8,7 +8,7 @@ import fs from 'fs';
 import path from 'path';
 import { unzipSync } from 'fflate';
 import * as XLSX from 'xlsx';
-import { armarLibroViajes, COLUMNAS_CONTRATO } from '../src/libroViajes';
+import { armarLibroViajes, COLUMNAS_CONTRATO, COLUMNAS_LIBRO } from '../src/libroViajes';
 
 const SALIDA = path.join(__dirname, '..', '..', 'tmp_prueba_libro.xlsx');
 
@@ -52,15 +52,30 @@ console.log('  archivo:', SALIDA, '·', Math.round(buffer.length / 1024), 'KB\n'
 const wb = XLSX.read(buffer, { type: 'buffer' });
 console.log('1. Las hojas');
 console.log('   ', wb.SheetNames.join(' | '));
-esperar('estan las cinco', wb.SheetNames.join('|') === 'Resumen|Viajes|Conteo por UN|Propios|Tercerizados', wb.SheetNames);
+esperar('estan las seis, con la base de la dinamica despues del Resumen',
+    wb.SheetNames.join('|') === 'Resumen|Base dinámica|Viajes|Conteo por UN|Propios|Tercerizados', wb.SheetNames);
+const visibilidad = (wb.Workbook?.Sheets || []).map((x: any) => `${x.name}:${x.Hidden ? 'oculta' : 'visible'}`);
+console.log('   ', visibilidad.join(' | '));
+esperar('la base de la dinamica esta oculta y las demas se ven',
+    visibilidad.join('|') === 'Resumen:visible|Base dinámica:oculta|Viajes:visible|Conteo por UN:visible|Propios:visible|Tercerizados:visible', visibilidad);
 
 const leer = (nombre: string) => XLSX.utils.sheet_to_json<any>(wb.Sheets[nombre], { defval: '' });
 
-console.log('\n2. La hoja «Viajes» (la que suma la dinamica)');
+console.log('\n2a. La base oculta: el formato de siempre, que es el que lee la dinamica');
+const encBase = (XLSX.utils.sheet_to_json<any[]>(wb.Sheets['Base dinámica'], { header: 1 })[0] || []) as string[];
+esperar('mismas columnas y en el mismo orden que la plantilla', JSON.stringify(encBase) === JSON.stringify(COLUMNAS_LIBRO), encBase);
+esperar('trae las mismas filas que la Viajes visible',
+    XLSX.utils.sheet_to_json<any>(wb.Sheets['Base dinámica']).length === 5);
+
+console.log('\n2. La hoja «Viajes» visible (las filas que suma la dinamica)');
 const viajes = leer('Viajes');
 viajes.forEach((f) => console.log('     ', f['ID viaje'], String(f['Unidad de negocio']).padEnd(20), f['Duracion horas'], '·', f['Costo']));
 esperar('no entraron las filas padre', viajes.length === 5, viajes.length);
 esperar('no esta el viaje entero de 8192', !viajes.some((f) => f['Unidad de negocio'] === 'SAE BROWN, RETIRO'));
+const encViajes = (XLSX.utils.sheet_to_json<any[]>(wb.Sheets['Viajes'], { header: 1 })[0] || []) as string[];
+esperar('con el orden nuevo de columnas', JSON.stringify(encViajes) === JSON.stringify(COLUMNAS_CONTRATO), encViajes);
+esperar('Partido antes que Localidad y Refrigerado al final',
+    encViajes.indexOf('Partido') < encViajes.indexOf('Localidad') && encViajes[encViajes.length - 1] === 'Refrigerado');
 esperar('el costo no se duplico',
     viajes.reduce((a, f) => a + (Number(f['Costo']) || 0), 0) === 224000 + 26000 + 180000 + 193333 + 96667,
     viajes.reduce((a, f) => a + (Number(f['Costo']) || 0), 0));
@@ -112,13 +127,22 @@ for (const [archivo, nombre, rel] of [['sheet4.xml', 'Propios', 'rId7'], ['sheet
 esperar('«Viajes» sigue siendo la hoja 2 (la dinamica la busca por indice)',
     wbXml.indexOf('name="Viajes"') < wbXml.indexOf('name="Conteo por UN"')
     && wbXml.indexOf('name="Conteo por UN"') < wbXml.indexOf('name="Propios"'));
-esperar('la dinamica apunta a las filas que hay', dec.decode(zip['xl/pivotCache/pivotCacheDefinition1.xml']).includes('ref="A1:AF6"'),
+const cacheXml = dec.decode(zip['xl/pivotCache/pivotCacheDefinition1.xml']);
+esperar('la dinamica lee de la base oculta', cacheXml.includes('sheet="Base dinámica"') && !cacheXml.includes('sheet="Viajes"'),
+    (cacheXml.match(/<worksheetSource [^>]*>/) || [])[0]);
+esperar('el filtro guardado apunta a la base oculta (hoja 1)',
+    wbXml.includes(`localSheetId="1" hidden="1">'Base dinámica'!`) && !wbXml.includes(`'Viajes'!`));
+esperar('la «Viajes» visible tiene su relacion y su tipo',
+    wbXml.includes('r:id="rId9"') && relsXml.includes('worksheets/sheet6.xml') && tiposXml.includes('/xl/worksheets/sheet6.xml'));
+esperar('el texto del Resumen explica de donde sale', dec.decode(zip['xl/worksheets/sheet1.xml']).includes('Base din&#225;mica')
+    || dec.decode(zip['xl/worksheets/sheet1.xml']).includes('Base dinámica'));
+esperar('la dinamica apunta a las filas que hay', cacheXml.includes('ref="A1:AF6"'),
     (dec.decode(zip['xl/pivotCache/pivotCacheDefinition1.xml']).match(/worksheetSource ref="[^"]*"/) || [])[0]);
 
 // Que no haya quedado una hoja repetida si se arma dos veces
 const otra = armarLibroViajes(filas, 'PRUEBA', []);
 const wb2 = XLSX.read(otra, { type: 'buffer' });
-esperar('armarlo dos veces no duplica las hojas', wb2.SheetNames.length === 5, wb2.SheetNames);
+esperar('armarlo dos veces no duplica las hojas', wb2.SheetNames.length === 6, wb2.SheetNames);
 
 fs.unlinkSync(SALIDA);
 console.log('\n' + (todo ? 'TODO BIEN' : '*** HAY FALLAS ***'));
