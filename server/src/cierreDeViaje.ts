@@ -57,6 +57,7 @@ export type TipoDeAviso =
     | 'hora-fuera-de-rango'       // una hora que no se puede creer; se trata como si no estuviera
     | 'ventana-no-achicada'       // el fin deberia ser anterior, pero dejaria una parada afuera
     | 'deposito-antes-de-entrega' // la vuelta al deposito marcada antes de la ultima entrega: se toma como sin hora
+    | 'ventana-mantenida'         // con mantenerVentana: la ventana seria otra, pero se deja la que esta
     | 'ventana-invertida'         // la ventana calculada termina antes de empezar; no se escribe
     | 'viaje-returnTime-distinto' // el trip tiene una vuelta cargada a mano, distinta a la ventana
     | 'viaje-abierto'             // la ruta no esta cerrada: no se toca nada
@@ -150,7 +151,7 @@ function mismaHora(a: Date | null | undefined, b: Date | null | undefined): bool
 export async function normalizarViajeAlCerrar(
     prisma: PrismaClient,
     routeId: number,
-    opciones: { dryRun?: boolean } = {}
+    opciones: { dryRun?: boolean; mantenerVentana?: boolean } = {}
 ): Promise<InformeDeCierre> {
     const dryRun = !!opciones.dryRun;
 
@@ -349,6 +350,18 @@ export async function normalizarViajeAlCerrar(
                 finNuevo = ultima;
             }
         }
+    }
+
+    // Repaso de un mes viejo donde el operador ya corrigio las ventanas a mano:
+    // se ordenan las paradas pero la ventana queda como esta, y se avisa cual
+    // seria. Sirve cuando las marcas del chofer no son de fiar (las marco todas
+    // juntas al final, toco el deposito horas despues, o la ventana esta en
+    // otro dia), para no cambiar horas a liquidar sin que lo mire una persona.
+    if (opciones.mantenerVentana && (!mismaHora(inicioNuevo, inicioAntes) || !mismaHora(finNuevo, finAntes))) {
+        avisar({ tipo: 'ventana-mantenida', llegada: iso(inicioNuevo), salida: iso(finNuevo),
+            texto: `Segun las paradas la ventana seria ${hhmm(inicioNuevo)} a ${hhmm(finNuevo)}; se deja ${hhmm(inicioAntes)} a ${hhmm(finAntes)}` });
+        inicioNuevo = inicioAntes;
+        finNuevo = finAntes;
     }
 
     // Nunca una ventana que termina antes de empezar.

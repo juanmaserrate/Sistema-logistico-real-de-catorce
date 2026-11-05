@@ -5305,7 +5305,9 @@ app.post('/api/admin/cerrar-viajes-colgados', async (req: any, res: any) => {
  *    Devuelve totales, el detalle de lo que cambio por viaje y los avisos que
  *    necesitan un ojo humano (paradas de menos de 2 minutos, solapadas, etc). */
 app.post('/api/admin/normalizar-viajes', async (req: any, res: any) => {
-    const { key, ids, mes, dryRun } = req.body || {};
+    // mantenerVentana: ordena las paradas pero no toca la ventana (ni las horas
+    // del viaje). Para meses viejos con ventanas corregidas a mano.
+    const { key, ids, mes, dryRun, mantenerVentana } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     try {
         // Solo rutas cerradas: con fin o en COMPLETED. La funcion vuelve a
@@ -5333,7 +5335,7 @@ app.post('/api/admin/normalizar-viajes', async (req: any, res: any) => {
         const avisos: any[] = [];
         for (const r of rutas) {
             try {
-                const inf = await normalizarViajeAlCerrar(prisma, r.id, { dryRun: !!dryRun });
+                const inf = await normalizarViajeAlCerrar(prisma, r.id, { dryRun: !!dryRun, mantenerVentana: !!mantenerVentana });
                 if (inf.omitido) totales.omitidos++;
                 totales.reordenadas += inf.reordenadas;
                 totales.cerradas += inf.cerradas;

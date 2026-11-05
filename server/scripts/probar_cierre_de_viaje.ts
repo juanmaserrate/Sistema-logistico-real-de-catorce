@@ -197,6 +197,22 @@ async function correr() {
         esperar('el fin se extiende a 11:30', inf.ventana?.despues.fin === ISO('11:30'), inf.ventana);
     }
     {
+        // Septiembre de 2026: ventanas corregidas a mano por el operador y
+        // marcas del chofer que no son de fiar (todas juntas al final, o el
+        // deposito horas despues). Se ordena, la ventana no se toca.
+        console.log('\n5e. Con mantenerVentana: ordena las paradas pero la ventana y las horas del viaje quedan como estan');
+        const sinE = viaje1.stops.filter((s: any) => s.id !== 16);
+        const { prisma, escrituras } = prismaFalso(ruta(sinE, {
+            actualEndTime: T('13:00'),
+            trip: { id: 500, status: 'COMPLETED', exitTime: T('09:00'), returnTime: T('13:00'), completedAt: T('13:00') }
+        }));
+        const inf = await normalizarViajeAlCerrar(prisma, 100, { mantenerVentana: true });
+        esperar('reordena igual', inf.reordenadas > 0, inf.reordenadas);
+        esperar('no cambia la ventana', !inf.ventana && !escrituras.route.some((w) => w.data.actualStartTime || w.data.actualEndTime), escrituras.route);
+        esperar('no toca exitTime ni returnTime', !escrituras.trip.some((w) => w.data.exitTime || w.data.returnTime), escrituras.trip);
+        esperar('avisa cual seria la ventana', tipos(inf).includes('ventana-mantenida'), tipos(inf));
+    }
+    {
         console.log('\n6. Igual, pero el trip tiene una vuelta cargada a mano (12:30): no se toca y se avisa');
         const sinE = viaje1.stops.filter((s: any) => s.id !== 16);
         const { prisma, escrituras } = prismaFalso(ruta(sinE, {
