@@ -13316,7 +13316,27 @@ app.put('/api/v1/trips/:id', async (req, res) => {
                 'contractType' in body ? body.contractType : before?.contractType
             );
         }
+        // Si cambia el Usuario App, la cuenta tiene que existir y la RUTA tiene
+        // que seguirlo: el celular recibe las paradas por route.driverId, no
+        // por el nombre que dice el viaje. Sin esto el viaje decia una cuenta
+        // y las paradas le llegaban a otra ("rutas en otra cuenta").
+        let cuentaNueva: any = null;
+        if ('assignedMobileUser' in body && body.assignedMobileUser
+            && String(body.assignedMobileUser) !== String(before?.assignedMobileUser || '')) {
+            cuentaNueva = await findDriverUser(String(body.assignedMobileUser));
+            if (!cuentaNueva) {
+                return res.status(400).json({ error: `No existe el usuario de app "${body.assignedMobileUser}"` });
+            }
+            body.assignedMobileUser = cuentaNueva.username;
+        }
         const trip = await prisma.trip.update({ where: { id: parseInt(id) }, data: body });
+        if (cuentaNueva) {
+            const route = await prisma.route.findUnique({ where: { tripId: trip.id }, select: { id: true } });
+            if (route) {
+                await prisma.route.update({ where: { id: route.id }, data: { driverId: cuentaNueva.id } });
+                io.to(`driver:${cuentaNueva.id}`).emit('route:updated', { routeId: route.id, tripId: trip.id, type: 'reassigned' });
+            }
+        }
         res.json(trip);
         io.emit('trip:updated', { trip });
         logAction(req, 'UPDATE', 'trip', trip.id, trip.driver || id, before, trip)

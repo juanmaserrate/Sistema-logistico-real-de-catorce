@@ -1594,12 +1594,18 @@
                     <!-- Assignments table with module checkboxes -->
                     <div class="overflow-x-auto custom-scrollbar rounded-2xl border border-[#F4F7FE]">
                         <table class="w-full text-left" id="profile-access-table">
-                            <thead>
-                                <tr id="profile-assignments-head">
-                                    <!-- Los titulos los arma renderProfileAssignments
-                                         desde ALL_MODULES: escritos a mano se corrian. -->
-                                </tr>
-                            </thead>
+                            <thead>
+
+                                <tr id="profile-assignments-head">
+
+                                    <!-- Los titulos los arma renderProfileAssignments
+
+                                         desde ALL_MODULES: escritos a mano se corrian. -->
+
+                                </tr>
+
+                            </thead>
+
                             <tbody id="profile-assignments-body" class="divide-y divide-[#F4F7FE]"></tbody>
                         </table>
                     </div>
@@ -18710,7 +18716,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
         }
 
-        function openBulkEditModal() {
+        async function openBulkEditModal() {
             if (selectedTripIds.size === 0) return;
             const modal = document.getElementById('bulk-edit-modal');
             document.getElementById('bulk-edit-count').textContent = `${selectedTripIds.size} viajes seleccionados`;
@@ -18741,11 +18747,23 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const buList = getBusinessUnitsCatalog();
             buSel.innerHTML = '<option value="">— No cambiar —</option>' + buList.map(b => `<option value="${b}">${b}</option>`).join('');
 
+            // Usuario App: las mismas cuentas con rol DRIVER que ofrece el
+            // formulario de un viaje, pedidas por el mismo camino. El valor es
+            // el username, que es lo que el servidor resuelve a la cuenta.
+            const mobileSel = document.getElementById('bulk-edit-mobile-user');
+            let cuentas = [];
+            try { cuentas = await fetchUsersByRole('DRIVER'); } catch (_) { cuentas = []; }
+            cuentas = [...(cuentas || [])]
+                .sort((a, b) => (a.fullName || a.username).localeCompare(b.fullName || b.username));
+            mobileSel.innerHTML = '<option value="">— No cambiar —</option>'
+                + cuentas.map(u => `<option value="${u.username}">${u.fullName || u.username}</option>`).join('');
+
             // Reset all fields
             document.getElementById('bulk-edit-contract').value = '';
             document.getElementById('bulk-edit-status').value = '';
             document.getElementById('bulk-edit-provider').value = '';
             document.getElementById('bulk-edit-vuelta').value = '';
+            document.getElementById('bulk-edit-mobile-user').value = '';
 
             modal.classList.remove('hidden');
             if (typeof lucide !== 'undefined') lucide.createIcons();
@@ -18771,8 +18789,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const status = document.getElementById('bulk-edit-status').value;
             const provider = document.getElementById('bulk-edit-provider').value.trim();
             const vuelta = document.getElementById('bulk-edit-vuelta').value;
+            const mobileUser = document.getElementById('bulk-edit-mobile-user').value;
 
             if (driver) changes.driver = driver;
+            if (mobileUser) changes.assignedMobileUser = mobileUser;
             if (contract) changes.contractType = contract;
             if (bu) changes.businessUnit = bu;
             if (reparto) changes.tripType = reparto;
@@ -29429,6 +29449,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         <select id="bulk-edit-driver" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500">
                             <option value="">— No cambiar —</option>
                         </select>
+                    </div>
+                    <div>
+                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Usuario App</label>
+                        <select id="bulk-edit-mobile-user" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500">
+                            <option value="">— No cambiar —</option>
+                        </select>
+                        <p class="text-[10px] text-[#A3AED0] mt-1 leading-snug">Quién lo ve en el celular. La ruta pasa a esa cuenta.</p>
                     </div>
                     <div>
                         <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-2">Contrato</label>
