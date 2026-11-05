@@ -19550,25 +19550,27 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const rows = data.map(t => ({
                 'ID': t.id || '',
                 'Fecha': t.date || '',
-                'Localidad': t.zone || '',
+                // Mismo orden que las hojas Propios/Tercerizados del export con
+                // formato: Partido, Localidad, la unidad y Refrigerado al final.
                 'Partido': (typeof getLocalidadFromZone === 'function' ? getLocalidadFromZone(t.zone) : '') || '',
+                'Localidad': t.zone || '',
+                'Unidad Negocio': (typeof formatBusinessUnit === 'function' ? formatBusinessUnit(t.businessUnit) : (t.businessUnit || '')),
                 'Chofer': t.driver || '',
                 'Auxiliar 1': t.auxiliar || '',
                 'Auxiliar 2': t.auxiliar2 || '',
                 'Auxiliar 3': t.auxiliar3 || '',
                 'Reparto': t.tripType || t.reparto || '',
                 'Usuario App': t.assignedMobileUser || '',
-                'Unidad Negocio': (typeof formatBusinessUnit === 'function' ? formatBusinessUnit(t.businessUnit) : (t.businessUnit || '')),
                 'Contrato': t.contractType || '',
                 'Vuelta': t.vuelta || t.roundNumber || 1,
-                'Refrigerado': t.isRefrigerated ? 'Sí' : 'No',
                 'Temperatura': t.isRefrigerated ? (t.temperature ?? '') : '',
                 'Costo ($)': typeof getTripCalculatedCost === 'function' ? getTripCalculatedCost(t) : (Number(t.value) || 0),
                 'Unidad': (typeof resolveTripPlate === 'function' ? resolveTripPlate(t) : '') || t.vehicle || '',
                 'Hora Inicio Recorrido': fmtHora(t.routeActualStart),
                 'Hora Fin Recorrido': fmtHora(t.routeActualEnd),
                 'Duración Recorrido': fmtDuracion(t),
-                'Estado': estadoTexto(t)
+                'Estado': estadoTexto(t),
+                'Refrigerado': t.isRefrigerated ? 'Sí' : 'No'
             }));
 
             const ws = XLSX.utils.json_to_sheet(rows);
