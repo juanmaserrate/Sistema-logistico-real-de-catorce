@@ -71,14 +71,17 @@ const VIAJES = [
         contractType: 'Tercerizado', value: 0, vuelta: 2, businessUnit: 'SAE LANUS', zone: 'Zona 1',
         linkedRoute: ruta(ba(7, '10:30:00'), ba(7, '12:00:00'), paradasR1SinHora())
     }),
-    // 105: propio LIBRE con valor normal ($29.157): limpio
+    // 105: propio LIBRE con valor normal ($29.157): limpio. El deposito marca la
+    //      SALIDA del viaje como llegada y la VUELTA como salida (asi quedaron 69
+    //      viajes de octubre normalizados): no es una parada que pisa a las demas
+    //      ni una fuera de orden.
     viaje({
         id: 105, date: fecha(9), reparto: 'LIBRE', driver: 'DAMIAN GALARZA', provider: null,
         contractType: 'Propio', value: 29157, businessUnit: 'SAE BROWN', zone: 'Zona 2',
         linkedRoute: ruta(ba(9, '09:16:11'), ba(9, '13:42:37'), [
             parada(1, 'X ESCUELA', ba(9, '09:30:00'), ba(9, '09:45:00')),
             parada(2, 'Y ESCUELA', ba(9, '10:00:00'), ba(9, '10:10:00')),
-            deposito(3, ba(9, '13:30:00'), ba(9, '13:42:37')),
+            deposito(3, ba(9, '09:16:11'), ba(9, '13:42:37')),
         ])
     }),
     // 106: otro LIBRE del mismo chofer con las mismas paradas (NO es duplicado: LIBRE se repite),

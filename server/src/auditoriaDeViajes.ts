@@ -464,8 +464,11 @@ export function auditarViajes(
             }
         }
 
-        // 9. Dos paradas a la vez: por orden de llegada, una arranca antes de que termine la anterior
-        const porLlegada = v.paradas.filter((p) => p.llegada != null).sort((a, b) => a.llegada! - b.llegada! || a.seq - b.seq);
+        // 9. Dos paradas a la vez: por orden de llegada, una arranca antes de que termine la anterior.
+        //    Sin el deposito: "el deposito es el cierre del viaje, no una parada". Su
+        //    llegada suele ser la SALIDA del viaje y su salida la VUELTA, asi que
+        //    contado como parada "pisaba" a todas las del viaje.
+        const porLlegada = v.paradas.filter((p) => !p.deposito && p.llegada != null).sort((a, b) => a.llegada! - b.llegada! || a.seq - b.seq);
         for (let i = 1; i < porLlegada.length; i++) {
             const previa = porLlegada[i - 1], p = porLlegada[i];
             if (previa.salida != null && p.llegada! < previa.salida - TOLERANCIA_MS) {
@@ -474,8 +477,9 @@ export function auditarViajes(
             }
         }
 
-        // 10. Secuencia fuera de orden: el numero de parada no sigue las horas
-        const conHora = v.paradas.filter((p) => p.llegada != null || p.salida != null);
+        // 10. Secuencia fuera de orden: el numero de parada no sigue las horas.
+        //     Sin el deposito, por lo mismo: va ultimo y su "llegada" es la salida.
+        const conHora = v.paradas.filter((p) => !p.deposito && (p.llegada != null || p.salida != null));
         let fueraDeOrden = 0;
         for (let i = 1; i < conHora.length; i++) {
             const h = (p: Parada) => (p.llegada ?? p.salida)!;
