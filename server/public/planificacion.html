@@ -17439,6 +17439,7 @@
                         <div id="weekly-inc-list-${tripId}" class="space-y-2 text-xs"></div>
                     </div>
                 `;
+                wrap.insertAdjacentHTML('afterbegin', _weeklyObservacionesHtml(tripId));
                 loadWeeklyTripIncidents(tripId);
                 if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
                 return;
@@ -17502,8 +17503,26 @@
             `;
             weeklyStopsBindDrag(tripId);
             weeklyStopsPopulateAddSelect(tripId);
+            wrap.insertAdjacentHTML('afterbegin', _weeklyObservacionesHtml(tripId));
             loadWeeklyTripIncidents(tripId);
             if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
+        }
+
+        /** La justificacion y las indicaciones del viaje, arriba de sus paradas. */
+        function _weeklyObservacionesHtml(tripId) {
+            const t = getWeeklyTripById(tripId);
+            const just = String(t?.justificacion || '').trim();
+            const obs = String(t?.observacionChofer || '').trim();
+            if (!just && !obs) return '';
+            const caja = (titulo, texto, cls) => `
+                <div class="rounded-xl px-3 py-2 ${cls}">
+                    <p class="text-[10px] font-bold uppercase tracking-wider opacity-70">${titulo}</p>
+                    <p class="text-[12px] font-semibold whitespace-pre-wrap leading-snug">${escapeHtmlWeekly(texto)}</p>
+                </div>`;
+            return `<div class="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+                ${just ? caja('Justificación del viaje', just, 'bg-[#F4F7FE] text-[#1B2559]') : ''}
+                ${obs ? caja('Indicaciones para el chofer · app y HDR', obs, 'bg-amber-50 text-amber-800') : ''}
+            </div>`;
         }
 
         /** Las opciones de a quien le toca una parada: las rutas del viaje y,
@@ -18553,7 +18572,7 @@
   .na::before { content: "N/A"; font-size: 7px; color: #c0392b; position: absolute; top: 1px; left: 3px; }
   .na::after { content: ""; position: absolute; inset: 0; background: linear-gradient(to top right, transparent calc(50% - 0.8px), #c0392b calc(50% - 0.8px), #c0392b calc(50% + 0.8px), transparent calc(50% + 0.8px)); }
   .sec-title { background: #1B2559; color: #fff; font-size: 9px; font-weight: bold; text-transform: uppercase; letter-spacing: 1px; padding: 3px 6px; margin: 8px 0 0; border-radius: 4px 4px 0 0; }
-  .obs { border: 1px solid #999; border-top: none; min-height: 46px; padding: 4px; }
+  .obs { border: 1px solid #999; border-top: none; min-height: 46px; padding: 4px 6px; font-size: 11px; font-weight: bold; white-space: pre-wrap; }
   .env th { background: #2B3674; }
   .env td { height: 30px; text-align: center; }
   .env .sec { background: #F4F7FE; font-weight: bold; text-align: left; }
@@ -18676,7 +18695,7 @@
                     <tbody>${stopRows}</tbody>
                 </table>
                 <div class="sec-title">Observaciones</div>
-                <div class="obs"></div>
+                <div class="obs">${esc(trip.observacionChofer || '')}</div>
                 <div class="sec-title">Envases · Entrada y salida de cajones con seña</div>
                 <table class="env">
                     <thead><tr>${envHead}</tr></thead>
@@ -28507,6 +28526,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const tempInpNew = document.getElementById('new-trip-temperature');
             if (refSelNew) refSelNew.value = 'no';
             if (tempInpNew) { tempInpNew.value = ''; tempInpNew.disabled = true; }
+            const justNew = document.getElementById('new-trip-justificacion');
+            const obsNew = document.getElementById('new-trip-obs-chofer');
+            if (justNew) justNew.value = '';
+            if (obsNew) obsNew.value = '';
             const vueltaSel = document.getElementById('new-trip-vuelta');
             if (vueltaSel) vueltaSel.value = '1';
             const modoSel = document.getElementById('new-trip-modo');
@@ -28790,6 +28813,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const tempInp = document.getElementById('new-trip-temperature');
             if (refSel) refSel.value = trip.isRefrigerated ? 'si' : 'no';
             if (tempInp) tempInp.value = trip.temperature != null ? String(trip.temperature) : '';
+            const justEd = document.getElementById('new-trip-justificacion');
+            const obsEd = document.getElementById('new-trip-obs-chofer');
+            if (justEd) justEd.value = trip.justificacion || '';
+            if (obsEd) obsEd.value = trip.observacionChofer || '';
             if (typeof onNewTripRefrigeratedChange === 'function') onNewTripRefrigeratedChange();
             
             if (trip.exitTime) {
@@ -28921,6 +28948,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
             const baseTripData = {
                 camposExtra: leerCamposExtra(),
+                justificacion: (document.getElementById('new-trip-justificacion')?.value || '').trim() || null,
+                observacionChofer: (document.getElementById('new-trip-obs-chofer')?.value || '').trim() || null,
                 isManual: esManual,
                 businessUnit: document.getElementById('new-trip-bu').value,
                 driver: (document.getElementById('new-trip-driver').value || '').trim().toUpperCase(),
@@ -30706,6 +30735,33 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                             </div>
                             <div id="new-trip-extra" class="hidden grid grid-cols-2 gap-2 border-t border-[#F4F7FE] pt-3"></div>
                         </div>
+                        </div>
+                    </section>
+
+                    <!-- 4 ─ OBSERVACIONES: una interna y una que ve el chofer -->
+                    <section class="card-dark p-0 overflow-hidden flex flex-col lg:col-span-2 xl:col-span-3">
+                        <div class="px-4 py-3 flex items-center gap-2.5" style="background: var(--wk-fila-alt);">
+                            <span class="w-6 h-6 rounded-lg bg-indigo-600 text-white text-[11px] font-black grid place-items-center shrink-0">4</span>
+                            <div class="min-w-0">
+                                <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest leading-tight">Observaciones</h4>
+                                <p class="text-[10px] font-semibold text-[#A3AED0] leading-tight mt-0.5">Opcionales</p>
+                            </div>
+                        </div>
+                        <div class="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <div>
+                                <label for="new-trip-justificacion" class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Justificación del viaje</label>
+                                <textarea id="new-trip-justificacion" rows="3" maxlength="600"
+                                          placeholder="Por qué se hace este viaje. Ej.: reposición pedida por la escuela, faltante del lunes…"
+                                          class="w-full bg-[#F4F7FE] rounded-xl p-3 text-[13px] font-semibold outline-none focus:ring-2 focus:ring-indigo-500 resize-y min-h-[80px]"></textarea>
+                                <p class="text-[10px] text-[#A3AED0] mt-1 leading-snug">Queda en el sistema. El chofer no la ve.</p>
+                            </div>
+                            <div>
+                                <label for="new-trip-obs-chofer" class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Indicaciones para el chofer</label>
+                                <textarea id="new-trip-obs-chofer" rows="3" maxlength="600"
+                                          placeholder="Ej.: entrar por el portón de atrás, llamar a la directora antes de llegar…"
+                                          class="w-full bg-[#F4F7FE] rounded-xl p-3 text-[13px] font-semibold outline-none focus:ring-2 focus:ring-indigo-500 resize-y min-h-[80px]"></textarea>
+                                <p class="text-[10px] text-[#A3AED0] mt-1 leading-snug">Se ve en la app del chofer y en la hoja de ruta (HDR).</p>
+                            </div>
                         </div>
                     </section>
                 </div>

@@ -279,6 +279,10 @@ model Trip {
   /// { "id-del-campo": valor }. Van aca para no tener que tocar la tabla cada
   /// vez que alguien necesita un dato nuevo.
   camposExtra        Json?
+  /// Por que se hace el viaje. Es para planificacion: el chofer no la ve.
+  justificacion      String?
+  /// Indicaciones para el chofer: se ven en la app y en la hoja de ruta.
+  observacionChofer  String?
   stops              TripStop[]
   locations          TripLocation[]
   linkedRoute        Route?

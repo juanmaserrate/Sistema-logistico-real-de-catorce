@@ -4051,7 +4051,7 @@ app.get('/api/v1/routes', async (req, res) => {
     }
     const routes = await prisma.route.findMany({
         where,
-        include: { stops: { orderBy: { sequence: 'asc' }, include: { client: true } }, vehicle: true, driver: true, trip: { select: { id: true, businessUnit: true, reparto: true, zone: true, status: true, completedAt: true, isManual: true, rutas: true, tramos: { orderBy: { orden: 'asc' } } } } },
+        include: { stops: { orderBy: { sequence: 'asc' }, include: { client: true } }, vehicle: true, driver: true, trip: { select: { id: true, businessUnit: true, reparto: true, zone: true, status: true, completedAt: true, isManual: true, rutas: true, observacionChofer: true, tramos: { orderBy: { orden: 'asc' } } } } },
         orderBy: { date: 'desc' }
     });
     // Un viaje manual no va a ningun celular: se filtra cuando la consulta viene
