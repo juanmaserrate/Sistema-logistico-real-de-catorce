@@ -827,6 +827,7 @@ tfoot tr.payments-total-row span,
 [data-theme="dark"] .bg-emerald-50 { background-color: rgba(52, 211, 153, 0.10) !important; }
 [data-theme="dark"] .bg-amber-50 { background-color: rgba(251, 191, 36, 0.10) !important; }
 [data-theme="dark"] .bg-rose-50 { background-color: rgba(251, 113, 133, 0.10) !important; }
+[data-theme="dark"] .bg-orange-50 { background-color: rgba(251, 146, 60, 0.10) !important; }
 
 /* Dark — primary gradient */
 [data-theme="dark"] .bg-indigo-600 { background: linear-gradient(135deg, #8b6de8 0%, #b4a0f0 100%) !important; }

@@ -3135,6 +3135,28 @@ app.get('/api/v1/control/driver-status', async (req, res) => {
             }
         }
 
+        // Ultima parada que marco cada chofer (ultimos 30 dias). Sirve para
+        // separar "el telefono no tiene senal" de "el telefono anda pero no
+        // manda la ubicacion": marcar una parada prueba que tiene internet.
+        const ultimaParadaPorChofer: Record<string, Date> = {};
+        if (driverIds.length > 0) {
+            try {
+                const filas = await prisma.$queryRaw<any[]>`
+                    SELECT r."driverId",
+                           MAX(LEAST(GREATEST(s."actualArrival", s."actualDeparture"), NOW())) AS ultima
+                    FROM "Stop" s
+                    JOIN "Route" r ON r.id = s."routeId"
+                    WHERE r."driverId" = ANY(${driverIds}::text[])
+                      AND s."actualArrival" IS NOT NULL
+                      AND r.date >= NOW() - INTERVAL '30 days'
+                    GROUP BY r."driverId"
+                `;
+                for (const f of filas) if (f.ultima) ultimaParadaPorChofer[f.driverId] = new Date(f.ultima);
+            } catch (e: any) {
+                console.warn('[driver-status] error trayendo ultimas paradas:', e?.message || e);
+            }
+        }
+
         const now = Date.now();
         const out = routes.map((route: any) => {
             const stops = route.stops || [];
@@ -3145,11 +3167,20 @@ app.get('/api/v1/control/driver-status', async (req, res) => {
             const last = route.driverId ? lastByDriver[route.driverId] : null;
             const minutesAgo = last?.at ? Math.round((now - new Date(last.at).getTime()) / 60000) : null;
             const closed = !!route.actualEndTime || ['COMPLETED', 'RETURNED'].includes(String(route.trip?.status || '').toUpperCase());
-            let signal: 'ok' | 'stale' | 'dead' | 'never';
+            let signal: 'ok' | 'stale' | 'dead' | 'never' | 'nogps';
             if (minutesAgo == null) signal = 'never';
             else if (minutesAgo <= DRIVER_SIGNAL_OK_MIN) signal = 'ok';
             else if (minutesAgo <= DRIVER_SIGNAL_STALE_MIN) signal = 'stale';
             else signal = 'dead';
+            // El telefono marco paradas DESPUES del ultimo GPS: tiene internet,
+            // lo que no anda es la ubicacion (GPS del celular apagado, permiso
+            // de ubicacion o ahorro de bateria). Antes salia "Sin senal hace
+            // 255 h" en choferes que marcaban todas las paradas (nov 2026).
+            const ultimaParada = route.driverId ? ultimaParadaPorChofer[route.driverId] : null;
+            if ((signal === 'dead' || signal === 'never') && ultimaParada
+                && (!last?.at || ultimaParada.getTime() > new Date(last.at).getTime() + 10 * 60000)) {
+                signal = 'nogps';
+            }
             return {
                 routeId: route.id,
                 tripId: route.tripId ?? null,
@@ -3170,6 +3201,8 @@ app.get('/api/v1/control/driver-status', async (req, res) => {
                 stopsRetry: stops.filter((s: any) => String(s.status || '').toUpperCase() === 'RETRY').length,
                 hasBaseStop: stops.some((s: any) => s.isReturnToBase === true),
                 lastPingAt: last?.at ? new Date(last.at).toISOString() : null,
+                lastStopAt: ultimaParada ? ultimaParada.toISOString() : null,
+                minutesSinceStop: ultimaParada ? Math.max(0, Math.round((now - ultimaParada.getTime()) / 60000)) : null,
                 lastLat: last?.lat ?? null,
                 lastLng: last?.lng ?? null,
                 minutesAgo,

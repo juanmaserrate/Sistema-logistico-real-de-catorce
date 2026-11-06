@@ -34,7 +34,7 @@
          Plan gratuito: 50k cargas de mapa/mes. -->
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="/css/planificacion.css?v=20261109">
+    <link rel="stylesheet" href="/css/planificacion.css?v=20261110">
     <!-- Capa de movimiento: solo COMO aparecen las cosas, nada de colores ni
          tamanos. Sacando estas dos lineas (y el script de abajo) el sistema
          queda exactamente como estaba. -->
@@ -5543,6 +5543,11 @@
             if (min == null) return 'nunca reportó';
             if (min < 1) return 'recién';
             if (min < 60) return `hace ${min} min`;
+            // "hace 255 h 10 min" no se entiende: de un dia para arriba, en dias
+            if (min >= 1440) {
+                const d = Math.floor(min / 1440);
+                return `hace ${d} ${d === 1 ? 'día' : 'días'}`;
+            }
             const h = Math.floor(min / 60);
             return `hace ${h} h ${min % 60} min`;
         }
@@ -5551,6 +5556,8 @@
             ok:    { dot: 'bg-emerald-500', card: 'bg-emerald-50',  txt: 'text-emerald-700', label: 'Reportando' },
             stale: { dot: 'bg-amber-500',   card: 'bg-amber-50',    txt: 'text-amber-700',   label: 'Señal débil' },
             dead:  { dot: 'bg-rose-500',    card: 'bg-rose-50',     txt: 'text-rose-700',    label: 'Sin señal' },
+            // Marca paradas (tiene internet) pero no manda la ubicacion
+            nogps: { dot: 'bg-orange-500',  card: 'bg-orange-50',   txt: 'text-orange-700',  label: 'GPS apagado' },
             never: { dot: 'bg-slate-400',   card: 'bg-slate-100',   txt: 'text-slate-600',   label: 'Nunca reportó' }
         };
 
@@ -5568,15 +5575,17 @@
                 if (dateEl && !dateEl.value) dateEl.value = data.date;
 
                 // Los que hay que mirar primero: sin señal arriba, ya cerrados abajo.
-                const rank = { dead: 0, never: 1, stale: 2, ok: 3 };
+                const rank = { dead: 0, never: 1, nogps: 2, stale: 3, ok: 4 };
                 rows.sort((a, b) => (a.closed - b.closed) || (rank[a.signal] - rank[b.signal]));
 
                 const activos = rows.filter(r => !r.closed);
                 const alerta = activos.filter(r => r.signal === 'dead' || r.signal === 'never').length;
+                const sinGps = activos.filter(r => r.signal === 'nogps').length;
                 const kpis = [
                     { label: 'Viajes del día', val: rows.length, cls: 'text-[#1B2559]' },
                     { label: 'En curso', val: activos.length, cls: 'text-[#451ebb]' },
-                    { label: 'Sin señal', val: alerta, cls: alerta > 0 ? 'text-rose-600' : 'text-[#1B2559]' },
+                    { label: 'Sin señal', val: alerta, cls: alerta > 0 ? 'text-rose-600' : 'text-[#1B2559]',
+                      sub: sinGps > 0 ? `+ ${sinGps} con GPS apagado` : '' },
                     { label: 'Sin fichar entrada', val: activos.filter(r => !r.punchedIn).length, cls: 'text-amber-600' }
                 ];
                 if (kpiEl) {
@@ -5584,6 +5593,7 @@
                         <div class="bg-[#F4F7FE] rounded-xl p-3">
                             <p class="text-[10px] font-bold text-[#A3AED0] uppercase tracking-wider">${k.label}</p>
                             <p class="text-2xl font-black ${k.cls} mt-1">${k.val}</p>
+                            ${k.sub ? `<p class="text-[10px] font-bold text-orange-600 mt-0.5">${k.sub}</p>` : ''}
                         </div>`).join('');
                 }
 
@@ -5612,7 +5622,9 @@
                         </div>
                         <div class="text-left sm:text-right shrink-0">
                             <p class="text-xs font-bold ${s.txt}">${s.label}</p>
-                            <p class="text-[11px] text-[#A3AED0]">${_dsAgo(r.minutesAgo)}</p>
+                            ${r.signal === 'nogps'
+                                ? `<p class="text-[11px] text-[#A3AED0]" title="Último GPS: ${_dsAgo(r.minutesAgo)}. El teléfono marca paradas, así que tiene internet: falta prender la ubicación.">marcó parada ${_dsAgo(r.minutesSinceStop)}</p>`
+                                : `<p class="text-[11px] text-[#A3AED0]">${_dsAgo(r.minutesAgo)}</p>`}
                         </div>
                         <div class="w-full sm:w-32 shrink-0">
                             <p class="text-[11px] font-bold text-[#1B2559]">${r.stopsDone}/${r.stopsTotal} paradas</p>
