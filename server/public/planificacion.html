@@ -34,7 +34,7 @@
          Plan gratuito: 50k cargas de mapa/mes. -->
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="/css/planificacion.css?v=20261107">
+    <link rel="stylesheet" href="/css/planificacion.css?v=20261108">
     <!-- Capa de movimiento: solo COMO aparecen las cosas, nada de colores ni
          tamanos. Sacando estas dos lineas (y el script de abajo) el sistema
          queda exactamente como estaba. -->
@@ -4682,9 +4682,9 @@
             const esDatos = cual !== 'paradas';
             document.getElementById('nt-panel-datos')?.classList.toggle('hidden', !esDatos);
             document.getElementById('nt-panel-paradas')?.classList.toggle('hidden', esDatos);
-            const base = 'px-4 py-2.5 rounded-t-xl text-[11px] font-black uppercase tracking-widest border-b-2 transition-all ';
-            const on = 'border-indigo-600 text-indigo-700 bg-white';
-            const off = 'border-transparent text-[#A3AED0] hover:text-[#2B3674]';
+            const base = 'px-3.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap ';
+            const on = 'bg-indigo-600 text-white shadow';
+            const off = 'text-[#A3AED0] hover:text-[#1B2559]';
             const bd = document.getElementById('nt-tab-datos-btn');
             const bp = document.getElementById('nt-tab-paradas-btn');
             if (bd) bd.className = base + (esDatos ? on : off);
@@ -4904,7 +4904,7 @@
 
             const btn = document.getElementById('new-trip-save-btn');
             if (btn && !editando) {
-                btn.textContent = f.length > 1 ? `CREAR ${f.length} VIAJES` : 'CREAR VIAJE';
+                btn.textContent = f.length > 1 ? `Crear ${f.length} viajes` : 'Crear viaje';
             }
             ntActualizarTabParadas();
         }
@@ -8210,7 +8210,7 @@
                             [CONTROL_BA_BOUNDS.east, CONTROL_BA_BOUNDS.north]  // NE
                         ],
                         attributionControl: true,
-                        cooperativeGestures: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches)
+                        cooperativeGestures: !!(window.matchMedia && matchMedia('(pointer: coarse) and (max-width: 1024px)').matches)
                     });
                     // Controles basicos: zoom + brujula + fullscreen
                     controlMap.addControl(new mapboxgl.NavigationControl(), 'top-right');
@@ -18742,7 +18742,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             await populateTripDeliveryAddSelect();
 
             document.getElementById('new-trip-modal-title').innerText = `Fusionar ${viajes.length} viajes en el #${base.trip.id}`;
-            document.getElementById('new-trip-save-btn').innerText = 'GUARDAR VIAJE FUSIONADO';
+            document.getElementById('new-trip-save-btn').innerText = 'Guardar viaje fusionado';
             _mostrarConflictosDeFusion(viajes.map(t => t), base.trip);
             ntTab('datos');
         }
@@ -25711,7 +25711,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const extra = _configCampos.extra || [];
             host.classList.toggle('hidden', extra.length === 0);
             host.innerHTML = extra.map(c => {
-                const comun = 'w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500';
+                const comun = 'nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500';
                 let control;
                 if (c.tipo === 'lista') {
                     const ops = (c.opciones || []).map(o => `<option value="${escapeHtml(o)}">${escapeHtml(o)}</option>`).join('');
@@ -28142,8 +28142,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             acActivar(document.getElementById('new-trip-driver'));
             acActivar(document.getElementById('new-trip-zone'));
             document.getElementById('new-trip-id').value = '';
-            document.getElementById('new-trip-modal-title').innerText = 'Nuevo Viaje';
-            document.getElementById('new-trip-save-btn').innerText = 'CREAR VIAJE';
+            document.getElementById('new-trip-modal-title').innerText = 'Nuevo viaje';
+            document.getElementById('new-trip-save-btn').innerText = 'Crear viaje';
             // Si quedo una fusion a medias de antes, no se arrastra
             _fusionAbsorbidos = [];
             document.getElementById('nt-fusion-aviso')?.classList.add('hidden');
@@ -28549,8 +28549,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             
             document.getElementById('new-trip-id').value = trip.id;
             cargarConfigCampos().then(() => { aplicarConfigCampos(); pintarCamposExtra(trip.camposExtra); });
-            document.getElementById('new-trip-modal-title').innerText = `Editar Viaje #${trip.id}`;
-            document.getElementById('new-trip-save-btn').innerText = 'GUARDAR CAMBIOS';
+            document.getElementById('new-trip-modal-title').innerText = `Editar viaje #${trip.id}`;
+            document.getElementById('new-trip-save-btn').innerText = 'Guardar cambios';
 
             // Fill values
             if (trip.date) {
@@ -30246,21 +30246,23 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
     <div id="new-trip-modal" class="modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center p-3" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
         <div class="bg-white rounded-3xl w-[97vw] max-w-[1500px] max-h-[96vh] shadow-2xl overflow-hidden flex flex-col">
-            <div class="px-6 py-4 border-b border-[#F4F7FE] flex justify-between items-center bg-[#F8FAFF]">
-                <h3 id="new-trip-modal-title" class="font-black text-[#1B2559] uppercase tracking-widest text-sm">Nuevo Viaje</h3>
-                <button onclick="closeNewTripModal()" class="text-[#A3AED0] hover:text-[#1B2559] transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
-            </div>
-            <!-- Pestanas: los datos del viaje y las paradas no compiten por lugar -->
-            <div class="px-6 pt-3 bg-[#F8FAFF] border-b border-[#F4F7FE] flex items-center gap-1">
-                <button type="button" id="nt-tab-datos-btn" onclick="ntTab('datos')"
-                        class="px-4 py-2.5 rounded-t-xl text-[11px] font-black uppercase tracking-widest border-b-2 transition-all">Datos del viaje</button>
-                <button type="button" id="nt-tab-paradas-btn" onclick="ntTab('paradas')"
-                        class="px-4 py-2.5 rounded-t-xl text-[11px] font-black uppercase tracking-widest border-b-2 transition-all">
-                    Paradas <span id="nt-tab-paradas-count" class="font-bold">· 0</span>
-                </button>
+            <!-- Titulo y pestanas en una sola fila: los datos del viaje y las
+                 paradas no compiten por lugar -->
+            <div class="px-4 sm:px-6 py-3 bg-white flex items-center gap-x-4 gap-y-2 flex-wrap">
+                <h3 id="new-trip-modal-title" class="text-base font-extrabold text-[#1B2559] whitespace-nowrap">Nuevo viaje</h3>
+                <div class="inline-flex rounded-xl bg-[#F4F7FE] p-1 order-3 sm:order-none" role="tablist" aria-label="Secciones del viaje">
+                    <button type="button" id="nt-tab-datos-btn" onclick="ntTab('datos')"
+                            class="px-3.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap bg-indigo-600 text-white shadow">Datos del viaje</button>
+                    <button type="button" id="nt-tab-paradas-btn" onclick="ntTab('paradas')"
+                            class="px-3.5 py-1.5 rounded-lg text-[11px] font-bold whitespace-nowrap text-[#A3AED0] hover:text-[#1B2559]">
+                        Paradas <span id="nt-tab-paradas-count" class="font-bold tabular-nums">· 0</span>
+                    </button>
+                </div>
+                <button type="button" onclick="closeNewTripModal()" aria-label="Cerrar"
+                        class="ml-auto w-9 h-9 rounded-xl grid place-items-center text-[#A3AED0] hover:text-[#1B2559] hover:bg-[#F4F7FE] transition-colors"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
 
-            <div class="px-6 py-4 overflow-y-auto custom-scrollbar flex-1">
+            <div class="px-3 sm:px-5 py-4 overflow-y-auto custom-scrollbar flex-1" style="background: var(--surface);">
                 <input type="hidden" id="new-trip-id">
                 <!-- Compatibilidad: la logica de contrato, tarifa y edicion lee
                      estas fechas. Las escribe el calendario. -->
@@ -30276,24 +30278,28 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     <div id="nt-fusion-aviso-texto" class="text-[11px] font-bold text-amber-800 leading-relaxed space-y-0.5"></div>
                 </div>
 
-                <div id="nt-panel-datos" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 items-start">
+                <div id="nt-panel-datos" class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4 items-stretch">
 
                     <!-- 1 ─ QUE VIAJE ES: lo que lo identifica y lo que no puede repetirse -->
-                    <div class="rounded-2xl border border-[#E0E5F2] bg-white p-4 space-y-3">
-                        <div class="flex items-center gap-2">
-                            <span class="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center">1</span>
-                            <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest">Qué viaje es</h4>
+                    <section class="card-dark p-0 overflow-hidden flex flex-col">
+                        <div class="px-4 py-3 flex items-center gap-2.5" style="background: var(--wk-fila-alt);">
+                            <span class="w-6 h-6 rounded-lg bg-indigo-600 text-white text-[11px] font-black grid place-items-center shrink-0">1</span>
+                            <div class="min-w-0">
+                                <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest leading-tight">Qué viaje es</h4>
+                                <p class="text-[10px] font-semibold text-[#A3AED0] leading-tight mt-0.5">Ruta, vuelta y días</p>
+                            </div>
                         </div>
+                        <div class="p-4 space-y-3 flex-1">
                         <div class="grid grid-cols-2 gap-2">
                             <div>
                                 <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Reparto / Ruta</label>
-                                <select id="new-trip-reparto" onchange="onNewTripRepartoChange()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                                <select id="new-trip-reparto" onchange="onNewTripRepartoChange()" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"></select>
                             </div>
                             <div>
                                 <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Vuelta del día</label>
                                 <select id="new-trip-vuelta" onchange="ntCalRender()"
                                         title="La 2ª y la 3ª no reprorratean el jornal del auxiliar. Solo aplica a contrato Propio."
-                                        class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                        class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
                                     <option value="1">1ª vuelta</option>
                                     <option value="2">2ª vuelta</option>
                                     <option value="3">3ª o más</option>
@@ -30307,13 +30313,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         <div>
                             <ul id="trip-rutas-list" class="space-y-1"></ul>
                             <select id="trip-rutas-agregar" onchange="agregarRutaAlViaje(this.value)"
-                                    class="mt-1.5 w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2 text-xs font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                                    class="nt-campo nt-sumar mt-1.5 w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"></select>
                             <p id="new-trip-reparto-hint" class="hidden mt-1 text-[10px] font-bold text-indigo-600 leading-snug"></p>
                         </div>
 
                         <div>
                             <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Días <span class="normal-case font-medium text-[#A3AED0]">— tocá uno o varios</span></label>
-                            <div class="rounded-xl border border-[#E0E5F2] bg-[#F8FAFF] p-2.5">
+                            <div class="rounded-xl bg-[#F4F7FE] p-2.5">
                                 <div class="flex items-center justify-between mb-1.5">
                                     <button type="button" onclick="ntCalMes(-1)" aria-label="Mes anterior"
                                             class="w-7 h-7 rounded-lg hover:bg-[#E8ECF8] text-[#2B3674] font-black">‹</button>
@@ -30335,27 +30341,32 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                             <div class="flex items-center justify-between gap-2 mt-1.5">
                                 <p id="nt-cal-resumen" class="text-[10px] font-bold text-[#2B3674]"></p>
                                 <div class="flex gap-1 shrink-0">
-                                    <button type="button" onclick="ntCalLunAVie()" class="px-2 py-1 rounded-lg bg-[#F4F7FE] text-[9px] font-black text-[#2B3674] uppercase hover:bg-[#E8ECF8]">Lun a vie</button>
-                                    <button type="button" onclick="ntCalLimpiar()" class="px-2 py-1 rounded-lg bg-[#F4F7FE] text-[9px] font-black text-[#2B3674] uppercase hover:bg-[#E8ECF8]">Limpiar</button>
+                                    <button type="button" onclick="ntCalLunAVie()" class="px-2.5 py-1 rounded-lg bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[10px] font-bold text-[#1B2559]">Lun a vie</button>
+                                    <button type="button" onclick="ntCalLimpiar()" class="px-2.5 py-1 rounded-lg bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[10px] font-bold text-[#1B2559]">Limpiar</button>
                                 </div>
                             </div>
                             <p id="nt-cal-aviso" class="hidden mt-1.5 text-[10px] font-bold text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-2 py-1.5 leading-snug"></p>
                         </div>
-                    </div>
+                        </div>
+                    </section>
 
                     <!-- 2 ─ QUIEN LO HACE: el chofer dictamina el contrato, el proveedor y la tarifa -->
-                    <div class="rounded-2xl border border-[#E0E5F2] bg-white p-4 space-y-3">
-                        <div class="flex items-center gap-2">
-                            <span class="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center">2</span>
-                            <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest">Quién lo hace</h4>
+                    <section class="card-dark p-0 overflow-hidden flex flex-col">
+                        <div class="px-4 py-3 flex items-center gap-2.5" style="background: var(--wk-fila-alt);">
+                            <span class="w-6 h-6 rounded-lg bg-indigo-600 text-white text-[11px] font-black grid place-items-center shrink-0">2</span>
+                            <div class="min-w-0">
+                                <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest leading-tight">Quién lo hace</h4>
+                                <p class="text-[10px] font-semibold text-[#A3AED0] leading-tight mt-0.5">Chofer, contrato, coche y auxiliares</p>
+                            </div>
                         </div>
+                        <div class="p-4 space-y-3 flex-1">
                         <div>
                             <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Chofer</label>
                             <div class="relative">
                                 <input type="text" id="new-trip-driver" list="new-trip-driver-list" autocomplete="off"
                                        oninput="onTripDriverChange()" onchange="onTripDriverChange()"
                                        placeholder="Seleccionar Chofer"
-                                       class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 pr-9 text-sm font-bold uppercase shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                       class="nt-campo w-full bg-[#F4F7FE] rounded-xl pr-9 uppercase outline-none focus:ring-2 focus:ring-indigo-500">
                                 <svg class="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3AED0]"
                                      viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
                                      stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg>
@@ -30369,11 +30380,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         </div>
 
                         <!-- Lo que el sistema deduce del chofer. Se puede cambiar. -->
-                        <div class="rounded-xl bg-[#F8FAFF] border border-dashed border-[#C9D2EA] p-3 space-y-2.5">
-                            <p class="text-[9px] font-black text-[#A3AED0] uppercase tracking-widest">Sale del chofer — se puede cambiar</p>
+                        <div id="nt-sale-del-chofer" class="rounded-xl bg-[#F4F7FE] p-3 space-y-2.5">
+                            <p class="text-[10px] font-semibold text-[#A3AED0]">Sale del chofer · se puede cambiar</p>
                             <div>
                                 <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Contrato</label>
-                                <select id="new-trip-contract" onchange="toggleVehicleTypeField(); ntRecalcular();" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                <select id="new-trip-contract" onchange="toggleVehicleTypeField(); ntRecalcular();" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
                                     <option value="Propio">Propio</option>
                                     <option value="Tercerizado">Tercerizado</option>
                                 </select>
@@ -30383,64 +30394,69 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                 <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Proveedor tercerizado</label>
                                 <input type="text" id="new-trip-provider" placeholder="Ej. JAVIER GAREIS" autocomplete="off"
                                        oninput="ntRecalcular()"
-                                       class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold uppercase shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                       class="nt-campo w-full bg-[#F4F7FE] rounded-xl uppercase outline-none focus:ring-2 focus:ring-indigo-500">
                             </div>
                             <div id="new-trip-value-container" class="hidden">
                                 <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Valor tercerizado ($)</label>
                                 <input type="number" id="new-trip-value" placeholder="Ej. 290000" min="0" step="1"
-                                       oninput="ntRecalcular()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                       oninput="ntRecalcular()" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
                                 <p class="text-[10px] text-[#A3AED0] mt-1 leading-snug">Sale de la tarifa del mes. Editable.</p>
                             </div>
                         </div>
 
                         <div id="new-trip-vehicle-container">
                             <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Coche / Patente</label>
-                            <select id="new-trip-vehicle" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                            <select id="new-trip-vehicle" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"></select>
                             <p id="new-trip-vehicle-hint" class="hidden mt-1 text-[10px] font-bold text-indigo-600"></p>
                         </div>
                         <div>
                             <div class="flex items-center justify-between mb-1">
                                 <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1 !mb-0">Auxiliares</label>
                                 <button type="button" onclick="agregarAuxiliarNuevo()"
-                                        class="px-2 py-1 rounded-lg bg-indigo-50 text-indigo-600 text-[9px] font-black hover:bg-indigo-100 uppercase whitespace-nowrap">+ Nuevo</button>
+                                        class="px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-[10px] font-bold whitespace-nowrap">+ Nuevo</button>
                             </div>
                             <div class="space-y-1.5">
-                                <select id="new-trip-aux1" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
-                                <select id="new-trip-aux2" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
-                                <select id="new-trip-aux3" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                                <select id="new-trip-aux1" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                                <select id="new-trip-aux2" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                                <select id="new-trip-aux3" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"></select>
                             </div>
                         </div>
-                    </div>
+                        </div>
+                    </section>
 
                     <!-- 3 ─ DONDE Y COMO -->
-                    <div class="rounded-2xl border border-[#E0E5F2] bg-white p-4 space-y-3">
-                        <div class="flex items-center gap-2">
-                            <span class="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-black flex items-center justify-center">3</span>
-                            <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest">Dónde y cómo</h4>
+                    <section class="card-dark p-0 overflow-hidden flex flex-col">
+                        <div class="px-4 py-3 flex items-center gap-2.5" style="background: var(--wk-fila-alt);">
+                            <span class="w-6 h-6 rounded-lg bg-indigo-600 text-white text-[11px] font-black grid place-items-center shrink-0">3</span>
+                            <div class="min-w-0">
+                                <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest leading-tight">Dónde y cómo</h4>
+                                <p class="text-[10px] font-semibold text-[#A3AED0] leading-tight mt-0.5">Localidad, unidad de negocio y horarios</p>
+                            </div>
                         </div>
+                        <div class="p-4 space-y-3 flex-1">
                         <div class="grid grid-cols-2 gap-2">
                             <div>
                                 <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Localidad</label>
                                 <input type="text" id="new-trip-zone" list="new-trip-zone-list" placeholder="Localidad…" autocomplete="off"
-                                       oninput="autoFillLocalidad()" onchange="autoFillLocalidad()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                       oninput="autoFillLocalidad()" onchange="autoFillLocalidad()" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
                                 <datalist id="new-trip-zone-list"></datalist>
                                 <p id="new-trip-zone-nota" class="hidden mt-1 text-[10px] font-bold text-[#A3AED0] leading-snug"></p>
                             </div>
                             <div>
                                 <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Partido (auto)</label>
                                 <input type="text" id="new-trip-loc" readonly
-                                       class="w-full bg-[#EEF1F8] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold text-[#A3AED0] shadow-sm outline-none">
+                                       class="nt-campo w-full bg-[#EEF1F8] rounded-xl text-[#A3AED0] outline-none">
                             </div>
                         </div>
                         <div>
                             <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Unidad de negocio <span class="text-rose-500">*</span></label>
-                            <div id="new-trip-bu-chips" class="w-full min-h-[40px] bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2 flex flex-wrap gap-1.5 items-center shadow-sm"></div>
+                            <div id="new-trip-bu-chips" class="w-full min-h-[40px] bg-[#F4F7FE] rounded-xl p-1.5 flex flex-wrap gap-1.5 items-center"></div>
                             <input type="hidden" id="new-trip-bu">
-                            <select id="new-trip-bu-agregar" onchange="agregarUnidadAlViaje(this.value)" class="mt-1.5 w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2 text-xs font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                            <select id="new-trip-bu-agregar" onchange="agregarUnidadAlViaje(this.value)" class="nt-campo nt-sumar mt-1.5 w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"></select>
                         </div>
                         <div>
                             <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Tipo de viaje</label>
-                            <select id="new-trip-modo" onchange="onNewTripModoChange(); ntRecalcular();" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                            <select id="new-trip-modo" onchange="onNewTripModoChange(); ntRecalcular();" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
                                 <option value="APP">Con app — el chofer marca cada parada</option>
                                 <option value="MANUAL">Manual — solo salida y llegada</option>
                             </select>
@@ -30448,21 +30464,21 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         </div>
                         <div>
                             <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Usuario App</label>
-                            <select id="new-trip-mobile-user" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                            <select id="new-trip-mobile-user" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"></select>
                             <p id="new-trip-mobile-user-hint" class="text-[10px] text-[#A3AED0] mt-1 leading-snug"></p>
                         </div>
                         <div class="grid grid-cols-2 gap-2">
                             <div>
                                 <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Hora salida</label>
-                                <input type="time" id="new-trip-exit" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                <input type="time" id="new-trip-exit" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
                             </div>
                             <div>
                                 <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Hora llegada</label>
-                                <input type="time" id="new-trip-return" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                <input type="time" id="new-trip-return" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
                             </div>
                         </div>
                         <button type="button" onclick="ntMasOpciones()"
-                                class="w-full flex items-center justify-between text-[10px] font-black text-[#A3AED0] uppercase tracking-widest hover:text-[#2B3674] pt-1">
+                                class="w-full flex items-center justify-between px-3 h-9 rounded-xl text-[11px] font-bold text-[#A3AED0] hover:text-[#1B2559] hover:bg-[#F4F7FE] transition-colors">
                             <span>Más opciones</span>
                             <span id="nt-mas-chevron" class="transition-transform">▾</span>
                         </button>
@@ -30470,7 +30486,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                             <div class="grid grid-cols-2 gap-2">
                                 <div>
                                     <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Refrigerado</label>
-                                    <select id="new-trip-refrigerated" onchange="onNewTripRefrigeratedChange()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                    <select id="new-trip-refrigerated" onchange="onNewTripRefrigeratedChange()" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
                                         <option value="no" selected>No</option>
                                         <option value="si">Sí</option>
                                     </select>
@@ -30478,18 +30494,19 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                 <div>
                                     <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Temperatura (°C)</label>
                                     <input type="number" step="0.1" id="new-trip-temperature" disabled placeholder="Ej: 4"
-                                           class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed">
+                                           class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed">
                                 </div>
                             </div>
                             <div class="flex gap-1.5">
                                 <input type="text" id="new-trip-bu-new" placeholder="Crear una unidad de negocio…"
-                                       class="flex-1 bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl px-2.5 py-1.5 text-xs font-bold uppercase shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                       class="nt-campo flex-1 bg-[#F4F7FE] rounded-xl uppercase outline-none focus:ring-2 focus:ring-indigo-500">
                                 <button type="button" onclick="addBusinessUnitOption()"
-                                        class="px-2.5 py-1.5 rounded-xl bg-indigo-600 text-white text-[9px] font-black hover:bg-indigo-700 uppercase">Crear</button>
+                                        class="px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold whitespace-nowrap">Crear</button>
                             </div>
                             <div id="new-trip-extra" class="hidden grid grid-cols-2 gap-2 border-t border-[#F4F7FE] pt-3"></div>
                         </div>
-                    </div>
+                        </div>
+                    </section>
                 </div>
 
                 <!-- Pestana de paradas: el mismo editor de siempre, con su propio espacio -->
@@ -30515,12 +30532,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                             <ul id="trip-delivery-list" class="space-y-2 min-h-[2rem]"></ul>
                             <div class="space-y-2 border border-[#E0E5F2] rounded-2xl p-3 bg-white">
                                 <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Agregar parada</p>
-                                <input id="td-search" type="text" oninput="filterTripDeliveryResults()" placeholder="Buscar por nombre (exacta o aproximada)…" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                                <input id="td-search" type="text" oninput="filterTripDeliveryResults()" placeholder="Buscar por nombre (exacta o aproximada)…" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
                                 <div class="grid grid-cols-2 lg:grid-cols-4 gap-2">
-                                    <select id="td-filter-tipo" onchange="filterTripDeliveryResults()" class="bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold outline-none"><option value="">Todos los tipos</option></select>
-                                    <select id="td-filter-localidad" onchange="filterTripDeliveryResults()" class="bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold outline-none"><option value="">Toda localidad</option></select>
-                                    <select id="td-filter-reparto" onchange="filterTripDeliveryResults()" class="bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold outline-none"><option value="">Todo reparto</option></select>
-                                    <select id="td-filter-partido" onchange="filterTripDeliveryResults()" class="bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-2.5 text-xs font-bold outline-none"><option value="">Todo partido</option></select>
+                                    <select id="td-filter-tipo" onchange="filterTripDeliveryResults()" class="nt-campo bg-[#F4F7FE] rounded-xl outline-none"><option value="">Todos los tipos</option></select>
+                                    <select id="td-filter-localidad" onchange="filterTripDeliveryResults()" class="nt-campo bg-[#F4F7FE] rounded-xl outline-none"><option value="">Toda localidad</option></select>
+                                    <select id="td-filter-reparto" onchange="filterTripDeliveryResults()" class="nt-campo bg-[#F4F7FE] rounded-xl outline-none"><option value="">Todo reparto</option></select>
+                                    <select id="td-filter-partido" onchange="filterTripDeliveryResults()" class="nt-campo bg-[#F4F7FE] rounded-xl outline-none"><option value="">Todo partido</option></select>
                                 </div>
                                 <div id="td-results" class="max-h-64 overflow-y-auto border border-[#E0E5F2] rounded-xl divide-y divide-[#F4F7FE]"></div>
                                 <p id="td-results-count" class="text-[10px] text-[#A3AED0]"></p>
@@ -30528,12 +30545,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         </div>
                 </div>
             </div>
-            <div class="px-6 py-3 bg-[#F8FAFF] border-t border-[#F4F7FE] flex items-center gap-4">
-                <p id="nt-resumen" class="flex-1 text-[11px] font-bold text-[#2B3674] leading-snug min-w-0"></p>
-                <button id="new-trip-save-btn" onclick="saveNewTrip()" class="bg-indigo-600 text-white px-8 py-3.5 rounded-2xl font-bold text-xs tracking-widest hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 uppercase whitespace-nowrap">
-                    CREAR VIAJE
+            <div class="px-4 sm:px-6 py-3 bg-white flex items-center gap-x-3 gap-y-2 flex-wrap sm:flex-nowrap">
+                <p id="nt-resumen" class="basis-full sm:basis-auto flex-1 text-[11px] font-semibold text-[#2B3674] leading-snug min-w-0"></p>
+                <button type="button" onclick="closeNewTripModal()" class="ml-auto px-4 py-2.5 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold whitespace-nowrap">Cancelar</button>
+                <button id="new-trip-save-btn" onclick="saveNewTrip()" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold whitespace-nowrap">
+                    Crear viaje
                 </button>
-                <button onclick="closeNewTripModal()" class="px-6 border border-[#E0E5F2] rounded-2xl font-bold text-[#1B2559] text-xs hover:bg-[#F4F7FE] transition-all">Cancelar</button>
             </div>
         </div>
     </div>

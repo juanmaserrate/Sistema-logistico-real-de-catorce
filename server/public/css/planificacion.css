@@ -1297,7 +1297,10 @@ body.h-screen { height: 100vh; height: 100dvh; }
    que estaba a medio cargar en un modal). */
 html, body { overscroll-behavior-y: none; }
 
-@media (pointer: coarse) {
+/* Solo celulares y tablets chicas: una compu con pantalla tactil tambien es
+   "pointer: coarse", y ahi esto agrandaba la letra de todos los campos y
+   cortaba los textos (formulario de Nuevo viaje, nov 2026). */
+@media (pointer: coarse) and (max-width: 1024px) {
     /* iPhone agranda la pagina al tocar un campo con letra de menos de 16px y
        no la vuelve a achicar. 319 de 320 campos eran mas chicos. */
     input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="file"]):not([type="color"]),
@@ -1339,3 +1342,13 @@ html, body { overscroll-behavior-y: none; }
    Detalle y Estado (en todas las filas por igual). */
 .pay-cols { display: grid; grid-template-columns: 18px minmax(0, 1fr) 150px 64px 150px 128px 84px; column-gap: 10px; align-items: center; }
 @media (max-width: 640px) { .pay-cols { grid-template-columns: 14px minmax(0, 1fr) 26px 84px 54px; column-gap: 5px; } }
+
+/* Nuevo viaje: todos los campos con el mismo alto y la misma letra, sin
+   borde (el fondo gris ya marca el campo). En el celular la letra de 16px
+   de mas arriba gana, para que el iPhone no agrande la pagina. */
+.nt-campo { height: 40px; padding: 0 12px; font-size: 13px; font-weight: 600; border: 0; }
+.nt-campo.nt-sumar { height: 36px; font-size: 12px; color: var(--primary); }
+[data-theme="dark"] .nt-campo.nt-sumar { color: #b4a0f0 !important; }
+/* Adentro de la caja gris de "Sale del chofer" los campos van en blanco */
+#nt-sale-del-chofer .nt-campo { background-color: var(--surface-container-lowest) !important; }
+[data-theme="dark"] #nt-sale-del-chofer .nt-campo { background: var(--surface-container-low) !important; }
