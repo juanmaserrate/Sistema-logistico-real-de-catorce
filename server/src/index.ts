@@ -4307,6 +4307,7 @@ app.patch('/api/v1/routes/:id/recorrido', async (req, res) => {
                     const cierre = await cerrarViajeAnteriorDelChofer(prisma, route.tripId, now);
                     for (const c of [cierre.cerrado, ...cierre.otrosCerrados]) {
                         if (!c) continue;
+                        await normalizarViajeCerradoPorArranque(c.tripId);
                         io.emit('trip:updated', { tripId: c.tripId, hint: 'cerrado_por_arranque_siguiente' });
                         logAction(req, 'UPDATE', 'trip', c.tripId,
                             `Cerrado ${now.toISOString()} porque el chofer arranco el viaje #${route.tripId}`,
@@ -5372,6 +5373,18 @@ app.post('/api/admin/cerrar-viajes-colgados', async (req: any, res: any) => {
  *    ids = ids de VIAJE (Trip). mes = todos los viajes del mes con recorrido.
  *    Devuelve totales, el detalle de lo que cambio por viaje y los avisos que
  *    necesitan un ojo humano (paradas de menos de 2 minutos, solapadas, etc). */
+/** El viaje que se cierra solo porque el chofer arranco el siguiente tambien
+ *  pasa por el protocolo de cierre. Antes no: quedaba con el arranque tarde
+ *  y paradas antes del inicio (9853, 2/11/2026). Nunca rompe el arranque. */
+async function normalizarViajeCerradoPorArranque(tripId: number): Promise<void> {
+    try {
+        const r = await prisma.route.findFirst({ where: { tripId }, select: { id: true } });
+        if (r) await normalizarViajeAlCerrar(prisma, r.id);
+    } catch (e: any) {
+        console.warn('[cierre] no se pudo normalizar el viaje ' + tripId + ':', e?.message || e);
+    }
+}
+
 app.post('/api/admin/normalizar-viajes', async (req: any, res: any) => {
     // mantenerVentana: ordena las paradas pero no toca la ventana (ni las horas
     // del viaje). Para meses viejos con ventanas corregidas a mano.
@@ -12378,6 +12391,23 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
         console.warn('[base-stop] Error cerrando el viaje:', e?.message || e);
     }
 
+    // === PARADA MARCADA CON EL VIAJE YA CERRADO ===
+    // El cierre ajusta la hora del viaje a sus paradas una sola vez, al cerrar.
+    // Lo que el chofer marcaba despues (siguio marcando, o la cola sin senal lo
+    // mando tarde) quedaba afuera: en noviembre de 2026, 9 viajes con paradas
+    // terminadas despues del fin. Se vuelve a pasar el protocolo de cierre, que
+    // solo acomoda la ventana a lo que dicen las paradas. Lo que corrige el
+    // operador a mano desde la web no se toca.
+    try {
+        const tocoHoras = data.actualArrival !== undefined || data.actualDeparture !== undefined || data.status !== undefined;
+        if (stop.route?.id && stop.route.actualEndTime && tocoHoras && !soloCajones && !esOperador) {
+            const inf = await normalizarViajeAlCerrar(prisma, stop.route.id);
+            if (inf.ventana && stop.route.tripId) io.emit('trip:updated', { tripId: stop.route.tripId, hint: 'ventana_ajustada' });
+        }
+    } catch (e: any) {
+        console.warn('[cierre] no se pudo reajustar la ruta ' + stop.route?.id + ':', e?.message || e);
+    }
+
     // === AUTO-FINALIZACION DE RUTA — DESACTIVADO ===
     // Antes: al marcar todas las paradas como COMPLETED/UNDELIVERABLE, la ruta y el trip
     // se cerraban automaticamente. El problema: si por sync offline, paradas duplicadas
@@ -14832,6 +14862,7 @@ app.patch('/api/v1/trips/:tripId/recorrido-operador', async (req, res) => {
                 const cierre = await cerrarViajeAnteriorDelChofer(prisma, tripId, now);
                 for (const c of [cierre.cerrado, ...cierre.otrosCerrados]) {
                     if (!c) continue;
+                    await normalizarViajeCerradoPorArranque(c.tripId);
                     io.emit('trip:updated', { tripId: c.tripId, hint: 'cerrado_por_arranque_siguiente' });
                     await logAction(req, 'UPDATE', 'trip', c.tripId,
                         `Cerrado ${now.toISOString()} por el operador al arrancar el viaje #${tripId}`,

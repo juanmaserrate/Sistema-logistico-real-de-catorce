@@ -57,6 +57,7 @@ export type TipoDeAviso =
     | 'hora-fuera-de-rango'       // una hora que no se puede creer; se trata como si no estuviera
     | 'ventana-no-achicada'       // el fin deberia ser anterior, pero dejaria una parada afuera
     | 'deposito-antes-de-entrega' // la vuelta al deposito marcada antes de la ultima entrega: se toma como sin hora
+    | 'deposito-llegada-corregida' // la llegada al deposito era anterior al arranque: se toma su salida
     | 'ventana-mantenida'         // con mantenerVentana: la ventana seria otra, pero se deja la que esta
     | 'ventana-invertida'         // la ventana calculada termina antes de empezar; no se escribe
     | 'viaje-returnTime-distinto' // el trip tiene una vuelta cargada a mano, distinta a la ventana
@@ -78,7 +79,7 @@ export interface AvisoDeCierre {
 }
 
 export interface CambioDeCierre {
-    tipo: 'secuencia' | 'estado' | 'ventana' | 'viaje';
+    tipo: 'secuencia' | 'estado' | 'ventana' | 'viaje' | 'hora';
     stopId?: number;
     nombre?: string;
     antes: unknown;
@@ -282,12 +283,32 @@ export async function normalizarViajeAlCerrar(
     let inicioNuevo = inicioAntes;
     let finNuevo = finAntes;
 
-    // El inicio solo se adelanta: si una parada tiene llegada antes del
-    // arranque, el viaje ya habia empezado. Nunca se atrasa.
-    const llegadas = paradas.map((p) => p.llegada).filter((d): d is Date => !!d);
+    // El inicio solo se adelanta: si una ESCUELA tiene llegada antes del
+    // arranque, el viaje ya habia empezado. Nunca se atrasa. El deposito no
+    // cuenta: es la vuelta, y una llegada al deposito antes del arranque es
+    // un toque al salir (9511, 2/11/2026: "llegue" al deposito 04:46, primera
+    // entrega 05:58; le sumaba 51 minutos al viaje).
+    const llegadas = paradas.filter((p) => !p.deposito).map((p) => p.llegada).filter((d): d is Date => !!d);
     if (llegadas.length) {
         const primera = new Date(Math.min(...llegadas.map((d) => d.getTime())));
         if (!inicioAntes || primera.getTime() < inicioAntes.getTime()) inicioNuevo = primera;
+    }
+
+    // Y esa llegada al deposito tampoco puede quedar antes del arranque: se
+    // toma la salida, que es cuando de verdad volvio. Sin salida no se
+    // inventa nada.
+    const horasCorregidas: { id: number; actualArrival: Date }[] = [];
+    if (inicioNuevo) {
+        for (const p of paradas) {
+            if (!p.deposito || !p.llegada || !p.salida) continue;
+            if (p.llegada.getTime() >= inicioNuevo.getTime() - TOLERANCIA_MS) continue;
+            if (p.salida.getTime() < inicioNuevo.getTime()) continue;
+            avisar({ tipo: 'deposito-llegada-corregida', sec: p.nuevaSec, nombre: p.nombre, llegada: iso(p.llegada), salida: iso(p.salida),
+                texto: `#${p.nuevaSec} ${p.nombre}: llegada ${hhmm(p.llegada)} antes del arranque (${hhmm(inicioNuevo)}); se toma la salida ${hhmm(p.salida)}` });
+            informe.cambios.push({ tipo: 'hora', stopId: p.id, nombre: p.nombre, antes: { llegada: iso(p.llegada) }, despues: { llegada: iso(p.salida) } });
+            horasCorregidas.push({ id: p.id, actualArrival: p.salida });
+            p.llegada = p.salida;
+        }
     }
 
     // La vuelta al deposito tiene que ser DESPUES de la ultima entrega. Si
@@ -457,12 +478,15 @@ export async function normalizarViajeAlCerrar(
     }
 
     // ── Escribir ───────────────────────────────────────────────────────────
-    const hayQueEscribir = informe.reordenadas > 0 || informe.cerradas > 0 || ventanaCambia || Object.keys(datosViaje).length > 0;
+    const hayQueEscribir = informe.reordenadas > 0 || informe.cerradas > 0 || ventanaCambia
+        || Object.keys(datosViaje).length > 0 || horasCorregidas.length > 0;
     if (dryRun || !hayQueEscribir) return informe;
 
     await prisma.$transaction(async (tx) => {
         for (const p of paradas) {
-            const data: { sequence?: number; plannedSequence?: number; status?: string } = {};
+            const data: { sequence?: number; plannedSequence?: number; status?: string; actualArrival?: Date } = {};
+            const hora = horasCorregidas.find((h) => h.id === p.id);
+            if (hora) data.actualArrival = hora.actualArrival;
             if (p.nuevaSec !== p.sequence) {
                 data.sequence = p.nuevaSec;
                 // Como el reordenamiento del chofer: el orden del planificador

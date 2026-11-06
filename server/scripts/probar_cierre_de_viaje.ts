@@ -278,6 +278,36 @@ async function correr() {
         esperar('no escribe la ruta', escrituras.route.length === 0 && inf.ventana === null, escrituras.route);
     }
 
+    // ── 11. Llegada al deposito antes del arranque (9511, 2/11/2026) ──
+    {
+        console.log('\n11. "Llegue" al deposito antes de arrancar: no adelanta el viaje y se toma la salida');
+        const r = ruta([
+            parada(51, 1, 'ESCUELA N', 'COMPLETED', T('09:10'), T('09:30')),
+            parada(52, 2, 'ESCUELA O', 'COMPLETED', T('09:40'), T('10:00')),
+            parada(53, 3, 'REAL DE CATORCE', 'COMPLETED', T('08:00'), T('10:20'), { isReturnToBase: true })
+        ], { actualStartTime: T('09:00'), actualEndTime: T('10:20') });
+        const { prisma, escrituras } = prismaFalso(r);
+        const inf = await normalizarViajeAlCerrar(prisma, 100);
+        const rutaEscrita = escrituras.route[0]?.data || {};
+        esperar('el arranque sigue 09:00 (no pasa a 08:00)', !('actualStartTime' in rutaEscrita), rutaEscrita);
+        esperar('avisa deposito-llegada-corregida', tipos(inf).includes('deposito-llegada-corregida'), tipos(inf));
+        const dep = escrituras.stop.find((e) => e.where?.id === 53);
+        esperar('la llegada del deposito pasa a 10:20', !!dep && new Date(dep.data.actualArrival).getTime() === T('10:20').getTime(), dep);
+    }
+
+    // ── 12. Escuela antes del arranque: el arranque si se adelanta ──
+    {
+        console.log('\n12. Entrega antes de que arranque el viaje (9853, 2/11/2026): el arranque se adelanta');
+        const r = ruta([
+            parada(61, 1, 'ESCUELA P', 'COMPLETED', T('08:20'), T('08:40')),
+            parada(62, 2, 'REAL DE CATORCE', 'COMPLETED', T('10:10'), T('10:20'), { isReturnToBase: true })
+        ], { actualStartTime: T('09:00'), actualEndTime: T('10:20') });
+        const { prisma, escrituras } = prismaFalso(r);
+        await normalizarViajeAlCerrar(prisma, 100);
+        const rutaEscrita = escrituras.route[0]?.data || {};
+        esperar('el arranque pasa a 08:20', rutaEscrita.actualStartTime && new Date(rutaEscrita.actualStartTime).getTime() === T('08:20').getTime(), rutaEscrita);
+    }
+
     // ── 10. Ruta inexistente ──
     {
         console.log('\n10. Ruta que no existe');
