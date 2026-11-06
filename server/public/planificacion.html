@@ -34,7 +34,7 @@
          Plan gratuito: 50k cargas de mapa/mes. -->
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="/css/planificacion.css?v=20261105">
+    <link rel="stylesheet" href="/css/planificacion.css?v=20261106">
     <!-- Capa de movimiento: solo COMO aparecen las cosas, nada de colores ni
          tamanos. Sacando estas dos lineas (y el script de abajo) el sistema
          queda exactamente como estaba. -->
@@ -1640,156 +1640,162 @@
             </div>
 
             <!-- VIEW: MOTOR DE COSTOS (BASED ON IMAGE) -->
-            <div id="view-costs" class="hidden view-animate space-y-8">
-                <div class="card-dark p-5 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
-                    <div class="min-w-0">
-                        <h3 class="text-base font-black text-[#1B2559] tracking-tight">Motor de Costos Operativos</h3>
-                        <p class="text-[11px] text-[#A3AED0] font-medium mt-0.5">Desglose financiero por unidad y período</p>
+            <div id="view-costs" class="hidden space-y-4 pb-24">
+                <!-- Barra: anio, mes y acciones. Los <select> quedan ocultos porque
+                     el resto del Motor los lee; los botones de arriba los manejan. -->
+                <div class="card-dark p-4 flex flex-col xl:flex-row xl:items-center gap-3 justify-between">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <select id="costs-year-select" onchange="cambiarAnioDeCostos()" class="hidden" aria-hidden="true" tabindex="-1"></select>
+                        <select id="costs-month-select" onchange="loadCostsData()" class="hidden" aria-hidden="true" tabindex="-1"><option value="enero">Enero</option><option value="febrero">Febrero</option><option value="marzo">Marzo</option><option value="abril">Abril</option><option value="mayo">Mayo</option><option value="junio">Junio</option><option value="julio">Julio</option><option value="agosto">Agosto</option><option value="septiembre">Septiembre</option><option value="octubre">Octubre</option><option value="noviembre">Noviembre</option><option value="diciembre">Diciembre</option></select>
+                        <div class="inline-flex items-center rounded-xl bg-[#F4F7FE] p-1">
+                            <button type="button" onclick="costsCambiarAnio(-1)" aria-label="Año anterior" class="w-8 h-8 grid place-items-center rounded-lg text-[#A3AED0] hover:text-[#1B2559]"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+                            <span id="costs-anio-rotulo" class="px-2 text-sm font-extrabold text-[#1B2559] tabular-nums">—</span>
+                            <button type="button" onclick="costsCambiarAnio(1)" aria-label="Año siguiente" class="w-8 h-8 grid place-items-center rounded-lg text-[#A3AED0] hover:text-[#1B2559]"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                        </div>
+                        <div id="costs-meses" class="flex flex-wrap gap-1" role="tablist" aria-label="Mes"></div>
                     </div>
-                    <div class="flex items-center gap-2 flex-wrap">
-                        <!-- El anio ya no va escrito en el nombre del mes: se elige aparte -->
-                        <select id="costs-year-select" onchange="cambiarAnioDeCostos()" class="bg-[#F4F7FE] border-0 rounded-xl px-3 py-2 text-[11px] font-black text-[#1B2559] outline-none"></select>
-                        <select id="costs-month-select" onchange="loadCostsData()" class="bg-[#F4F7FE] border-0 rounded-xl px-3 py-2 text-[11px] font-bold text-[#1B2559] outline-none">
-                            <option value="enero">Enero</option>
-                            <option value="febrero">Febrero</option>
-                            <option value="marzo">Marzo</option>
-                            <option value="abril">Abril</option>
-                            <option value="mayo">Mayo</option>
-                            <option value="junio">Junio</option>
-                            <option value="julio">Julio</option>
-                            <option value="agosto">Agosto</option>
-                            <option value="septiembre">Septiembre</option>
-                            <option value="octubre">Octubre</option>
-                            <option value="noviembre">Noviembre</option>
-                            <option value="diciembre">Diciembre</option>
-                        </select>
-                        <div class="flex items-center gap-2 bg-indigo-50 px-3 py-2 rounded-xl">
-                            <span class="text-[9px] font-black text-indigo-600 uppercase tracking-wider">Horas reales</span>
-                            <input type="text" inputmode="decimal" id="cost-horas-reales" oninput="calculateCosts()" onblur="formatearMontoAR(this); calculateCosts()" class="w-14 bg-transparent border-none text-[13px] font-extrabold text-indigo-700 outline-none">
-                        </div>
-                        <div class="flex items-center gap-2 bg-amber-50 px-3 py-2 rounded-xl" title="Horas que se asumen para un viaje propio cuando no tiene horario de salida/llegada cargado ni GPS. Antes era fijo en 8.">
-                            <span class="text-[9px] font-black text-amber-600 uppercase tracking-wider">Hs sin horario</span>
-                            <input type="number" id="cost-fallback-hours" min="1" max="24" step="0.5" oninput="calculateCosts()" class="w-11 bg-transparent border-none text-[13px] font-extrabold text-amber-700 outline-none">
-                        </div>
-                        <button type="button" id="btn-auto-horas" onclick="autoFillHorasReales()"
-                            title="Suma automaticamente las horas de TODOS los viajes Propios del mes (las que antes sumabas a mano)"
-                            class="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-black uppercase tracking-wide shadow-sm flex items-center gap-1.5 whitespace-nowrap">
-                            <i data-lucide="zap" class="w-3.5 h-3.5"></i> Traer horas
+                    <div class="flex flex-wrap items-center gap-2 shrink-0">
+                        <span id="costs-save-status" class="text-[11px] font-semibold text-[#A3AED0] mr-1"></span>
+                        <button type="button" onclick="copyCostsFromPrevMonth()"
+                            title="Copia los gastos guardados del mes anterior para no recargarlos a mano. Después ajustás solo lo que cambió."
+                            class="px-3.5 py-2.5 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
+                            <i data-lucide="copy" class="w-4 h-4"></i> Copiar mes anterior
                         </button>
                         <button type="button" id="btn-traer-flota" onclick="abrirTraerDeFlota()"
-                            title="Suma los gastos que se cargaron uno por uno en Gastos de Flota y los pone en los rubros de este mes. Antes de pisar nada te muestra que va a poner."
-                            class="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[10px] font-black uppercase tracking-wide shadow-sm flex items-center gap-1.5 whitespace-nowrap">
-                            <i data-lucide="download" class="w-3.5 h-3.5"></i> Traer de flota
-                        </button>
-                        <button type="button" onclick="copyCostsFromPrevMonth()"
-                            title="Copia los gastos fijos/variables guardados del mes anterior para no recargarlos a mano. Despues ajustas solo lo que cambio."
-                            class="px-3.5 py-2 rounded-xl bg-white border border-[#E0E5F2] hover:bg-[#F4F7FE] text-[#1B2559] text-[10px] font-black uppercase tracking-wide flex items-center gap-1.5 whitespace-nowrap">
-                            <i data-lucide="copy" class="w-3.5 h-3.5"></i> Copiar mes anterior
+                            title="Suma los gastos cargados uno por uno en Gastos de Flota y los pone en los rubros de este mes. Antes de pisar nada te muestra qué va a poner."
+                            class="px-3.5 py-2.5 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
+                            <i data-lucide="download" class="w-4 h-4"></i> Traer de flota
                         </button>
                         <button type="button" id="btn-save-costs" onclick="guardarCostosDelMes()"
                             title="Guarda los datos de este mes para que los vean todos los usuarios (no recalcula los viajes)"
-                            class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-wide shadow-sm flex items-center gap-1.5 whitespace-nowrap">
-                            <i data-lucide="save" class="w-3.5 h-3.5"></i> Guardar
+                            class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
+                            <i data-lucide="save" class="w-4 h-4"></i> Guardar
                         </button>
                     </div>
                 </div>
-                <p id="costs-save-status" class="text-xs font-bold text-[#A3AED0] px-2 -mt-4"></p>
-                <p id="horas-auto-detail" class="text-xs font-medium text-[#A3AED0] px-2 -mt-6"></p>
 
-                <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
-                    <!-- COSTOS FIJOS -->
-                    <div class="card-dark p-5">
-                        <div class="flex flex-wrap items-center justify-between gap-3 mb-5 pb-3 border-b border-[#F4F7FE]">
-                            <div class="min-w-0">
-                                <h4 class="text-base font-black text-[#1B2559] tracking-tight">Estructura fija</h4>
-                                <p class="text-[11px] text-[#A3AED0] font-medium mt-0.5">Lo que se paga todos los meses, pase lo que pase</p>
-                            </div>
-                            <span class="text-[9px] font-black text-[#A3AED0] uppercase tracking-wider">USD / ARS</span>
-                        </div>
-                        <div class="space-y-6">
-                            <!-- Las filas las arma pintarRubrosDelMes() desde RUBROS_COSTOS,
-                                 que es la misma lista que usa la vista anual. -->
-                            <div id="costs-fijo-rows" class="space-y-6"></div>
-                            <p id="costs-fijo-otros" class="hidden text-[10px] font-bold text-amber-600 leading-snug"></p>
-                            <div class="flex items-center justify-between pt-6 border-t border-[#F4F7FE]">
-                                <span class="text-sm font-extrabold text-[#1B2559] uppercase tracking-widest">Total Fijos</span>
-                                <div class="flex gap-4 items-center">
-                                    <span id="total-fijo-mes" class="w-32 text-right font-extrabold text-[#1B2559] text-lg">$ 0</span>
-                                    <span id="total-fijo-hs" class="w-24 text-right font-bold text-[#A3AED0] text-sm">$ 0</span>
-                                </div>
-                            </div>
-                        </div>
+                <!-- Los numeros del mes, primero -->
+                <div class="grid gap-2 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+                    <div class="card-dark px-4 py-3 sm:px-5 sm:py-4 min-w-0">
+                        <div class="flex items-center gap-1.5 text-[11px] font-semibold text-[#A3AED0] truncate"><span class="w-2 h-2 rounded-full bg-indigo-500 shrink-0"></span>Estructura fija</div>
+                        <div id="costs-kpi-fijo" class="mt-1 text-xl sm:text-2xl font-extrabold text-[#1B2559] tabular-nums truncate">$ 0</div>
+                        <div class="text-[11px] text-[#A3AED0] mt-0.5 truncate">Se paga todos los meses</div>
                     </div>
-
-                    <!-- COSTOS VARIABLES -->
-                    <div class="card-dark p-5">
-                        <div class="flex flex-wrap items-center justify-between gap-3 mb-5 pb-3 border-b border-[#F4F7FE]">
-                            <div class="min-w-0">
-                                <h4 class="text-base font-black text-[#1B2559] tracking-tight">Estructura variable</h4>
-                                <p class="text-[11px] text-[#A3AED0] font-medium mt-0.5">Lo que cambia con cuánto se sale a repartir</p>
-                            </div>
-                            <span class="text-[9px] font-black text-[#A3AED0] uppercase tracking-wider">USD / ARS</span>
-                        </div>
-                        <div class="space-y-6">
-                            <div id="costs-var-rows" class="space-y-6"></div>
-                            <p id="costs-var-otros" class="hidden text-[10px] font-bold text-amber-600 leading-snug"></p>
-                            <div class="flex items-center justify-between pt-6 border-t border-[#F4F7FE]">
-                                <span class="text-sm font-extrabold text-[#1B2559] uppercase tracking-widest">Total Variables</span>
-                                <div class="flex gap-4 items-center">
-                                    <span id="total-var-mes" class="w-32 text-right font-extrabold text-[#1B2559] text-lg">$ 0</span>
-                                    <span id="total-var-hs" class="w-24 text-right font-bold text-[#A3AED0] text-sm">$ 0</span>
-                                </div>
-                            </div>
-                        </div>
+                    <div class="card-dark px-4 py-3 sm:px-5 sm:py-4 min-w-0">
+                        <div class="flex items-center gap-1.5 text-[11px] font-semibold text-[#A3AED0] truncate"><span class="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>Estructura variable</div>
+                        <div id="costs-kpi-var" class="mt-1 text-xl sm:text-2xl font-extrabold text-[#1B2559] tabular-nums truncate">$ 0</div>
+                        <div class="text-[11px] text-[#A3AED0] mt-0.5 truncate">Cambia con cuánto se sale</div>
+                    </div>
+                    <div class="card-dark px-4 py-3 sm:px-5 sm:py-4 min-w-0">
+                        <div class="text-[11px] font-semibold text-[#A3AED0] truncate">Total del mes</div>
+                        <div id="total-final-mes" class="mt-1 text-xl sm:text-2xl font-extrabold text-[#1B2559] tabular-nums truncate">$ 0</div>
+                        <div class="text-[11px] text-[#A3AED0] mt-0.5 truncate">Fija + variable</div>
+                    </div>
+                    <div class="card-dark px-4 py-3 sm:px-5 sm:py-4 min-w-0">
+                        <div class="text-[11px] font-semibold text-[#A3AED0] truncate">Costo por hora</div>
+                        <div id="total-final-hs" class="mt-1 text-xl sm:text-2xl font-extrabold text-[#1B2559] tabular-nums truncate">$ 0</div>
+                        <div id="costs-kpi-horas" class="text-[11px] text-[#A3AED0] mt-0.5 truncate">—</div>
                     </div>
                 </div>
 
-                <!-- TOTAL FINAL CALCULATION BOX -->
-                <div class="bg-gradient-to-r from-[#11047A] to-[#1B2559] p-10 rounded-3xl shadow-2xl flex flex-col md:flex-row justify-between items-center gap-8 border border-white/10">
-                    <div class="flex items-center gap-8">
-                        <div class="w-16 h-16 bg-white/10 backdrop-blur-xl rounded-2xl flex items-center justify-center border border-white/20">
-                            <i data-lucide="calculator" class="w-8 h-8 text-white"></i>
+                <!-- Los rubros: dos tarjetas del mismo alto, con las mismas columnas -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                    <section class="card-dark p-0 overflow-hidden flex flex-col">
+                        <header class="px-4 sm:px-5 pt-4 pb-3 flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <h4 class="text-sm font-extrabold text-[#1B2559]">ESTRUCTURA FIJA</h4>
+                                <p class="text-[11px] text-[#A3AED0] mt-0.5">Lo que se paga todos los meses, pase lo que pase</p>
+                            </div>
+                        </header>
+                        <div class="costs-cols px-4 sm:px-5 py-1.5 text-[10px] font-bold uppercase text-[#A3AED0]" style="background:var(--wk-fila-alt)">
+                            <span>Rubro</span><span class="text-right">Del mes</span><span class="text-right">Por hora</span>
                         </div>
+                        <!-- Las filas las arma pintarRubrosDelMes() desde RUBROS_COSTOS,
+                             que es la misma lista que usa la vista anual. -->
+                        <div id="costs-fijo-rows" class="flex-1"></div>
+                        <p id="costs-fijo-otros" class="hidden px-5 py-2 text-[11px] font-bold text-amber-700 leading-snug"></p>
+                        <footer class="costs-cols px-4 sm:px-5 py-2.5 text-white" style="background:var(--r14-total)">
+                            <span class="text-[12px] font-bold">Total fijos</span>
+                            <span id="total-fijo-mes" class="text-right tabular-nums font-extrabold whitespace-nowrap text-[12px] sm:text-[14px]">$ 0</span>
+                            <span id="total-fijo-hs" class="text-right tabular-nums font-bold opacity-80 whitespace-nowrap text-[11px] sm:text-[13px]">$ 0</span>
+                        </footer>
+                    </section>
+                    <section class="card-dark p-0 overflow-hidden flex flex-col">
+                        <header class="px-4 sm:px-5 pt-4 pb-3 flex items-start justify-between gap-3">
+                            <div class="min-w-0">
+                                <h4 class="text-sm font-extrabold text-[#1B2559]">ESTRUCTURA VARIABLE</h4>
+                                <p class="text-[11px] text-[#A3AED0] mt-0.5">Lo que cambia con cuánto se sale a repartir</p>
+                            </div>
+                        </header>
+                        <div class="costs-cols px-4 sm:px-5 py-1.5 text-[10px] font-bold uppercase text-[#A3AED0]" style="background:var(--wk-fila-alt)">
+                            <span>Rubro</span><span class="text-right">Del mes</span><span class="text-right">Por hora</span>
+                        </div>
+                        <div id="costs-var-rows" class="flex-1"></div>
+                        <p id="costs-var-otros" class="hidden px-5 py-2 text-[11px] font-bold text-amber-700 leading-snug"></p>
+                        <footer class="costs-cols px-4 sm:px-5 py-2.5 text-white" style="background:var(--r14-total)">
+                            <span class="text-[12px] font-bold">Total variables</span>
+                            <span id="total-var-mes" class="text-right tabular-nums font-extrabold whitespace-nowrap text-[12px] sm:text-[14px]">$ 0</span>
+                            <span id="total-var-hs" class="text-right tabular-nums font-bold opacity-80 whitespace-nowrap text-[11px] sm:text-[13px]">$ 0</span>
+                        </footer>
+                    </section>
+                </div>
+
+                <!-- Repartir en los viajes: las horas son el divisor, van a la vista -->
+                <section class="card-dark p-4 sm:p-5 flex flex-col lg:flex-row lg:items-center gap-4 justify-between">
+                    <div class="min-w-0 space-y-3">
                         <div>
-                            <p class="text-[10px] font-bold text-white/50 uppercase tracking-[0.2em] mb-1">Presupuesto Logístico Total</p>
-                            <h2 class="text-4xl font-extrabold text-white tracking-tight" id="total-final-mes">$ 0</h2>
+                            <h4 class="text-sm font-extrabold text-[#1B2559]">REPARTIR EN LOS VIAJES</h4>
+                            <p id="costs-resumen-calculo" class="text-[12px] text-[#2B3674] mt-0.5">—</p>
                         </div>
-                    </div>
-                    <div class="text-center md:text-right bg-white/5 p-6 rounded-2xl border border-white/10 min-w-[200px]">
-                        <p class="text-[9px] font-bold text-indigo-300 uppercase tracking-widest mb-1">Costo por Hora Real</p>
-                        <div id="total-final-hs" class="text-2xl font-extrabold text-indigo-100">$ 0</div>
+                        <div class="flex flex-wrap items-center gap-2">
+                            <label class="flex items-center gap-2 bg-[#F4F7FE] rounded-xl px-3 py-2">
+                                <span class="text-[11px] font-semibold text-[#A3AED0]">Horas reales del mes</span>
+                                <input type="text" inputmode="decimal" id="cost-horas-reales" oninput="calculateCosts()" onblur="formatearMontoAR(this); calculateCosts()"
+                                       class="w-20 bg-transparent border-none text-[14px] font-extrabold text-[#1B2559] text-right tabular-nums outline-none">
+                            </label>
+                            <button type="button" id="btn-auto-horas" onclick="autoFillHorasReales()"
+                                title="Suma las horas de TODOS los viajes propios del mes. Tienen que coincidir: si no, el costo de cada viaje sale mal."
+                                class="px-3.5 py-2 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
+                                <i data-lucide="zap" class="w-4 h-4"></i> Traer horas
+                            </button>
+                            <label class="flex items-center gap-2 bg-[#F4F7FE] rounded-xl px-3 py-2" title="Horas que se asumen para un viaje propio que no tiene horario ni GPS.">
+                                <span class="text-[11px] font-semibold text-[#A3AED0]">Horas por viaje sin horario</span>
+                                <input type="number" id="cost-fallback-hours" min="1" max="24" step="0.5" oninput="calculateCosts()"
+                                       class="w-12 bg-transparent border-none text-[14px] font-extrabold text-[#1B2559] text-right tabular-nums outline-none">
+                            </label>
+                        </div>
+                        <p id="horas-auto-detail" class="text-[11px] font-medium text-[#A3AED0]"></p>
                     </div>
                     <button onclick="calcularCostosDelMes()" id="btn-calcular-mes"
-                        class="flex items-center gap-3 bg-white text-[#11047A] font-extrabold text-sm px-8 py-4 rounded-2xl shadow-lg hover:bg-indigo-50 transition-all active:scale-95 whitespace-nowrap">
-                        <i data-lucide="calculator" class="w-5 h-5"></i>
-                        CALCULAR COSTOS DEL MES
+                        class="shrink-0 flex items-center justify-center gap-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[13px] px-6 py-3.5 rounded-2xl whitespace-nowrap">
+                        <i data-lucide="calculator" class="w-5 h-5"></i> Calcular costos del mes
                     </button>
-                </div>
+                </section>
 
                 <!-- VISTA ANUAL: los 12 meses juntos, como la planilla de Gastos Logistica -->
-                <div class="card-dark overflow-hidden">
-                    <div class="p-5 border-b border-[#F4F7FE] flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+                <section class="card-dark p-0 overflow-hidden">
+                    <header class="px-4 sm:px-5 pt-4 pb-3 flex flex-col lg:flex-row lg:items-center justify-between gap-3">
                         <div class="min-w-0">
-                            <h4 class="text-base font-black text-[#1B2559] tracking-tight">Gastos logística — <span id="costs-anual-anio">año completo</span></h4>
-                            <p class="text-[11px] text-[#A3AED0] font-medium mt-0.5">Los mismos rubros de arriba, con los doce meses a la vez. Escribí en cualquier casillero y después guardá.</p>
+                            <h4 class="text-sm font-extrabold text-[#1B2559]">GASTOS LOGÍSTICA · <span id="costs-anual-anio">año completo</span></h4>
+                            <p class="text-[11px] text-[#A3AED0] mt-0.5">Los mismos rubros de arriba, con los doce meses a la vez. Escribí en cualquier casillero y después guardá.</p>
                         </div>
                         <div class="flex items-center gap-2 flex-wrap">
                             <span id="costs-anual-estado" class="text-[11px] font-bold text-[#A3AED0]"></span>
                             <button type="button" id="btn-traer-flota-anual" onclick="abrirTraerDeFlotaAnual()"
                                     title="Trae de Gastos de Flota los doce meses de una. Lo que trae queda escrito en el cuadro y se puede corregir antes de guardar."
-                                    class="px-3.5 py-2 rounded-xl bg-sky-600 hover:bg-sky-700 text-white text-[10px] font-black uppercase tracking-wide shadow-sm flex items-center gap-1.5 whitespace-nowrap">
-                                <i data-lucide="download" class="w-3.5 h-3.5"></i> Traer de flota
+                                    class="px-3.5 py-2 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
+                                <i data-lucide="download" class="w-4 h-4"></i> Traer de flota
                             </button>
                             <button type="button" onclick="cargarVistaAnual()"
-                                    class="px-3.5 py-2 rounded-xl bg-white border border-[#E0E5F2] text-[10px] font-black text-[#1B2559] uppercase tracking-wide hover:bg-[#F4F7FE] whitespace-nowrap">Recargar</button>
+                                    class="px-3.5 py-2 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold whitespace-nowrap">Recargar</button>
                             <button type="button" id="btn-guardar-anual" onclick="guardarVistaAnual()"
-                                    class="px-3.5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[10px] font-black uppercase tracking-wide shadow-sm whitespace-nowrap">Guardar meses tocados</button>
+                                    class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold whitespace-nowrap">Guardar meses tocados</button>
                         </div>
-                    </div>
+                    </header>
                     <div class="overflow-x-auto">
-                        <table class="w-full text-[11px] border-collapse" id="costs-anual-tabla"></table>
+                        <table class="w-full text-[12px] border-collapse" id="costs-anual-tabla"></table>
                     </div>
-                </div>
+                </section>
 
             </div>
 
@@ -4140,8 +4146,47 @@
             return p;
         }
 
+        /** Los botones de anio y de mes de la barra. Manejan los <select>
+         *  ocultos, que es lo que lee el resto del Motor. Un mes sin datos
+         *  guardados se ve tenue: asi se nota que falta cargarlo. */
+        function pintarSelectorCostos() {
+            const selA = document.getElementById('costs-year-select');
+            const selM = document.getElementById('costs-month-select');
+            const rotulo = document.getElementById('costs-anio-rotulo');
+            if (rotulo) rotulo.textContent = anioCostos();
+            const cont = document.getElementById('costs-meses');
+            if (!cont || !selM) return;
+            const actual = selM.value;
+            cont.innerHTML = MESES_COSTOS.map((m) => {
+                const hay = !!costosDelMes(m);
+                const clase = m === actual ? 'bg-indigo-600 text-white'
+                    : hay ? 'bg-[#F4F7FE] text-[#1B2559] hover:bg-[#E8ECF8]' : 'bg-[#F4F7FE] text-[#A3AED0] hover:text-[#1B2559]';
+                return `<button type="button" role="tab" aria-selected="${m === actual}" onclick="costsElegirMes('${m}')"
+                    class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold ${clase}" title="${m.charAt(0).toUpperCase() + m.slice(1)}${hay ? '' : ' · sin datos guardados'}">${m.slice(0, 3).toUpperCase()}</button>`;
+            }).join('');
+        }
+
+        function costsElegirMes(m) {
+            const sel = document.getElementById('costs-month-select');
+            if (!sel || sel.value === m) return;
+            sel.value = m;
+            Promise.resolve(loadCostsData()).finally(pintarSelectorCostos);
+        }
+
+        function costsCambiarAnio(delta) {
+            const sel = document.getElementById('costs-year-select');
+            if (!sel) return;
+            const valores = [...sel.options].map((o) => o.value);
+            const i = valores.indexOf(sel.value) + delta;
+            if (i < 0 || i >= valores.length) return;
+            sel.value = valores[i];
+            cambiarAnioDeCostos();
+            pintarSelectorCostos();
+        }
+
         function renderCostsSaveStatus() {
             const el = document.getElementById('costs-save-status');
+            pintarSelectorCostos();
             if (!el) return;
             const month = document.getElementById('costs-month-select')?.value;
             if (costsDirtyMonth && costsDirtyMonth === month) {
@@ -23475,9 +23520,10 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         /** Arma las filas del formulario del mes desde RUBROS_COSTOS. */
         function pintarRubrosDelMes() {
+            let _n = 0;
             const fila = (r) => `
-                <div class="flex items-center justify-between gap-4">
-                    <label class="text-sm font-bold text-[#2B3674] min-w-0">${escapeHtml(r.nombre)}
+                <div class="costs-cols px-4 sm:px-5 py-2" style="background:var(${(_n++) % 2 ? '--wk-fila-alt' : '--wk-fila'})">
+                    <label class="text-[13px] font-semibold text-[#2B3674] min-w-0">${escapeHtml(r.nombre)}
                         ${(() => {
                             // De que categorias de Gastos de Flota se llena este rubro.
                             // Solo se dice cuando hay mas de una: con una sola, el
@@ -23488,16 +23534,15 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                 : '';
                         })()}
                     </label>
-                    <div class="flex gap-4 items-center">
-                        <input type="text" inputmode="decimal" data-cost-type="${r.tipo}" data-id="${r.id}"
-                               oninput="calculateCosts()" onblur="formatearMontoAR(this); calculateCosts()"
-                               class="cost-input w-32 bg-[#F4F7FE] border-0 rounded-xl p-3 text-sm font-bold text-[#1B2559] text-right outline-none focus:ring-2 focus:ring-indigo-500/20">
-                        <span class="text-xs font-bold text-[#A3AED0] w-24 text-right" id="hs-${r.tipo === 'fijo' ? 'fijo' : 'var'}-${r.id}">$ 0</span>
-                    </div>
+                    <input type="text" inputmode="decimal" data-cost-type="${r.tipo}" data-id="${r.id}" aria-label="${escapeHtml(r.nombre)} del mes"
+                           oninput="calculateCosts()" onblur="formatearMontoAR(this); calculateCosts()"
+                           class="cost-input w-full bg-[#F4F7FE] border-0 rounded-lg px-3 py-2 text-[13px] font-bold text-[#1B2559] text-right tabular-nums outline-none focus:ring-2 focus:ring-indigo-500/20">
+                    <span class="text-[12px] font-semibold text-[#A3AED0] text-right tabular-nums whitespace-nowrap" id="hs-${r.tipo === 'fijo' ? 'fijo' : 'var'}-${r.id}">$ 0</span>
                 </div>`;
             const f = document.getElementById('costs-fijo-rows');
             const v = document.getElementById('costs-var-rows');
             if (f) f.innerHTML = rubrosDe('fijo').map(fila).join('');
+            _n = 0;
             if (v) v.innerHTML = rubrosDe('variable').map(fila).join('');
         }
 
@@ -23528,14 +23573,14 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (!tabla) return;
             const anio = anioCostos();
             const plata = (n) => Number(n || 0).toLocaleString('es-AR');
-            const cab = `<thead><tr class="bg-[#F8FAFF]">
-                    <th class="text-left px-3 py-2 font-black text-[#1B2559] uppercase tracking-wider sticky left-0 bg-[#F8FAFF] min-w-[220px]">Gastos log\u00edstica</th>
-                    ${MESES_COSTOS.map(m => `<th class="px-2 py-2 font-black text-[#1B2559] uppercase">${m.slice(0,3)}</th>`).join('')}
+            const cab = `<thead><tr style="background:var(--wk-fila-alt)">
+                    <th class="text-left px-5 py-1.5 text-[10px] font-bold text-[#A3AED0] uppercase sticky left-0 min-w-[220px]" style="background:var(--wk-fila-alt)">Rubro</th>
+                    ${MESES_COSTOS.map(m => `<th class="px-2 py-1.5 text-right text-[10px] font-bold text-[#A3AED0] uppercase">${m.slice(0,3)}</th>`).join('')}
                 </tr></thead>`;
 
             let _nFila = 0;
             const filaRubro = (r) => `<tr class="border-t border-[#F4F7FE] r14-fila${(_nFila++) % 2 ? '-alt' : ''}">
-                    <td class="px-3 py-1.5 font-bold text-[#2B3674] sticky left-0">${escapeHtml(r.nombre)}
+                    <td class="px-5 py-1.5 text-[13px] font-semibold text-[#2B3674] sticky left-0">${escapeHtml(r.nombre)}
                         ${(() => {
                             const cats = (typeof categoriasDelRubro === 'function' ? categoriasDelRubro(r.id) : []);
                             return cats.length > 1
@@ -23547,12 +23592,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         <input type="text" inputmode="decimal" data-anual-mes="${m}" data-anual-tipo="${r.tipo}" data-anual-id="${r.id}"
                                oninput="tocarVistaAnual('${m}')" onblur="formatearMontoAR(this); tocarVistaAnual('${m}')"
                                value="${(() => { const g = costosDelMes(m, anio) || {}; const v = (g[r.tipo] || {})[r.id] || 0; return v ? numeroAR(v) : ''; })()}"
-                               class="w-24 bg-[#F4F7FE] border-0 rounded-lg px-2 py-1.5 text-[11px] font-bold text-right outline-none focus:ring-2 focus:ring-indigo-500/20">
+                               class="w-24 bg-[#F4F7FE] border-0 rounded-lg px-2 py-1.5 text-[12px] font-bold text-[#1B2559] text-right tabular-nums outline-none focus:ring-2 focus:ring-indigo-500/20">
                     </td>`).join('')}
                 </tr>`;
 
             const filaHoras = `<tr class="border-t-2 border-[#E0E5F2] r14-fila-control">
-                    <td class="px-3 py-1.5 font-black text-[#1B2559] sticky left-0">Horas trabajadas</td>
+                    <td class="px-5 py-1.5 text-[13px] font-bold text-[#1B2559] sticky left-0">Horas trabajadas</td>
                     ${MESES_COSTOS.map(m => `<td class="px-1 py-1">
                         <input type="text" inputmode="decimal" data-anual-mes="${m}" data-anual-horas="1"
                                oninput="tocarVistaAnual('${m}')" onblur="formatearMontoAR(this); tocarVistaAnual('${m}')"
@@ -23562,16 +23607,16 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 </tr>`;
 
             const filaTotal = `<tr class="r14-fila-total text-white">
-                    <td class="px-3 py-2 font-black uppercase tracking-wider sticky left-0">Total
-                        <span class="block text-[8px] font-bold opacity-70 normal-case tracking-normal">sin la n&oacute;mina &middot; el Motor la suma aparte</span>
+                    <td class="px-5 py-2 text-[12px] font-bold sticky left-0">Total
+                        <span class="block text-[10px] font-semibold opacity-70">sin la n&oacute;mina &middot; el Motor la suma aparte</span>
                     </td>
-                    ${MESES_COSTOS.map(m => `<td class="px-2 py-2 text-right font-black" id="anual-total-${m}">$ 0</td>`).join('')}
+                    ${MESES_COSTOS.map(m => `<td class="px-2 py-2 text-right font-extrabold tabular-nums" id="anual-total-${m}">$ 0</td>`).join('')}
                 </tr>`;
 
             tabla.innerHTML = cab + '<tbody>'
-                + `<tr class="r14-fila-grupo"><td class="px-3 py-1 font-black text-[9px] text-[#A3AED0] uppercase tracking-widest sticky left-0" colspan="13">Estructura fija</td></tr>`
+                + `<tr class="r14-fila-grupo"><td class="px-5 py-1 font-bold text-[10px] text-[#A3AED0] uppercase sticky left-0" colspan="13">Estructura fija</td></tr>`
                 + rubrosAnuales('fijo').map(filaRubro).join('')
-                + `<tr class="r14-fila-grupo"><td class="px-3 py-1 font-black text-[9px] text-[#A3AED0] uppercase tracking-widest sticky left-0" colspan="13">Estructura variable</td></tr>`
+                + `<tr class="r14-fila-grupo"><td class="px-5 py-1 font-bold text-[10px] text-[#A3AED0] uppercase sticky left-0" colspan="13">Estructura variable</td></tr>`
                 + rubrosAnuales('variable').map(filaRubro).join('')
                 + filaHoras + filaTotal + '</tbody>';
 
@@ -23848,6 +23893,18 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const totalMes = totalFijo + totalVar;
             document.getElementById('total-final-mes').innerText = `$ ${numeroAR(totalMes)}`;
             document.getElementById('total-final-hs').innerText = `$ ${numeroAR(Math.round(totalMes / horasReales))}`;
+            // Los cuatro numeros de arriba y la cuenta escrita del reparto. Sin
+            // horas cargadas el costo por hora no significa nada: se dice.
+            const hayHoras = leerNumeroAR(document.getElementById('cost-horas-reales').value) > 0;
+            const kf = document.getElementById('costs-kpi-fijo'); if (kf) kf.innerText = `$ ${numeroAR(totalFijo)}`;
+            const kv = document.getElementById('costs-kpi-var'); if (kv) kv.innerText = `$ ${numeroAR(totalVar)}`;
+            const kh = document.getElementById('costs-kpi-horas');
+            if (kh) kh.innerText = hayHoras ? `Sobre ${numeroAR(horasReales)} horas reales` : 'Faltan las horas reales';
+            if (!hayHoras) document.getElementById('total-final-hs').innerText = '—';
+            const kr = document.getElementById('costs-resumen-calculo');
+            if (kr) kr.innerHTML = hayHoras
+                ? `Se reparten <strong class="tabular-nums">$ ${numeroAR(totalMes)}</strong> entre <strong class="tabular-nums">${numeroAR(horasReales)}</strong> horas: <strong class="tabular-nums">$ ${numeroAR(Math.round(totalMes / horasReales))}</strong> por hora de viaje propio, más el sueldo de los auxiliares.`
+                : 'Cargá las horas reales del mes (o tocá "Traer horas") para poder calcular.';
 
             // Solo al cargar desde el servidor (fromUser === false) no hay cambios que registrar
             if (fromUser === false) return;
@@ -24284,7 +24341,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 if (typeof addNotification === 'function') addNotification('error', 'Motor de Costos', 'Error al calcular: ' + e.message);
                 else alert('Error al calcular costos: ' + e.message);
             } finally {
-                if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="calculator" class="w-5 h-5"></i> CALCULAR COSTOS DEL MES'; lucide.createIcons(); }
+                if (btn) { btn.disabled = false; btn.innerHTML = '<i data-lucide="calculator" class="w-5 h-5"></i> Calcular costos del mes'; lucide.createIcons(); }
             }
         }
 

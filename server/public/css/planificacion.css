@@ -1327,3 +1327,8 @@ html, body { overscroll-behavior-y: none; }
     /* Botones que solo aparecian al pasar el mouse: en el celular no hay mouse */
     .group .opacity-0.group-hover\:opacity-100 { opacity: 1; }
 }
+
+/* Motor de Costos: el encabezado, las filas de rubros y el total usan la
+   misma grilla, asi los montos quedan alineados y las dos tarjetas parejas. */
+.costs-cols { display: grid; grid-template-columns: minmax(0, 1fr) 150px 96px; column-gap: 12px; align-items: center; }
+@media (max-width: 640px) { .costs-cols { grid-template-columns: minmax(0, 1fr) 136px 62px; column-gap: 6px; } }
