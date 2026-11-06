@@ -1352,3 +1352,18 @@ html, body { overscroll-behavior-y: none; }
 /* Adentro de la caja gris de "Sale del chofer" los campos van en blanco */
 #nt-sale-del-chofer .nt-campo { background-color: var(--surface-container-lowest) !important; }
 [data-theme="dark"] #nt-sale-del-chofer .nt-campo { background: var(--surface-container-low) !important; }
+
+/* Nuevo viaje, pestana Paradas: el encabezado y las filas usan la misma
+   grilla, asi la direccion y el contacto quedan en columna. En el celular
+   los dos botones muestran solo el icono. */
+.td-cols { display: grid; grid-template-columns: 16px 24px minmax(0, 1fr) 180px 150px 28px; column-gap: 10px; align-items: center; }
+#trip-delivery-list .td-cols > button { max-width: 100%; justify-self: start; }
+@media (max-width: 640px) {
+    .td-cols { grid-template-columns: 14px 18px minmax(0, 1fr) 44px 44px 28px; column-gap: 6px; }
+    #trip-delivery-list [data-contacto-resumen] { display: none; }
+}
+#td-results > .td-resultado { background: var(--wk-fila); transition: background-color 0.12s ease; }
+#td-results > .td-resultado:nth-child(even) { background: var(--wk-fila-alt); }
+@media (hover: hover) and (pointer: fine) {
+    #td-results > .td-resultado:hover { background: var(--primary-soft); }
+}

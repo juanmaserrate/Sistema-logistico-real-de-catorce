@@ -34,7 +34,7 @@
          Plan gratuito: 50k cargas de mapa/mes. -->
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="/css/planificacion.css?v=20261108">
+    <link rel="stylesheet" href="/css/planificacion.css?v=20261109">
     <!-- Capa de movimiento: solo COMO aparecen las cosas, nada de colores ni
          tamanos. Sacando estas dos lineas (y el script de abajo) el sistema
          queda exactamente como estaba. -->
@@ -26888,21 +26888,37 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (typeof ntActualizarTabParadas === 'function') ntActualizarTabParadas();
             const ul = document.getElementById('trip-delivery-list');
             if (!ul) return;
-            ul.innerHTML = tripDeliveryRows
+            const total = document.getElementById('td-total-paradas');
+            if (total) total.textContent = tripDeliveryRows.length;
+            // Filas alternadas como en el resto del sistema. El fondo va por
+            // indice (no con nth-child) porque las fichas de direccion y
+            // contacto abiertas son filas extra en el medio.
+            ul.innerHTML = tripDeliveryRows.length === 0
+                ? `<li class="px-4 py-10 text-center">
+                       <p class="text-[12px] font-bold text-[#A3AED0]">Todavía no hay paradas</p>
+                       <p class="text-[11px] text-[#A3AED0] mt-0.5">Cargalas desde las rutas o buscalas en «Agregar parada».</p>
+                   </li>`
+                : tripDeliveryRows
                 .map(
-                    (row, i) => `
-                <li draggable="true" data-idx="${i}" class="trip-delivery-item flex items-center gap-2 bg-[#F8FAFF] border border-[#F4F7FE] rounded-xl px-3 py-2 text-sm font-bold text-[#2B3674] cursor-grab active:cursor-grabbing">
-                    <i data-lucide="grip-vertical" class="w-4 h-4 text-[#A3AED0] shrink-0"></i>
-                    <span class="text-[#A3AED0] text-xs w-5">${i + 1}</span>
-                    <span class="flex-1 min-w-0 truncate" title="${escapeHtmlTrip(_dirDeCliente(row.clientId) || row.address || '')}">${escapeHtmlTrip(row.name)}</span>
-                    ${(row.ruta && tripRutas.length > 1) ? `<span class="shrink-0 px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[9px] font-black uppercase tracking-wider">${escapeHtmlTrip(row.ruta)}</span>` : ''}
-                    ${esParadaDeposito(row.name) ? '' : direccionBotonHtml('modal', row.clientId)}
-                    ${esParadaDeposito(row.name) ? '' : contactoBotonHtml('modal', row.clientId)}
-                    <button type="button" onclick="tripDeliveryRemoveStop(${i})" class="text-rose-500 p-1 rounded-lg hover:bg-rose-50 font-bold" aria-label="Quitar">✕</button>
+                    (row, i) => {
+                const fondo = i % 2 ? 'var(--wk-fila-alt)' : 'var(--wk-fila)';
+                const deposito = esParadaDeposito(row.name);
+                return `
+                <li draggable="true" data-idx="${i}" class="trip-delivery-item td-cols px-4 sm:px-5 py-2 text-[13px] font-semibold text-[#2B3674] cursor-grab active:cursor-grabbing" style="background:${fondo}">
+                    <i data-lucide="grip-vertical" class="w-4 h-4 text-[#C4CBDC]"></i>
+                    <span class="text-[11px] font-bold text-[#A3AED0] tabular-nums">${i + 1}</span>
+                    <span class="min-w-0 flex items-center gap-1.5">
+                        <span class="truncate" title="${escapeHtmlTrip(_dirDeCliente(row.clientId) || row.address || '')}">${escapeHtmlTrip(row.name)}</span>
+                        ${(row.ruta && tripRutas.length > 1) ? `<span class="shrink-0 px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[9px] font-bold uppercase">${escapeHtmlTrip(row.ruta)}</span>` : ''}
+                    </span>
+                    ${deposito ? '<span></span>' : direccionBotonHtml('modal', row.clientId)}
+                    ${deposito ? '<span></span>' : contactoBotonHtml('modal', row.clientId)}
+                    <button type="button" onclick="tripDeliveryRemoveStop(${i})" class="w-7 h-7 rounded-lg grid place-items-center text-rose-500 hover:bg-rose-50 font-bold" aria-label="Quitar">✕</button>
                 </li>
-                ${direccionAbierta.has('modal|' + row.clientId) ? `<li class="bg-white border border-indigo-100 rounded-xl px-3 py-2 -mt-1">${direccionFormHtml(row.clientId, 'modal')}</li>` : ''}
-                ${contactoAbierto.has('modal|' + row.clientId) ? `<li class="bg-white border border-indigo-100 rounded-xl px-3 py-2 -mt-1">${contactoFormHtml(row.clientId, 'modal')}</li>` : ''}
-            `
+                ${direccionAbierta.has('modal|' + row.clientId) ? `<li class="px-4 sm:px-5 pt-1 pb-3" style="background:${fondo}">${direccionFormHtml(row.clientId, 'modal')}</li>` : ''}
+                ${contactoAbierto.has('modal|' + row.clientId) ? `<li class="px-4 sm:px-5 pt-1 pb-3" style="background:${fondo}">${contactoFormHtml(row.clientId, 'modal')}</li>` : ''}
+            `;
+                    }
                 )
                 .join('');
             ul.querySelectorAll('.trip-delivery-item').forEach((li) => {
@@ -27015,12 +27031,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             cont.innerHTML = opcionCrearClienteHtml(rawQ, 'tripDeliveryCrearNuevo()') + shown.map((x) => {
                 const s = x.s;
                 const geo = [s.localidad, s.partido].filter(Boolean).join(' · ');
-                const tipo = s.tipo ? `<span class="text-[9px] font-black bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded uppercase tracking-wide shrink-0">${escapeHtmlTrip(s.tipo)}</span>` : '';
-                return `<button type="button" onclick="tripDeliveryAddById('${s.id}')" class="w-full text-left px-3 py-2 hover:bg-indigo-50 flex items-center gap-2">
-                    <span class="flex-1 min-w-0"><span class="block truncate font-bold text-[#2B3674] text-sm">${escapeHtmlTrip(s.name || s.id)}</span><span class="block truncate text-[10px] text-[#A3AED0]">${escapeHtmlTrip(geo || s.address || '')}</span></span>${tipo}</button>`;
-            }).join('') || (rawQ ? '' : '<div class="px-3 py-3 text-xs text-[#A3AED0]">Sin resultados</div>');
+                const tipo = s.tipo ? `<span class="text-[9px] font-bold bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-md uppercase shrink-0">${escapeHtmlTrip(s.tipo)}</span>` : '';
+                return `<button type="button" onclick="tripDeliveryAddById('${s.id}')" class="td-resultado w-full text-left px-4 sm:px-5 py-2 flex items-center gap-2.5">
+                    <span class="flex-1 min-w-0"><span class="block truncate font-semibold text-[#2B3674] text-[13px]">${escapeHtmlTrip(s.name || s.id)}</span><span class="block truncate text-[10px] text-[#A3AED0]">${escapeHtmlTrip(geo || s.address || '')}</span></span>${tipo}<span class="w-6 h-6 rounded-lg grid place-items-center bg-indigo-50 text-indigo-600 text-sm font-bold shrink-0" aria-hidden="true">+</span></button>`;
+            }).join('') || (rawQ ? '' : '<div class="px-4 py-8 text-center text-[12px] font-bold text-[#A3AED0]">Sin resultados</div>');
             const cnt = document.getElementById('td-results-count');
-            if (cnt) cnt.textContent = scored.length + ' resultado(s)' + (scored.length > CAP ? ` (mostrando ${CAP})` : '');
+            if (cnt) cnt.textContent = scored.length + (scored.length === 1 ? ' resultado' : ' resultados') + (scored.length > CAP ? ` · se muestran ${CAP}` : '');
         }
 
         // ── Alta rapida de un establecimiento desde el buscador de paradas ──
@@ -30245,7 +30261,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
     </div>
 
     <div id="new-trip-modal" class="modal-overlay hidden fixed inset-0 z-50 flex items-center justify-center p-3" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
-        <div class="bg-white rounded-3xl w-[97vw] max-w-[1500px] max-h-[96vh] shadow-2xl overflow-hidden flex flex-col">
+        <div class="bg-white rounded-3xl w-[97vw] max-w-[1500px] max-h-[96vh] lg:min-h-[min(96vh,700px)] shadow-2xl overflow-hidden flex flex-col">
             <!-- Titulo y pestanas en una sola fila: los datos del viaje y las
                  paradas no compiten por lugar -->
             <div class="px-4 sm:px-6 py-3 bg-white flex items-center gap-x-4 gap-y-2 flex-wrap">
@@ -30511,38 +30527,61 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
                 <!-- Pestana de paradas: el mismo editor de siempre, con su propio espacio -->
                 <div id="nt-panel-paradas" class="hidden space-y-3">
-                    <p id="trip-delivery-hint" class="text-[10px] text-[#A3AED0] font-medium leading-relaxed"></p>
-                        <div id="trip-delivery-editor" class="hidden space-y-3">
-                            <!-- Un viaje puede hacer varias rutas seguidas. El orden de
-                                 esta lista es el orden en que el chofer las recorre. -->
-                            <div class="border border-[#E0E5F2] rounded-2xl p-3 bg-white flex flex-col sm:flex-row sm:items-center gap-3">
-                                <div class="flex-1 min-w-0">
-                                    <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Rutas de este viaje</p>
-                                    <p id="trip-rutas-resumen" class="text-sm font-black text-[#2B3674] truncate">—</p>
-                                    <p class="text-[10px] text-[#A3AED0] leading-snug mt-0.5">
-                                        Se agregan y se ordenan en «Datos del viaje». Las paradas se cargan una ruta después de la otra, en ese orden, desde las plantillas de «Rutas predefinidas». El depósito queda una sola vez, al final.
-                                    </p>
+                    <p id="trip-delivery-hint" class="text-[11px] text-[#A3AED0] font-medium leading-relaxed"></p>
+                    <div id="trip-delivery-editor" class="hidden grid grid-cols-1 xl:grid-cols-5 gap-4 items-stretch">
+
+                        <!-- Las paradas, en el orden en que el chofer las recorre -->
+                        <section class="card-dark p-0 overflow-hidden flex flex-col xl:col-span-3">
+                            <header class="px-4 sm:px-5 pt-4 pb-3 flex items-start justify-between gap-3">
+                                <div class="min-w-0">
+                                    <h4 class="text-sm font-extrabold text-[#1B2559]">PARADAS DEL VIAJE</h4>
+                                    <p class="text-[11px] text-[#A3AED0] mt-0.5">Arrastrá las filas para cambiar el orden. El chofer ve la primera cuando se inicia el viaje.</p>
                                 </div>
                                 <button type="button" onclick="cargarParadasDeLasRutas()"
-                                        class="w-full sm:w-auto shrink-0 text-[10px] font-black uppercase tracking-wider text-indigo-700 bg-indigo-50 border border-indigo-100 rounded-xl px-4 py-2 hover:bg-indigo-100 whitespace-nowrap">
-                                    Cargar paradas de estas rutas
+                                        class="shrink-0 px-3.5 py-2 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold whitespace-nowrap flex items-center gap-1.5">
+                                    <i data-lucide="refresh-cw" class="w-4 h-4"></i> Cargar de las rutas
                                 </button>
+                            </header>
+                            <!-- Un viaje puede hacer varias rutas seguidas. Se agregan y se
+                                 ordenan en "Datos del viaje"; las paradas se cargan una ruta
+                                 despues de la otra y el deposito queda una sola vez, al final. -->
+                            <div class="px-4 sm:px-5 pb-3 flex items-center gap-2 min-w-0"
+                                 title="Las rutas se agregan y se ordenan en «Datos del viaje». Las paradas se cargan una ruta después de la otra, desde las plantillas de «Rutas predefinidas». El depósito queda una sola vez, al final.">
+                                <span class="text-[10px] font-bold uppercase text-[#A3AED0] shrink-0">Rutas</span>
+                                <p id="trip-rutas-resumen" class="text-[12px] font-bold text-[#2B3674] truncate">—</p>
                             </div>
-                            <p class="text-[10px] text-[#A3AED0]">Arrastrá las filas para reordenar paradas sueltas. El chofer ve la primera cuando el operador inicia el viaje.</p>
-                            <ul id="trip-delivery-list" class="space-y-2 min-h-[2rem]"></ul>
-                            <div class="space-y-2 border border-[#E0E5F2] rounded-2xl p-3 bg-white">
-                                <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Agregar parada</p>
-                                <input id="td-search" type="text" oninput="filterTripDeliveryResults()" placeholder="Buscar por nombre (exacta o aproximada)…" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
-                                <div class="grid grid-cols-2 lg:grid-cols-4 gap-2">
-                                    <select id="td-filter-tipo" onchange="filterTripDeliveryResults()" class="nt-campo bg-[#F4F7FE] rounded-xl outline-none"><option value="">Todos los tipos</option></select>
-                                    <select id="td-filter-localidad" onchange="filterTripDeliveryResults()" class="nt-campo bg-[#F4F7FE] rounded-xl outline-none"><option value="">Toda localidad</option></select>
-                                    <select id="td-filter-reparto" onchange="filterTripDeliveryResults()" class="nt-campo bg-[#F4F7FE] rounded-xl outline-none"><option value="">Todo reparto</option></select>
-                                    <select id="td-filter-partido" onchange="filterTripDeliveryResults()" class="nt-campo bg-[#F4F7FE] rounded-xl outline-none"><option value="">Todo partido</option></select>
+                            <div class="td-cols px-4 sm:px-5 py-1.5 text-[10px] font-bold uppercase text-[#A3AED0]" style="background:var(--wk-fila-alt)">
+                                <span></span><span>#</span><span>Parada</span>
+                                <span class="invisible sm:visible">Dirección</span><span class="invisible sm:visible">Contacto</span><span></span>
+                            </div>
+                            <ul id="trip-delivery-list" class="flex-1 overflow-y-auto custom-scrollbar xl:max-h-[52vh]"></ul>
+                            <footer class="mt-auto px-4 sm:px-5 py-2.5 text-white flex items-center justify-between gap-3" style="background:var(--r14-total)">
+                                <span class="text-[12px] font-bold">Total de paradas</span>
+                                <span id="td-total-paradas" class="tabular-nums font-extrabold text-[14px]">0</span>
+                            </footer>
+                        </section>
+
+                        <!-- Buscador de escuelas y clientes para sumar paradas -->
+                        <section class="card-dark p-0 overflow-hidden flex flex-col xl:col-span-2">
+                            <header class="px-4 sm:px-5 pt-4 pb-3">
+                                <h4 class="text-sm font-extrabold text-[#1B2559]">AGREGAR PARADA</h4>
+                                <p class="text-[11px] text-[#A3AED0] mt-0.5">Buscá la escuela o el cliente por nombre. Si no existe, lo podés crear desde acá.</p>
+                            </header>
+                            <div class="px-4 sm:px-5 pb-3 space-y-2">
+                                <input id="td-search" type="text" oninput="filterTripDeliveryResults()" placeholder="Buscar por nombre…" autocomplete="off" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
+                                <div class="grid grid-cols-2 gap-2">
+                                    <select id="td-filter-tipo" onchange="filterTripDeliveryResults()" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"><option value="">Todos los tipos</option></select>
+                                    <select id="td-filter-localidad" onchange="filterTripDeliveryResults()" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"><option value="">Toda localidad</option></select>
+                                    <select id="td-filter-reparto" onchange="filterTripDeliveryResults()" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"><option value="">Todo reparto</option></select>
+                                    <select id="td-filter-partido" onchange="filterTripDeliveryResults()" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"><option value="">Todo partido</option></select>
                                 </div>
-                                <div id="td-results" class="max-h-64 overflow-y-auto border border-[#E0E5F2] rounded-xl divide-y divide-[#F4F7FE]"></div>
-                                <p id="td-results-count" class="text-[10px] text-[#A3AED0]"></p>
                             </div>
-                        </div>
+                            <div id="td-results" class="flex-1 overflow-y-auto custom-scrollbar max-h-72 xl:max-h-[40vh]"></div>
+                            <footer class="mt-auto px-4 sm:px-5 py-2.5" style="background:var(--wk-fila-alt)">
+                                <p id="td-results-count" class="text-[11px] font-bold text-[#A3AED0] tabular-nums"></p>
+                            </footer>
+                        </section>
+                    </div>
                 </div>
             </div>
             <div class="px-4 sm:px-6 py-3 bg-white flex items-center gap-x-3 gap-y-2 flex-wrap sm:flex-nowrap">
