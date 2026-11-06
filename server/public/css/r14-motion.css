@@ -42,25 +42,32 @@
    Antes la pantalla nueva aparecia de golpe: .view-animate solo corria una
    vez, al cargar la pagina. Ahora se vuelve a disparar en cada cambio.
    ========================================================================== */
+/* Solo opacidad: un transform en la pantalla, aunque dure 180 ms, hace que lo
+   que va con position:fixed adentro (barra de seleccion del Log Semanal,
+   barra de Presupuestar) se ubique contra la pantalla y no contra la ventana. */
 @keyframes r14PantallaEntra {
-    from { opacity: 0; transform: translateY(4px); }
-    to   { opacity: 1; transform: none; }
+    from { opacity: 0; }
+    to   { opacity: 1; }
 }
-.r14-pantalla-entra { animation: r14PantallaEntra var(--r14-mov-pantalla) var(--r14-mov-entra) both; }
+/* backwards y no both: al terminar no deja ningun transform puesto. Con
+   both quedaba un transform "en cero" en la pantalla, y eso hacia que lo
+   que es position:fixed adentro (la barra de seleccion del Log Semanal) se
+   pegara al fondo de la pantalla y no al de la ventana. */
+.r14-pantalla-entra { animation: r14PantallaEntra var(--r14-mov-pantalla) var(--r14-mov-entra) backwards; }
 
 /* El titulo del header cambia junto con la pantalla */
 @keyframes r14TituloEntra {
     from { opacity: 0; transform: translateX(-8px); }
     to   { opacity: 1; transform: none; }
 }
-.r14-titulo-entra { animation: r14TituloEntra 0.28s var(--r14-mov-entra) both; }
+.r14-titulo-entra { animation: r14TituloEntra 0.28s var(--r14-mov-entra) backwards; }
 
 /* Paneles internos (pestanas dentro de una pantalla) */
 @keyframes r14PanelEntra {
     from { opacity: 0; transform: translateY(5px); }
     to   { opacity: 1; transform: none; }
 }
-.r14-panel-entra { animation: r14PanelEntra 0.2s var(--r14-mov-entra) both; }
+.r14-panel-entra { animation: r14PanelEntra 0.2s var(--r14-mov-entra) backwards; }
 
 
 /* ==========================================================================
@@ -99,7 +106,7 @@ tbody.r14-entra-junto { animation: r14FilaEntra 0.22s var(--r14-mov-suave) both;
     from { opacity: 0; transform: translateY(10px) scale(0.985); }
     to   { opacity: 1; transform: none; }
 }
-[data-r14-cascada].r14-cascada > * { animation: r14TarjetaEntra 0.32s var(--r14-mov-entra) both; }
+[data-r14-cascada].r14-cascada > * { animation: r14TarjetaEntra 0.32s var(--r14-mov-entra) backwards; }
 [data-r14-cascada].r14-cascada > :nth-child(1) { animation-delay: 0ms; }
 [data-r14-cascada].r14-cascada > :nth-child(2) { animation-delay: 45ms; }
 [data-r14-cascada].r14-cascada > :nth-child(3) { animation-delay: 90ms; }
@@ -250,7 +257,7 @@ button.r14-btn-mal {
     from { opacity: 0; transform: translateY(-6px); }
     to   { opacity: 1; transform: none; }
 }
-.r14-abre { animation: r14AbreSeccion 0.2s var(--r14-mov-entra) both; }
+.r14-abre { animation: r14AbreSeccion 0.2s var(--r14-mov-entra) backwards; }
 
 
 /* ==========================================================================

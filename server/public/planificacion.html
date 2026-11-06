@@ -38,7 +38,7 @@
     <!-- Capa de movimiento: solo COMO aparecen las cosas, nada de colores ni
          tamanos. Sacando estas dos lineas (y el script de abajo) el sistema
          queda exactamente como estaba. -->
-    <link rel="stylesheet" href="/css/r14-motion.css?v=20261105">
+    <link rel="stylesheet" href="/css/r14-motion.css?v=20261107">
     <script src="/js/r14-utils.js"></script>
     <script src="/js/r14-notifications.js?v=20261105"></script>
     <script src="/js/r14-motion.js?v=20261105"></script>
@@ -639,34 +639,41 @@
 
             <!-- VIEW: WEEKLY PLANNING (The Big Table with all columns) -->
             <div id="view-weekly" class="view-animate space-y-6">
-                <!-- Content Header & Filters -->
-                <div class="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 min-w-0 flex-wrap">
-                    <div class="flex-1 relative min-w-0 w-full">
-                        <i data-lucide="search" class="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3AED0]"></i>
-                        <input type="text" id="planning-search" oninput="debouncedFilterWeekly()" placeholder="Buscar por chofer, zona o unidad..." class="w-full bg-white border-0 rounded-2xl py-4 pl-12 pr-4 text-sm font-medium text-[#1B2559] shadow-sm focus:ring-2 focus:ring-indigo-500/20 outline-none transition-all">
+                <!-- Barra: busqueda y acciones arriba; periodo, mes y contrato abajo -->
+                <div class="card-dark p-4 space-y-3 relative z-50">
+                    <div class="flex flex-col lg:flex-row lg:items-center gap-3">
+                        <div class="flex-1 relative min-w-0">
+                            <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3AED0]"></i>
+                            <input type="text" id="planning-search" oninput="debouncedFilterWeekly()" placeholder="Buscar por chofer, zona o unidad..." class="w-full bg-[#F4F7FE] border-0 rounded-xl py-2.5 pl-10 pr-4 text-[13px] font-medium text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500/20">
+                        </div>
+                        <div class="flex flex-wrap items-center gap-2 shrink-0">
+                            <label class="px-3.5 py-2.5 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap">
+                                <i data-lucide="upload" class="w-4 h-4"></i> Importar
+                                <input type="file" accept=".xlsx,.xls" class="hidden" onchange="importWeeklyExcel(event)">
+                            </label>
+                            <button type="button" onclick="exportWeeklyExcel()" class="px-3.5 py-2.5 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
+                                <i data-lucide="download" class="w-4 h-4"></i> Exportar
+                            </button>
+                            <button type="button" onclick="openNewTripModal()" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
+                                <i data-lucide="plus" class="w-4 h-4"></i> Nuevo viaje
+                            </button>
+                        </div>
                     </div>
-                    
-                    <div class="flex items-center gap-3 relative z-50 flex-wrap">
+                    <div class="flex flex-wrap items-center gap-2">
                         <!-- Hidden select que el JS necesita para filtrar por mes -->
-                        <select id="planning-month-select" class="hidden">
-                            <option value="enero">Enero</option><option value="febrero">Febrero</option>
-                            <option value="marzo">Marzo</option><option value="abril">Abril</option>
-                            <option value="mayo">Mayo</option><option value="junio">Junio</option>
-                            <option value="julio">Julio</option><option value="agosto">Agosto</option>
-                            <option value="septiembre">Septiembre</option><option value="octubre">Octubre</option>
-                            <option value="noviembre">Noviembre</option><option value="diciembre">Diciembre</option>
-                        </select>
-
-                        <!-- Toggle modo de fecha -->
-                        <div class="flex bg-white rounded-2xl p-1 shadow-sm">
-                            <button id="date-mode-hoy" onclick="setDateFilterMode('hoy')" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold transition-all bg-indigo-600 text-white">Hoy</button>
-                            <button id="date-mode-mes" onclick="setDateFilterMode('mes')" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold transition-all text-[#1B2559] hover:bg-[#F4F7FE]">Mes</button>
-                            <button id="date-mode-dia" onclick="setDateFilterMode('dia')" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold transition-all text-[#1B2559] hover:bg-[#F4F7FE]">Día</button>
-                            <button id="date-mode-rango" onclick="setDateFilterMode('rango')" class="px-4 py-2.5 rounded-[12px] text-[11px] font-bold transition-all text-[#1B2559] hover:bg-[#F4F7FE]">Rango</button>
+                        <select id="planning-month-select" class="hidden"><option value="enero">Enero</option><option value="febrero">Febrero</option><option value="marzo">Marzo</option><option value="abril">Abril</option><option value="mayo">Mayo</option><option value="junio">Junio</option><option value="julio">Julio</option><option value="agosto">Agosto</option><option value="septiembre">Septiembre</option><option value="octubre">Octubre</option><option value="noviembre">Noviembre</option><option value="diciembre">Diciembre</option></select>
+                        <div class="inline-flex rounded-xl bg-[#F4F7FE] p-1" role="tablist" aria-label="Período">
+                            <button type="button" id="date-mode-hoy" onclick="setDateFilterMode('hoy')" class="px-3.5 py-1.5 rounded-lg text-[11px] font-bold bg-indigo-600 text-white">Hoy</button>
+                            <button type="button" id="date-mode-mes" onclick="setDateFilterMode('mes')" class="px-3.5 py-1.5 rounded-lg text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE]">Mes</button>
+                            <button type="button" id="date-mode-dia" onclick="setDateFilterMode('dia')" class="px-3.5 py-1.5 rounded-lg text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE]">Día</button>
+                            <button type="button" id="date-mode-rango" onclick="setDateFilterMode('rango')" class="px-3.5 py-1.5 rounded-lg text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE]">Rango</button>
                         </div>
 
-                        <!-- Modo MES: dropdown mes + año -->
+                        <!-- Modo MES: los meses como botones, igual que en Presupuesto y Costos -->
                         <div id="date-filter-mes" class="flex items-center gap-2">
+                            <div id="planning-meses" class="flex flex-wrap gap-1" role="tablist" aria-label="Mes"></div>
+                            <!-- El desplegable viejo queda oculto: el codigo escribe ahi el mes -->
+                            <div class="hidden" aria-hidden="true">
                             <div class="relative">
                                 <button id="planning-month-btn" onclick="toggleMonthDropdown()" class="bg-white border-0 rounded-2xl px-5 py-4 text-xs font-bold text-[#1B2559] shadow-sm outline-none hover:bg-[#F4F7FE] transition-all cursor-pointer flex items-center gap-2 min-w-[160px]">
                                     <span id="planning-month-label">Enero 2026</span>
@@ -689,86 +696,87 @@
                                     </div>
                                 </div>
                             </div>
+                            </div>
                         </div>
 
-                        <!-- Modo DÍA: date picker -->
+                        <!-- Modo DÍA -->
                         <div id="date-filter-dia" class="hidden">
                             <input type="date" id="filter-single-date" oninput="debouncedFilterWeekly()"
-                                class="bg-white border-0 rounded-2xl px-5 py-3.5 text-xs font-bold text-[#1B2559] shadow-sm outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer">
+                                class="bg-[#F4F7FE] border-0 rounded-xl px-3 py-1.5 text-[12px] font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer">
                         </div>
 
-                        <!-- Modo RANGO: desde/hasta -->
+                        <!-- Modo RANGO -->
                         <div id="date-filter-rango" class="hidden flex items-center gap-2">
                             <input type="date" id="filter-range-from" oninput="debouncedFilterWeekly()"
-                                class="bg-white border-0 rounded-2xl px-4 py-3.5 text-xs font-bold text-[#1B2559] shadow-sm outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer">
+                                class="bg-[#F4F7FE] border-0 rounded-xl px-3 py-1.5 text-[12px] font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer">
                             <span class="text-xs font-bold text-[#A3AED0]">→</span>
                             <input type="date" id="filter-range-to" oninput="debouncedFilterWeekly()"
-                                class="bg-white border-0 rounded-2xl px-4 py-3.5 text-xs font-bold text-[#1B2559] shadow-sm outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer">
-                        </div>
-                        <div class="flex bg-white rounded-2xl p-1 shadow-sm">
-                            <button onclick="setGridFilter('ALL')" class="px-5 py-3 rounded-[12px] text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Todos</button>
-                            <button onclick="setGridFilter('Propio')" class="px-5 py-3 rounded-[12px] text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Propio</button>
-                            <button onclick="setGridFilter('Tercerizado')" class="px-5 py-3 rounded-[12px] text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] transition-all">Tercerizado</button>
+                                class="bg-[#F4F7FE] border-0 rounded-xl px-3 py-1.5 text-[12px] font-bold text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500/20 cursor-pointer">
                         </div>
 
-                        <button onclick="exportWeeklyExcel()" class="px-5 py-4 rounded-2xl bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-600 transition-all shadow-lg shadow-emerald-200 flex items-center gap-2">
-                            <i data-lucide="download" class="w-4 h-4"></i> EXPORTAR
-                        </button>
-                        <label class="px-5 py-4 rounded-2xl bg-white border-2 border-emerald-600 text-emerald-700 text-[11px] font-bold hover:bg-emerald-50 transition-all flex items-center gap-2 cursor-pointer">
-                            <i data-lucide="upload" class="w-4 h-4"></i> IMPORTAR
-                            <input type="file" accept=".xlsx,.xls" class="hidden" onchange="importWeeklyExcel(event)">
-                        </label>
-                        <button onclick="openNewTripModal()" class="px-6 py-4 rounded-2xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center gap-2">
-                            <i data-lucide="plus" class="w-4 h-4"></i> NUEVO VIAJE
-                        </button>
+                        <div id="weekly-contrato" class="inline-flex rounded-xl bg-[#F4F7FE] p-1" role="tablist" aria-label="Contrato">
+                            <button type="button" data-contrato="ALL" onclick="setGridFilter('ALL')" class="px-3.5 py-1.5 rounded-lg text-[11px] font-bold bg-indigo-600 text-white shadow">Todos</button>
+                            <button type="button" data-contrato="Propio" onclick="setGridFilter('Propio')" class="px-3.5 py-1.5 rounded-lg text-[11px] font-bold text-[#A3AED0] flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>Propio</button>
+                            <button type="button" data-contrato="Tercerizado" onclick="setGridFilter('Tercerizado')" class="px-3.5 py-1.5 rounded-lg text-[11px] font-bold text-[#A3AED0] flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Tercerizado</button>
+                        </div>
 
-                        <div class="flex items-center gap-3 ml-2">
-                            <div class="flex items-center gap-2 bg-white rounded-2xl px-4 py-3 shadow-sm">
-                                <i data-lucide="bar-chart-2" class="w-4 h-4 text-indigo-500"></i>
-                                <span class="text-[10px] font-bold text-[#A3AED0] uppercase">Total</span>
-                                <span id="summary-total-trips" class="text-sm font-extrabold text-[#1B2559]">0</span>
-                            </div>
-                            <div class="flex items-center gap-2 bg-white rounded-2xl px-4 py-3 shadow-sm">
-                                <i data-lucide="filter" class="w-4 h-4 text-indigo-500"></i>
-                                <span class="text-[10px] font-bold text-[#A3AED0] uppercase">Vista</span>
-                                <span id="summary-filtered-count" class="text-sm font-extrabold text-[#1B2559]">0</span>
-                            </div>
-                            <button onclick="toggleFilterPanel()" class="px-4 py-3 bg-white rounded-2xl text-[#A3AED0] hover:text-indigo-600 hover:bg-indigo-50 transition-all shadow-sm" title="Mostrar/ocultar filtros">
+                        <div class="flex items-center gap-1 ml-auto">
+                            <button type="button" onclick="toggleFilterPanel()" title="Mostrar u ocultar filtros" aria-label="Filtros" class="w-9 h-9 grid place-items-center rounded-xl bg-[#F4F7FE] text-[#A3AED0] hover:text-indigo-600">
                                 <i data-lucide="filter" class="w-4 h-4"></i>
                             </button>
-                            <button onclick="openColumnSettingsModal()" class="px-4 py-3 bg-white rounded-2xl text-[#A3AED0] hover:text-indigo-600 hover:bg-indigo-50 transition-all shadow-sm" title="Configurar columnas">
+                            <button type="button" onclick="openColumnSettingsModal()" title="Configurar columnas" aria-label="Configurar columnas" class="w-9 h-9 grid place-items-center rounded-xl bg-[#F4F7FE] text-[#A3AED0] hover:text-indigo-600">
                                 <i data-lucide="sliders-horizontal" class="w-4 h-4"></i>
                             </button>
                         </div>
                     </div>
                 </div>
 
-                <!-- Bulk Action Bar -->
-                <div id="weekly-bulk-bar" class="hidden card-dark p-4 flex flex-wrap items-center gap-4 border-2 border-indigo-200 bg-indigo-50/50">
-                    <div class="flex items-center gap-3">
-                        <div class="w-10 h-10 bg-indigo-600 rounded-xl flex items-center justify-center text-white">
-                            <i data-lucide="check-square" class="w-5 h-5"></i>
-                        </div>
-                        <div>
-                            <p class="text-sm font-black text-[#1B2559]"><span id="weekly-selected-count">0</span> viajes seleccionados</p>
-                            <p class="text-[10px] text-[#A3AED0] font-bold uppercase">Acciones masivas</p>
-                        </div>
+                <!-- Los numeros, primero -->
+                <div class="grid gap-2 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+                    <div class="card-dark px-4 py-3 sm:px-5 sm:py-4 min-w-0">
+                        <div class="text-[11px] font-semibold text-[#A3AED0] truncate">En la vista</div>
+                        <div id="summary-filtered-count" class="mt-1 text-xl sm:text-2xl font-extrabold text-[#1B2559] tabular-nums">0</div>
+                        <div class="text-[11px] text-[#A3AED0] mt-0.5 truncate">Con los filtros de arriba</div>
+                    </div>
+                    <div class="card-dark px-4 py-3 sm:px-5 sm:py-4 min-w-0">
+                        <div class="flex items-center gap-1.5 text-[11px] font-semibold text-[#A3AED0] truncate"><span class="w-2 h-2 rounded-full bg-indigo-500 shrink-0"></span>Propios</div>
+                        <div id="summary-propios" class="mt-1 text-xl sm:text-2xl font-extrabold text-[#1B2559] tabular-nums">0</div>
+                        <div id="summary-propios-pct" class="text-[11px] text-[#A3AED0] mt-0.5 truncate">&nbsp;</div>
+                    </div>
+                    <div class="card-dark px-4 py-3 sm:px-5 sm:py-4 min-w-0">
+                        <div class="flex items-center gap-1.5 text-[11px] font-semibold text-[#A3AED0] truncate"><span class="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>Tercerizados</div>
+                        <div id="summary-terc" class="mt-1 text-xl sm:text-2xl font-extrabold text-[#1B2559] tabular-nums">0</div>
+                        <div id="summary-terc-pct" class="text-[11px] text-[#A3AED0] mt-0.5 truncate">&nbsp;</div>
+                    </div>
+                    <div class="card-dark px-4 py-3 sm:px-5 sm:py-4 min-w-0">
+                        <div class="text-[11px] font-semibold text-[#A3AED0] truncate">Cargados</div>
+                        <div id="summary-total-trips" class="mt-1 text-xl sm:text-2xl font-extrabold text-[#1B2559] tabular-nums">0</div>
+                        <div class="text-[11px] text-[#A3AED0] mt-0.5 truncate">En el período traído</div>
+                    </div>
+                </div>
+
+                <!-- Seleccion masiva: flota abajo. Antes aparecia arriba y empujaba la
+                     tabla justo debajo del mouse al tildar el primer viaje. -->
+                <div id="weekly-bulk-bar" class="hidden fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[min(980px,calc(100vw-2rem))] card-dark p-3 flex flex-wrap items-center gap-2" style="box-shadow:var(--elevation-3)">
+                    <div class="flex items-center gap-2.5 pl-1 pr-2">
+                        <span class="w-8 h-8 rounded-lg bg-indigo-600 text-white grid place-items-center"><i data-lucide="check-square" class="w-4 h-4"></i></span>
+                        <p class="text-[13px] font-extrabold text-[#1B2559] whitespace-nowrap"><span id="weekly-selected-count" class="tabular-nums">0</span> seleccionados</p>
                     </div>
                     <div class="flex-1"></div>
-                    <button onclick="printSelectedHDR()" class="px-5 py-3 rounded-2xl bg-[#1B2559] text-white text-[11px] font-bold hover:bg-[#0f1a4a] transition-all shadow-lg flex items-center gap-2">
-                        <i data-lucide="printer" class="w-4 h-4"></i> Imprimir HDR
+                    <button type="button" onclick="printSelectedHDR()" title="Imprimir HDR" aria-label="Imprimir HDR" class="px-3.5 py-2 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
+                        <i data-lucide="printer" class="w-4 h-4"></i><span class="hidden sm:inline">Imprimir HDR</span>
                     </button>
-                    <button onclick="openBulkEditModal()" class="px-5 py-3 rounded-2xl bg-indigo-600 text-white text-[11px] font-bold hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center gap-2">
-                        <i data-lucide="edit-3" class="w-4 h-4"></i> Editar seleccionados
+                    <button type="button" onclick="fusionarViajes()" title="Fusionar" aria-label="Fusionar" class="px-3.5 py-2 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
+                        <i data-lucide="git-merge" class="w-4 h-4"></i><span class="hidden sm:inline">Fusionar</span>
                     </button>
-                    <button onclick="fusionarViajes()" class="px-5 py-3 rounded-2xl bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 flex items-center gap-2">
-                        <i data-lucide="git-merge" class="w-4 h-4"></i> Fusionar
+                    <button type="button" onclick="bulkDeleteTrips()" title="Eliminar" aria-label="Eliminar" class="px-3.5 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
+                        <i data-lucide="trash-2" class="w-4 h-4"></i><span class="hidden sm:inline">Eliminar</span>
                     </button>
-                    <button onclick="bulkDeleteTrips()" class="px-5 py-3 rounded-2xl bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-600 transition-all shadow-lg shadow-rose-200 flex items-center gap-2">
-                        <i data-lucide="trash-2" class="w-4 h-4"></i> Eliminar seleccionados
+                    <button type="button" onclick="openBulkEditModal()" class="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
+                        <i data-lucide="edit-3" class="w-4 h-4"></i> Editar<span class="hidden sm:inline">&nbsp;seleccionados</span>
                     </button>
-                    <button onclick="clearTripSelection()" class="px-4 py-3 rounded-2xl border border-[#E0E5F2] text-[#1B2559] text-[11px] font-bold hover:bg-[#F4F7FE] transition-all">
-                        Cancelar
+                    <button type="button" onclick="clearTripSelection()" aria-label="Cancelar la selección" title="Cancelar la selección" class="w-9 h-9 grid place-items-center rounded-xl text-[#A3AED0] hover:text-[#1B2559] hover:bg-[#F4F7FE]">
+                        <i data-lucide="x" class="w-4 h-4"></i>
                     </button>
                 </div>
 
@@ -17695,6 +17703,15 @@
             // Actualizar resumen
             document.getElementById('summary-total-trips').innerText = (planningData || data).length.toLocaleString('es-AR');
             document.getElementById('summary-filtered-count').innerText = data.length.toLocaleString('es-AR');
+            const _contrato = (t) => String(t.contractType || '').toLowerCase();
+            const _nProp = data.filter((t) => _contrato(t) === 'propio').length;
+            const _nTerc = data.filter((t) => _contrato(t) === 'tercerizado' || _contrato(t) === 'externo').length;
+            const _pct = (n) => data.length ? `${Math.round(n * 100 / data.length)}% de la vista` : '\u00a0';
+            const _sp = document.getElementById('summary-propios'); if (_sp) _sp.innerText = _nProp.toLocaleString('es-AR');
+            const _st = document.getElementById('summary-terc'); if (_st) _st.innerText = _nTerc.toLocaleString('es-AR');
+            const _spp = document.getElementById('summary-propios-pct'); if (_spp) _spp.innerText = _pct(_nProp);
+            const _stp = document.getElementById('summary-terc-pct'); if (_stp) _stp.innerText = _pct(_nTerc);
+            pintarMesesLog();
             applyColumnVisibility();
             lucide.createIcons();
         }
@@ -17828,17 +17845,32 @@
                 container.classList.remove('filter-tercerizado');
             }
 
-            // Estética de botones
-            document.querySelectorAll('#view-weekly button').forEach(btn => {
-                if (btn.innerText.includes(filter) || (filter === 'ALL' && btn.innerText === 'Todos')) {
-                    btn.classList.add('bg-indigo-600', 'text-white');
-                    btn.classList.remove('bg-white', 'text-[#2B3674]', 'border-[#E0E5F2]');
-                } else if (btn.onclick && btn.onclick.toString().includes('setGridFilter')) {
-                    btn.classList.remove('bg-indigo-600', 'text-white');
-                    btn.classList.add('bg-white', 'text-[#2B3674]', 'border-[#E0E5F2]');
-                }
+            // Estetica de los tres botones de contrato. Antes se buscaba por el
+            // texto de TODOS los botones de la pantalla.
+            document.querySelectorAll('#weekly-contrato button').forEach(btn => {
+                const si = btn.dataset.contrato === filter;
+                ['bg-indigo-600', 'text-white', 'shadow'].forEach(c => btn.classList.toggle(c, si));
+                btn.classList.toggle('text-[#A3AED0]', !si);
+                btn.setAttribute('aria-selected', si ? 'true' : 'false');
             });
             filterWeeklyData();
+        }
+
+        /** Los meses del modo Mes, como botones. Manejan el desplegable viejo
+         *  (oculto), que es lo que lee el resto del codigo. */
+        function pintarMesesLog() {
+            const cont = document.getElementById('planning-meses');
+            if (!cont) return;
+            const actual = document.getElementById('planning-month-select')?.value || '';
+            const anio = nowBuenosAires().year;
+            const MES = ['enero','febrero','marzo','abril','mayo','junio','julio','agosto','septiembre','octubre','noviembre','diciembre'];
+            cont.innerHTML = MES.map((m) => {
+                const nombre = m.charAt(0).toUpperCase() + m.slice(1);
+                const clase = m === actual ? 'bg-indigo-600 text-white' : 'bg-[#F4F7FE] text-[#1B2559] hover:bg-[#E8ECF8]';
+                return `<button type="button" role="tab" aria-selected="${m === actual}" title="${nombre} ${anio}"
+                    onclick="Promise.resolve(selectMonth('${m}', '${nombre} ${anio}')).then(pintarMesesLog)"
+                    class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold ${clase}">${m.slice(0, 3).toUpperCase()}</button>`;
+            }).join('');
         }
 
         // Funciones para dropdown personalizado de mes
