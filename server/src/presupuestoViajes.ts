@@ -65,6 +65,8 @@ export interface InformePresupuesto {
         conteos: number;
         viajesEnVariasUnidades: number;
         viajesPorMes: number[];
+        /** Los mismos viajes por contrato, sin repetir los de varias unidades. */
+        porContrato: Record<Contrato, number[]>;
         /** Viajes sin contrato cargado: no se pueden poner en ningun bloque. */
         sinContrato: number[];
     };
@@ -162,7 +164,8 @@ export function contarPresupuesto(viajesCrudos: ViajeParaPresupuesto[], cfg: any
 
     const resumen = {
         viajesCompletados: 0, conteos: 0, viajesEnVariasUnidades: 0,
-        viajesPorMes: ceros(), sinContrato: ceros()
+        viajesPorMes: ceros(), sinContrato: ceros(),
+        porContrato: { Propio: ceros(), Tercerizado: ceros() } as Record<Contrato, number[]>
     };
 
     for (const t of viajes) {
@@ -176,6 +179,7 @@ export function contarPresupuesto(viajesCrudos: ViajeParaPresupuesto[], cfg: any
         if (!unidades.length) unidades.push('SIN UNIDAD');
         resumen.viajesCompletados += 1;
         resumen.viajesPorMes[mes] += 1;
+        resumen.porContrato[contrato][mes] += 1;
         if (unidades.length > 1) resumen.viajesEnVariasUnidades += 1;
 
         const localidad = normTexto(t.zone);

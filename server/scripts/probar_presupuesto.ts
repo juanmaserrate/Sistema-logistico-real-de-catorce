@@ -65,6 +65,9 @@ console.log('1. Que cuenta');
 esperar('solo completados, sin la cuenta de prueba ni los sin contrato',
     inf.resumen.viajesCompletados === 18, inf.resumen.viajesCompletados);
 esperar('el sin contrato queda avisado', inf.resumen.sinContrato[OCT] === 1, inf.resumen.sinContrato);
+esperar('propios + tercerizados = viajes del mes, sin repetir los de dos unidades',
+    inf.resumen.porContrato.Propio[OCT] + inf.resumen.porContrato.Tercerizado[OCT] === inf.resumen.viajesPorMes[OCT]
+    && inf.resumen.porContrato.Tercerizado[OCT] === 5, inf.resumen.porContrato);
 esperar('el de las 23:30 del 31/10 es de octubre', celda('CDI', null, 'Propio') === 1);
 
 console.log('\n2. SAE BROWN por localidad');
