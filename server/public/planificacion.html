@@ -34,7 +34,7 @@
          Plan gratuito: 50k cargas de mapa/mes. -->
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="/css/planificacion.css?v=20261106">
+    <link rel="stylesheet" href="/css/planificacion.css?v=20261107">
     <!-- Capa de movimiento: solo COMO aparecen las cosas, nada de colores ni
          tamanos. Sacando estas dos lineas (y el script de abajo) el sistema
          queda exactamente como estaba. -->
@@ -896,107 +896,93 @@
             </div>
 
             <!-- VIEW: PLANILLA DE PAGOS -->
-            <div id="view-payments" class="hidden view-animate space-y-6">
-                <div class="card-dark p-8 flex flex-col lg:flex-row lg:items-end justify-between gap-6">
-                    <div>
-                        <h3 class="text-2xl font-bold text-[#1B2559]">Planilla de Pagos</h3>
-                        <p class="text-sm text-[#A3AED0] font-medium mt-1">Viajes tercerizados a pagar, agrupados por proveedor</p>
-                    </div>
-                    <div class="flex flex-wrap items-center gap-3">
-                        <button onclick="exportPaymentsExcel()" class="px-5 py-4 rounded-2xl bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 transition-all shadow-lg shadow-emerald-200 flex items-center gap-2">
-                            <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Exportar Excel
-                        </button>
-                    </div>
-                </div>
-
-                <!-- Filtros -->
-                <div class="card-dark p-6">
-                    <div class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                        <div>
-                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Desde</label>
-                            <input type="date" id="payments-date-from" onchange="renderPaymentsTable()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+            <div id="view-payments" class="hidden space-y-4 pb-24">
+                <!-- Barra: fechas, estado y filtros. El <select> de estado queda
+                     oculto porque lo lee el filtro; lo manejan los botones. -->
+                <div class="card-dark p-4 space-y-3">
+                    <div class="flex flex-col xl:flex-row xl:items-center gap-3 justify-between">
+                        <div class="flex flex-wrap items-center gap-2">
+                            <div id="payments-presets" class="flex flex-wrap gap-1">
+                                <button type="button" data-preset="thisWeek" onclick="setPaymentsDateRange('thisWeek')" class="px-3 py-1.5 rounded-lg text-[11px] font-bold">Esta semana</button>
+                                <button type="button" data-preset="lastWeek" onclick="setPaymentsDateRange('lastWeek')" class="px-3 py-1.5 rounded-lg text-[11px] font-bold">Semana pasada</button>
+                                <button type="button" data-preset="thisMonth" onclick="setPaymentsDateRange('thisMonth')" class="px-3 py-1.5 rounded-lg text-[11px] font-bold">Este mes</button>
+                                <button type="button" data-preset="lastMonth" onclick="setPaymentsDateRange('lastMonth')" class="px-3 py-1.5 rounded-lg text-[11px] font-bold">Mes pasado</button>
+                            </div>
+                            <label class="flex items-center gap-2 bg-[#F4F7FE] rounded-xl px-3 py-1.5">
+                                <span class="text-[11px] font-semibold text-[#A3AED0]">Desde</span>
+                                <input type="date" id="payments-date-from" onchange="renderPaymentsTable()" class="bg-transparent border-0 text-[12px] font-bold text-[#1B2559] outline-none">
+                            </label>
+                            <label class="flex items-center gap-2 bg-[#F4F7FE] rounded-xl px-3 py-1.5">
+                                <span class="text-[11px] font-semibold text-[#A3AED0]">Hasta</span>
+                                <input type="date" id="payments-date-to" onchange="renderPaymentsTable()" class="bg-transparent border-0 text-[12px] font-bold text-[#1B2559] outline-none">
+                            </label>
                         </div>
-                        <div>
-                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Hasta</label>
-                            <input type="date" id="payments-date-to" onchange="renderPaymentsTable()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                        <div class="flex flex-wrap items-center gap-2 shrink-0">
+                            <button type="button" onclick="clearPaymentsFilters()" class="px-3.5 py-2.5 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold whitespace-nowrap">Limpiar filtros</button>
+                            <button type="button" onclick="exportPaymentsExcel()" class="px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
+                                <i data-lucide="file-spreadsheet" class="w-4 h-4"></i> Exportar Excel
+                            </button>
                         </div>
-                        <div>
-                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Proveedor</label>
-                            <select id="payments-provider-filter" onchange="renderPaymentsTable()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                    </div>
+                    <div class="flex flex-wrap items-center gap-2">
+                        <select id="payments-status-filter" onchange="renderPaymentsTable()" class="hidden" aria-hidden="true" tabindex="-1">
+                            <option value="all">Todos</option>
+                            <option value="pending" selected>Pendientes</option>
+                            <option value="paid">Pagados</option>
+                        </select>
+                        <div id="payments-estado" class="inline-flex rounded-xl bg-[#F4F7FE] p-1" role="tablist" aria-label="Estado de pago">
+                            <button type="button" data-estado="pending" onclick="pagosEstado('pending')" class="px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Pendientes</button>
+                            <button type="button" data-estado="paid" onclick="pagosEstado('paid')" class="px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>Pagados</button>
+                            <button type="button" data-estado="all" onclick="pagosEstado('all')" class="px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest">Todos</button>
+                        </div>
+                        <label class="flex items-center gap-2 bg-[#F4F7FE] rounded-xl px-3 py-1.5 min-w-0">
+                            <span class="text-[11px] font-semibold text-[#A3AED0]">Proveedor</span>
+                            <select id="payments-provider-filter" onchange="renderPaymentsTable()" class="bg-transparent border-0 text-[12px] font-bold text-[#1B2559] outline-none max-w-[220px]">
                                 <option value="">Todos los proveedores</option>
                             </select>
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Unidad Negocio</label>
-                            <select id="payments-bu-filter" onchange="renderPaymentsTable()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
+                        </label>
+                        <label class="flex items-center gap-2 bg-[#F4F7FE] rounded-xl px-3 py-1.5 min-w-0">
+                            <span class="text-[11px] font-semibold text-[#A3AED0]">Unidad</span>
+                            <select id="payments-bu-filter" onchange="renderPaymentsTable()" class="bg-transparent border-0 text-[12px] font-bold text-[#1B2559] outline-none max-w-[200px]">
                                 <option value="">Todas</option>
                             </select>
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Estado de Pago</label>
-                            <select id="payments-status-filter" onchange="renderPaymentsTable()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold shadow-sm outline-none focus:ring-2 focus:ring-indigo-500">
-                                <option value="all">Todos</option>
-                                <option value="pending" selected>Pendientes</option>
-                                <option value="paid">Pagados</option>
-                            </select>
-                        </div>
-                    </div>
-                    <div class="flex flex-wrap items-center gap-2 mt-4">
-                        <button onclick="setPaymentsDateRange('thisWeek')" class="text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg bg-[#F4F7FE] hover:bg-indigo-50 text-[#1B2559]">Esta semana</button>
-                        <button onclick="setPaymentsDateRange('lastWeek')" class="text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg bg-[#F4F7FE] hover:bg-indigo-50 text-[#1B2559]">Semana pasada</button>
-                        <button onclick="setPaymentsDateRange('thisMonth')" class="text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg bg-[#F4F7FE] hover:bg-indigo-50 text-[#1B2559]">Este mes</button>
-                        <button onclick="setPaymentsDateRange('lastMonth')" class="text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg bg-[#F4F7FE] hover:bg-indigo-50 text-[#1B2559]">Mes pasado</button>
-                        <button onclick="clearPaymentsFilters()" class="text-[10px] font-bold uppercase px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 ml-auto">Limpiar filtros</button>
+                        </label>
                     </div>
                 </div>
 
-                <!-- KPIs -->
-                <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                    <div class="card-dark p-5 bg-gradient-to-br from-amber-50 to-white border-amber-100">
-                        <div class="text-[10px] font-bold text-amber-700 uppercase">Total Pendiente</div>
-                        <div id="payments-kpi-pending" class="text-2xl font-black text-amber-700 mt-1">$ 0</div>
-                        <div id="payments-kpi-pending-count" class="text-[10px] text-[#A3AED0] mt-1">0 viajes</div>
+                <!-- Los numeros, primero -->
+                <div class="grid gap-2 sm:gap-4 grid-cols-3">
+                    <div class="card-dark px-3 py-3 sm:px-5 sm:py-4 min-w-0">
+                        <div class="flex items-center gap-1.5 text-[11px] font-semibold text-[#A3AED0] truncate"><span class="w-2 h-2 rounded-full bg-amber-500 shrink-0"></span>Pendiente</div>
+                        <div id="payments-kpi-pending" class="mt-1 text-xl sm:text-2xl font-extrabold text-[#1B2559] tabular-nums truncate">$ 0</div>
+                        <div id="payments-kpi-pending-count" class="text-[11px] text-[#A3AED0] mt-0.5">0 viajes</div>
                     </div>
-                    <div class="card-dark p-5 bg-gradient-to-br from-emerald-50 to-white border-emerald-100">
-                        <div class="text-[10px] font-bold text-emerald-700 uppercase">Total Pagado</div>
-                        <div id="payments-kpi-paid" class="text-2xl font-black text-emerald-700 mt-1">$ 0</div>
-                        <div id="payments-kpi-paid-count" class="text-[10px] text-[#A3AED0] mt-1">0 viajes</div>
+                    <div class="card-dark px-3 py-3 sm:px-5 sm:py-4 min-w-0">
+                        <div class="flex items-center gap-1.5 text-[11px] font-semibold text-[#A3AED0] truncate"><span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>Pagado</div>
+                        <div id="payments-kpi-paid" class="mt-1 text-xl sm:text-2xl font-extrabold text-[#1B2559] tabular-nums truncate">$ 0</div>
+                        <div id="payments-kpi-paid-count" class="text-[11px] text-[#A3AED0] mt-0.5">0 viajes</div>
                     </div>
-                    <div class="card-dark p-5 bg-gradient-to-br from-indigo-50 to-white border-indigo-100">
-                        <div class="text-[10px] font-bold text-indigo-700 uppercase">Total Tercerizados (filtro)</div>
-                        <div id="payments-kpi-total" class="text-2xl font-black text-indigo-700 mt-1">$ 0</div>
-                        <div id="payments-kpi-total-count" class="text-[10px] text-[#A3AED0] mt-1">0 viajes</div>
+                    <div class="card-dark px-3 py-3 sm:px-5 sm:py-4 min-w-0">
+                        <div class="text-[11px] font-semibold text-[#A3AED0] truncate">Total del filtro</div>
+                        <div id="payments-kpi-total" class="mt-1 text-xl sm:text-2xl font-extrabold text-[#1B2559] tabular-nums truncate">$ 0</div>
+                        <div id="payments-kpi-total-count" class="text-[11px] text-[#A3AED0] mt-0.5">0 viajes</div>
                     </div>
                 </div>
 
-                <!-- Tabla pivot -->
-                <div class="card-dark overflow-hidden">
-                    <div class="overflow-x-auto custom-scrollbar">
-                        <table class="w-full text-left text-[12px]">
-                            <thead class="bg-[#F4F7FE]">
-                                <tr>
-                                    <th class="px-4 py-3 font-black text-[10px] uppercase text-[#1B2559] w-12"></th>
-                                    <th class="px-4 py-3 font-black text-[10px] uppercase text-[#1B2559]">Proveedor</th>
-                                    <th class="px-4 py-3 font-black text-[10px] uppercase text-[#1B2559]">Unid. Negocio</th>
-                                    <th class="px-4 py-3 font-black text-[10px] uppercase text-[#1B2559]">Chofer</th>
-                                    <th class="px-4 py-3 font-black text-[10px] uppercase text-[#1B2559]">Reparto</th>
-                                    <th class="px-4 py-3 font-black text-[10px] uppercase text-[#1B2559] text-center">Fecha</th>
-                                    <th class="px-4 py-3 font-black text-[10px] uppercase text-[#1B2559] text-center">Estado</th>
-                                    <th class="px-4 py-3 font-black text-[10px] uppercase text-[#1B2559] text-right">Valor</th>
-                                    <th class="px-4 py-3 font-black text-[10px] uppercase text-[#1B2559] text-center w-32">Acción</th>
-                                </tr>
-                            </thead>
-                            <tbody id="payments-table-body" class="divide-y divide-[#F4F7FE]">
-                                <!-- Data Injected -->
-                            </tbody>
-                            <tfoot>
-                                <tr class="payments-total-row" style="background-color:#1B2559 !important;">
-                                    <td colspan="7" class="px-4 py-4 font-black text-[13px] uppercase tracking-widest" style="color:#ffffff !important; background-color:#1B2559 !important;"><span style="color:#ffffff !important;">Total general</span></td>
-                                    <td id="payments-grand-total" class="px-4 py-4 font-black text-right text-[16px]" style="color:#ffffff !important; background-color:#1B2559 !important;"><span style="color:#ffffff !important;">$ 0</span></td>
-                                    <td style="background-color:#1B2559 !important;"></td>
-                                </tr>
-                            </tfoot>
-                        </table>
+                <!-- Una tarjeta por proveedor. Todas las filas, de cualquier nivel,
+                     usan la misma grilla (.pay-cols): los numeros quedan alineados
+                     de una tarjeta a la otra. -->
+                <div class="pay-cols px-4 sm:px-5 py-1.5 text-[10px] font-bold uppercase text-[#A3AED0]">
+                    <span></span><span>Proveedor</span><span class="hidden sm:block">Detalle</span>
+                    <span class="text-right">Viajes</span><span class="hidden sm:block text-right">Estado</span>
+                    <span class="text-right">Valor</span><span></span>
+                </div>
+                <div id="payments-table-body" class="space-y-2"></div>
+                <div class="card-dark p-0 overflow-hidden">
+                    <div class="pay-cols px-4 sm:px-5 py-3 text-white" style="background:var(--r14-total)">
+                        <span></span><span class="text-[13px] font-bold">Total general</span><span class="hidden sm:block"></span>
+                        <span id="payments-grand-count" class="text-right tabular-nums font-bold opacity-80"></span><span class="hidden sm:block"></span>
+                        <span id="payments-grand-total" class="text-right tabular-nums font-extrabold text-[15px] whitespace-nowrap">$ 0</span><span></span>
                     </div>
                 </div>
             </div>
@@ -19160,6 +19146,46 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (typeof lucide !== 'undefined') lucide.createIcons();
         }
 
+        /** El rango de cada atajo de fecha ("Este mes", etc.), en yyyy-mm-dd. */
+        function _rangoDePagos(preset) {
+            const today = new Date();
+            const y = today.getFullYear(), m = today.getMonth(), d = today.getDate();
+            const dow = today.getDay() || 7;   // lunes=1, domingo=7
+            const iso = (dd) => dd.toISOString().split('T')[0];
+            const r = {
+                thisWeek: [new Date(y, m, d - dow + 1), new Date(y, m, d - dow + 7)],
+                lastWeek: [new Date(y, m, d - dow + 1 - 7), new Date(y, m, d - dow + 7 - 7)],
+                thisMonth: [new Date(y, m, 1), new Date(y, m + 1, 0)],
+                lastMonth: [new Date(y, m - 1, 1), new Date(y, m, 0)]
+            }[preset];
+            return r ? [iso(r[0]), iso(r[1])] : null;
+        }
+
+        function pagosEstado(v) {
+            const sel = document.getElementById('payments-status-filter');
+            if (!sel) return;
+            sel.value = ['pending', 'paid', 'all'].includes(v) ? v : 'all';
+            renderPaymentsTable();
+        }
+
+        /** Marca el atajo de fecha que coincide con Desde/Hasta y el estado elegido. */
+        function _pintarFiltrosDePagos() {
+            const desde = document.getElementById('payments-date-from')?.value || '';
+            const hasta = document.getElementById('payments-date-to')?.value || '';
+            document.querySelectorAll('#payments-presets button').forEach((b) => {
+                const r = _rangoDePagos(b.dataset.preset);
+                const si = !!r && r[0] === desde && r[1] === hasta;
+                b.className = 'px-3 py-1.5 rounded-lg text-[11px] font-bold ' + (si ? 'bg-indigo-600 text-white' : 'bg-[#F4F7FE] text-[#1B2559] hover:bg-[#E8ECF8]');
+            });
+            const estado = document.getElementById('payments-status-filter')?.value || 'all';
+            document.querySelectorAll('#payments-estado button').forEach((b) => {
+                const si = b.dataset.estado === estado;
+                ['bg-indigo-600', 'text-white', 'shadow'].forEach((c) => b.classList.toggle(c, si));
+                b.classList.toggle('text-[#A3AED0]', !si);
+                b.setAttribute('aria-selected', si ? 'true' : 'false');
+            });
+        }
+
         function setPaymentsDateRange(preset) {
             const today = new Date();
             const y = today.getFullYear();
@@ -19245,10 +19271,14 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         function renderPaymentsTable() {
             const body = document.getElementById('payments-table-body');
             if (!body) return;
+            _pintarFiltrosDePagos();
             const filtered = _getPaymentsFiltered();
             const paidSet = loadPaidTripIds();
+            const pagado = (t) => paidSet.has(Number(t.id));
+            const valor = (t) => Number(t.value) || 0;
+            const suma = (lista) => lista.reduce((s, t) => s + valor(t), 0);
 
-            // Agrupar: provider → BU → (driver+reparto) → [trips]
+            // Agrupar: proveedor -> unidad -> (chofer + reparto) -> viajes
             const tree = new Map();
             for (const t of filtered) {
                 const prov = (t.provider || 'EXTERNO').toString().trim().toUpperCase();
@@ -19263,163 +19293,129 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 if (!driverMap.has(driverKey)) driverMap.set(driverKey, { driver, reparto, trips: [] });
                 driverMap.get(driverKey).trips.push(t);
             }
-            const providers = [...tree.keys()].sort();
 
-            const rows = [];
-            let grandTotal = 0;
-            for (const prov of providers) {
+            // Piezas de la grilla. Todas las filas tienen las 7 celdas de .pay-cols
+            // (las que no van en el celular se ocultan igual en todas).
+            const esc = (v) => escapeHtml(String(v)).replace(/'/g, "\\'");
+            const chev = (abierto, chico) => `<i data-lucide="${abierto ? 'chevron-down' : 'chevron-right'}" class="${chico ? 'w-3.5 h-3.5' : 'w-4 h-4'} text-[#A3AED0]"></i>`;
+            const estado = (lista) => {
+                const p = lista.filter((t) => !pagado(t)).length, g = lista.length - p;
+                return (p ? `<span class="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-700 tabular-nums">${p} pend.</span>` : '')
+                     + (g ? `<span class="px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-700 tabular-nums">${g} pag.</span>` : '');
+            };
+            const teclado = `role="button" tabindex="0" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();this.click();}"`;
+            const plural = (n, a, b) => `${n} ${n === 1 ? a : b}`;
+
+            const tarjetas = [];
+            let grandTotal = 0, grandCount = 0;
+            for (const prov of [...tree.keys()].sort()) {
                 const buMap = tree.get(prov);
-                const provExpanded = _expandedProviders.has(prov);
-                let provTotal = 0;
-                let provTripCount = 0;
-                let provRowsHtml = '';
-                const bus = [...buMap.keys()].sort();
+                const abierto = _expandedProviders.has(prov);
+                const viajesProv = [...buMap.values()].flatMap((dm) => [...dm.values()].flatMap((x) => x.trips));
+                const totalProv = suma(viajesProv);
+                grandTotal += totalProv;
+                grandCount += viajesProv.length;
 
-                for (const bu of bus) {
-                    const driverMap = buMap.get(bu);
-                    const groupKey = prov + '|' + bu;
-                    const groupExpanded = _expandedGroups.has(groupKey);
-                    let buTotal = 0;
-                    let buTripCount = 0;
-                    let driverRowsHtml = '';
-
-                    // Sumar por chofer+reparto
-                    const driverEntries = [...driverMap.entries()].sort((a, b) =>
-                        a[1].driver.localeCompare(b[1].driver, 'es') || a[1].reparto.localeCompare(b[1].reparto, 'es')
-                    );
-
-                    for (const [dkey, info] of driverEntries) {
-                        const drvTotal = info.trips.reduce((s, t) => s + (Number(t.value) || 0), 0);
-                        const drvTripCount = info.trips.length;
-                        buTotal += drvTotal;
-                        buTripCount += drvTripCount;
-                        const dgKey = prov + '|' + bu + '|' + dkey;
-                        const dgExpanded = _expandedDriverGroups.has(dgKey);
-
-                        // Filas individuales del chofer-reparto (si expandido)
-                        let tripsHtml = '';
-                        if (provExpanded && groupExpanded && dgExpanded) {
-                            const sortedTrips = info.trips.slice().sort((a, b) => {
-                                const da = new Date(String(a.date || '').replace(' ', 'T'));
-                                const db = new Date(String(b.date || '').replace(' ', 'T'));
-                                return da - db;
-                            });
-                            sortedTrips.forEach((t, _fila) => {
-                                // Rayado igual al de Log Semanal: una fila si,
-                                // una no, contando viajes de este chofer.
-                                const rayada = _fila % 2 === 1 ? ' pg-viaje-alt' : '';
-                                const date = t.date ? new Date(String(t.date).replace(' ', 'T')) : null;
-                                const dateStr = date ? date.toLocaleDateString('es-AR') : '--';
-                                const paid = paidSet.has(Number(t.id));
-                                tripsHtml += `
-                                    <tr class="pg-viaje${rayada} ${paid ? 'opacity-60' : ''}">
-                                        <td></td>
-                                        <td></td>
-                                        <td></td>
-                                        <td class="pl-8 pr-4 py-2 text-[10px] text-[#A3AED0]">— viaje ID ${t.id}</td>
-                                        <td></td>
-                                        <td class="px-4 py-2 text-center text-[10px] text-[#A3AED0]">${dateStr}</td>
-                                        <td class="px-4 py-2 text-center">
-                                            <span class="status-badge ${paid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'} text-[9px]">${paid ? 'PAGADO' : 'PENDIENTE'}</span>
-                                        </td>
-                                        <td class="px-4 py-2 text-right text-[11px] text-[#2B3674]">${_formatCurrency(t.value)}</td>
-                                        <td class="px-4 py-2 text-center">
-                                            <button onclick="togglePaidTripState(${Number(t.id)})" class="text-[9px] font-bold uppercase px-2 py-1 rounded-lg ${paid ? 'bg-rose-100 text-rose-700 hover:bg-rose-200' : 'bg-emerald-100 text-emerald-700 hover:bg-emerald-200'}">${paid ? '↶ Revertir' : '✓ Pagar'}</button>
-                                        </td>
-                                    </tr>`;
+                let detalle = '';
+                if (abierto) {
+                    for (const bu of [...buMap.keys()].sort()) {
+                        const driverMap = buMap.get(bu);
+                        const viajesBu = [...driverMap.values()].flatMap((x) => x.trips);
+                        const grupoAbierto = _expandedGroups.has(prov + '|' + bu);
+                        detalle += `
+                        <div class="pay-cols px-4 sm:px-5 py-2 cursor-pointer" style="background:var(--r14-grupo)" ${teclado} aria-expanded="${grupoAbierto}"
+                             onclick="togglePaymentGroup('${esc(prov)}','${esc(bu)}')">
+                            ${chev(grupoAbierto, true)}
+                            <span class="min-w-0 truncate text-[11px] font-extrabold uppercase text-[#1B2559]">${escapeHtml(bu)}</span>
+                            <span class="hidden sm:block text-[11px] text-[#A3AED0] truncate">${plural(driverMap.size, 'chofer', 'choferes')}</span>
+                            <span class="text-right tabular-nums text-[12px] font-semibold text-[#1B2559]">${viajesBu.length}</span>
+                            <span class="hidden sm:flex justify-end gap-1 text-[10px] font-bold">${estado(viajesBu)}</span>
+                            <span class="text-right tabular-nums text-[13px] font-extrabold text-[#1B2559] whitespace-nowrap">${_formatCurrency(suma(viajesBu))}</span>
+                            <span></span>
+                        </div>`;
+                        if (!grupoAbierto) continue;
+                        const choferes = [...driverMap.entries()].sort((a, b) =>
+                            a[1].driver.localeCompare(b[1].driver, 'es') || a[1].reparto.localeCompare(b[1].reparto, 'es'));
+                        for (const [dkey, info] of choferes) {
+                            const dgKey = prov + '|' + bu + '|' + dkey;
+                            const choferAbierto = _expandedDriverGroups.has(dgKey);
+                            detalle += `
+                            <div class="pay-cols px-4 sm:px-5 py-2 cursor-pointer" style="background:var(--wk-fila)" ${teclado} aria-expanded="${choferAbierto}"
+                                 onclick="togglePaymentDriverGroup('${esc(dgKey)}')">
+                                <span class="pl-3">${chev(choferAbierto, true)}</span>
+                                <span class="min-w-0 truncate text-[12px] font-bold text-[#2B3674] pl-3">${escapeHtml(info.driver)}</span>
+                                <span class="hidden sm:block text-[11px] font-semibold text-[#A3AED0] truncate">${escapeHtml(info.reparto)}</span>
+                                <span class="text-right tabular-nums text-[12px] text-[#1B2559]">${info.trips.length}</span>
+                                <span class="hidden sm:flex justify-end gap-1 text-[10px] font-bold">${estado(info.trips)}</span>
+                                <span class="text-right tabular-nums text-[12px] font-bold text-[#1B2559] whitespace-nowrap">${_formatCurrency(suma(info.trips))}</span>
+                                <span></span>
+                            </div>`;
+                            if (!choferAbierto) continue;
+                            const viajes = info.trips.slice().sort((a, b) =>
+                                new Date(String(a.date || '').replace(' ', 'T')) - new Date(String(b.date || '').replace(' ', 'T')));
+                            viajes.forEach((t, i) => {
+                                const fecha = t.date ? new Date(String(t.date).replace(' ', 'T')) : null;
+                                const fechaTxt = fecha && !isNaN(fecha) ? fecha.toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '--';
+                                const ok = pagado(t);
+                                detalle += `
+                                <div class="pay-cols px-4 sm:px-5 py-1.5 ${ok ? 'opacity-70' : ''}" style="background:var(${i % 2 ? '--wk-fila' : '--wk-fila-alt'})">
+                                    <span></span>
+                                    <span class="min-w-0 truncate text-[12px] text-[#2B3674] pl-8 tabular-nums">${fechaTxt} <span class="text-[#A3AED0]">· #${Number(t.id)}</span></span>
+                                    <span class="hidden sm:block"></span>
+                                    <span></span>
+                                    <span class="hidden sm:flex justify-end"><span class="status-badge ${ok ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'} text-[9px]">${ok ? 'Pagado' : 'Pendiente'}</span></span>
+                                    <span class="text-right tabular-nums text-[12px] text-[#1B2559] whitespace-nowrap">${_formatCurrency(t.value)}</span>
+                                    <span class="flex justify-end">
+                                        <button type="button" onclick="togglePaidTripState(${Number(t.id)})"
+                                            class="text-[10px] font-bold px-1.5 sm:px-2.5 py-1 rounded-lg whitespace-nowrap ${ok ? 'bg-[#F4F7FE] text-[#1B2559] hover:bg-[#E8ECF8]' : 'bg-emerald-600 text-white hover:bg-emerald-700'}">${ok ? 'Revertir' : 'Pagar'}</button>
+                                    </span>
+                                </div>`;
                             });
                         }
-
-                        if (provExpanded && groupExpanded) {
-                            const dgEscKey = (prov + '|' + bu + '|' + dkey).replace(/'/g, "\\'");
-                            driverRowsHtml += `
-                                <tr class="pg-chofer cursor-pointer" onclick="togglePaymentDriverGroup('${dgEscKey}')">
-                                    <td></td>
-                                    <td></td>
-                                    <td></td>
-                                    <td class="px-4 py-2 text-[11px] font-bold text-[#2B3674]">
-                                        <i data-lucide="${dgExpanded ? 'chevron-down' : 'chevron-right'}" class="w-3 h-3 inline-block mr-1"></i>
-                                        ${escapeHtml(info.driver)}
-                                    </td>
-                                    <td class="px-4 py-2 text-[11px] font-bold text-[#2B3674]">${escapeHtml(info.reparto)}</td>
-                                    <td class="px-4 py-2 text-center text-[10px] text-[#A3AED0]">${drvTripCount} ${drvTripCount === 1 ? 'viaje' : 'viajes'}</td>
-                                    <td></td>
-                                    <td class="px-4 py-2 text-right text-[12px] font-bold text-[#1B2559]">${_formatCurrency(drvTotal)}</td>
-                                    <td></td>
-                                </tr>
-                                ${tripsHtml}`;
-                        }
                     }
-
-                    provTotal += buTotal;
-                    provTripCount += buTripCount;
-
-                    if (provExpanded) {
-                        provRowsHtml += `
-                            <tr class="pg-un cursor-pointer" onclick="togglePaymentGroup('${escapeHtml(prov).replace(/'/g,"\\'")}','${escapeHtml(bu).replace(/'/g,"\\'")}')">
-                                <td></td>
-                                <td></td>
-                                <td class="px-4 py-2 text-[11px] font-black text-[#1B2559]">
-                                    <i data-lucide="${groupExpanded ? 'chevron-down' : 'chevron-right'}" class="w-3 h-3 inline-block mr-1"></i>
-                                    ${escapeHtml(bu)}
-                                </td>
-                                <td colspan="4"></td>
-                                <td class="px-4 py-2 text-right text-[12px] font-black text-[#1B2559]">${_formatCurrency(buTotal)}</td>
-                                <td></td>
-                            </tr>
-                            ${driverRowsHtml}
-                            <tr class="pg-un-total">
-                                <td></td>
-                                <td></td>
-                                <td class="px-4 py-2 text-[11px] font-black text-[#1B2559]">Total ${escapeHtml(bu)}</td>
-                                <td colspan="4"></td>
-                                <td class="px-4 py-2 text-right text-[12px] font-black text-[#1B2559]">${_formatCurrency(buTotal)}</td>
-                                <td></td>
-                            </tr>`;
-                    }
+                    detalle += `
+                        <div class="pay-cols px-4 sm:px-5 py-2.5 text-white" style="background:var(--r14-total)">
+                            <span></span>
+                            <span class="min-w-0 truncate text-[12px] font-bold">Total ${escapeHtml(prov)}</span>
+                            <span class="hidden sm:block"></span>
+                            <span class="text-right tabular-nums text-[12px] font-bold opacity-80">${viajesProv.length}</span>
+                            <span class="hidden sm:block"></span>
+                            <span class="text-right tabular-nums text-[13px] font-extrabold whitespace-nowrap">${_formatCurrency(totalProv)}</span>
+                            <span></span>
+                        </div>`;
                 }
 
-                grandTotal += provTotal;
-                const provEscKey = escapeHtml(prov).replace(/'/g, "\\'");
-                rows.push(`
-                    <tr class="pg-prov cursor-pointer font-bold" onclick="togglePaymentProvider('${provEscKey}')">
-                        <td class="px-4 py-3 text-[#1B2559] text-center">
-                            <i data-lucide="${provExpanded ? 'chevron-down' : 'chevron-right'}" class="w-4 h-4 inline-block"></i>
-                        </td>
-                        <td class="px-4 py-3 text-[12px] font-black text-[#1B2559]">${escapeHtml(prov)}</td>
-                        <td class="px-4 py-3 text-[10px] text-[#A3AED0]" colspan="5">${[...buMap.keys()].length} UN · ${provTripCount} viajes</td>
-                        <td class="px-4 py-3 text-right text-[14px] font-black text-indigo-700">${_formatCurrency(provTotal)}</td>
-                        <td></td>
-                    </tr>
-                    ${provRowsHtml}
-                    <tr class="pg-prov-total">
-                        <td></td>
-                        <td class="px-4 py-2 text-[11px] font-black text-indigo-900 uppercase">Total ${escapeHtml(prov)}</td>
-                        <td colspan="5"></td>
-                        <td class="px-4 py-2 text-right text-[13px] font-black text-indigo-900">${_formatCurrency(provTotal)}</td>
-                        <td></td>
-                    </tr>`);
+                tarjetas.push(`
+                    <section class="card-dark p-0 overflow-hidden">
+                        <div class="pay-cols px-4 sm:px-5 py-3 cursor-pointer" ${teclado} aria-expanded="${abierto}" onclick="togglePaymentProvider('${esc(prov)}')">
+                            ${chev(abierto)}
+                            <span class="min-w-0 truncate text-[13px] font-extrabold text-[#1B2559]" title="${escapeHtml(prov)}">${escapeHtml(prov)}</span>
+                            <span class="hidden sm:block text-[11px] text-[#A3AED0] truncate">${plural(buMap.size, 'unidad', 'unidades')}</span>
+                            <span class="text-right tabular-nums text-[13px] font-semibold text-[#1B2559]">${viajesProv.length}</span>
+                            <span class="hidden sm:flex justify-end gap-1 text-[10px] font-bold">${estado(viajesProv)}</span>
+                            <span class="text-right tabular-nums text-[15px] font-extrabold text-[#1B2559] whitespace-nowrap">${_formatCurrency(totalProv)}</span>
+                            <span></span>
+                        </div>
+                        ${detalle}
+                    </section>`);
             }
 
-            if (rows.length === 0) {
-                body.innerHTML = '<tr><td colspan="9" class="px-4 py-12 text-center text-[#A3AED0] italic">No hay viajes tercerizados con los filtros actuales</td></tr>';
-            } else {
-                body.innerHTML = rows.join('');
-            }
+            body.innerHTML = tarjetas.length ? tarjetas.join('')
+                : '<div class="card-dark p-10 text-center text-sm text-[#A3AED0]">No hay viajes tercerizados con estos filtros.</div>';
 
-            // KPIs
-            const totalAll = filtered.reduce((s, t) => s + (Number(t.value) || 0), 0);
-            const pendArr = filtered.filter(t => !paidSet.has(Number(t.id)));
-            const paidArr = filtered.filter(t => paidSet.has(Number(t.id)));
-            const totalPending = pendArr.reduce((s, t) => s + (Number(t.value) || 0), 0);
-            const totalPaid = paidArr.reduce((s, t) => s + (Number(t.value) || 0), 0);
-            document.getElementById('payments-kpi-pending').textContent = _formatCurrency(totalPending);
-            document.getElementById('payments-kpi-pending-count').textContent = `${pendArr.length} viaje${pendArr.length === 1 ? '' : 's'}`;
-            document.getElementById('payments-kpi-paid').textContent = _formatCurrency(totalPaid);
-            document.getElementById('payments-kpi-paid-count').textContent = `${paidArr.length} viaje${paidArr.length === 1 ? '' : 's'}`;
-            document.getElementById('payments-kpi-total').textContent = _formatCurrency(totalAll);
-            document.getElementById('payments-kpi-total-count').textContent = `${filtered.length} viaje${filtered.length === 1 ? '' : 's'}`;
-            document.getElementById('payments-grand-total').innerHTML = `<span style="color:#ffffff !important;">${_formatCurrency(grandTotal)}</span>`;
+            // Los numeros de arriba
+            const pendArr = filtered.filter((t) => !pagado(t));
+            const paidArr = filtered.filter(pagado);
+            const n = (k) => plural(k, 'viaje', 'viajes');
+            document.getElementById('payments-kpi-pending').textContent = _formatCurrency(suma(pendArr));
+            document.getElementById('payments-kpi-pending-count').textContent = n(pendArr.length);
+            document.getElementById('payments-kpi-paid').textContent = _formatCurrency(suma(paidArr));
+            document.getElementById('payments-kpi-paid-count').textContent = n(paidArr.length);
+            document.getElementById('payments-kpi-total').textContent = _formatCurrency(suma(filtered));
+            document.getElementById('payments-kpi-total-count').textContent = n(filtered.length);
+            document.getElementById('payments-grand-total').textContent = _formatCurrency(grandTotal);
+            const gc = document.getElementById('payments-grand-count');
+            if (gc) gc.textContent = grandCount;
 
             if (typeof lucide !== 'undefined' && lucide.createIcons) lucide.createIcons();
         }

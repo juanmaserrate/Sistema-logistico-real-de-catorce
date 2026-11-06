@@ -1332,3 +1332,10 @@ html, body { overscroll-behavior-y: none; }
    misma grilla, asi los montos quedan alineados y las dos tarjetas parejas. */
 .costs-cols { display: grid; grid-template-columns: minmax(0, 1fr) 150px 96px; column-gap: 12px; align-items: center; }
 @media (max-width: 640px) { .costs-cols { grid-template-columns: minmax(0, 1fr) 136px 62px; column-gap: 6px; } }
+
+/* Planilla de Pagos: el encabezado y las filas de todos los niveles
+   (proveedor, unidad, chofer, viaje) usan la misma grilla, asi los numeros
+   quedan alineados de una tarjeta a la otra. En el celular se ocultan
+   Detalle y Estado (en todas las filas por igual). */
+.pay-cols { display: grid; grid-template-columns: 18px minmax(0, 1fr) 150px 64px 150px 128px 84px; column-gap: 10px; align-items: center; }
+@media (max-width: 640px) { .pay-cols { grid-template-columns: 14px minmax(0, 1fr) 26px 84px 54px; column-gap: 5px; } }
