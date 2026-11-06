@@ -1359,9 +1359,15 @@ html, body { overscroll-behavior-y: none; }
    los dos botones muestran solo el icono. */
 .td-cols { display: grid; grid-template-columns: 16px 24px minmax(0, 1fr) 180px 150px 28px; column-gap: 10px; align-items: center; }
 #trip-delivery-list .td-cols > button { max-width: 100%; justify-self: start; }
+/* Con varias unidades se suma la columna Unidad. En el celular va abajo del
+   nombre, a lo ancho, para no apretar el nombre de la escuela. */
+.td-cols.con-unidad { grid-template-columns: 16px 22px minmax(0, 1fr) 124px 136px 108px 28px; column-gap: 8px; }
 @media (max-width: 640px) {
     .td-cols { grid-template-columns: 14px 18px minmax(0, 1fr) 44px 44px 28px; column-gap: 6px; }
     #trip-delivery-list [data-contacto-resumen] { display: none; }
+    .td-cols.con-unidad { grid-template-columns: 14px 18px minmax(0, 1fr) 44px 44px 28px; row-gap: 6px; }
+    .td-cols.con-unidad > .td-unidad { grid-column: 3 / -1; grid-row: 2; }
+    .td-cols.con-unidad > .td-unidad-cab { display: none; }
 }
 #td-results > .td-resultado { background: var(--wk-fila); transition: background-color 0.12s ease; }
 #td-results > .td-resultado:nth-child(even) { background: var(--wk-fila-alt); }
