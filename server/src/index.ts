@@ -25,6 +25,7 @@ import {
     AGRUPADORES
 } from './stockCajones';
 import { armarLibroViajes } from './libroViajes';
+import { presupuestoDelAnio } from './presupuestoViajes';
 import { metricasDelMes } from './metricasDashboard';
 import { subirArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnosticoSharepoint, limpiarTokenSharepoint } from './sharepoint';
 import { createServer } from 'http';
@@ -216,12 +217,15 @@ const PROTECTED_PREFIXES = [
     '/api/v1/control-carga',
     '/api/v1/tarifas',
     '/api/v1/panel-choferes',
+    '/api/v1/presupuesto',
 ];
 app.use((req: any, res: any, next: any) => {
     // Excepcion: el export de viajes tambien acepta la clave de servicio, como
     // el resto de /api/admin. Sirve para probarlo sin iniciar sesion.
     const esExportConClave = req.path.endsWith('/trips/export-xlsx') && req.body?.key === 'r14-basestop-2026';
-    if (!esExportConClave && PROTECTED_PREFIXES.some(p => req.path.startsWith(p) || (req.originalUrl || '').includes(p))) {
+    // Igual el conteo del Presupuesto, que solo lee
+    const esPresupuestoConClave = req.method === 'GET' && req.path === '/api/v1/presupuesto' && req.query?.key === 'r14-basestop-2026';
+    if (!esExportConClave && !esPresupuestoConClave && PROTECTED_PREFIXES.some(p => req.path.startsWith(p) || (req.originalUrl || '').includes(p))) {
         return requireAuth(req, res, next);
     }
     next();
@@ -1740,6 +1744,29 @@ setInterval(async () => {
         console.warn('[torre] reporte semanal:', e?.message || e);
     }
 }, 30 * 60 * 1000);
+
+/**
+ * Presupuesto: viajes COMPLETADOS por unidad de negocio, mes a mes, con los
+ * bloques de la planilla "Conteo de viajes" de administracion.
+ * Se calcula en cada pedido (no es una foto): la pantalla lo vuelve a pedir
+ * cuando el socket avisa que cambio un viaje.
+ * GET /api/v1/presupuesto?anio=2026
+ */
+app.get('/api/v1/presupuesto', async (req: any, res: any) => {
+    try {
+        const anioHoy = Number(buenosAiresYmd().slice(0, 4));
+        const anio = Number(req.query.anio) || anioHoy;
+        if (anio < 2020 || anio > anioHoy + 1) return res.status(400).json({ error: 'Anio fuera de rango: ' + req.query.anio });
+        // Las tablas de localidades, zonas y repartos son las del Panel
+        // logistico. Se leen en cada pedido: si alguien las edita, ya cuentan.
+        const rutaCfg = path.join(__dirname, '..', 'public', 'js', 'trip-categories-config.json');
+        const cfg = JSON.parse(fs.readFileSync(rutaCfg, 'utf8'));
+        res.json(await presupuestoDelAnio(prisma, anio, cfg));
+    } catch (e: any) {
+        console.error('GET presupuesto:', e);
+        res.status(500).json({ error: e?.message || 'Error al contar los viajes' });
+    }
+});
 
 /**
  * Export de viajes con formato y tabla dinamica.

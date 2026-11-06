@@ -150,6 +150,7 @@
                             <a href="#costs" id="btn-costs" class="nav-menu-item" role="menuitem"><i data-lucide="bar-chart-3"></i> <span>Motor de Costos</span></a>
                             <a href="#fleet-costs" id="btn-fleet-costs" class="nav-menu-item" role="menuitem"><i data-lucide="fuel"></i> <span>Gastos de Flota</span></a>
                             <a href="#tarifas" id="btn-tarifas" class="nav-menu-item" role="menuitem"><i data-lucide="receipt"></i> <span>Choferes y tarifas</span></a>
+                            <a href="#presupuesto" id="btn-presupuesto" class="nav-menu-item" role="menuitem"><i data-lucide="clipboard-list"></i> <span>Presupuesto</span></a>
                         </div>
                     </div>
                     <div class="nav-menu" id="nav-menu-datos" data-menu="datos">
@@ -3436,6 +3437,37 @@
             </div>
 
             <!-- ═══ REPORTES ═══ -->
+            <!-- PRESUPUESTO: viajes completados por unidad de negocio, mes a mes.
+                 Mismos bloques que la planilla "Conteo de viajes" de administracion. -->
+            <div id="view-presupuesto" class="hidden space-y-4 pb-24">
+                <div class="card-dark p-4 flex flex-col xl:flex-row xl:items-center gap-3 justify-between">
+                    <div class="flex flex-wrap items-center gap-2">
+                        <div class="inline-flex items-center rounded-xl bg-[#F4F7FE] p-1">
+                            <button type="button" onclick="presCambiarAnio(-1)" aria-label="Año anterior" class="w-8 h-8 grid place-items-center rounded-lg text-[#A3AED0] hover:text-[#1B2559]"><i data-lucide="chevron-left" class="w-4 h-4"></i></button>
+                            <span id="pres-anio" class="px-2 text-sm font-extrabold text-[#1B2559] tabular-nums">—</span>
+                            <button type="button" onclick="presCambiarAnio(1)" aria-label="Año siguiente" class="w-8 h-8 grid place-items-center rounded-lg text-[#A3AED0] hover:text-[#1B2559]"><i data-lucide="chevron-right" class="w-4 h-4"></i></button>
+                        </div>
+                        <div class="inline-flex rounded-xl bg-[#F4F7FE] p-1" role="tablist" aria-label="Vista">
+                            <button type="button" id="pres-modo-mes" onclick="presModo('mes')" class="px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest">Mes</button>
+                            <button type="button" id="pres-modo-anio" onclick="presModo('anio')" class="px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest">Año completo</button>
+                        </div>
+                        <div id="pres-meses" class="flex flex-wrap gap-1" role="tablist" aria-label="Mes"></div>
+                    </div>
+                    <div class="flex items-center gap-3 shrink-0">
+                        <span class="text-[11px] font-semibold text-[#A3AED0] flex items-center gap-1.5" title="Se vuelve a contar solo cada vez que se completa o se cambia un viaje">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500"></span><span id="pres-vivo">En vivo</span>
+                        </span>
+                        <button type="button" onclick="exportarPresupuesto()" class="px-4 py-2.5 rounded-xl bg-[#F4F7FE] text-[#1B2559] text-[11px] font-bold flex items-center gap-2 hover:bg-[#E8ECF8]">
+                            <i data-lucide="download" class="w-4 h-4"></i> Exportar
+                        </button>
+                    </div>
+                </div>
+                <div id="pres-resumen" class="text-[13px] text-[#2B3674] px-1"></div>
+                <div id="pres-bloques" class="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
+                    <p class="text-sm text-[#A3AED0] p-8">Cargando el conteo…</p>
+                </div>
+            </div>
+
             <div id="view-reports" class="hidden view-animate space-y-8">
                 <div class="card-dark p-8">
                     <div class="flex flex-wrap items-end gap-6">
@@ -3733,12 +3765,14 @@
 
                 // Viajes - invalidar cache antes de recargar para ver cambios al instante
                 _socket.on('trip:created', () => {
+                    if (typeof presupuestoEnVivo === 'function') presupuestoEnVivo();
                     if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
                     loadWeeklyData({ silencioso: true });
                     const ctrl = document.getElementById('view-control');
                     if (ctrl && !ctrl.classList.contains('hidden')) loadControlLiveData();
                 });
                 _socket.on('trip:updated', () => {
+                    if (typeof presupuestoEnVivo === 'function') presupuestoEnVivo();
                     if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
                     const weekly = document.getElementById('view-weekly');
                     if (weekly && !weekly.classList.contains('hidden')) loadWeeklyData({ silencioso: true });
@@ -3746,6 +3780,7 @@
                     if (ctrl && !ctrl.classList.contains('hidden')) loadControlLiveData();
                 });
                 _socket.on('trip:deleted', () => {
+                    if (typeof presupuestoEnVivo === 'function') presupuestoEnVivo();
                     if (typeof invalidateWeeklyCache === 'function') invalidateWeeklyCache();
                     const weekly = document.getElementById('view-weekly');
                     if (weekly && !weekly.classList.contains('hidden')) loadWeeklyData({ silencioso: true });
@@ -4882,10 +4917,10 @@
 
         // ─── ACCESS CONTROL / LOGIN ─────────────────────────────────────────────
         const ACCESS_PROFILES = {
-            SUPERADMIN: ['control','drivers-status','crates','crates-sim','stock-cajones','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'],
-            TRAFICO: ['control','drivers-status','crates','crates-sim','stock-cajones','hdr','weekly','payments','dashboard','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','employees','schools','reports','incidents','historial'],
+            SUPERADMIN: ['control','drivers-status','crates','crates-sim','stock-cajones','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','presupuesto','fleets','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'],
+            TRAFICO: ['control','drivers-status','crates','crates-sim','stock-cajones','hdr','weekly','payments','dashboard','fleet-costs','tarifas','budget','presupuesto','fleets','routes','users','ajustes','employees','schools','reports','incidents','historial'],
             RRHH: ['salaries','employees'],
-            ADMINISTRACION: ['weekly','payments','dashboard','tarifas','budget','salaries','schools','reports'],
+            ADMINISTRACION: ['weekly','payments','dashboard','tarifas','budget','presupuesto','salaries','schools','reports'],
             // Recepcion, controladores: entran, cuentan cajones y nada mas.
             STOCK: ['stock-cajones']
         };
@@ -4933,7 +4968,7 @@
             }
 
             // Hide/show nav buttons based on access
-            const allSections = ['control','drivers-status','crates','crates-sim','stock-cajones','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
+            const allSections = ['control','drivers-status','crates','crates-sim','stock-cajones','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','presupuesto','fleets','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
             allSections.forEach(sec => {
                 const btn = document.getElementById('btn-' + sec);
                 if (btn) {
@@ -5160,7 +5195,7 @@
             'crates': 'Cajones', 'crates-sim': 'Cajones en tránsito', 'stock-cajones': 'Stock de cajones',
             'hdr': 'HDR', 'weekly': 'Logística Semanal', 'payments': 'Planilla de Pagos',
             'dashboard': 'Panel logístico', 'costs': 'Motor de Costos', 'fleet-costs': 'Gastos de Flota',
-            'tarifas': 'Choferes y tarifas', 'budget': 'Presupuestar', 'fleets': 'Flotas',
+            'tarifas': 'Choferes y tarifas', 'budget': 'Presupuestar', 'presupuesto': 'Presupuesto', 'fleets': 'Flotas',
             'routes': 'Rutas Predefinidas', 'users': 'Usuarios', 'ajustes': 'Ajustes',
             'control-carga': 'Problemas de carga', 'employees': 'Personal',
             // Salarios no tiene pantalla propia: se fusiono con Personal. El
@@ -5330,6 +5365,7 @@
                 payments: 'Planilla de Pagos a Tercerizados',
                 dashboard: 'Panel logístico',
                 costs: 'Motor de Costos Operativos',
+                presupuesto: 'Presupuesto',
                 'fleet-costs': 'Gastos de Flota',
                 tarifas: 'Choferes y tarifas',
                 employees: 'Gestión de Personal',
@@ -5356,6 +5392,7 @@
                 payments: 'Resumen de viajes tercerizados a pagar agrupados por proveedor, unidad y reparto',
                 dashboard: 'Costos propio vs tercerizado y distribución por unidad, zona y localidad',
                 costs: 'Motor financiero para el cálculo de rentabilidad y gastos fijos/variables',
+                presupuesto: 'Viajes completados por unidad de negocio, mes a mes. Se actualiza solo a medida que se cierran viajes',
                 'fleet-costs': 'Gastos de la flota cargados uno por uno, ficha técnica de cada unidad y vencimiento de sus papeles',
                 tarifas: 'Quién es propio y quién tercerizado, con qué proveedor y a qué tarifa. Define el valor de los viajes tercerizados',
                 employees: 'Acceso unificado a legajos de choferes, auxiliares y liquidaciones',
@@ -5424,6 +5461,7 @@
             if(id === 'users') { loadUsers(); renderProfileAssignments(); }
             if(id === 'reports') initReportFilters();
             if(id === 'budget') { budgetInit(); }
+            if(id === 'presupuesto') cargarPresupuesto();
             if(id === 'fleets') {
                 // Las flotas viven en el servidor: se piden al entrar, y tambien
                 // se cargan los camiones para poder elegir la unidad real.
@@ -24856,7 +24894,210 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         let _refrescando = false;
 
         /** Que funcion trae los datos de cada pantalla. */
+        // ═══════════════════════════ PRESUPUESTO ═══════════════════════════
+        // Viajes COMPLETADOS por unidad de negocio, mes a mes. El conteo lo hace
+        // el servidor (/api/v1/presupuesto) en cada pedido: no es una foto, y
+        // cuando el socket avisa que cambio un viaje se vuelve a pedir solo.
+        const PRES_MESES = ['ENE', 'FEB', 'MAR', 'ABR', 'MAY', 'JUN', 'JUL', 'AGO', 'SEP', 'OCT', 'NOV', 'DIC'];
+        const PRES_MESES_LARGO = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+        const presHoy = () => { const d = new Date(Date.now() - 3 * 3600 * 1000); return { anio: d.getUTCFullYear(), mes: d.getUTCMonth() }; };
+        const presEstado = {
+            anio: presHoy().anio,
+            mes: presHoy().mes,
+            modo: (() => { try { return localStorage.getItem('r14.presupuesto.modo') || 'mes'; } catch (_) { return 'mes'; } })(),
+            datos: null,
+            pidiendo: false,
+            enVivoReloj: 0
+        };
+
+        async function cargarPresupuesto(opts) {
+            const silencioso = !!(opts && opts.silencioso);
+            const cont = document.getElementById('pres-bloques');
+            if (!cont) return;
+            if (presEstado.pidiendo) return;
+            presEstado.pidiendo = true;
+            if (!silencioso || !presEstado.datos || presEstado.datos.anio !== presEstado.anio) {
+                cont.innerHTML = '<p class="text-sm text-[#A3AED0] p-8">Cargando el conteo…</p>';
+            }
+            try {
+                const res = await fetch(`${API_URL}/presupuesto?anio=${presEstado.anio}`, { headers: getActorHeaders() });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+                presEstado.datos = await res.json();
+                const hhmm = new Date().toLocaleTimeString('es-AR', { hour: '2-digit', minute: '2-digit' });
+                const vivo = document.getElementById('pres-vivo');
+                if (vivo) vivo.textContent = `En vivo · ${hhmm}`;
+                renderPresupuesto();
+            } catch (e) {
+                cont.innerHTML = `<p class="text-sm text-rose-600 p-8">No se pudo contar: ${escapeHtml(e.message || 'error')}. Probá con el botón Actualizar.</p>`;
+            } finally {
+                presEstado.pidiendo = false;
+            }
+        }
+
+        /** Un viaje se completo o cambio: se vuelve a contar, sin vaciar la
+         *  pantalla. Espera un momento por si llegan varios avisos juntos. */
+        function presupuestoEnVivo() {
+            const vista = document.getElementById('view-presupuesto');
+            if (!vista || vista.classList.contains('hidden')) return;
+            clearTimeout(presEstado.enVivoReloj);
+            presEstado.enVivoReloj = setTimeout(() => cargarPresupuesto({ silencioso: true }), 1500);
+        }
+
+        function presCambiarAnio(delta) {
+            const hoy = presHoy();
+            const nuevo = presEstado.anio + delta;
+            if (nuevo > hoy.anio || nuevo < 2025) return;
+            presEstado.anio = nuevo;
+            presEstado.mes = (nuevo === hoy.anio) ? hoy.mes : 11;
+            cargarPresupuesto();
+        }
+
+        function presModo(modo) {
+            presEstado.modo = modo === 'anio' ? 'anio' : 'mes';
+            try { localStorage.setItem('r14.presupuesto.modo', presEstado.modo); } catch (_) { /* sin storage */ }
+            renderPresupuesto();
+        }
+
+        function presElegirMes(m) {
+            presEstado.mes = m;
+            renderPresupuesto();
+        }
+
+        const presNum = (n) => n ? `<span class="font-bold text-[#1B2559]">${Number(n).toLocaleString('es-AR')}</span>` : '<span class="text-[#C4CBDC]">—</span>';
+
+        function renderPresupuesto() {
+            const d = presEstado.datos;
+            const cont = document.getElementById('pres-bloques');
+            if (!cont || !d) return;
+            const hoy = presHoy();
+            const esteAnio = d.anio === hoy.anio;
+            const ultimoMes = esteAnio ? hoy.mes : 11;
+            const m = Math.min(presEstado.mes, ultimoMes);
+            presEstado.mes = m;
+            const enAnio = presEstado.modo === 'anio';
+
+            document.getElementById('pres-anio').textContent = d.anio;
+            const activo = ['bg-indigo-600', 'text-white', 'shadow'];
+            const pinta = (el, si) => { if (!el) return; activo.forEach(c => el.classList.toggle(c, si)); el.classList.toggle('text-[#A3AED0]', !si); el.setAttribute('aria-selected', si ? 'true' : 'false'); };
+            pinta(document.getElementById('pres-modo-mes'), !enAnio);
+            pinta(document.getElementById('pres-modo-anio'), enAnio);
+
+            // Los meses: el que se mira, los que tienen viajes, y los que todavia no llegaron
+            const meses = document.getElementById('pres-meses');
+            meses.style.display = enAnio ? 'none' : '';
+            meses.innerHTML = PRES_MESES.map((nom, i) => {
+                const futuro = i > ultimoMes;
+                const hay = d.resumen.viajesPorMes[i] > 0;
+                const clase = i === m ? 'bg-indigo-600 text-white' : hay ? 'bg-[#F4F7FE] text-[#1B2559] hover:bg-[#E8ECF8]' : 'bg-[#F4F7FE] text-[#A3AED0]';
+                return `<button type="button" role="tab" aria-selected="${i === m}" ${futuro ? 'disabled' : ''} onclick="presElegirMes(${i})"
+                    class="px-2.5 py-1.5 rounded-lg text-[11px] font-bold tabular-nums ${clase}" title="${PRES_MESES_LARGO[i]}: ${d.resumen.viajesPorMes[i]} viajes completados">${nom}</button>`;
+            }).join('');
+
+            // El resumen dice cuantos viajes son de verdad: un viaje de dos unidades suma en las dos
+            const r = d.resumen;
+            const viajes = enAnio ? r.viajesPorMes.reduce((a, b) => a + b, 0) : r.viajesPorMes[m];
+            const sinContrato = enAnio ? r.sinContrato.reduce((a, b) => a + b, 0) : r.sinContrato[m];
+            const periodo = enAnio ? `En ${d.anio}` : `En ${PRES_MESES_LARGO[m].toLowerCase()} ${d.anio}`;
+            const varias = enAnio ? r.viajesEnVariasUnidades : null;
+            document.getElementById('pres-resumen').innerHTML =
+                `${periodo}: <strong class="tabular-nums">${viajes.toLocaleString('es-AR')}</strong> viajes completados.`
+                + ` <span class="text-[#A3AED0]">Un viaje que reparte para dos unidades cuenta en las dos${varias ? ` (${varias.toLocaleString('es-AR')} en el año)` : ''}.</span>`
+                + (sinContrato ? ` <span class="text-amber-700 font-semibold">${sinContrato} sin contrato cargado: no entran en ningún bloque.</span>` : '');
+
+            if (!viajes && !enAnio) {
+                cont.className = 'grid gap-4';
+                cont.innerHTML = `<div class="card-dark p-10 text-center text-sm text-[#A3AED0]">Todavía no hay viajes completados en ${PRES_MESES_LARGO[m].toLowerCase()}.</div>`;
+                return;
+            }
+
+            const etiqueta = (b) => b.contrato
+                ? `<span class="status-badge ${b.contrato === 'Propio' ? 'bg-indigo-100 text-indigo-600' : 'bg-amber-100 text-amber-700'}">${b.contrato}</span>`
+                : '';
+            const cabeza = (b, total) => `
+                <div class="px-5 pt-4 pb-3 flex items-start justify-between gap-3">
+                    <div class="min-w-0">
+                        <h4 class="text-sm font-extrabold text-[#1B2559] truncate">${escapeHtml(b.titulo)}</h4>
+                        ${b.nota ? `<p class="text-[11px] text-[#A3AED0] mt-0.5">${escapeHtml(b.nota)}</p>` : ''}
+                    </div>
+                    <div class="flex items-center gap-2 shrink-0">${etiqueta(b)}<span class="text-lg font-extrabold text-[#1B2559] tabular-nums">${total.toLocaleString('es-AR')}</span></div>
+                </div>`;
+
+            if (!enAnio) {
+                // Mes: el mes elegido y, al lado y en gris, el anterior para comparar
+                const ant = m - 1;
+                cont.className = 'grid gap-4 md:grid-cols-2 2xl:grid-cols-3';
+                cont.innerHTML = d.bloques.map((b) => {
+                    const filas = b.filas.map((f, i) => `
+                        <tr class="${i % 2 ? 'r14-fila-alt' : 'r14-fila'}">
+                            <td class="px-5 py-2 text-[13px] text-[#2B3674]">${escapeHtml(f.nombre)}</td>
+                            <td class="px-3 py-2 text-right tabular-nums">${presNum(f.meses[m])}</td>
+                            <td class="px-5 py-2 text-right tabular-nums text-[11px] text-[#A3AED0]">${ant >= 0 ? (f.meses[ant] || '—') : ''}</td>
+                        </tr>`).join('');
+                    return `<div class="card-dark p-0 overflow-hidden">
+                        ${cabeza(b, b.totalMeses[m])}
+                        <table class="w-full">
+                            <thead><tr>
+                                <th class="px-5 py-1.5 text-left text-[10px] font-bold text-[#A3AED0] uppercase">Categoría</th>
+                                <th class="px-3 py-1.5 text-right text-[10px] font-bold text-[#A3AED0] uppercase">${PRES_MESES[m]}</th>
+                                <th class="px-5 py-1.5 text-right text-[10px] font-bold text-[#A3AED0] uppercase">${ant >= 0 ? PRES_MESES[ant] : ''}</th>
+                            </tr></thead>
+                            <tbody>${filas}
+                                <tr class="r14-fila-total text-white">
+                                    <td class="px-5 py-2 text-[12px] font-bold">Totales</td>
+                                    <td class="px-3 py-2 text-right font-extrabold tabular-nums">${b.totalMeses[m].toLocaleString('es-AR')}</td>
+                                    <td class="px-5 py-2 text-right text-[11px] tabular-nums opacity-70">${ant >= 0 ? b.totalMeses[ant].toLocaleString('es-AR') : ''}</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>`;
+                }).join('');
+            } else {
+                // Año: los 12 meses, como la planilla. El mes en curso resaltado.
+                cont.className = 'grid gap-4';
+                const th = PRES_MESES.map((nom, i) => `<th class="px-2 py-1.5 text-right text-[10px] font-bold uppercase ${esteAnio && i === hoy.mes ? 'text-indigo-600' : 'text-[#A3AED0]'}">${nom}</th>`).join('');
+                const celdas = (arr) => arr.map((v, i) => `<td class="px-2 py-2 text-right tabular-nums text-[12px] ${esteAnio && i === hoy.mes ? 'bg-indigo-50' : ''} ${i > ultimoMes ? 'opacity-40' : ''}">${presNum(v)}</td>`).join('');
+                cont.innerHTML = d.bloques.map((b) => `
+                    <div class="card-dark p-0 overflow-hidden">
+                        ${cabeza(b, b.total)}
+                        <div class="overflow-x-auto"><table class="w-full min-w-[760px]">
+                            <thead><tr><th class="px-5 py-1.5 text-left text-[10px] font-bold text-[#A3AED0] uppercase">Categoría</th>${th}<th class="px-5 py-1.5 text-right text-[10px] font-bold text-[#A3AED0] uppercase">Total</th></tr></thead>
+                            <tbody>
+                                ${b.filas.map((f, i) => `<tr class="${i % 2 ? 'r14-fila-alt' : 'r14-fila'}"><td class="px-5 py-2 text-[13px] text-[#2B3674] whitespace-nowrap">${escapeHtml(f.nombre)}</td>${celdas(f.meses)}<td class="px-5 py-2 text-right tabular-nums">${presNum(f.total)}</td></tr>`).join('')}
+                                <tr class="r14-fila-total text-white"><td class="px-5 py-2 text-[12px] font-bold">Totales</td>${b.totalMeses.map((v) => `<td class="px-2 py-2 text-right tabular-nums text-[12px] font-bold">${v ? v.toLocaleString('es-AR') : '—'}</td>`).join('')}<td class="px-5 py-2 text-right font-extrabold tabular-nums">${b.total.toLocaleString('es-AR')}</td></tr>
+                            </tbody>
+                        </table></div>
+                    </div>`).join('');
+            }
+            if (window.lucide) lucide.createIcons();
+        }
+
+        /** El Excel con los mismos bloques de la pantalla: el mes elegido, o los 12. */
+        function exportarPresupuesto() {
+            const d = presEstado.datos;
+            if (!d || typeof XLSX === 'undefined') {
+                if (typeof addNotification === 'function') addNotification('warning', 'Presupuesto', 'Todavía no hay datos para exportar.');
+                return;
+            }
+            const enAnio = presEstado.modo === 'anio';
+            const m = presEstado.mes;
+            const encabezado = enAnio ? [...PRES_MESES, 'TOTAL'] : [PRES_MESES[m]];
+            const valores = (arr, total) => enAnio ? [...arr, total] : [arr[m]];
+            const aoa = [[`Conteo de viajes · ${enAnio ? d.anio : PRES_MESES_LARGO[m] + ' ' + d.anio}`], ['Solo viajes completados. Un viaje que reparte para dos unidades cuenta en las dos.'], []];
+            for (const b of d.bloques) {
+                aoa.push([b.titulo + (b.contrato ? ' ' + b.contrato.toUpperCase() : ''), ...encabezado]);
+                for (const f of b.filas) aoa.push([f.nombre, ...valores(f.meses, f.total)]);
+                aoa.push(['Totales', ...valores(b.totalMeses, b.total)]);
+                aoa.push([]);
+            }
+            const ws = XLSX.utils.aoa_to_sheet(aoa);
+            ws['!cols'] = [{ wch: 34 }, ...encabezado.map(() => ({ wch: 8 }))];
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, 'Conteo de viajes');
+            XLSX.writeFile(wb, `R14 Presupuesto ${enAnio ? d.anio : PRES_MESES_LARGO[m] + ' ' + d.anio}.xlsx`);
+        }
+
         const CARGA_POR_PANTALLA = {
+            presupuesto:     () => cargarPresupuesto({ silencioso: true }),
             weekly:          () => loadWeeklyData(),
             control:         () => loadControlLiveData(),
             'drivers-status': () => loadDriverStatus(),
