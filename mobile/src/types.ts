@@ -91,6 +91,8 @@ export interface Route {
     rutas?: string[] | null;
     /** Las que ya se cerraron, con sus horas. */
     tramos?: TripLeg[] | null;
+    /** Indicaciones de planificación para este viaje. */
+    observacionChofer?: string | null;
   } | null;
   /** Justificación del chofer al reordenar paradas */
   reorderReason?: string | null;

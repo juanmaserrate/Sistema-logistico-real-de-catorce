@@ -936,6 +936,15 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
             </View>
           ) : null}
 
+          {/* Indicaciones que planificación cargó en el viaje (también salen
+              en la hoja de ruta impresa). */}
+          {selected?.trip?.observacionChofer ? (
+            <View style={styles.indicacionesCard}>
+              <Text style={styles.indicacionesTitulo}>📝 Indicaciones de planificación</Text>
+              <Text style={styles.indicacionesTxt}>{selected.trip.observacionChofer}</Text>
+            </View>
+          ) : null}
+
           {/* Panel de estadísticas del día */}
           {todayStats && todayStats.total > 0 ? (
             <View style={styles.statsPanel}>
@@ -1810,6 +1819,17 @@ const styles = StyleSheet.create({
   offlineTxt: { fontSize: font.sm, fontWeight: font.bold, color: colors.warning, textAlign: 'center' },
   // Banner "sin señal": más fuerte que el de sincronización, porque el mensaje
   // importante es "seguí trabajando, no perdés nada".
+  indicacionesCard: {
+    backgroundColor: colors.warningBg,
+    borderRadius: radius.sm + 2,
+    borderLeftWidth: 4,
+    borderLeftColor: colors.warning,
+    paddingVertical: spacing.sm + 2,
+    paddingHorizontal: spacing.md,
+    marginBottom: spacing.sm + 2,
+  },
+  indicacionesTitulo: { fontSize: font.sm, fontWeight: font.extrabold, color: colors.warning, marginBottom: 4 },
+  indicacionesTxt: { fontSize: font.md, color: colors.textPrimary, lineHeight: 21 },
   noSignalBanner: {
     backgroundColor: colors.errorBg,
     borderRadius: radius.sm + 2,
