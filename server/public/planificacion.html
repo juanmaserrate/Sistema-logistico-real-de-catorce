@@ -3452,6 +3452,11 @@
                             <button type="button" id="pres-modo-anio" onclick="presModo('anio')" class="px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest">Año completo</button>
                         </div>
                         <div id="pres-meses" class="flex flex-wrap gap-1" role="tablist" aria-label="Mes"></div>
+                        <div id="pres-contrato" class="inline-flex rounded-xl bg-[#F4F7FE] p-1" role="tablist" aria-label="Contrato" style="display:none">
+                            <button type="button" data-contrato="todos" onclick="presContrato('todos')" class="px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest">Todos</button>
+                            <button type="button" data-contrato="Propio" onclick="presContrato('Propio')" class="px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-indigo-500"></span>Propio</button>
+                            <button type="button" data-contrato="Tercerizado" onclick="presContrato('Tercerizado')" class="px-4 py-1.5 rounded-lg text-[11px] font-black uppercase tracking-widest flex items-center gap-1.5"><span class="w-1.5 h-1.5 rounded-full bg-amber-500"></span>Tercerizado</button>
+                        </div>
                     </div>
                     <div class="flex items-center gap-3 shrink-0">
                         <span class="text-[11px] font-semibold text-[#A3AED0] flex items-center gap-1.5" title="Se vuelve a contar solo cada vez que se completa o se cambia un viaje">
@@ -24907,8 +24912,66 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             modo: (() => { try { return localStorage.getItem('r14.presupuesto.modo') || 'mes'; } catch (_) { return 'mes'; } })(),
             datos: null,
             pidiendo: false,
-            enVivoReloj: 0
+            enVivoReloj: 0,
+            contratoAnio: (() => { try { return localStorage.getItem('r14.presupuesto.contrato') || 'todos'; } catch (_) { return 'todos'; } })()
         };
+
+        function presContrato(c) {
+            presEstado.contratoAnio = ['Propio', 'Tercerizado'].includes(c) ? c : 'todos';
+            try { localStorage.setItem('r14.presupuesto.contrato', presEstado.contratoAnio); } catch (_) { /* sin storage */ }
+            renderPresupuesto();
+        }
+
+        /** Las tarjetas de las dos vistas, armadas desde los bloques del servidor:
+         *  una por unidad, y cada fila con sus 12 meses de Propio (p) y de
+         *  Tercerizado (t). La vista Mes muestra un mes de los dos contratos; la
+         *  vista Año, los 12 meses del contrato elegido (o de los dos). */
+        function presTarjetas(d) {
+            const vacio = () => new Array(12).fill(0);
+            const meses = (f) => (f ? f.meses : vacio());
+            const total = (f) => f.p.reduce((a, b) => a + b, 0) + f.t.reduce((a, b) => a + b, 0);
+            const bloque = (clave, contrato) => d.bloques.find((b) => b.clave === clave && b.contrato === contrato);
+            const EXTRA = ['Otras localidades', 'Otros repartos'];
+            const tarjetas = [];
+            for (const [clave, sub] of [['SAE_BROWN', 'Por localidad'], ['SAE_LANUS', 'Por zona'], ['LOMAS_JARDINES', 'SAE Lomas, por reparto']]) {
+                const bp = bloque(clave, 'Propio'), bt = bloque(clave, 'Tercerizado');
+                if (!bp && !bt) continue;
+                const nombres = [...new Set([...(bp ? bp.filas : []), ...(bt ? bt.filas : [])].map((f) => f.nombre))];
+                tarjetas.push({
+                    titulo: (bp || bt).titulo, sub, columna: 'Categoría',
+                    filas: nombres.map((nombre) => ({
+                        nombre, soloSiHay: EXTRA.includes(nombre),
+                        p: meses(bp && bp.filas.find((f) => f.nombre === nombre)),
+                        t: meses(bt && bt.filas.find((f) => f.nombre === nombre))
+                    }))
+                });
+            }
+            // Las que no se abren por categoria: una fila por unidad
+            const resto = ['SAM', 'SISTEMAS_ALTERNATIVOS', 'CDI', 'RETIRO', 'EVENTOS', 'REPOSICION']
+                .map((c) => d.bloques.find((b) => b.clave === c)).filter(Boolean)
+                .map((b) => ({
+                    nombre: b.titulo, nota: b.nota || '',
+                    p: meses(b.filas.find((f) => f.nombre === 'Propio')),
+                    t: meses(b.filas.find((f) => f.nombre === 'Tercerizado'))
+                }));
+            if (resto.length) tarjetas.push({ titulo: 'RESTO DE LAS UNIDADES', sub: 'Sin apertura por categoría', columna: 'Unidad', filas: resto });
+            // Las que no estan en la planilla: se ven solo si tienen algo
+            const otras = d.bloques.find((b) => b.clave === 'OTRAS');
+            if (otras) {
+                const porUnidad = new Map();
+                for (const f of otras.filas) {
+                    const [u, c] = f.nombre.split(' · ');
+                    if (!porUnidad.has(u)) porUnidad.set(u, { nombre: u, soloSiHay: true, p: vacio(), t: vacio() });
+                    const destino = porUnidad.get(u)[c === 'Tercerizado' ? 't' : 'p'];
+                    f.meses.forEach((v, i) => { destino[i] += v; });
+                }
+                tarjetas.push({
+                    titulo: 'FUERA DE LA PLANILLA', sub: 'Unidades que no están en el presupuesto', columna: 'Unidad', soloSiHay: true,
+                    filas: [...porUnidad.values()].sort((a, b) => total(b) - total(a))
+                });
+            }
+            return tarjetas;
+        }
 
         async function cargarPresupuesto(opts) {
             const silencioso = !!(opts && opts.silencioso);
@@ -24985,6 +25048,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             // Los meses: el que se mira, los que tienen viajes, y los que todavia no llegaron
             const meses = document.getElementById('pres-meses');
             meses.style.display = enAnio ? 'none' : '';
+            const selContrato = document.getElementById('pres-contrato');
+            if (selContrato) {
+                selContrato.style.display = enAnio ? '' : 'none';
+                selContrato.querySelectorAll('button').forEach((b) => pinta(b, b.dataset.contrato === presEstado.contratoAnio));
+            }
             meses.innerHTML = PRES_MESES.map((nom, i) => {
                 const futuro = i > ultimoMes;
                 const hay = d.resumen.viajesPorMes[i] > 0;
@@ -25027,74 +25095,40 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 return;
             }
 
-            const etiqueta = (b) => b.contrato
-                ? `<span class="status-badge ${b.contrato === 'Propio' ? 'bg-indigo-100 text-indigo-600' : 'bg-amber-100 text-amber-700'}">${b.contrato}</span>`
-                : '';
-            const cabeza = (b, total) => `
-                <div class="px-5 pt-4 pb-3 flex items-start justify-between gap-3">
+            // Las mismas tarjetas para las dos vistas. Todas las grillas de una vista
+            // usan la misma plantilla de columnas, asi los numeros quedan alineados
+            // de una tarjeta a la otra, y el total va siempre pegado abajo.
+            const tarjetas = presTarjetas(d);
+            const num = (x) => x ? x.toLocaleString('es-AR') : '<span class="text-[#C4CBDC]">—</span>';
+            const punto = (color) => `<span class="w-1.5 h-1.5 rounded-full ${color} shrink-0"></span>`;
+            const fondo = (i) => `background:var(${i % 2 ? '--wk-fila-alt' : '--wk-fila'})`;
+            const cabecera = (c, total) => `
+                <header class="px-4 sm:px-5 pt-4 pb-3 flex items-start justify-between gap-3">
                     <div class="min-w-0">
-                        <h4 class="text-sm font-extrabold text-[#1B2559] truncate">${escapeHtml(b.titulo)}</h4>
-                        ${b.nota ? `<p class="text-[11px] text-[#A3AED0] mt-0.5">${escapeHtml(b.nota)}</p>` : ''}
+                        <h4 class="text-sm font-extrabold text-[#1B2559] truncate">${escapeHtml(c.titulo)}</h4>
+                        <p class="text-[11px] text-[#A3AED0] mt-0.5">${escapeHtml(c.sub)}</p>
                     </div>
-                    <div class="flex items-center gap-2 shrink-0">${etiqueta(b)}<span class="text-lg font-extrabold text-[#1B2559] tabular-nums">${total.toLocaleString('es-AR')}</span></div>
-                </div>`;
+                    <span class="text-2xl font-extrabold text-[#1B2559] tabular-nums leading-none">${total.toLocaleString('es-AR')}</span>
+                </header>`;
+            const nombreFila = (f) => `
+                <span class="min-w-0 text-[#2B3674]" title="${escapeHtml(f.nombre + (f.nota ? ' — ' + f.nota : ''))}">
+                    <span class="block truncate">${escapeHtml(f.nombre)}</span>
+                    ${f.nota ? `<span class="block truncate text-[10px] text-[#A3AED0]">${escapeHtml(f.nota)}</span>` : ''}
+                </span>`;
+            // Lo de "otras" y "otros" se muestra solo si tiene algo en lo que se mira
+            const filtrar = (hay) => tarjetas
+                .map((c) => ({ ...c, filas: c.filas.filter((f) => !f.soloSiHay || hay(f)) }))
+                .filter((c) => !c.soloSiHay || c.filas.length);
 
             if (!enAnio) {
-                // Mes: UNA tarjeta por unidad, con Propio · Tercerizado · Total. Todas
-                // con las mismas columnas y el total pegado abajo: las tarjetas de una
-                // misma fila quedan del mismo alto y los numeros alineados entre si.
-                const bloque = (clave, contrato) => d.bloques.find((b) => b.clave === clave && b.contrato === contrato);
-                const delMes = (f) => (f ? f.meses[m] : 0);
-                const tarjetas = [];
-                const EXTRA = ['Otras localidades', 'Otros repartos'];
-                for (const [clave, sub] of [['SAE_BROWN', 'Por localidad'], ['SAE_LANUS', 'Por zona'], ['LOMAS_JARDINES', 'SAE Lomas, por reparto']]) {
-                    const bp = bloque(clave, 'Propio'), bt = bloque(clave, 'Tercerizado');
-                    if (!bp && !bt) continue;
-                    const nombres = [...new Set([...(bp ? bp.filas : []), ...(bt ? bt.filas : [])].map((f) => f.nombre))];
-                    const filas = nombres.map((nombre) => ({
-                        nombre,
-                        p: delMes(bp && bp.filas.find((f) => f.nombre === nombre)),
-                        t: delMes(bt && bt.filas.find((f) => f.nombre === nombre))
-                    })).filter((f) => !EXTRA.includes(f.nombre) || f.p + f.t > 0);
-                    tarjetas.push({ titulo: (bp || bt).titulo, sub, columna: 'Categoría', filas });
-                }
-                // Las que no se abren por categoria: una fila por unidad
-                const resto = ['SAM', 'SISTEMAS_ALTERNATIVOS', 'CDI', 'RETIRO', 'EVENTOS', 'REPOSICION']
-                    .map((c) => d.bloques.find((b) => b.clave === c)).filter(Boolean)
-                    .map((b) => ({
-                        nombre: b.titulo, nota: b.nota || '',
-                        p: delMes(b.filas.find((f) => f.nombre === 'Propio')),
-                        t: delMes(b.filas.find((f) => f.nombre === 'Tercerizado'))
-                    }));
-                if (resto.length) tarjetas.push({ titulo: 'RESTO DE LAS UNIDADES', sub: 'Sin apertura por categoría', columna: 'Unidad', filas: resto });
-                // Las que no estan en la planilla, solo si hubo alguna este mes
-                const otras = d.bloques.find((b) => b.clave === 'OTRAS');
-                if (otras) {
-                    const porUnidad = new Map();
-                    for (const f of otras.filas) {
-                        const [u, c] = f.nombre.split(' · ');
-                        if (!porUnidad.has(u)) porUnidad.set(u, { nombre: u, p: 0, t: 0 });
-                        porUnidad.get(u)[c === 'Tercerizado' ? 't' : 'p'] += f.meses[m];
-                    }
-                    const filas = [...porUnidad.values()].filter((f) => f.p + f.t > 0).sort((a, b) => (b.p + b.t) - (a.p + a.t));
-                    if (filas.length) tarjetas.push({ titulo: 'FUERA DE LA PLANILLA', sub: 'Unidades que no están en el presupuesto', columna: 'Unidad', filas });
-                }
-
+                // Mes: una tarjeta por unidad con Propio · Tercerizado · Total
                 const COLS = 'grid grid-cols-[minmax(0,1fr)_40px_44px_40px] sm:grid-cols-[minmax(0,1fr)_68px_92px_60px] gap-x-2 items-center';
-                const num = (x) => x ? x.toLocaleString('es-AR') : '<span class="text-[#C4CBDC]">—</span>';
-                const punto = (color) => `<span class="w-1.5 h-1.5 rounded-full ${color} shrink-0"></span>`;
                 cont.className = 'grid gap-4 md:grid-cols-2 2xl:grid-cols-3';
-                cont.innerHTML = tarjetas.map((c) => {
-                    const tp = c.filas.reduce((a, f) => a + f.p, 0);
-                    const tt = c.filas.reduce((a, f) => a + f.t, 0);
+                cont.innerHTML = filtrar((f) => f.p[m] + f.t[m] > 0).map((c) => {
+                    const tp = c.filas.reduce((a, f) => a + f.p[m], 0);
+                    const tt = c.filas.reduce((a, f) => a + f.t[m], 0);
                     return `<section class="card-dark p-0 overflow-hidden flex flex-col">
-                        <header class="px-4 sm:px-5 pt-4 pb-3 flex items-start justify-between gap-3">
-                            <div class="min-w-0">
-                                <h4 class="text-sm font-extrabold text-[#1B2559] truncate">${escapeHtml(c.titulo)}</h4>
-                                <p class="text-[11px] text-[#A3AED0] mt-0.5">${escapeHtml(c.sub)}</p>
-                            </div>
-                            <span class="text-2xl font-extrabold text-[#1B2559] tabular-nums leading-none">${(tp + tt).toLocaleString('es-AR')}</span>
-                        </header>
+                        ${cabecera(c, tp + tt)}
                         <div class="${COLS} px-4 sm:px-5 py-1.5 text-[10px] font-bold uppercase text-[#A3AED0]" style="background:var(--wk-fila-alt)">
                             <span>${c.columna}</span>
                             <span class="flex items-center justify-end gap-1">${punto('bg-indigo-500')}<span class="sm:hidden">Prop.</span><span class="hidden sm:inline">Propio</span></span>
@@ -25103,14 +25137,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         </div>
                         <div class="flex-1">
                             ${c.filas.map((f, i) => `
-                            <div class="${COLS} px-4 sm:px-5 py-2 text-[13px]" style="background:var(${i % 2 ? '--wk-fila-alt' : '--wk-fila'})">
-                                <span class="min-w-0 text-[#2B3674]" title="${escapeHtml(f.nombre + (f.nota ? ' — ' + f.nota : ''))}">
-                                    <span class="block truncate">${escapeHtml(f.nombre)}</span>
-                                    ${f.nota ? `<span class="block truncate text-[10px] text-[#A3AED0]">${escapeHtml(f.nota)}</span>` : ''}
-                                </span>
-                                <span class="text-right tabular-nums font-semibold text-[#1B2559]">${num(f.p)}</span>
-                                <span class="text-right tabular-nums font-semibold text-[#1B2559]">${num(f.t)}</span>
-                                <span class="text-right tabular-nums font-extrabold text-[#1B2559]">${num(f.p + f.t)}</span>
+                            <div class="${COLS} px-4 sm:px-5 py-2 text-[13px]" style="${fondo(i)}">
+                                ${nombreFila(f)}
+                                <span class="text-right tabular-nums font-semibold text-[#1B2559]">${num(f.p[m])}</span>
+                                <span class="text-right tabular-nums font-semibold text-[#1B2559]">${num(f.t[m])}</span>
+                                <span class="text-right tabular-nums font-extrabold text-[#1B2559]">${num(f.p[m] + f.t[m])}</span>
                             </div>`).join('')}
                         </div>
                         <footer class="${COLS} px-4 sm:px-5 py-2.5 text-white" style="background:var(--r14-total)">
@@ -25122,21 +25153,43 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     </section>`;
                 }).join('');
             } else {
-                // Año: los 12 meses, como la planilla. El mes en curso resaltado.
+                // Año: las mismas tarjetas con los 12 meses. Del contrato elegido
+                // arriba, o de los dos sumados. El mes en curso, marcado.
+                const cual = presEstado.contratoAnio;
+                const valor = (f, i) => cual === 'Propio' ? f.p[i] : cual === 'Tercerizado' ? f.t[i] : f.p[i] + f.t[i];
+                const COLSA = 'grid grid-cols-[minmax(150px,220px)_repeat(12,minmax(40px,1fr))_72px] gap-x-1 items-center';
+                const mesHoy = esteAnio ? hoy.mes : -1;
+                const futuro = (i) => i > ultimoMes ? 'opacity-40' : '';
+                const subContrato = cual === 'todos' ? '' : ` · solo ${cual.toLowerCase()}s`;
                 cont.className = 'grid gap-4';
-                const th = PRES_MESES.map((nom, i) => `<th class="px-2 py-1.5 text-right text-[10px] font-bold uppercase ${esteAnio && i === hoy.mes ? 'text-indigo-600' : 'text-[#A3AED0]'}">${nom}</th>`).join('');
-                const celdas = (arr) => arr.map((v, i) => `<td class="px-2 py-2 text-right tabular-nums text-[12px] ${esteAnio && i === hoy.mes ? 'bg-indigo-50' : ''} ${i > ultimoMes ? 'opacity-40' : ''}">${presNum(v)}</td>`).join('');
-                cont.innerHTML = d.bloques.map((b) => `
-                    <div class="card-dark p-0 overflow-hidden">
-                        ${cabeza(b, b.total)}
-                        <div class="overflow-x-auto"><table class="w-full min-w-[760px]">
-                            <thead><tr><th class="px-5 py-1.5 text-left text-[10px] font-bold text-[#A3AED0] uppercase">Categoría</th>${th}<th class="px-5 py-1.5 text-right text-[10px] font-bold text-[#A3AED0] uppercase">Total</th></tr></thead>
-                            <tbody>
-                                ${b.filas.map((f, i) => `<tr class="${i % 2 ? 'r14-fila-alt' : 'r14-fila'}"><td class="px-5 py-2 text-[13px] text-[#2B3674] whitespace-nowrap">${escapeHtml(f.nombre)}</td>${celdas(f.meses)}<td class="px-5 py-2 text-right tabular-nums">${presNum(f.total)}</td></tr>`).join('')}
-                                <tr class="r14-fila-total text-white"><td class="px-5 py-2 text-[12px] font-bold">Totales</td>${b.totalMeses.map((v) => `<td class="px-2 py-2 text-right tabular-nums text-[12px] font-bold">${v ? v.toLocaleString('es-AR') : '—'}</td>`).join('')}<td class="px-5 py-2 text-right font-extrabold tabular-nums">${b.total.toLocaleString('es-AR')}</td></tr>
-                            </tbody>
-                        </table></div>
-                    </div>`).join('');
+                cont.innerHTML = filtrar((f) => PRES_MESES.some((_, i) => valor(f, i) > 0)).map((c) => {
+                    const porMes = PRES_MESES.map((_, i) => c.filas.reduce((a, f) => a + valor(f, i), 0));
+                    const total = porMes.reduce((a, b) => a + b, 0);
+                    return `<section class="card-dark p-0 overflow-hidden">
+                        ${cabecera({ ...c, sub: c.sub + subContrato }, total)}
+                        <div class="overflow-x-auto"><div class="min-w-[880px]">
+                            <div class="${COLSA} px-4 sm:px-5 py-1.5 text-[10px] font-bold uppercase text-[#A3AED0]" style="background:var(--wk-fila-alt)">
+                                <span>${c.columna}</span>
+                                ${PRES_MESES.map((nom, i) => `<span class="text-right ${i === mesHoy ? 'text-indigo-600' : ''} ${futuro(i)}">${nom}</span>`).join('')}
+                                <span class="text-right">Total</span>
+                            </div>
+                            ${c.filas.map((f, j) => {
+                                const fila = PRES_MESES.map((_, i) => valor(f, i));
+                                return `
+                            <div class="${COLSA} px-4 sm:px-5 py-2 text-[13px]" style="${fondo(j)}">
+                                ${nombreFila(f)}
+                                ${fila.map((v, i) => `<span class="text-right tabular-nums font-semibold text-[#1B2559] ${futuro(i)}">${num(v)}</span>`).join('')}
+                                <span class="text-right tabular-nums font-extrabold text-[#1B2559]">${num(fila.reduce((a, b) => a + b, 0))}</span>
+                            </div>`;
+                            }).join('')}
+                            <footer class="${COLSA} px-4 sm:px-5 py-2.5 text-white" style="background:var(--r14-total)">
+                                <span class="text-[12px] font-bold">Totales</span>
+                                ${porMes.map((v, i) => `<span class="text-right tabular-nums font-bold ${futuro(i)}">${v ? v.toLocaleString('es-AR') : '—'}</span>`).join('')}
+                                <span class="text-right tabular-nums font-extrabold">${total.toLocaleString('es-AR')}</span>
+                            </footer>
+                        </div></div>
+                    </section>`;
+                }).join('');
             }
             if (window.lucide) lucide.createIcons();
         }
