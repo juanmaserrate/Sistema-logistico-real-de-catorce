@@ -3176,10 +3176,18 @@ app.get('/api/v1/control/driver-status', async (req, res) => {
             // lo que no anda es la ubicacion (GPS del celular apagado, permiso
             // de ubicacion o ahorro de bateria). Antes salia "Sin senal hace
             // 255 h" en choferes que marcaban todas las paradas (nov 2026).
+            // Dos casos: esta marcando paradas AHORA sin GPS (ultimas 2 h), o
+            // lleva mas de un dia marcando sin GPS (problema del telefono). El
+            // que ayer apago el GPS un rato antes de terminar no entra: a la
+            // manana siguiente sigue siendo "sin senal" como todos.
             const ultimaParada = route.driverId ? ultimaParadaPorChofer[route.driverId] : null;
-            if ((signal === 'dead' || signal === 'never') && ultimaParada
-                && (!last?.at || ultimaParada.getTime() > new Date(last.at).getTime() + 10 * 60000)) {
-                signal = 'nogps';
+            if ((signal === 'dead' || signal === 'never') && ultimaParada) {
+                const msParada = ultimaParada.getTime();
+                const msGps = last?.at ? new Date(last.at).getTime() : null;
+                const marcandoAhora = now - msParada <= 2 * 3600000
+                    && (msGps == null || msParada > msGps + 10 * 60000);
+                const haceDiasSinGps = msGps == null || msParada - msGps > 24 * 3600000;
+                if (marcandoAhora || haceDiasSinGps) signal = 'nogps';
             }
             return {
                 routeId: route.id,
