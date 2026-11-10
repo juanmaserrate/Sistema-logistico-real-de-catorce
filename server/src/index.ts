@@ -9219,6 +9219,96 @@ app.post('/api/admin/paradas-sin-unidad', async (req: any, res: any) => {
     }
 });
 
+/** Mete UNA parada en un lugar exacto de los viajes de una ruta: primera, o
+ *  despues de otra parada. Es para cuando se cambia una ruta predefinida y los
+ *  viajes del mes ya estaban creados con la plantilla vieja (nov 2026: San
+ *  Pablo primera en R7, ES 45 despues de ES.924 en R11).
+ *
+ *  Guarda con guardarParadasDelViaje sin forzar: un viaje que ya arranco o
+ *  tiene paradas marcadas por el chofer se rechaza solo y queda como estaba.
+ *  Si el viaje ya tiene ese cliente, no lo duplica.
+ *
+ *  POST /api/admin/insertar-parada-en-viajes
+ *  { key, ruta: 'R11', desde: 'YYYY-MM-DD', hasta: 'YYYY-MM-DD', clienteId,
+ *    despuesDe?: 'ES.924' (sin esto va primera), dryRun? } */
+app.post('/api/admin/insertar-parada-en-viajes', async (req: any, res: any) => {
+    const { key, ruta, desde, hasta, clienteId, despuesDe, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const nombreRuta = String(ruta || '').trim().toUpperCase();
+    if (!nombreRuta) return res.status(400).json({ error: 'Falta ruta' });
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(String(desde || '')) || !/^\d{4}-\d{2}-\d{2}$/.test(String(hasta || ''))) {
+        return res.status(400).json({ error: 'Faltan desde y hasta (YYYY-MM-DD)' });
+    }
+    try {
+        const cliente = await prisma.client.findUnique({ where: { id: String(clienteId || '') }, select: { id: true, name: true } });
+        if (!cliente) return res.status(400).json({ error: 'El cliente no existe' });
+        const ancla = despuesDe ? normClientNameForMatch(String(despuesDe)) : null;
+
+        const viajes = await prisma.trip.findMany({
+            where: { date: { gte: new Date(desde + 'T00:00:00.000Z'), lte: new Date(hasta + 'T23:59:59.999Z') } },
+            orderBy: { date: 'asc' },
+            select: {
+                id: true, date: true, reparto: true, rutas: true, driver: true, status: true,
+                linkedRoute: {
+                    select: {
+                        id: true, actualStartTime: true, actualEndTime: true,
+                        stops: {
+                            orderBy: { sequence: 'asc' },
+                            select: { id: true, clientId: true, ruta: true, client: { select: { name: true } } }
+                        }
+                    }
+                }
+            }
+        });
+        const deLaRuta = viajes.filter((t: any) => {
+            if (String(t.reparto || '').trim().toUpperCase() === nombreRuta) return true;
+            return Array.isArray(t.rutas) && t.rutas.some((r: any) => String(r || '').trim().toUpperCase() === nombreRuta);
+        });
+
+        const hechos: any[] = [];
+        const saltados: any[] = [];
+        for (const t of deLaRuta as any[]) {
+            const fecha = new Date(t.date).toISOString().slice(0, 10);
+            const r = t.linkedRoute;
+            const stops = r?.stops || [];
+            if (!stops.length) { saltados.push({ id: t.id, fecha, motivo: 'no tiene paradas cargadas' }); continue; }
+            if (r.actualStartTime || r.actualEndTime) { saltados.push({ id: t.id, fecha, motivo: 'ya arranco' }); continue; }
+            if (stops.some((x: any) => x.clientId === cliente.id)) { saltados.push({ id: t.id, fecha, motivo: 'ya la tiene' }); continue; }
+
+            let donde = 0;
+            if (ancla) {
+                const i = stops.findIndex((x: any) => normClientNameForMatch(x.client?.name) === ancla);
+                if (i < 0) { saltados.push({ id: t.id, fecha, motivo: `no tiene ${despuesDe}` }); continue; }
+                donde = i + 1;
+            }
+            // La parada nueva es de la misma ruta que la de al lado
+            const vecina = stops[ancla ? donde - 1 : 0];
+            const clientIds = stops.map((x: any) => x.clientId);
+            const rutas = stops.map((x: any) => x.ruta || null);
+            clientIds.splice(donde, 0, cliente.id);
+            rutas.splice(donde, 0, vecina?.ruta || null);
+
+            const item: any = { id: t.id, fecha, chofer: t.driver, posicion: donde + 1, paradas: clientIds.length };
+            if (!dryRun) {
+                const g = await guardarParadasDelViaje(t.id, clientIds, { forzar: false, rutas });
+                if (!g.ok) { saltados.push({ id: t.id, fecha, motivo: g.body?.error || ('error ' + g.status) }); continue; }
+                io.emit('trip:updated', { tripId: t.id, hint: 'paradas_actualizadas' });
+            }
+            hechos.push(item);
+        }
+
+        if (!dryRun && hechos.length) {
+            await logAction(req, 'UPDATE', 'trip', 0,
+                `${cliente.name} agregada ${ancla ? 'despues de ' + despuesDe : 'primera'} en ${hechos.length} viaje(s) de ${nombreRuta}`,
+                null, { ruta: nombreRuta, desde, hasta, viajes: hechos.map((h) => h.id) }).catch(() => {});
+        }
+        res.json({ dryRun: !!dryRun, cliente: cliente.name, ruta: nombreRuta, viajes: deLaRuta.length, hechos, saltados });
+    } catch (e: any) {
+        console.error('insertar-parada-en-viajes:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Les suma a los viajes las paradas de las rutas que tienen cargadas pero
  *  que nunca trajeron sus paradas.
  *
