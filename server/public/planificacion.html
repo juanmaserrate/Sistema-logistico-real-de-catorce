@@ -18563,7 +18563,11 @@
   .stops td { height: 24px; }
   .stops .n { width: 22px; text-align: center; color: #888; }
   .stops .dest { font-weight: bold; }
-  .stops .loc { width: 112px; font-size: 9px; font-weight: bold; color: #444; text-transform: uppercase; line-height: 1.15; }
+  .stops .loc { width: 112px; }
+  .stops td.loc { font-size: 9px; font-weight: bold; color: #444; text-transform: uppercase; line-height: 1.15; }
+  /* Los titulos van en blanco: los colores de .hr y .mot (azul y naranja) son
+     para las celdas, y en el encabezado azul los dejaban invisibles. */
+  .stops thead th.hr, .stops thead th.mot, .stops thead th.loc { color: #fff; }
   .stops .hr { width: 70px; text-align: center; font-weight: bold; color: #1B2559; }
   .stops .mot { width: 96px; text-align: center; color: #b45309; font-weight: bold; font-size: 9px; line-height: 1.15; }
   .depot td { background: #F4F7FE; font-weight: bold; }
