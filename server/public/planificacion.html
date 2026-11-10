@@ -18563,6 +18563,7 @@
   .stops td { height: 24px; }
   .stops .n { width: 22px; text-align: center; color: #888; }
   .stops .dest { font-weight: bold; }
+  .stops .loc { width: 112px; font-size: 9px; font-weight: bold; color: #444; text-transform: uppercase; line-height: 1.15; }
   .stops .hr { width: 70px; text-align: center; font-weight: bold; color: #1B2559; }
   .stops .mot { width: 96px; text-align: center; color: #b45309; font-weight: bold; font-size: 9px; line-height: 1.15; }
   .depot td { background: #F4F7FE; font-weight: bold; }
@@ -18619,6 +18620,9 @@
 
             const paradas = (stops || []).map((s) => ({
                 name: s.name || s.clientId || '',
+                // La localidad de la escuela. Si no esta cargada, el partido:
+                // algo para orientarse es mejor que el casillero vacio.
+                localidad: String(s.localidad || s.partido || '').trim().toUpperCase(),
                 llegada: hora(s.actualArrival),
                 salida: hora(s.actualDeparture),
                 ruta: String(s.ruta || '').trim(),
@@ -18649,7 +18653,7 @@
             const last = rows.length - 1;
             const stopRows = rows.map((r, i) => {
                 if (r.bloque) {
-                    return `<tr class="bloque"><td colspan="6">${esc(r.name)}${r.unidad ? ' &middot; ' + esc(r.unidad) : ''}</td></tr>`;
+                    return `<tr class="bloque"><td colspan="7">${esc(r.name)}${r.unidad ? ' &middot; ' + esc(r.unidad) : ''}</td></tr>`;
                 }
                 // Un viaje ya hecho es un registro, no un formulario: las horas
                 // que marco el chofer van impresas. Las que faltan quedan en
@@ -18659,6 +18663,7 @@
                 return `<tr class="${r.depot ? 'depot' : ''}">
                     <td class="n">${r.depot ? '' : r.nro}</td>
                     <td class="dest">${esc(r.name)}</td>
+                    <td class="loc">${r.depot ? '' : esc(r.localidad || '')}</td>
                     ${lleg}${sal}
                     <td class="mot">${r.depot ? '' : esc(r.unidad || motivo)}</td>
                     <td></td>
@@ -18691,7 +18696,7 @@
                     <div class="cell"><div class="k">Refrigerado</div><div class="v">${refrig}</div></div>
                 </div>
                 <table class="stops">
-                    <thead><tr><th class="n">#</th><th>Destino</th><th class="hr">Hora llegada</th><th class="hr">Hora salida</th><th class="mot">Motivo</th><th>Observaciones</th></tr></thead>
+                    <thead><tr><th class="n">#</th><th>Destino</th><th class="loc">Localidad</th><th class="hr">Hora llegada</th><th class="hr">Hora salida</th><th class="mot">Motivo</th><th>Observaciones</th></tr></thead>
                     <tbody>${stopRows}</tbody>
                 </table>
                 <div class="sec-title">Observaciones</div>

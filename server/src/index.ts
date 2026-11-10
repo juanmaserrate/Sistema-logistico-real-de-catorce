@@ -9232,6 +9232,42 @@ app.post('/api/admin/paradas-sin-unidad', async (req: any, res: any) => {
     }
 });
 
+/** Carga la localidad de clientes puntuales (la usa la hoja de ruta).
+ *  Por defecto solo completa los que no tienen; pisar = reemplaza la que hay.
+ *  Guarda un respaldo de lo que habia en appSettings.
+ *  POST /api/admin/clientes-set-localidad { key, items: [{ id, localidad }], pisar?, dryRun? } */
+app.post('/api/admin/clientes-set-localidad', async (req: any, res: any) => {
+    const { key, items, pisar, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!Array.isArray(items) || !items.length) return res.status(400).json({ error: 'Faltan items' });
+    try {
+        const ids = items.map((x: any) => String(x?.id || '')).filter(Boolean);
+        const actuales = await prisma.client.findMany({ where: { id: { in: ids } }, select: { id: true, name: true, localidad: true } });
+        const porId = new Map(actuales.map((c) => [c.id, c]));
+        const cambios: any[] = [], saltados: any[] = [];
+        for (const it of items as any[]) {
+            const c = porId.get(String(it?.id || ''));
+            const nueva = String(it?.localidad || '').trim().toUpperCase();
+            if (!c) { saltados.push({ id: it?.id, motivo: 'no existe' }); continue; }
+            if (!nueva) { saltados.push({ id: c.id, name: c.name, motivo: 'sin localidad' }); continue; }
+            if (String(c.localidad || '').trim() && !pisar) { saltados.push({ id: c.id, name: c.name, motivo: 'ya tiene: ' + c.localidad }); continue; }
+            if (String(c.localidad || '').trim().toUpperCase() === nueva) continue;
+            cambios.push({ id: c.id, name: c.name, antes: c.localidad || null, ahora: nueva });
+        }
+        if (!dryRun && cambios.length) {
+            await prisma.appSettings.create({
+                data: { key: `clients_localidad_backup_${new Date().toISOString().replace(/[:.]/g, '-')}`, value: JSON.stringify(actuales) }
+            });
+            for (const c of cambios) await prisma.client.update({ where: { id: c.id }, data: { localidad: c.ahora } });
+            await logAction(req, 'UPDATE', 'client', 0, `Localidad cargada en ${cambios.length} cliente(s)`, null, { cambios }).catch(() => {});
+        }
+        res.json({ dryRun: !!dryRun, cambios, saltados });
+    } catch (e: any) {
+        console.error('clientes-set-localidad:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Mete UNA parada en un lugar exacto de los viajes de una ruta: primera, o
  *  despues de otra parada. Es para cuando se cambia una ruta predefinida y los
  *  viajes del mes ya estaban creados con la plantilla vieja (nov 2026: San
@@ -14390,6 +14426,9 @@ app.get('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
                 clientId: s.clientId,
                 name: s.client?.name || 'Cliente',
                 address: s.client?.address || null,
+                // Para la columna Localidad de la hoja de ruta
+                localidad: s.client?.localidad || null,
+                partido: s.client?.partido || null,
                 isReturnToBase: !!(s as any).isReturnToBase,
                 latitude: s.client?.latitude ?? null,
                 longitude: s.client?.longitude ?? null,
