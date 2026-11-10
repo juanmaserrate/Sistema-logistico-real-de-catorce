@@ -662,13 +662,53 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   // a esa ruta para el mapa de Torre de Control. Si no, los pings se mandan sin
   // routeId (siguen sirviendo para ver al chofer en el mapa por su deviceLabel).
   const startTracking = () => {
-    void doStartTracking();
+    // Cualquier error que se escape tiene que verse: antes fallaba callado y
+    // el chofer creia que la app "no lo dejaba fichar" (R18, 10/11/2026).
+    void doStartTracking().catch((e) => avisarGpsNoArranca(e));
+  };
+
+  /** El cartel cuando el GPS no se puede prender, con el camino para
+   *  arreglarlo. Sin esto el chofer repartia todo el dia sin ubicacion. */
+  const avisarGpsNoArranca = (e?: unknown) => {
+    const detalle = e instanceof Error && e.message ? `\n\n(${e.message})` : '';
+    Alert.alert(
+      'No se pudo prender el GPS',
+      'Planificación no te va a ver en el mapa hasta que lo arregles. Revisá en el celular:\n\n'
+        + '• Ubicación prendida\n'
+        + '• Permiso de ubicación de la app en «Permitir todo el tiempo»\n'
+        + '• Batería de la app «Sin restricciones»\n\n'
+        + 'Después volvé a tocar «Fichar entrada».' + detalle,
+      [
+        { text: 'Entendido', style: 'cancel' },
+        { text: 'Abrir ajustes', onPress: () => { Linking.openSettings().catch(() => {}); } },
+      ]
+    );
   };
 
   const doStartTracking = async () => {
     const fg = await Location.requestForegroundPermissionsAsync();
     if (fg.status !== 'granted') {
-      Alert.alert('Ubicación', 'Se necesita permiso de ubicación para el seguimiento.');
+      Alert.alert(
+        'Falta el permiso de ubicación',
+        'Sin ese permiso la app no puede mandar tu posición. Activalo en los ajustes de la app y volvé a tocar «Fichar entrada».',
+        [
+          { text: 'Entendido', style: 'cancel' },
+          { text: 'Abrir ajustes', onPress: () => { Linking.openSettings().catch(() => {}); } },
+        ]
+      );
+      return;
+    }
+    // Ubicacion del celular apagada: en Android se ofrece prenderla ahi mismo.
+    let gpsPrendido = await Location.hasServicesEnabledAsync().catch(() => true);
+    if (!gpsPrendido && Platform.OS === 'android') {
+      await Location.enableNetworkProviderAsync().catch(() => {});
+      gpsPrendido = await Location.hasServicesEnabledAsync().catch(() => false);
+    }
+    if (!gpsPrendido) {
+      Alert.alert(
+        'La ubicación del celular está apagada',
+        'Prendela (bajando la barra de arriba, ícono «Ubicación») y volvé a tocar «Fichar entrada».'
+      );
       return;
     }
     const bg = await Location.requestBackgroundPermissionsAsync().catch(() => ({ status: 'denied' as const }));
@@ -693,19 +733,26 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         .then((r) => { if (r?.queued) getPendingTotalCount().then(setPendingOffline).catch(() => {}); })
         .catch(() => {});
     }
-    const started = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
-    if (!started) {
-      await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
-        accuracy: Location.Accuracy.High,
-        timeInterval: 5000,
-        distanceInterval: 15,
-        pausesUpdatesAutomatically: false,
-        showsBackgroundLocationIndicator: true,
-        foregroundService: {
-          notificationTitle: 'R14 · Seguimiento activo',
-          notificationBody: 'Tu posición se envía a planificación en tiempo real',
-        },
-      });
+    try {
+      const started = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+      if (!started) {
+        await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
+          accuracy: Location.Accuracy.High,
+          timeInterval: 5000,
+          distanceInterval: 15,
+          pausesUpdatesAutomatically: false,
+          showsBackgroundLocationIndicator: true,
+          foregroundService: {
+            notificationTitle: 'R14 · Seguimiento activo',
+            notificationBody: 'Tu posición se envía a planificación en tiempo real',
+          },
+        });
+      }
+    } catch (e) {
+      // El fichaje ya salio (el viaje figura iniciado); lo que fallo es el
+      // GPS. El boton sigue en «Fichar entrada» para poder reintentar.
+      avisarGpsNoArranca(e);
+      return;
     }
     setTracking(true);
   };
@@ -836,6 +883,22 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   // ahora, si el recorrido está terminado, ofrece cerrarlo marcando la vuelta
   // al depósito (ver offerCloseAtBase). Si el chofer dice que no, el viaje
   // sigue abierto y lo cierra el operador desde la web, como siempre.
+  /** «Fichar salida» queda en el mismo lugar que «Fichar entrada»: un doble
+   *  toque, o confundirlo con «salir del deposito», apagaba el GPS al
+   *  arrancar y el chofer repartia todo el dia sin ubicacion (R18,
+   *  10/11/2026). Ahora pregunta antes. */
+  const confirmarFicharSalida = () => {
+    Alert.alert(
+      '¿Terminaste tu jornada?',
+      'Fichar salida apaga el GPS: planificación deja de verte en el mapa.\n\n'
+        + 'Hacelo recién cuando terminaste de repartir. Para salir del depósito no hace falta tocar nada.',
+      [
+        { text: 'Todavía no', style: 'cancel' },
+        { text: 'Sí, fichar salida', style: 'destructive', onPress: () => { void stopTracking(); } },
+      ]
+    );
+  };
+
   const stopTracking = async () => {
     await offerCloseAtBase();
     if (selId != null) {
@@ -990,7 +1053,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
               <Text style={styles.ficharEntradaTxt}>Fichar entrada</Text>
             </BotonToque>
           ) : (
-            <BotonToque style={styles.ficharSalida} onPress={stopTracking}>
+            <BotonToque style={styles.ficharSalida} onPress={confirmarFicharSalida}>
               <Text style={styles.ficharSalidaTxt}>Fichar salida</Text>
             </BotonToque>
           )}
