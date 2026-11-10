@@ -5021,10 +5021,17 @@
                 }
             });
             // Unidades de negocio no es una pantalla, es una ventana, asi que no
-            // entra en el bucle de arriba. Sigue los permisos de Ajustes, que es
-            // de donde se abria antes.
+            // entra en el bucle de arriba. La ve quien tiene Ajustes (de donde se
+            // abria antes) o el permiso propio "Unidades de negocio", que se da
+            // en Usuarios sin tener que darle todo Ajustes. Priscila y Nicolas
+            // lo tienen de entrada (pedido de nov 2026).
+            const PUEDEN_UNIDADES = ['pri', 'nico'];
+            // El usuario con el que entra (pri, nico), no el nombre completo
+            const usuarioActual = (localStorage.getItem('r14.loggedUsername') || '').toLowerCase().trim();
             const btnUnidades = document.getElementById('btn-unidades-negocio');
-            if (btnUnidades) btnUnidades.style.display = currentUserModules.includes('ajustes') ? '' : 'none';
+            if (btnUnidades) btnUnidades.style.display = (currentUserModules.includes('ajustes')
+                || currentUserModules.includes('unidades-negocio')
+                || PUEDEN_UNIDADES.includes(usuarioActual)) ? '' : 'none';
 
             // Un menu sin ninguna pantalla visible no tiene por que mostrarse
             document.querySelectorAll('.nav-menu').forEach(menu => {
@@ -5242,6 +5249,7 @@
             'dashboard': 'Panel logístico', 'costs': 'Motor de Costos', 'fleet-costs': 'Gastos de Flota',
             'tarifas': 'Choferes y tarifas', 'budget': 'Presupuestar', 'presupuesto': 'Presupuesto', 'fleets': 'Flotas',
             'routes': 'Rutas Predefinidas', 'users': 'Usuarios', 'ajustes': 'Ajustes',
+            'unidades-negocio': 'Unidades de negocio',
             'control-carga': 'Problemas de carga', 'employees': 'Personal',
             // Salarios no tiene pantalla propia: se fusiono con Personal. El
             // permiso sigue existiendo porque hay perfiles guardados que lo nombran.
@@ -5250,7 +5258,7 @@
             'audit': 'Auditoría', 'historial': 'Historial'
         };
 
-        const ALL_MODULES = ['control','drivers-status','crates','crates-sim','stock-cajones','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
+        const ALL_MODULES = ['control','drivers-status','crates','crates-sim','stock-cajones','hdr','weekly','payments','dashboard','costs','fleet-costs','tarifas','budget','fleets','routes','users','ajustes','unidades-negocio','control-carga','employees','salaries','schools','reports','incidents','audit','historial'];
 
         function renderProfileAssignments() {
             const tbody = document.getElementById('profile-assignments-body');
