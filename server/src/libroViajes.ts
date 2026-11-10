@@ -40,6 +40,8 @@ const CACHE_DINAMICA = 'xl/pivotCache/pivotCacheDefinition1.xml';
 // apuntando a la hoja 1, que es la oculta.
 const HOJA_BASE_NOMBRE = 'Base dinámica';
 const HOJA_VIAJES_VISIBLE = { archivo: 'xl/worksheets/sheet6.xml', nombre: 'Viajes', sheetId: 6, rel: 'rId9' };
+// Horas promedio por unidad de negocio, propios y tercerizados (nov 2026).
+const HOJA_HORAS = { archivo: 'xl/worksheets/sheet7.xml', nombre: 'Horas promedio', sheetId: 7, rel: 'rId10' };
 
 // AG y no AF: entro "Horas por ruta" al final. Va al final y nunca en el medio
 // porque la tabla dinamica de la plantilla referencia los campos por numero de
@@ -174,6 +176,86 @@ function armarHojaPlana(viajes: any[], estilos: Record<number, number>, estiloCo
         + '</worksheet>';
 }
 
+const COLUMNAS_HORAS = [
+    'Mes', 'Unidad de negocio',
+    'Viajes propios', 'Horas propios', 'Promedio propios (h)',
+    'Viajes tercerizados', 'Horas tercerizados', 'Promedio tercerizados (h)',
+    'Viajes total', 'Horas total', 'Promedio total (h)'
+];
+
+/** La hoja "Horas promedio": cuanto dura en promedio un viaje de cada unidad
+ *  de negocio, con los propios y los tercerizados por separado.
+ *
+ *  Es la cuenta de la tabla de horas por negocio que se armaba a mano (la de
+ *  septiembre de 2026 da igual): cada fila de la hoja Viajes es un viaje de
+ *  esa unidad, y un viaje que reparte para dos cuenta en las dos con SUS
+ *  horas. Solo entran las filas con horario: un viaje sin cerrar no tiene
+ *  duracion y bajaria el promedio. La reposicion va por partido (REPOSICION
+ *  · ALMIRANTE BROWN, · LANUS...), igual que en esa tabla. */
+function armarHojaHoras(filas: any[], estiloEntero: number, estiloDecimal: number, estiloComun: number, estiloTitulo: number): string {
+    type Acum = { viajes: number; horas: number };
+    type Linea = { propio: Acum; terc: Acum; total: Acum };
+    const nueva = (): Linea => ({ propio: { viajes: 0, horas: 0 }, terc: { viajes: 0, horas: 0 }, total: { viajes: 0, horas: 0 } });
+    const meses = new Map<string, { orden: number; unidades: Map<string, Linea>; total: Linea }>();
+
+    for (const f of filas) {
+        const horas = Number(f['Duracion horas']);
+        if (!(horas > 0)) continue;
+        const mes = String(f['Mes'] || '') || 'SIN FECHA';
+        const fecha = f['Fecha'] ? new Date(f['Fecha']).getTime() : 0;
+        if (!meses.has(mes)) meses.set(mes, { orden: fecha, unidades: new Map(), total: nueva() });
+        const m = meses.get(mes)!;
+        if (fecha && fecha < m.orden) m.orden = fecha;
+
+        let unidad = String(f['Unidad de negocio'] || '').trim().toUpperCase() || 'SIN UNIDAD';
+        const partido = String(f['Partido'] || '').trim().toUpperCase();
+        if (unidad.startsWith('REPOSICION') && partido) unidad = `REPOSICION · ${partido}`;
+        if (!m.unidades.has(unidad)) m.unidades.set(unidad, nueva());
+        const linea = m.unidades.get(unidad)!;
+
+        const contrato = String(f['Contrato'] || '').trim().toLowerCase();
+        const lado = contrato === 'propio' ? 'propio' : contrato === 'tercerizado' ? 'terc' : null;
+        for (const l of [linea, m.total]) {
+            if (lado) { l[lado].viajes++; l[lado].horas += horas; }
+            l.total.viajes++; l.total.horas += horas;
+        }
+    }
+
+    const dos = (n: number) => Math.round(n * 100) / 100;
+    const celdas = (mes: string, unidad: string, l: Linea, estiloTexto: number) => {
+        const c: { valor: any; estilo: number }[] = [{ valor: mes, estilo: estiloTexto }, { valor: unidad, estilo: estiloTexto }];
+        for (const a of [l.propio, l.terc, l.total]) {
+            c.push({ valor: a.viajes || '', estilo: estiloEntero });
+            c.push({ valor: a.viajes ? dos(a.horas) : '', estilo: estiloDecimal });
+            c.push({ valor: a.viajes ? dos(a.horas / a.viajes) : '', estilo: estiloDecimal });
+        }
+        return c;
+    };
+
+    const filasXml: string[] = [filaXml(1, COLUMNAS_HORAS.map((n) => ({ valor: n, estilo: estiloTitulo })))];
+    let nro = 2;
+    const ordenados = [...meses.entries()].sort((a, b) => a[1].orden - b[1].orden);
+    for (const [mes, m] of ordenados) {
+        const unidades = [...m.unidades.entries()].sort((a, b) => b[1].total.viajes - a[1].total.viajes || a[0].localeCompare(b[0]));
+        for (const [u, l] of unidades) filasXml.push(filaXml(nro++, celdas(mes, u, l, estiloComun)));
+        filasXml.push(filaXml(nro++, celdas(mes, 'TOTAL', m.total, estiloTitulo)));
+    }
+
+    const ultima = letra(COLUMNAS_HORAS.length);
+    const rango = `A1:${ultima}${Math.max(nro - 1, 2)}`;
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        + `<dimension ref="${rango}"/>`
+        + '<sheetViews><sheetView workbookViewId="0">'
+        + '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
+        + '<sheetFormatPr defaultRowHeight="15"/>'
+        + '<cols><col min="1" max="1" width="14" customWidth="1"/><col min="2" max="2" width="34" customWidth="1"/>'
+        + `<col min="3" max="${COLUMNAS_HORAS.length}" width="15" customWidth="1"/></cols>`
+        + `<sheetData>${filasXml.join('')}</sheetData>`
+        + `<autoFilter ref="${rango}"/>`
+        + '</worksheet>';
+}
+
 /** Deja las hojas nuevas anotadas donde Excel las busca: la lista de hojas del
  *  libro, sus relaciones y los tipos de contenido del zip. */
 function registrarHojas(zip: Record<string, Uint8Array>, dec: TextDecoder, enc: TextEncoder): void {
@@ -196,7 +278,7 @@ function registrarHojas(zip: Record<string, Uint8Array>, dec: TextDecoder, enc: 
             `<Override PartName="/${v.archivo}" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`);
     }
 
-    for (const h of HOJAS_POR_CONTRATO) {
+    for (const h of [...HOJAS_POR_CONTRATO, HOJA_HORAS]) {
         if (!wb.includes(`name="${h.nombre}"`)) {
             wb = wb.replace('</sheets>',
                 `<sheet xmlns:r="${R}" name="${h.nombre}" sheetId="${h.sheetId}" state="visible" r:id="${h.rel}"/></sheets>`);
@@ -360,6 +442,11 @@ export function armarLibroViajes(filas: any[], titulo?: string, analisis?: FilaC
             String(f['Contrato'] || '').trim().toLowerCase() === h.contrato);
         zip[h.archivo] = enc.encode(armarHojaDeContrato(suyas, estilos, estiloComun, estiloTitulo));
     }
+    // ── Hoja "Horas promedio" ──────────────────────────────────────────────
+    // Sale de las mismas filas que la «Viajes» visible (las partes de cada viaje).
+    const estiloDeColumna = (nombre: string) => estilos[COLUMNAS_LIBRO.indexOf(nombre) + 1] ?? estiloComun;
+    zip[HOJA_HORAS.archivo] = enc.encode(armarHojaHoras(
+        soloPartes, estiloDeColumna('Paradas planificadas'), estiloDeColumna('Duracion horas'), estiloComun, estiloTitulo));
     registrarHojas(zip as any, dec, enc);
 
     // ── Titulo del resumen ─────────────────────────────────────────────────

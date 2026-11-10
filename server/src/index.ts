@@ -3,6 +3,7 @@ import express from 'express';
 import crypto from 'crypto';
 import { mapaUnidadPorRuta, unidadDeParada, unidadesDeTexto, repartirHoras, esVueltaAlDeposito, SIN_UNIDAD } from './unidadesDelViaje';
 import { normalizarViajeAlCerrar } from './cierreDeViaje';
+import { costoTercerizadoPorHoras } from './costoTercerizado';
 import { auditarMes, filtrarInforme } from './auditoriaDeViajes';
 import { cerrarViajeAnteriorDelChofer, completarViajeCreadoParaFechaPasada, proveedoresParecidos } from './guardasDeViaje';
 import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail, limpiarTokenMail } from './mailer';
@@ -8302,13 +8303,25 @@ function aperturaPorUnidad(
         acc[u][esPropio ? 'propio' : 'terc'] += monto;
         acc[u].viajes += 1;
     };
+    const horasDe = (t: any) => parseTripDurationHrs(
+        { ...t, routeActualStart: t?.linkedRoute?.actualStartTime ?? null, routeActualEnd: t?.linkedRoute?.actualEndTime ?? null } as any,
+        0
+    );
+    // Tercerizado con dos o mas viajes en el dia: el costo del dia se reparte
+    // entre esos viajes por horas, y de ahi a sus unidades (costoTercerizado.ts).
+    const delDia = costoTercerizadoPorHoras(viajes.map((t: any) => ({
+        id: Number(t?.id),
+        fecha: t?.date,
+        chofer: t?.driver,
+        tercerizado: String(t?.contractType || '').trim().toLowerCase() === 'tercerizado',
+        valor: costoDelViaje(t),
+        horas: horasDe(t),
+        texto: `${t?.observations || ''} ${t?.notes || ''}`
+    })));
     for (const t of viajes) {
         const r = t?.linkedRoute;
-        const horas = parseTripDurationHrs(
-            { ...t, routeActualStart: r?.actualStartTime ?? null, routeActualEnd: r?.actualEndTime ?? null } as any,
-            0
-        );
-        const monto = costoDelViaje(t);
+        const horas = horasDe(t);
+        const monto = delDia.has(Number(t?.id)) ? delDia.get(Number(t?.id))! : costoDelViaje(t);
         const esPropio = String(t?.contractType || '').toLowerCase() === 'propio';
         const reparto = repartirHoras(
             {

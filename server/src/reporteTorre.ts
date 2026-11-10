@@ -15,6 +15,7 @@
  */
 import * as XLSX from 'xlsx';
 import { repartirHoras, unidadesDeTexto, mapaUnidadPorRuta, unidadDeParada } from './unidadesDelViaje';
+import { costoTercerizadoPorHoras } from './costoTercerizado';
 
 type Prisma = any;
 
@@ -170,6 +171,43 @@ function detalleDeTramos(tramos: any[]): string {
         .join(' · ');
 }
 
+/** El costo de los tercerizados que hicieron dos o mas viajes en el dia,
+ *  repartido por horas. Mira TODOS los viajes de esos dias, no solo los que se
+ *  estan exportando: si el filtro deja afuera el otro viaje del chofer, el
+ *  reparto tiene que seguir siendo el mismo. */
+async function costoDeTercerizadosConVariosViajes(prisma: Prisma, viajes: any[]): Promise<Map<number, number>> {
+    const esTerc = (t: any) => String(t?.contractType || '').trim().toLowerCase() === 'tercerizado';
+    const terc = viajes.filter(esTerc);
+    if (!terc.length) return new Map();
+    const fechas = terc.map((t) => new Date(t.date).getTime()).filter(Number.isFinite);
+    const margen = 36 * 3600 * 1000;
+    const yaEstan = new Set(viajes.map((t) => t.id));
+    let otros: any[] = [];
+    try {
+        otros = await prisma.trip.findMany({
+            where: {
+                date: { gte: new Date(Math.min(...fechas) - margen), lte: new Date(Math.max(...fechas) + margen) },
+                contractType: { equals: 'Tercerizado', mode: 'insensitive' }
+            },
+            select: {
+                id: true, date: true, driver: true, contractType: true, value: true,
+                observations: true, notes: true, startedAt: true, completedAt: true,
+                linkedRoute: { select: { actualStartTime: true, actualEndTime: true } }
+            }
+        });
+    } catch { /* sin el contexto se reparte con lo que hay */ }
+    const todos = [...viajes, ...otros.filter((t) => !yaEstan.has(t.id))];
+    return costoTercerizadoPorHoras(todos.map((t: any) => ({
+        id: t.id,
+        fecha: t.date,
+        chofer: t.driver,
+        tercerizado: esTerc(t),
+        valor: Number(t.value) || 0,
+        horas: duracionHoras(t.linkedRoute?.actualStartTime || t.startedAt, t.linkedRoute?.actualEndTime || t.completedAt) || 0,
+        texto: `${t.observations || ''} ${t.notes || ''}`
+    })));
+}
+
 /** `conPadres` agrega, antes de las partes de un viaje repartido, la fila del
  *  viaje entero. El reporte semanal de la Torre NO la quiere: suma sus filas y
  *  el padre haria contar todo dos veces. */
@@ -197,6 +235,7 @@ async function filasViajesDe(prisma: Prisma, where: any, conPadres = false) {
         orderBy: { date: 'asc' }
     });
     const unidadPorRuta = await mapaUnidadPorRuta(prisma as any);
+    const costoDelDia = await costoDeTercerizadosConVariosViajes(prisma, viajes as any[]);
     return sinViajesDePrueba(viajes as any[]).flatMap((t: any) => {
         const r = t.linkedRoute;
         const paradas = (r?.stops || []).filter((s: any) => !s.isReturnToBase);
@@ -233,7 +272,9 @@ async function filasViajesDe(prisma: Prisma, where: any, conPadres = false) {
             'Paradas entregadas': entregadas,
             'Paradas no entregadas': noEntregadas,
             'Km recorridos': numero(r?.totalKm),
-            'Costo': numero(t.value),
+            // Tercerizado con dos o mas viajes en el dia: el costo del dia
+            // repartido por horas (ver costoTercerizado.ts). Si no, el cargado.
+            'Costo': costoDelDia.has(t.id) ? costoDelDia.get(t.id)! : numero(t.value),
             'Estado de pago': t.paymentStatus || '',
             'Fecha de pago': soloFecha(t.paymentDate),
             // Al FINAL y nunca en el medio: la plantilla tiene una tabla dinamica

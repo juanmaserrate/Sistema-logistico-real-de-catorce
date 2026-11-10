@@ -52,12 +52,12 @@ console.log('  archivo:', SALIDA, '·', Math.round(buffer.length / 1024), 'KB\n'
 const wb = XLSX.read(buffer, { type: 'buffer' });
 console.log('1. Las hojas');
 console.log('   ', wb.SheetNames.join(' | '));
-esperar('estan las seis, con la base de la dinamica despues del Resumen',
-    wb.SheetNames.join('|') === 'Resumen|Base dinámica|Viajes|Conteo por UN|Propios|Tercerizados', wb.SheetNames);
+esperar('estan las siete, con la base de la dinamica despues del Resumen',
+    wb.SheetNames.join('|') === 'Resumen|Base dinámica|Viajes|Conteo por UN|Propios|Tercerizados|Horas promedio', wb.SheetNames);
 const visibilidad = (wb.Workbook?.Sheets || []).map((x: any) => `${x.name}:${x.Hidden ? 'oculta' : 'visible'}`);
 console.log('   ', visibilidad.join(' | '));
 esperar('la base de la dinamica esta oculta y las demas se ven',
-    visibilidad.join('|') === 'Resumen:visible|Base dinámica:oculta|Viajes:visible|Conteo por UN:visible|Propios:visible|Tercerizados:visible', visibilidad);
+    visibilidad.join('|') === 'Resumen:visible|Base dinámica:oculta|Viajes:visible|Conteo por UN:visible|Propios:visible|Tercerizados:visible|Horas promedio:visible', visibilidad);
 
 const leer = (nombre: string) => XLSX.utils.sheet_to_json<any>(wb.Sheets[nombre], { defval: '' });
 
@@ -142,7 +142,9 @@ esperar('la dinamica apunta a las filas que hay', cacheXml.includes('ref="A1:AF6
 // Que no haya quedado una hoja repetida si se arma dos veces
 const otra = armarLibroViajes(filas, 'PRUEBA', []);
 const wb2 = XLSX.read(otra, { type: 'buffer' });
-esperar('armarlo dos veces no duplica las hojas', wb2.SheetNames.length === 6, wb2.SheetNames);
+// 7: Resumen, Base dinamica, Viajes, Conteo por UN, Propios, Tercerizados y Horas promedio
+esperar('armarlo dos veces no duplica las hojas', wb2.SheetNames.length === 7, wb2.SheetNames);
+esperar('esta la hoja Horas promedio', wb2.SheetNames.includes('Horas promedio'), wb2.SheetNames);
 
 fs.unlinkSync(SALIDA);
 console.log('\n' + (todo ? 'TODO BIEN' : '*** HAY FALLAS ***'));
