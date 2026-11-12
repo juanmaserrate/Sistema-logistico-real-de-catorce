@@ -3600,25 +3600,22 @@
                     </div>
                 </div>
             </div>
-<div id="school-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-6" onclick="if(event.target===this)closeSchoolModal()">
-        <div class="modal-content w-full max-w-2xl animate-fade" onclick="event.stopPropagation()">
-            <div class="h-32 bg-indigo-600 relative p-8 flex items-end">
-                <button onclick="closeSchoolModal()" class="absolute top-6 right-6 p-2 bg-black/20 hover:bg-black/40 rounded-full text-white transition-all">
-                    <i data-lucide="x" class="w-5 h-5"></i>
-                </button>
-                <div class="bg-white p-4 rounded-2xl shadow-xl absolute -bottom-8 left-8">
-                    <i data-lucide="school" class="w-10 h-10 text-indigo-600"></i>
+<div id="school-modal" class="hidden fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-6" style="background: rgba(15, 23, 42, 0.62); backdrop-filter: blur(6px);" onclick="if(event.target===this)closeSchoolModal()">
+        <div class="bg-white rounded-3xl w-full max-w-[1180px] max-h-[94vh] shadow-2xl overflow-hidden flex flex-col" onclick="event.stopPropagation()">
+            <div class="px-5 sm:px-6 py-4 bg-white flex items-start gap-3">
+                <div class="min-w-0 flex-1">
+                    <h3 id="cf-titulo" class="text-base font-extrabold text-[#1B2559] truncate">Cliente</h3>
+                    <p id="cf-subtitulo" class="text-[11px] font-semibold text-[#A3AED0] truncate mt-0.5"></p>
                 </div>
+                <button type="button" onclick="closeSchoolModal()" aria-label="Cerrar"
+                        class="w-9 h-9 rounded-xl grid place-items-center text-[#A3AED0] hover:text-[#1B2559] hover:bg-[#F4F7FE] transition-colors shrink-0"><i data-lucide="x" class="w-5 h-5"></i></button>
             </div>
-            
-            <div id="modal-body" class="p-8 pt-12 space-y-8">
-                <!-- Data will be injected here -->
-            </div>
-            
-            <div class="p-8 bg-[#F8FAFF] border-t border-[#F4F7FE] flex justify-end gap-3">
-                <button onclick="closeSchoolModal()" class="px-6 py-3 rounded-xl border border-[#E0E5F2] text-[#A3AED0] font-bold text-sm hover:bg-[#E8ECF8] transition-all">Cerrar</button>
-                <button id="btn-edit-school" onclick="enableSchoolEdit()" class="px-6 py-3 rounded-xl bg-indigo-600 text-white font-bold text-sm hover:bg-indigo-700 transition-all">Editar Cliente</button>
-                <button id="btn-save-school" onclick="saveSchoolChanges()" class="hidden px-6 py-3 rounded-xl bg-emerald-600 text-white font-bold text-sm hover:bg-emerald-600 transition-all">Guardar Cambios</button>
+            <div id="modal-body" class="flex-1 overflow-y-auto custom-scrollbar px-3 sm:px-5 py-4" style="background: var(--surface);"></div>
+            <div class="px-5 sm:px-6 py-3 bg-white flex items-center gap-3 flex-wrap sm:flex-nowrap">
+                <p id="cf-estado" class="basis-full sm:basis-auto flex-1 text-[11px] font-semibold text-[#A3AED0] min-w-0 truncate"></p>
+                <button type="button" onclick="closeSchoolModal()" class="ml-auto px-4 py-2.5 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold whitespace-nowrap">Cancelar</button>
+                <button id="btn-edit-school" type="button" class="hidden"></button>
+                <button id="btn-save-school" type="button" onclick="saveSchoolChanges()" class="px-5 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-[11px] font-bold whitespace-nowrap">Guardar</button>
             </div>
         </div>
     </div>
@@ -15132,6 +15129,8 @@
         }
 
         async function abrirUbicarEnMapa(clientId) {
+            // Ahora la ubicacion se edita en la ficha, junto con la direccion
+            if (typeof openSchoolModal === 'function') return openSchoolModal(clientId, 'address');
             const c = (allSchools || []).find(x => String(x.id) === String(clientId));
             if (!c) return;
             _ubicarClienteId = c.id;
@@ -15279,9 +15278,10 @@
             if (!tbody) return;
             const e = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
             // Una sola linea por celda, recortada con "..."; el texto completo va en el tooltip
+            // Tocar una fila abre la ficha, con el cursor en el dato que se toco
             const celda = (id, campo, valor, tipo, extra = '') =>
-                `<td class="px-1.5 py-1.5 cursor-text hover:bg-indigo-50/60 truncate ${extra}"
-                     onclick="editSchoolCell(this, '${id}', '${campo}', '${tipo}')"
+                `<td class="px-1.5 py-1.5 cursor-pointer truncate ${extra}"
+                     onclick="openSchoolModal('${id}', '${campo}')"
                      title="${valor ? e(valor) + ' — ' : ''}tocá para editar">${valor !== '' && valor != null ? e(valor) : '<span class="text-[#C7CEE0]">—</span>'}</td>`;
 
             tbody.innerHTML = schools.map(c => {
@@ -15310,7 +15310,7 @@
                     ${celda(c.id, 'contactStaff', c.contactStaff, 'text', 'text-[#2B3674]')}
                     ${celda(c.id, 'contactPhone', c.contactPhone, 'text', 'text-[#2B3674]')}
                     <td class="px-1 py-1.5 text-center text-[#2B3674] whitespace-nowrap">
-                        <span class="cursor-text hover:bg-indigo-50/60 rounded" onclick="editSchoolCell(this, '${c.id}', 'timeWindowStart', 'time')">${e(c.timeWindowStart || '--')}</span><span class="text-[#C7CEE0]">/</span><span class="cursor-text hover:bg-indigo-50/60 rounded" onclick="editSchoolCell(this, '${c.id}', 'timeWindowEnd', 'time')">${e(c.timeWindowEnd || '--')}</span>
+                        <span class="cursor-pointer" onclick="openSchoolModal('${c.id}', 'timeWindowStart')">${e(c.timeWindowStart || '--')}</span><span class="text-[#C7CEE0]">/</span><span class="cursor-pointer" onclick="openSchoolModal('${c.id}', 'timeWindowEnd')">${e(c.timeWindowEnd || '--')}</span>
                     </td>
                     ${celda(c.id, 'serviceTime', c.serviceTime, 'number', 'text-center text-[#2B3674]')}
                     <td class="px-1 py-1.5 text-center">
@@ -15326,7 +15326,7 @@
                             class="w-3.5 h-3.5 accent-rose-500" title="Foto de entrega obligatoria">
                     </td>
                     <td class="px-1 py-1.5 text-center">
-                        <button type="button" onclick="openSchoolModal('${c.id}')" class="text-[9px] font-black text-indigo-600 hover:underline">Ficha</button>
+                        <button type="button" onclick="openSchoolModal('${c.id}')" class="px-2 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-[10px] font-bold text-indigo-700">Editar</button>
                     </td>
                 </tr>`;
             }).join('') || '<tr><td colspan="17" class="px-4 py-6 text-center text-[#A3AED0] italic">No hay clientes para mostrar con estos filtros.</td></tr>';
@@ -15635,10 +15635,10 @@
                 .concat(BU_UNIDADES.map(u => `<option value="${u}" ${u === unidad ? 'selected' : ''}>${u}</option>`))
                 .join('');
             const rep = String(reparto ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-            return `<div class="bu-row flex items-center gap-2 mb-2" data-bu-row>
-                <select class="bu-unidad flex-1 bg-[#1B2559] border border-[#1B2559] rounded-xl px-3 py-2.5 text-white font-bold outline-none focus:border-indigo-500">${opts}</select>
-                <input class="bu-reparto w-28 bg-[#1B2559] border border-[#1B2559] rounded-xl px-3 py-2.5 text-white font-bold outline-none focus:border-indigo-500" list="bu-reparto-list" value="${rep}" placeholder="Reparto">
-                <button type="button" onclick="removeBuRow(this)" class="px-3 py-2.5 rounded-xl bg-rose-500/10 text-rose-300 hover:bg-rose-500/20" title="Quitar unidad">✕</button>
+            return `<div class="bu-row flex items-center gap-2" data-bu-row>
+                <select class="bu-unidad nt-campo flex-1 min-w-0 bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">${opts}</select>
+                <input class="bu-reparto nt-campo w-28 bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500" list="bu-reparto-list" value="${rep}" placeholder="Reparto">
+                <button type="button" onclick="removeBuRow(this)" class="w-9 h-9 shrink-0 rounded-xl grid place-items-center text-rose-500 hover:bg-rose-50" title="Quitar unidad" aria-label="Quitar unidad">✕</button>
             </div>`;
         }
         function addBuRow() {
@@ -15652,180 +15652,361 @@
             if (row) row.remove();
         }
 
+        /** La ficha del cliente: los datos a la izquierda y el mapa a la
+         *  derecha. Los id de los campos (edit-school-*) son los mismos de
+         *  siempre: saveSchoolChanges los lee igual. La ubicacion ya no se
+         *  escribe a mano: la pone el pin (ver cf*). */
         function schoolFormHtml(s) {
             const esc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
-            return `
-                <div id="school-edit-content" class="space-y-6">
-                    <div>
-                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Nombre de la Escuela / Cliente *</label>
-                        <input type="text" id="edit-school-name" value="${esc(s.name)}" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500" required>
+            const campo = 'nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500';
+            const lbl = (t, para) => `<label ${para ? `for="${para}"` : ''} class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">${t}</label>`;
+            const txt = (id, label, valor, extra = '') => `<div>${lbl(label, id)}<input type="text" id="${id}" value="${esc(valor)}" ${extra} class="${campo}"></div>`;
+            const tarjeta = (num, titulo, sub, cuerpo, derecha = '') => `
+                <section class="card-dark p-0 overflow-hidden">
+                    <div class="px-4 py-3 flex items-center gap-2.5" style="background: var(--wk-fila-alt);">
+                        <span class="w-6 h-6 rounded-lg bg-indigo-600 text-white text-[11px] font-black grid place-items-center shrink-0">${num}</span>
+                        <div class="min-w-0 flex-1">
+                            <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest leading-tight">${titulo}</h4>
+                            <p class="text-[10px] font-semibold text-[#A3AED0] leading-tight mt-0.5">${sub}</p>
+                        </div>
+                        ${derecha}
                     </div>
-                    <div>
-                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Dirección</label>
-                        <input type="text" id="edit-school-address" value="${esc(s.address)}" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
-                    </div>
-                    <div class="grid grid-cols-3 gap-4">
-                        <div>
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Contacto</label>
-                            <input type="text" id="edit-school-contact-name" value="${esc(s.contactName)}" placeholder="Nombre y apellido" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Personal</label>
-                            <input type="text" id="edit-school-contact-staff" value="${esc(s.contactStaff)}" placeholder="Ej: directora, portero" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Teléfono</label>
-                            <input type="tel" id="edit-school-contact-phone" value="${esc(s.contactPhone)}" placeholder="Ej: 11 5555-5555" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Zona</label>
-                            <input type="text" id="edit-school-zone" value="${esc(s.zone)}" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Barrio</label>
-                            <input type="text" id="edit-school-barrio" value="${esc(s.barrio)}" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-3 gap-4">
-                        <div>
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Tipo</label>
-                            ${(() => {
-                                const tipos = ['Proveedor', 'Escuela', 'Institución Pública', 'Comunitario', 'Comedor', 'Institución Religiosa', 'Club', 'CDI', 'UDI', 'Depósito'];
-                                return `<select id="edit-school-tipo" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">`
-                                    + `<option value="" ${!s.tipo ? 'selected' : ''}>— Sin tipo —</option>`
-                                    + tipos.map(t => `<option value="${t}" ${s.tipo === t ? 'selected' : ''}>${t}</option>`).join('')
-                                    + `</select>`;
-                            })()}
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Localidad</label>
-                            <input type="text" id="edit-school-localidad" value="${esc(s.localidad)}" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Partido</label>
-                            <input type="text" id="edit-school-partido" value="${esc(s.partido)}" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-3 gap-4">
-                        <div>
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Ventana Inicio</label>
-                            <input type="time" id="edit-school-start" value="${esc(s.timeWindowStart)}" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Ventana Fin</label>
-                            <input type="time" id="edit-school-end" value="${esc(s.timeWindowEnd)}" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Servicio (min)</label>
-                            <input type="number" id="edit-school-service" value="${s.serviceTime != null ? esc(s.serviceTime) : 15}" min="1" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
-                        </div>
-                    </div>
-                    <div class="grid grid-cols-2 gap-4">
-                        <div>
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Latitud (GPS)</label>
-                            <input type="text" id="edit-school-lat" value="${s.latitude != null && s.latitude !== '' ? esc(s.latitude) : ''}" placeholder="-34.6037" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
-                        </div>
-                        <div>
-                            <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Longitud (GPS)</label>
-                            <input type="text" id="edit-school-lng" value="${s.longitude != null && s.longitude !== '' ? esc(s.longitude) : ''}" placeholder="-58.3816" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
-                        </div>
-                    </div>
-                    <label class="flex items-start gap-3 p-4 rounded-xl border border-[#1B2559] bg-[#1B2559]/50 cursor-pointer mt-2">
-                        <input type="checkbox" id="edit-school-requires-proof" ${s.requiresProofPhoto ? 'checked' : ''} class="mt-0.5 w-5 h-5 rounded-lg border-[#1B2559] text-rose-500 focus:ring-rose-500 bg-[#1B2559]">
-                        <div>
-                            <span class="text-sm font-bold text-white block">Requiere foto de entrega obligatoria</span>
-                            <span class="text-[11px] text-[#A3AED0] font-medium">El chofer debe sacar foto al completar esta parada en la app móvil.</span>
-                        </div>
-                    </label>
+                    <div class="p-4 space-y-3">${cuerpo}</div>
+                </section>`;
 
-                    <!-- Sección Menú y Cupos -->
-                    <div class="pt-4 border-t border-[#1B2559]">
-                        <h4 class="text-sm font-black text-white uppercase tracking-widest mb-3">Menú y Cupos</h4>
-                        <div class="space-y-4">
-                            <div>
-                                <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">Menú asignado</label>
-                                <select id="edit-school-menu" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-4 py-3 text-white font-bold outline-none focus:border-indigo-500">
+            const tipos = ['Proveedor', 'Escuela', 'Institución Pública', 'Comunitario', 'Comedor', 'Institución Religiosa', 'Club', 'CDI', 'UDI', 'Depósito'];
+            const selTipo = `<select id="edit-school-tipo" class="${campo}">`
+                + `<option value="" ${!s.tipo ? 'selected' : ''}>— Sin tipo —</option>`
+                + tipos.map(t => `<option value="${t}" ${s.tipo === t ? 'selected' : ''}>${t}</option>`).join('')
+                + `</select>`;
+
+            const menus = ['General', 'DMC General', 'Comedor General', 'Vianda General', 'Listo Consumo', 'Patológico Celíaco',
+                'Patológico Diabético', 'Patológico Int. Lactosa', 'Patológico Bajo Sodio', 'Patológico Alergia al Maní'];
+            let cupos = {};
+            try { cupos = s.cupos ? (typeof s.cupos === 'string' ? JSON.parse(s.cupos) : s.cupos) : {}; } catch { cupos = {}; }
+            const cupo = (id, label, k) => `<div>${lbl(label, 'edit-school-' + id)}<input type="number" min="0" id="edit-school-${id}" value="${cupos[k] != null ? esc(cupos[k]) : ''}" placeholder="0" class="${campo}"></div>`;
+            let bus = [];
+            try { bus = s.businessUnits ? (typeof s.businessUnits === 'string' ? JSON.parse(s.businessUnits) : s.businessUnits) : []; } catch { bus = []; }
+            const filasUnidad = (!Array.isArray(bus) || !bus.length) ? buRowHtml('', '') : bus.map(b => buRowHtml(b.unidad || b.unit || '', b.reparto || '')).join('');
+            const tieneLatLng = s.latitude != null && s.latitude !== '' && s.longitude != null && s.longitude !== '';
+
+            return `
+            <div id="school-edit-content" class="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+                <div class="space-y-4 min-w-0">
+                    ${tarjeta(1, 'Datos', 'Cómo se llama y qué es', `
+                        <div>${lbl('Nombre *', 'edit-school-name')}<input type="text" id="edit-school-name" value="${esc(s.name)}" required class="${campo}"></div>
+                        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <div>${lbl('Tipo', 'edit-school-tipo')}${selTipo}</div>
+                            <label class="flex items-center gap-2.5 px-3 rounded-xl bg-[#F4F7FE] cursor-pointer sm:mt-[18px] min-h-[40px]">
+                                <input type="checkbox" id="edit-school-requires-proof" ${s.requiresProofPhoto ? 'checked' : ''} class="w-4 h-4 accent-rose-500">
+                                <span class="text-[12px] font-semibold text-[#1B2559]">Foto de entrega obligatoria</span>
+                            </label>
+                        </div>`)}
+
+                    ${tarjeta(2, 'Dirección', 'Pegá la dirección o las coordenadas de Google Maps: el mapa la ubica solo', `
+                        <div class="relative">
+                            ${lbl('Dirección', 'edit-school-address')}
+                            <div class="flex gap-2">
+                                <input type="text" id="edit-school-address" value="${esc(s.address)}" autocomplete="off"
+                                       placeholder="Ej.: Bunge 3402, Longchamps — o pegá -34.849, -58.393"
+                                       onpaste="cfAlPegar()" onkeydown="if(event.key==='Enter'){event.preventDefault();cfUbicar();}"
+                                       onfocus="cfGuardarAnterior()" class="${campo} min-w-0">
+                                <button type="button" onclick="cfUbicar()" title="Buscar esta dirección en el mapa"
+                                        class="shrink-0 px-3.5 rounded-xl bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
+                                    <i data-lucide="map-pin" class="w-4 h-4"></i> Ubicar
+                                </button>
+                            </div>
+                            <div id="cf-sugerencias" class="hidden absolute left-0 right-0 mt-1 z-20 bg-white rounded-xl shadow-xl overflow-hidden"></div>
+                            <p class="text-[10px] text-[#A3AED0] mt-1.5 leading-snug">Lo más exacto: en Google Maps, clic derecho sobre el lugar y tocá las coordenadas (ej. <span class="tabular-nums">-34.84926, -58.39296</span>). Se copian solas: pegalas acá.</p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            ${txt('edit-school-localidad', 'Localidad', s.localidad)}
+                            ${txt('edit-school-partido', 'Partido', s.partido)}
+                            ${txt('edit-school-barrio', 'Barrio', s.barrio)}
+                            ${txt('edit-school-zone', 'Zona', s.zone)}
+                        </div>`)}
+
+                    ${tarjeta(3, 'Contacto', 'A quién llamar al llegar', `
+                        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            ${txt('edit-school-contact-name', 'Contacto', s.contactName, 'placeholder="Nombre y apellido"')}
+                            ${txt('edit-school-contact-staff', 'Personal', s.contactStaff, 'placeholder="Ej.: directora"')}
+                            <div>${lbl('Teléfono', 'edit-school-contact-phone')}<input type="tel" id="edit-school-contact-phone" value="${esc(s.contactPhone)}" placeholder="Ej.: 11 5555-5555" class="${campo}"></div>
+                        </div>`)}
+
+                    ${tarjeta(4, 'Entrega', 'Horario en que recibe y cuánto tarda la descarga', `
+                        <div class="grid grid-cols-3 gap-3">
+                            <div>${lbl('Desde', 'edit-school-start')}<input type="time" id="edit-school-start" value="${esc(s.timeWindowStart)}" class="${campo}"></div>
+                            <div>${lbl('Hasta', 'edit-school-end')}<input type="time" id="edit-school-end" value="${esc(s.timeWindowEnd)}" class="${campo}"></div>
+                            <div>${lbl('Descarga (min)', 'edit-school-service')}<input type="number" id="edit-school-service" min="1" value="${s.serviceTime != null ? esc(s.serviceTime) : 15}" class="${campo}"></div>
+                        </div>`)}
+
+                    ${tarjeta(5, 'Unidades de negocio', 'Cada unidad con su reparto', `
+                        <datalist id="bu-reparto-list">${Array.from({ length: 30 }, (_, i) => `<option value="${i + 1}"></option>`).join('')}</datalist>
+                        <div id="bu-rows" class="space-y-2">${filasUnidad}</div>`,
+                        `<button type="button" onclick="addBuRow()" class="shrink-0 px-2.5 py-1 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-600 text-[10px] font-bold whitespace-nowrap">+ Unidad</button>`)}
+
+                    <details class="card-dark p-0 overflow-hidden group">
+                        <summary class="px-4 py-3 flex items-center gap-2.5 cursor-pointer list-none" style="background: var(--wk-fila-alt);">
+                            <span class="w-6 h-6 rounded-lg bg-indigo-600 text-white text-[11px] font-black grid place-items-center shrink-0">6</span>
+                            <div class="min-w-0 flex-1">
+                                <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest leading-tight">Menú y cupos</h4>
+                                <p class="text-[10px] font-semibold text-[#A3AED0] leading-tight mt-0.5">Se usa poco: tocá para abrir</p>
+                            </div>
+                            <span class="text-[#A3AED0] transition-transform group-open:rotate-180">▾</span>
+                        </summary>
+                        <div class="p-4 space-y-3">
+                            <div>${lbl('Menú asignado', 'edit-school-menu')}
+                                <select id="edit-school-menu" class="${campo}">
                                     <option value="" ${!s.menu ? 'selected' : ''}>— Sin asignar —</option>
-                                    <option value="General" ${s.menu === 'General' ? 'selected' : ''}>General</option>
-                                    <option value="DMC General" ${s.menu === 'DMC General' ? 'selected' : ''}>DMC General</option>
-                                    <option value="Comedor General" ${s.menu === 'Comedor General' ? 'selected' : ''}>Comedor General</option>
-                                    <option value="Vianda General" ${s.menu === 'Vianda General' ? 'selected' : ''}>Vianda General</option>
-                                    <option value="Listo Consumo" ${s.menu === 'Listo Consumo' ? 'selected' : ''}>Listo Consumo</option>
-                                    <option value="Patológico Celíaco" ${s.menu === 'Patológico Celíaco' ? 'selected' : ''}>Patológico Celíaco</option>
-                                    <option value="Patológico Diabético" ${s.menu === 'Patológico Diabético' ? 'selected' : ''}>Patológico Diabético</option>
-                                    <option value="Patológico Int. Lactosa" ${s.menu === 'Patológico Int. Lactosa' ? 'selected' : ''}>Patológico Int. Lactosa</option>
-                                    <option value="Patológico Bajo Sodio" ${s.menu === 'Patológico Bajo Sodio' ? 'selected' : ''}>Patológico Bajo Sodio</option>
-                                    <option value="Patológico Alergia al Maní" ${s.menu === 'Patológico Alergia al Maní' ? 'selected' : ''}>Patológico Alergia al Maní</option>
+                                    ${menus.map(m => `<option value="${m}" ${s.menu === m ? 'selected' : ''}>${m}</option>`).join('')}
                                 </select>
                             </div>
-                            ${(() => {
-                                let cupos = {};
-                                try { cupos = s.cupos ? (typeof s.cupos === 'string' ? JSON.parse(s.cupos) : s.cupos) : {}; } catch { cupos = {}; }
-                                const c = (k) => cupos[k] != null ? esc(cupos[k]) : '';
-                                const input = (id, label, k) => `
-                                    <div>
-                                        <label class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest block mb-1">${label}</label>
-                                        <input type="number" min="0" id="edit-school-${id}" value="${c(k)}" class="w-full bg-[#1B2559] border border-[#1B2559] rounded-xl px-3 py-2.5 text-white font-bold outline-none focus:border-indigo-500" placeholder="0">
-                                    </div>`;
-                                return `
-                                <div>
-                                    <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-2">General</p>
-                                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                        ${input('cupo-dmc-general', 'DMC', 'dmcGeneral')}
-                                        ${input('cupo-comedor-general', 'Comedor', 'comedorGeneral')}
-                                        ${input('cupo-viandas-general', 'Viandas', 'viandasGeneral')}
-                                        ${input('cupo-listo-consumo', 'Listo Cons.', 'listoConsumoGeneral')}
-                                    </div>
-                                </div>
-                                <div>
-                                    <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-2">DMC Patológicos</p>
-                                    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-                                        ${input('cupo-dmc-celiaco', 'Celíaco', 'dmcCeliaco')}
-                                        ${input('cupo-dmc-diabetico', 'Diabético', 'dmcDiabetico')}
-                                        ${input('cupo-dmc-int-lactosa', 'Int. Lact.', 'dmcIntLactosa')}
-                                        ${input('cupo-dmc-bajo-sodio', 'Bajo Sodio', 'dmcBajoSodio')}
-                                        ${input('cupo-dmc-alergia-mani', 'Al. Maní', 'dmcAlergiaMani')}
-                                    </div>
-                                </div>
-                                <div>
-                                    <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-2">Comedor Patológicos</p>
-                                    <div class="grid grid-cols-2 md:grid-cols-5 gap-3">
-                                        ${input('cupo-com-celiaco', 'Celíaco', 'comedorCeliaco')}
-                                        ${input('cupo-com-diabetico', 'Diabético', 'comedorDiabetico')}
-                                        ${input('cupo-com-int-lactosa', 'Int. Lact.', 'comedorIntLactosa')}
-                                        ${input('cupo-com-bajo-sodio', 'Bajo Sodio', 'comedorBajoSodio')}
-                                        ${input('cupo-com-alergia-mani', 'Al. Maní', 'comedorAlergiaMani')}
-                                    </div>
-                                </div>`;
-                            })()}
+                            <p class="text-[10px] font-bold text-[#A3AED0] uppercase">General</p>
+                            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                                ${cupo('cupo-dmc-general', 'DMC', 'dmcGeneral')}${cupo('cupo-comedor-general', 'Comedor', 'comedorGeneral')}
+                                ${cupo('cupo-viandas-general', 'Viandas', 'viandasGeneral')}${cupo('cupo-listo-consumo', 'Listo cons.', 'listoConsumoGeneral')}
+                            </div>
+                            <p class="text-[10px] font-bold text-[#A3AED0] uppercase">DMC patológicos</p>
+                            <div class="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                                ${cupo('cupo-dmc-celiaco', 'Celíaco', 'dmcCeliaco')}${cupo('cupo-dmc-diabetico', 'Diabético', 'dmcDiabetico')}
+                                ${cupo('cupo-dmc-int-lactosa', 'Int. lact.', 'dmcIntLactosa')}${cupo('cupo-dmc-bajo-sodio', 'Bajo sodio', 'dmcBajoSodio')}
+                                ${cupo('cupo-dmc-alergia-mani', 'Al. maní', 'dmcAlergiaMani')}
+                            </div>
+                            <p class="text-[10px] font-bold text-[#A3AED0] uppercase">Comedor patológicos</p>
+                            <div class="grid grid-cols-3 sm:grid-cols-5 gap-3">
+                                ${cupo('cupo-com-celiaco', 'Celíaco', 'comedorCeliaco')}${cupo('cupo-com-diabetico', 'Diabético', 'comedorDiabetico')}
+                                ${cupo('cupo-com-int-lactosa', 'Int. lact.', 'comedorIntLactosa')}${cupo('cupo-com-bajo-sodio', 'Bajo sodio', 'comedorBajoSodio')}
+                                ${cupo('cupo-com-alergia-mani', 'Al. maní', 'comedorAlergiaMani')}
+                            </div>
                         </div>
-                    </div>
-                    <!-- Sección Unidades de Negocio -->
-                    <div class="pt-4 border-t border-[#1B2559]">
-                        <div class="flex items-center justify-between mb-2">
-                            <h4 class="text-sm font-black text-white uppercase tracking-widest">Unidades de Negocio</h4>
-                            <button type="button" onclick="addBuRow()" class="text-[11px] font-black text-indigo-300 hover:text-indigo-200 uppercase tracking-widest">+ Agregar unidad</button>
-                        </div>
-                        <p class="text-[10px] text-[#A3AED0] mb-3">Cada unidad con su reparto (pueden ser distintos o el mismo).</p>
-                        <datalist id="bu-reparto-list">${Array.from({ length: 30 }, (_, i) => `<option value="${i + 1}"></option>`).join('')}</datalist>
-                        <div id="bu-rows">
-                            ${(() => {
-                                let bus = [];
-                                try { bus = s.businessUnits ? (typeof s.businessUnits === 'string' ? JSON.parse(s.businessUnits) : s.businessUnits) : []; } catch { bus = []; }
-                                if (!Array.isArray(bus) || bus.length === 0) return buRowHtml('', '');
-                                return bus.map(b => buRowHtml(b.unidad || b.unit || '', b.reparto || '')).join('');
-                            })()}
-                        </div>
-                    </div>
+                    </details>
                 </div>
-            `;
+
+                <!-- El mapa: queda a la vista mientras se completan los datos -->
+                <section class="card-dark p-0 overflow-hidden lg:sticky lg:top-0">
+                    <div class="px-4 py-3 flex items-center gap-2.5" style="background: var(--wk-fila-alt);">
+                        <span class="w-6 h-6 rounded-lg bg-indigo-600 text-white grid place-items-center shrink-0"><i data-lucide="map" class="w-3.5 h-3.5"></i></span>
+                        <div class="min-w-0 flex-1">
+                            <h4 class="text-[11px] font-black text-[#1B2559] uppercase tracking-widest leading-tight">Ubicación en el mapa</h4>
+                            <p class="text-[10px] font-semibold text-[#A3AED0] leading-tight mt-0.5">Arrastrá el pin o tocá el mapa para corregirlo</p>
+                        </div>
+                        <span id="cf-chip" class="shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold ${tieneLatLng ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}">${tieneLatLng ? 'Ubicada' : 'Sin ubicar'}</span>
+                    </div>
+                    <div id="cf-mapa" class="w-full" style="height: min(52vh, 460px); min-height: 280px;"></div>
+                    <div class="px-4 py-3 space-y-2">
+                        <div class="flex items-center gap-2 text-[11px] font-semibold text-[#1B2559]">
+                            <span class="text-[#A3AED0] uppercase text-[10px] font-bold">Coordenadas</span>
+                            <span id="cf-coords" class="tabular-nums">${tieneLatLng ? `${Number(s.latitude).toFixed(6)}, ${Number(s.longitude).toFixed(6)}` : '—'}</span>
+                            <a id="cf-gmaps" href="${tieneLatLng ? `https://www.google.com/maps?q=${s.latitude},${s.longitude}` : '#'}" target="_blank" rel="noopener"
+                               class="${tieneLatLng ? '' : 'hidden'} ml-auto text-indigo-600 hover:underline font-bold">Ver en Google Maps ↗</a>
+                        </div>
+                        <p id="cf-aviso" class="hidden text-[11px] font-semibold rounded-xl px-3 py-2 leading-snug"></p>
+                        <input type="hidden" id="edit-school-lat" value="${tieneLatLng ? esc(s.latitude) : ''}">
+                        <input type="hidden" id="edit-school-lng" value="${tieneLatLng ? esc(s.longitude) : ''}">
+                    </div>
+                </section>
+            </div>`;
         }
 
-        function openSchoolModal(id) {
+        // ───────────── Ficha del cliente: la ubicacion ─────────────
+        // El operador busca la escuela en Google Maps y pega lo que copia: la
+        // direccion escrita, las coordenadas (clic derecho sobre el lugar) o el
+        // link. Las coordenadas y el link largo se leen directo, sin adivinar;
+        // la direccion escrita la busca Mapbox. En todos los casos el pin se
+        // puede arrastrar: el que conoce el lugar tiene la ultima palabra.
+        let _cfMapa = null, _cfPin = null, _cfDirAnterior = '';
+        const CF_DEPOSITO = [-58.4233261, -34.8353338];        // Real de Catorce, Burzaco
+        const CF_BBOX = '-58.95,-35.20,-57.85,-34.45';           // AMBA
+
+        function cfGuardarAnterior() {
+            _cfDirAnterior = document.getElementById('edit-school-address')?.value || '';
+        }
+
+        /** Que dice lo pegado: coordenadas, link de Google Maps o direccion. */
+        function cfInterpretar(texto) {
+            const t = String(texto || '').trim();
+            const num = (x) => Number(String(x).replace(',', '.'));
+            const enAmba = (la, lo) => la < -33.5 && la > -36.5 && lo < -56.5 && lo > -60.5;
+            if (/google\.[a-z.]+\/maps|maps\.google|goo\.gl\/maps|maps\.app\.goo\.gl/i.test(t)) {
+                const m = t.match(/!3d(-?\d+\.\d+)!4d(-?\d+\.\d+)/) || t.match(/@(-?\d+\.\d+),(-?\d+\.\d+)/)
+                    || t.match(/[?&](?:q|query|ll|destination)=(-?\d+\.\d+)(?:,|%2C)\s*(-?\d+\.\d+)/i);
+                if (m && enAmba(num(m[1]), num(m[2]))) return { tipo: 'coords', lat: num(m[1]), lng: num(m[2]) };
+                const lugar = t.match(/\/place\/([^/@?]+)/);
+                if (lugar) return { tipo: 'texto', q: decodeURIComponent(lugar[1].replace(/\+/g, ' ')) };
+                return { tipo: 'link-corto' };
+            }
+            const c = t.match(/^\(?\s*(-?\d{1,2}[.,]\d{3,})\s*[,;\s]\s*(-?\d{1,3}[.,]\d{3,})\s*\)?$/);
+            if (c) {
+                let la = num(c[1]), lo = num(c[2]);
+                if (la > 0 && lo > 0) { la = -la; lo = -lo; }    // copiado sin el signo
+                if (enAmba(la, lo)) return { tipo: 'coords', lat: la, lng: lo };
+            }
+            return { tipo: 'texto', q: t };
+        }
+
+        function cfAviso(texto, tono) {
+            const el = document.getElementById('cf-aviso');
+            if (!el) return;
+            if (!texto) { el.classList.add('hidden'); return; }
+            const tonos = {
+                ok: 'bg-emerald-50 text-emerald-800', ojo: 'bg-amber-50 text-amber-800', mal: 'bg-rose-50 text-rose-700'
+            };
+            el.className = 'text-[11px] font-semibold rounded-xl px-3 py-2 leading-snug ' + (tonos[tono] || tonos.ojo);
+            el.textContent = texto;
+        }
+
+        /** Lleva el pin a un punto y deja todo al dia (campos, chip, link). */
+        function cfPoner(lat, lng, volar = true, zoom = 16) {
+            const fijo = (n) => Number(n).toFixed(6);
+            document.getElementById('edit-school-lat').value = fijo(lat);
+            document.getElementById('edit-school-lng').value = fijo(lng);
+            document.getElementById('cf-coords').textContent = `${fijo(lat)}, ${fijo(lng)}`;
+            const g = document.getElementById('cf-gmaps');
+            if (g) { g.href = `https://www.google.com/maps?q=${lat},${lng}`; g.classList.remove('hidden'); }
+            const chip = document.getElementById('cf-chip');
+            if (chip) { chip.textContent = 'Ubicada'; chip.className = 'shrink-0 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-50 text-emerald-700'; }
+            const estado = document.getElementById('cf-estado');
+            if (estado) estado.textContent = 'La ubicación cambió: tocá Guardar para que quede.';
+            if (_cfPin) _cfPin.setLngLat([lng, lat]);
+            if (_cfMapa && volar) _cfMapa.flyTo({ center: [lng, lat], zoom, essential: true, duration: 600 });
+        }
+
+        async function cfIniciarMapa() {
+            const caja = document.getElementById('cf-mapa');
+            if (!caja) return;
+            const token = await getMapboxToken();
+            if (!token || typeof mapboxgl === 'undefined') {
+                caja.innerHTML = '<p class="p-6 text-center text-xs font-bold text-rose-600">No se pudo cargar el mapa (falta el token de Mapbox).</p>';
+                return;
+            }
+            const la = parseFloat(document.getElementById('edit-school-lat')?.value || '');
+            const lo = parseFloat(document.getElementById('edit-school-lng')?.value || '');
+            const ubicada = Number.isFinite(la) && Number.isFinite(lo);
+            const centro = ubicada ? [lo, la] : CF_DEPOSITO;
+            mapboxgl.accessToken = token;
+            if (_cfMapa) { try { _cfMapa.remove(); } catch (_) {} }
+            _cfMapa = new mapboxgl.Map({ container: caja, style: 'mapbox://styles/mapbox/streets-v12', center: centro, zoom: ubicada ? 16 : 12 });
+            _cfMapa.addControl(new mapboxgl.NavigationControl({ showCompass: false }), 'top-right');
+            _cfPin = new mapboxgl.Marker({ draggable: true, color: ubicada ? '#4f46e5' : '#f59e0b' }).setLngLat(centro).addTo(_cfMapa);
+            if (!ubicada) cfAviso('Todavía no tiene ubicación. Pegá la dirección o las coordenadas, o tocá el lugar en el mapa.', 'ojo');
+            _cfPin.on('dragend', () => { const p = _cfPin.getLngLat(); cfPoner(p.lat, p.lng, false); cfAviso('Ubicación movida a mano.', 'ok'); });
+            _cfMapa.on('click', (ev) => { cfPoner(ev.lngLat.lat, ev.lngLat.lng, false); cfAviso('Ubicación puesta tocando el mapa.', 'ok'); });
+            _cfMapa.on('load', () => _cfMapa.resize());
+        }
+
+        /** Pegar ya busca: es lo que hace el operador despues de copiar de Maps. */
+        function cfAlPegar() { setTimeout(() => cfUbicar(true), 0); }
+
+        async function cfUbicar(pegado = false) {
+            const inp = document.getElementById('edit-school-address');
+            if (!inp) return;
+            const leido = cfInterpretar(inp.value);
+            const token = await getMapboxToken();
+            if (leido.tipo === 'link-corto') {
+                inp.value = _cfDirAnterior;
+                cfAviso('Ese link corto de Google Maps no se puede leer. Copiá la dirección escrita, o hacé clic derecho sobre el lugar y copiá las coordenadas.', 'mal');
+                return;
+            }
+            if (leido.tipo === 'coords') {
+                // Las coordenadas no son una direccion: el texto que habia vuelve
+                inp.value = _cfDirAnterior;
+                cfPoner(leido.lat, leido.lng);
+                cfAviso('Ubicada con las coordenadas que pegaste. Es el punto exacto.', 'ok');
+                if (token) cfCompletarDesdeElMapa(leido.lat, leido.lng, token, !_cfDirAnterior.trim());
+                return;
+            }
+            const q = leido.q;
+            if (!q || q.length < 4 || !token) return;
+            // Lo que Google agrega y a Mapbox lo confunde: codigo postal y provincia
+            const limpia = q.replace(/\b[A-Z]\d{4}[A-Z]{0,3}\b/g, ' ').replace(/Provincia de Buenos Aires/ig, 'Buenos Aires')
+                .replace(/,\s*Argentina\s*$/i, '').replace(/\s{2,}/g, ' ').trim();
+            try {
+                const url = 'https://api.mapbox.com/search/geocode/v6/forward'
+                    + `?q=${encodeURIComponent(limpia)}&country=ar&limit=5&language=es&proximity=-58.40,-34.78`
+                    + `&bbox=${CF_BBOX}&access_token=${encodeURIComponent(token)}`;
+                const j = await (await fetch(url)).json();
+                const opciones = (j?.features || []).filter(f => f?.properties?.coordinates?.latitude != null);
+                if (!opciones.length) { cfAviso('Mapbox no encontró esa dirección. Pegá las coordenadas de Google Maps o tocá el lugar en el mapa.', 'mal'); return; }
+                cfElegir(opciones[0], q);
+                cfMostrarSugerencias(opciones, q);
+            } catch (_) {
+                cfAviso('No pude buscar la dirección. Tocá el lugar en el mapa.', 'mal');
+            }
+        }
+
+        function cfMostrarSugerencias(opciones, q) {
+            const caja = document.getElementById('cf-sugerencias');
+            if (!caja) return;
+            if (opciones.length < 2) { caja.classList.add('hidden'); return; }
+            window._cfOpciones = opciones; window._cfPedida = q;
+            caja.innerHTML = '<p class="px-3 pt-2 pb-1 text-[10px] font-bold text-[#A3AED0] uppercase">¿No es esa? Elegí otra</p>'
+                + opciones.map((f, i) => `<button type="button" onclick="cfElegir(window._cfOpciones[${i}], window._cfPedida); document.getElementById('cf-sugerencias').classList.add('hidden');"
+                    class="w-full text-left px-3 py-2 text-[12px] font-semibold text-[#1B2559] hover:bg-indigo-50 ${i === 0 ? 'bg-[#F4F7FE]' : ''}">${escapeHtml(f.properties.full_address || f.properties.name || '')}</button>`).join('');
+            caja.classList.remove('hidden');
+            setTimeout(() => document.addEventListener('click', function cerrar(e) {
+                if (!caja.contains(e.target)) { caja.classList.add('hidden'); document.removeEventListener('click', cerrar); }
+            }), 0);
+        }
+
+        /** Pone el pin en lo que encontro Mapbox y avisa si la calle no es la pedida. */
+        function cfElegir(f, pedidaTexto) {
+            const p = f.properties;
+            // Mapbox no conoce todas las alturas del conurbano: a veces devuelve
+            // solo la calle, o solo el barrio. Se dice cual de las tres fue.
+            const tipo = String(p.feature_type || '');
+            const exacta = tipo === 'address', soloCalle = tipo === 'street';
+            cfPoner(p.coordinates.latitude, p.coordinates.longitude, true, exacta ? 16 : (soloCalle ? 15 : 13));
+            // "Av." y "Avenida" son la misma calle: se comparan sin esas palabras
+            const limpiar = (x) => String(x || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toUpperCase()
+                .replace(/\b(AV|AVDA|AVENIDA|CALLE|PASAJE|PJE|DR|DOCTOR|GRAL|GENERAL|PTE|PRESIDENTE|INT|INTENDENTE|CNEL|CORONEL|CAP|CAPITAN|STO|SANTO)\b\.?/g, ' ')
+                .replace(/[^A-Z]/g, '');
+            const pedida = limpiar(String(pedidaTexto).split(',')[0].replace(/\d+/g, ''));
+            const devuelta = limpiar(p.context?.street?.name || p.name || '');
+            const coincide = !pedida || !devuelta || pedida.includes(devuelta) || devuelta.includes(pedida);
+            const donde = p.full_address || p.name || '';
+            const exacto = 'Para el punto exacto, en Google Maps hacé clic derecho sobre la escuela, tocá los números (se copian) y pegalos acá.';
+            if (!exacta && !soloCalle) cfAviso(`Mapbox no conoce esa calle: dejé el pin en «${donde}». ${exacto}`, 'mal');
+            else if (!coincide) cfAviso(`⚠ Ojo: Mapbox la llevó a «${donde}», que es otra calle. ${exacto}`, 'mal');
+            else if (soloCalle) cfAviso(`Mapbox encontró la calle pero no la altura: el pin está en algún punto de «${donde}». Arrastralo hasta la escuela, o: ${exacto}`, 'ojo');
+            else cfAviso(`Mapbox la ubicó en: ${donde}. Mirá el pin; si no es ahí, arrastralo.`, 'ojo');
+            // Localidad, solo si estaba vacia: no se pisa lo que cargo alguien
+            const loc = document.getElementById('edit-school-localidad');
+            const nombreLoc = p.context?.locality?.name || p.context?.place?.name || '';
+            if (loc && !loc.value.trim() && nombreLoc) loc.value = nombreLoc.toUpperCase();
+        }
+
+        /** Con coordenadas: completa la direccion (si no habia) y la localidad. */
+        async function cfCompletarDesdeElMapa(lat, lng, token, llenarDireccion) {
+            try {
+                const url = `https://api.mapbox.com/search/geocode/v6/reverse?longitude=${lng}&latitude=${lat}&language=es&access_token=${encodeURIComponent(token)}`;
+                const f = (await (await fetch(url)).json())?.features?.[0];
+                if (!f) return;
+                const p = f.properties || {};
+                const inp = document.getElementById('edit-school-address');
+                if (llenarDireccion && inp && !inp.value.trim()) inp.value = p.context?.address?.name || p.name || '';
+                const loc = document.getElementById('edit-school-localidad');
+                const nombreLoc = p.context?.locality?.name || p.context?.place?.name || '';
+                if (loc && !loc.value.trim() && nombreLoc) loc.value = nombreLoc.toUpperCase();
+            } catch (_) { /* solo era para completar */ }
+        }
+
+        /** foco: el campo con el que arranca (el que se toco en la tabla). */
+        function openSchoolModal(id, foco) {
             const modal = document.getElementById('school-modal');
             const body = document.getElementById('modal-body');
+            const titulo = document.getElementById('cf-titulo');
+            const subtitulo = document.getElementById('cf-subtitulo');
+            const estado = document.getElementById('cf-estado');
+            if (estado) estado.textContent = '';
+            const despues = () => {
+                cfIniciarMapa();
+                const ids = { address: 'edit-school-address', localidad: 'edit-school-localidad', partido: 'edit-school-partido',
+                    barrio: 'edit-school-barrio', zone: 'edit-school-zone', tipo: 'edit-school-tipo', name: 'edit-school-name',
+                    contactName: 'edit-school-contact-name', contactStaff: 'edit-school-contact-staff', contactPhone: 'edit-school-contact-phone',
+                    timeWindowStart: 'edit-school-start', timeWindowEnd: 'edit-school-end', serviceTime: 'edit-school-service' };
+                const el = document.getElementById(ids[foco] || (id ? '' : 'edit-school-name'));
+                if (el) setTimeout(() => { el.focus(); if (el.select && foco === 'address') el.select(); }, 50);
+            };
             document.getElementById('btn-edit-school').classList.add('hidden');
             document.getElementById('btn-save-school').classList.remove('hidden');
 
@@ -15837,9 +16018,12 @@
                     timeWindowStart: '08:00', timeWindowEnd: '12:00', serviceTime: 15,
                     latitude: '', longitude: ''
                 });
+                if (titulo) titulo.textContent = 'Nuevo cliente';
+                if (subtitulo) subtitulo.textContent = 'Completá los datos y ubicalo en el mapa';
                 modal.classList.remove('hidden');
                 acActivarTodos(body);   // el reparto de cada unidad, sin el desplegable negro
                 lucide.createIcons();
+                despues();
                 return;
             }
 
@@ -15848,9 +16032,12 @@
             if (!school) return;
             currentlyEditingSchoolId = id;
             body.innerHTML = schoolFormHtml(school);
+            if (titulo) titulo.textContent = school.name || 'Cliente';
+            if (subtitulo) subtitulo.textContent = [school.tipo, school.localidad, school.partido].filter(Boolean).join(' · ') || 'Ficha del cliente';
             modal.classList.remove('hidden');
             acActivarTodos(body);
             lucide.createIcons();
+            despues();
         }
 
         function enableSchoolEdit() {
@@ -15979,6 +16166,7 @@
 
         function closeSchoolModal() {
             document.getElementById('school-modal').classList.add('hidden');
+            if (_cfMapa) { try { _cfMapa.remove(); } catch (_) {} _cfMapa = null; _cfPin = null; }
             currentlyEditingSchoolId = null;
             creatingNewSchool = false;
         }
@@ -17414,7 +17602,7 @@
                                     return `${encabezado}
                                     <tr class="border-t border-[#F4F7FE] hover:bg-[#F8FAFF]">
                                         <td class="px-2 py-2 text-[#A3AED0] font-bold">${i + 1}</td>
-                                        <td class="px-2 py-2 font-bold text-[#2B3674]">${escapeHtmlWeekly(row.name)}</td>
+                                        <td class="px-2 py-2 font-bold text-[#2B3674]">${escapeHtmlWeekly(row.name)}${(() => { const d = esParadaDeposito(row.name) ? '' : dirDeParadaLegible(row.clientId, row.address); return d ? `<span class="block text-[10px] font-medium text-[#A3AED0]">${escapeHtmlWeekly(d)}</span>` : ''; })()}</td>
                                         <td class="px-2 py-2 text-center"><span class="status-badge ${lbl.cls} text-[9px]">${lbl.txt}</span></td>
                                         <td class="px-2 py-2 text-center text-[10px] text-[#2B3674] hover:bg-indigo-50 cursor-pointer"
                                             ondblclick="editStopTime(this, ${tripId}, ${m.stopId || 'null'}, 'actualArrival')"
@@ -17468,7 +17656,10 @@
                         <li draggable="true" data-idx="${i}" class="weekly-stop-item flex items-center gap-2 bg-white border border-[#E0E5F2] rounded-xl px-3 py-2 text-sm font-bold text-[#2B3674] cursor-grab shadow-sm">
                             <i data-lucide="grip-vertical" class="w-4 h-4 text-[#A3AED0] shrink-0"></i>
                             <span class="text-[#A3AED0] text-xs w-5">${i + 1}</span>
-                            <span class="flex-1 min-w-0 truncate" title="${escapeHtmlWeekly(_dirDeCliente(row.clientId) || row.address || '')}">${escapeHtmlWeekly(row.name)}</span>
+                            <span class="flex-1 min-w-0">
+                                <span class="block truncate">${escapeHtmlWeekly(row.name)}</span>
+                                ${esParadaDeposito(row.name) ? '' : (() => { const d = dirDeParadaLegible(row.clientId, row.address); return `<span class="block truncate text-[10px] font-medium ${d ? 'text-[#A3AED0]' : 'text-amber-600'}" title="${escapeHtmlWeekly(d)}">${d ? escapeHtmlWeekly(d) : 'Sin dirección cargada'}</span>`; })()}
+                            </span>
                             ${esParadaDeposito(row.name) ? '' : _weeklySelectorDeUnidad(tripId, row, i)}
                             ${esParadaDeposito(row.name) ? '' : direccionBotonHtml('semana-' + tripId, row.clientId)}
                             ${esParadaDeposito(row.name) ? '' : contactoBotonHtml('semana-' + tripId, row.clientId)}
@@ -27113,9 +27304,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 <li draggable="true" data-idx="${i}" class="trip-delivery-item td-cols ${pedirUnidad ? 'con-unidad' : ''} px-4 sm:px-5 py-2 text-[13px] font-semibold text-[#2B3674] cursor-grab active:cursor-grabbing" style="background:${fondo}">
                     <i data-lucide="grip-vertical" class="w-4 h-4 text-[#C4CBDC]"></i>
                     <span class="text-[11px] font-bold text-[#A3AED0] tabular-nums">${i + 1}</span>
-                    <span class="min-w-0 flex items-center gap-1.5">
-                        <span class="truncate" title="${escapeHtmlTrip(_dirDeCliente(row.clientId) || row.address || '')}">${escapeHtmlTrip(row.name)}</span>
-                        ${(row.ruta && tripRutas.length > 1 && _plantillaDeRuta(row.ruta)) ? `<span class="shrink-0 px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[9px] font-bold uppercase">${escapeHtmlTrip(row.ruta)}</span>` : ''}
+                    <span class="min-w-0">
+                        <span class="flex items-center gap-1.5 min-w-0">
+                            <span class="truncate">${escapeHtmlTrip(row.name)}</span>
+                            ${(row.ruta && tripRutas.length > 1 && _plantillaDeRuta(row.ruta)) ? `<span class="shrink-0 px-1.5 py-0.5 rounded-md bg-indigo-50 text-indigo-600 text-[9px] font-bold uppercase">${escapeHtmlTrip(row.ruta)}</span>` : ''}
+                        </span>
+                        ${deposito ? '' : (() => { const d = dirDeParadaLegible(row.clientId, row.address); return `<span class="block truncate text-[10px] font-medium ${d ? 'text-[#A3AED0]' : 'text-amber-600'}" title="${escapeHtmlTrip(d)}">${d ? escapeHtmlTrip(d) : 'Sin dirección cargada'}</span>`; })()}
                     </span>
                     ${celdaUnidad(row, i)}
                     ${deposito ? '<span></span>' : direccionBotonHtml('modal', row.clientId)}
@@ -27571,6 +27765,17 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         function _dirDeCliente(clientId) {
             const c = (allSchools || []).find(x => String(x.id) === String(clientId));
             return (c && c.address) || '';
+        }
+
+        /** La direccion para mostrar debajo del nombre de una parada: la de la
+         *  ficha del cliente (o la que trae la parada), sin el link de Maps que
+         *  tienen pegado algunas, y con la localidad si no la dice. */
+        function dirDeParadaLegible(clientId, fallback) {
+            const c = (allSchools || []).find(x => String(x.id) === String(clientId));
+            let d = String((c && c.address) || fallback || '').replace(/\s*·\s*Maps:\s*https?:\/\/\S+/i, '').trim();
+            const loc = String((c && c.localidad) || '').trim();
+            if (d && loc && !d.toUpperCase().includes(loc.toUpperCase())) d += ', ' + loc;
+            return d;
         }
 
         /** Botón + dirección actual, para poner dentro de la fila de una parada. */
