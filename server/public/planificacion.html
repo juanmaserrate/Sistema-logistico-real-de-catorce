@@ -471,12 +471,14 @@
 
             <!-- MODAL: Detalle Auditoría -->
             <!-- Correccion manual de los horarios del recorrido (doble click en la celda) -->
-            <div id="edit-hours-modal" class="hidden fixed inset-0 z-[120] flex items-center justify-center p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);" onclick="if(event.target===this)closeEditHoursModal()">
-                <div class="modal-content w-full max-w-md p-8 bg-white rounded-3xl shadow-2xl" onclick="event.stopPropagation()">
+            <div id="edit-hours-modal" class="hidden fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-6" style="background: rgba(15, 23, 42, 0.72); backdrop-filter: blur(8px);">
+                <div id="eh-caja" class="modal-content w-full max-w-md max-h-[94vh] flex flex-col p-6 sm:p-8 bg-white rounded-3xl shadow-2xl" onclick="event.stopPropagation()">
                     <h3 class="text-xl font-bold text-[#1B2559]">Corregir horarios del recorrido</h3>
                     <p class="text-xs text-[#A3AED0] mt-1" id="eh-subtitle">&nbsp;</p>
                     <input type="hidden" id="eh-route-id">
-                    <div class="space-y-4 mt-6">
+                    <div class="flex-1 min-h-0 overflow-y-auto custom-scrollbar -mx-1 px-1 mt-6">
+                    <div class="space-y-4">
+                        <div id="eh-horas" class="space-y-4">
                         <div>
                             <label class="text-[10px] font-black text-[#A3AED0] uppercase mb-1 block">Inicio real</label>
                             <input type="datetime-local" id="eh-start" oninput="_ehUpdateDuration()" class="w-full bg-[#F4F7FE] border border-[#E0E5F2] rounded-xl p-3 text-sm font-bold text-[#1B2559]">
@@ -489,8 +491,20 @@
                             <p class="text-[10px] font-black text-[#A3AED0] uppercase">Duración resultante</p>
                             <p class="text-lg font-black text-[#1B2559]" id="eh-duration">--</p>
                         </div>
+                        </div>
+                        <!-- Las paradas: se abren solo si se piden -->
+                        <label class="flex items-center gap-3 rounded-xl p-3 cursor-pointer select-none bg-[#F4F7FE] hover:bg-[#E8ECF8]">
+                            <input type="checkbox" id="eh-paradas-toggle" onchange="ehAlternarParadas(this.checked)" class="w-4 h-4 accent-indigo-600 shrink-0">
+                            <span class="flex-1 min-w-0">
+                                <span class="block text-[13px] font-bold text-[#1B2559]">Editar hora de las paradas</span>
+                                <span class="block text-[11px] font-semibold text-[#A3AED0]">Llegada y salida de cada parada, separadas por unidad de negocio</span>
+                            </span>
+                            <span id="eh-paradas-cambios" class="hidden shrink-0 px-2 py-1 rounded-lg bg-indigo-600 text-white text-[10px] font-black tabular-nums"></span>
+                        </label>
+                        <div id="eh-paradas" class="hidden"></div>
                         <p class="text-[11px] text-amber-700 font-bold">Esta corrección cambia las horas que usa el Motor de Costos y queda registrada en Auditoría.</p>
                         <p class="text-[11px] text-rose-600 font-bold hidden" id="eh-error"></p>
+                    </div>
                     </div>
                     <div class="flex gap-3 mt-6">
                         <button onclick="closeEditHoursModal()" class="flex-1 bg-[#F4F7FE] text-[#1B2559] rounded-xl py-3 text-sm font-bold">Cancelar</button>
@@ -16652,26 +16666,268 @@
                 (t?.reparto || t?.businessUnit || ('Ruta ' + routeId)) + (t?.driver ? ' · ' + t.driver : '');
             document.getElementById('eh-start').value = _ehToLocalInput(t?.routeActualStart);
             document.getElementById('eh-end').value = _ehToLocalInput(t?.routeActualEnd);
+            // Lo que tenia al abrir: con las paradas abiertas, el recorrido se
+            // guarda solo si se cambio (no se reescribe ni se audita de gusto)
+            _ehOriginal = { start: document.getElementById('eh-start').value, end: document.getElementById('eh-end').value };
             const err = document.getElementById('eh-error');
             err.classList.add('hidden');
             err.textContent = '';
+            const toggle = document.getElementById('eh-paradas-toggle');
+            if (toggle) toggle.checked = false;
+            ehAlternarParadas(false);
             _ehUpdateDuration();
-            document.getElementById('edit-hours-modal').classList.remove('hidden');
+            // La ventana vive dentro de una seccion que queda por debajo de la
+            // barra de arriba: alta (con las paradas) se metia abajo de ella.
+            // Se la pasa al nivel de la pagina, encima de todo.
+            const modal = document.getElementById('edit-hours-modal');
+            if (modal.parentElement !== document.body) document.body.appendChild(modal);
+            modal.classList.remove('hidden');
         }
 
         function closeEditHoursModal() {
             document.getElementById('edit-hours-modal').classList.add('hidden');
+            _ehParadas = null;
         }
 
         function _ehUpdateDuration() {
             const a = document.getElementById('eh-start').value;
             const b = document.getElementById('eh-end').value;
             const el = document.getElementById('eh-duration');
+            if (_ehParadas) ehRevisarParadas();
             if (!a || !b) { el.textContent = '--'; return; }
             const ms = new Date(b) - new Date(a);
             if (!(ms > 0)) { el.textContent = 'El fin es anterior al inicio'; return; }
             const h = Math.floor(ms / 3600000), m = Math.round((ms % 3600000) / 60000);
             el.textContent = h + 'h ' + String(m).padStart(2, '0') + 'm';
+        }
+
+        // ── Hora de cada parada, en la misma ventana ─────────────────────────
+        // Se piden con la casilla: el que solo corrige el inicio o el fin no
+        // las ve. Van agrupadas por unidad de negocio, y se guardan solo las
+        // horas que se tocaron, con el mismo pedido que la edicion de a una.
+        let _ehOriginal = { start: '', end: '' };
+        let _ehParadas = null;   // { tripId, stops: [...] }
+
+        const _ehHHMM = (iso) => {
+            if (!iso) return '';
+            const d = new Date(iso);
+            if (isNaN(d.getTime())) return '';
+            return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+        };
+
+        /** La hora de un campo como fecha completa. Si no cambio, la que tenia;
+         *  si cambio, el mismo dia que tenia (o el del inicio del recorrido) con
+         *  la hora nueva. Asi una correccion nunca cambia de dia. */
+        function _ehFechaDe(stop, campo, hhmm) {
+            if (!hhmm) return null;
+            const orig = stop[campo];
+            if (orig && _ehHHMM(orig) === hhmm) return new Date(orig);
+            let base;
+            if (orig) base = new Date(orig);
+            else {
+                const ini = document.getElementById('eh-start').value;
+                if (ini) base = new Date(ini);
+                else {
+                    const t = getWeeklyTripById(_ehParadas?.tripId);
+                    const [Y, M, D] = new Date(t?.date || Date.now()).toISOString().slice(0, 10).split('-').map(Number);
+                    base = new Date(Y, M - 1, D);
+                }
+            }
+            const [h, mi] = hhmm.split(':').map(Number);
+            base.setHours(h, mi, 0, 0);
+            return base;
+        }
+
+        function ehAlternarParadas(abrir) {
+            const caja = document.getElementById('eh-caja');
+            const lista = document.getElementById('eh-paradas');
+            const horas = document.getElementById('eh-horas');
+            if (!caja || !lista) return;
+            // Con las paradas a la vista la ventana se ensancha, y el inicio,
+            // el fin y la duracion pasan a una sola fila
+            caja.classList.toggle('max-w-md', !abrir);
+            caja.classList.toggle('max-w-3xl', abrir);
+            if (horas) {
+                horas.classList.toggle('space-y-4', !abrir);
+                horas.classList.toggle('grid', abrir);
+                horas.classList.toggle('sm:grid-cols-3', abrir);
+                horas.classList.toggle('gap-3', abrir);
+            }
+            lista.classList.toggle('hidden', !abrir);
+            if (!abrir) {
+                _ehParadas = null;
+                lista.innerHTML = '';
+                ehContarCambios();
+                return;
+            }
+            ehCargarParadas();
+        }
+
+        async function ehCargarParadas() {
+            const lista = document.getElementById('eh-paradas');
+            const routeId = Number(document.getElementById('eh-route-id').value);
+            const t = _ehFindTrip(routeId);
+            if (!t?.id) {
+                lista.innerHTML = '<p class="text-[12px] font-bold text-rose-600 px-1">No encontré el viaje de este recorrido.</p>';
+                return;
+            }
+            lista.innerHTML = '<p class="text-[12px] font-semibold text-[#A3AED0] px-1 py-3">Cargando paradas…</p>';
+            const pedido = { tripId: t.id, stops: null };
+            _ehParadas = pedido;
+            try {
+                const res = await fetch(`${API_URL}/trips/${t.id}/delivery-stops`, { headers: getActorHeaders() });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Error del servidor');
+                if (_ehParadas !== pedido) return;   // se cerro o se abrio otro viaje
+                pedido.stops = (data.stops || []).filter(s => s.id);
+                ehDibujarParadas();
+            } catch (e) {
+                if (_ehParadas !== pedido) return;
+                lista.innerHTML = `<p class="text-[12px] font-bold text-rose-600 px-1">No se pudieron cargar las paradas: ${escapeHtml(e.message || String(e))}</p>`;
+            }
+        }
+
+        /** De que bloque es una parada: su unidad, o la vuelta al deposito. */
+        function _ehBloqueDe(s, unidadesViaje) {
+            const r = String(s.ruta || '').toUpperCase();
+            if (s.isReturnToBase || esParadaDeposito(s.name) || r === 'VUELTA AL DEPOSITO') return 'VUELTA AL DEPÓSITO';
+            const u = normalizeBusinessUnit(s.unidad || '');
+            if (u && u !== 'SIN UNIDAD') return u;
+            return unidadesViaje.length === 1 ? unidadesViaje[0] : 'SIN UNIDAD';
+        }
+
+        function ehDibujarParadas() {
+            const lista = document.getElementById('eh-paradas');
+            const stops = _ehParadas?.stops || [];
+            if (!stops.length) {
+                lista.innerHTML = '<p class="text-[12px] font-semibold text-[#A3AED0] px-1 py-3">Este viaje no tiene paradas cargadas.</p>';
+                return;
+            }
+            const t = getWeeklyTripById(_ehParadas.tripId);
+            const unidadesViaje = unidadesDeNegocio(t?.businessUnit || '');
+            // Bloques en el orden en que aparecen; la vuelta al deposito, al final
+            const bloques = new Map();
+            stops.forEach((s, i) => {
+                const b = _ehBloqueDe(s, unidadesViaje);
+                if (!bloques.has(b)) bloques.set(b, []);
+                bloques.get(b).push({ s, n: i + 1 });
+            });
+            const orden = [...bloques.keys()].sort((a, b) => (a === 'VUELTA AL DEPÓSITO') - (b === 'VUELTA AL DEPÓSITO'));
+            const estado = (st) => ({
+                COMPLETED: ['bg-emerald-500', 'Entregada'], UNDELIVERABLE: ['bg-rose-500', 'No entregada'],
+                ARRIVED: ['bg-amber-500', 'En la parada'], RETRY: ['bg-amber-500', 'Reintentar']
+            }[String(st || '').toUpperCase()] || ['bg-[#C7CEE0]', 'Pendiente']);
+            const campo = (s, c) => `<input type="time" value="${_ehHHMM(s[c])}" data-eh-stop="${s.id}" data-eh-campo="${c}" data-eh-orig="${_ehHHMM(s[c])}"
+                    oninput="ehAlCambiarHora(this)" onchange="ehAlCambiarHora(this, true)" aria-label="${c === 'actualArrival' ? 'Llegada' : 'Salida'} de ${escapeHtml(s.name)}"
+                    class="eh-hora w-full h-9 rounded-lg bg-[#F4F7FE] px-2 text-[13px] font-bold text-[#1B2559] tabular-nums outline-none focus:ring-2 focus:ring-indigo-300">`;
+
+            lista.innerHTML = `
+                <div class="rounded-2xl overflow-hidden" style="background: var(--wk-fila);">
+                    <div class="grid grid-cols-[1fr_92px_92px] sm:grid-cols-[1fr_110px_110px] gap-2 px-4 py-2 text-[10px] font-black uppercase tracking-wider text-[#A3AED0]">
+                        <span>Parada</span><span>Llegada</span><span>Salida</span>
+                    </div>
+                    ${orden.map((b, bi) => `
+                        <div class="px-4 py-2 flex items-center gap-2" style="background: var(--wk-fila-alt);">
+                            <span class="px-2.5 py-1 rounded-full ${b === 'VUELTA AL DEPÓSITO' ? 'bg-[#1B2559]' : 'bg-indigo-600'} text-white text-[9px] font-black uppercase tracking-widest">${escapeHtml(b)}</span>
+                            <span class="text-[10px] font-bold text-[#A3AED0]">${bloques.get(b).length} ${bloques.get(b).length === 1 ? 'parada' : 'paradas'}</span>
+                            <span class="ml-auto text-[11px] font-bold text-[#2B3674] tabular-nums" data-eh-rango="${bi}"></span>
+                        </div>
+                        ${bloques.get(b).map(({ s, n }, i) => {
+                            const [color, txt] = estado(s.status);
+                            return `
+                            <div class="grid grid-cols-[1fr_92px_92px] sm:grid-cols-[1fr_110px_110px] gap-2 items-center px-4 py-2" data-eh-bloque="${bi}" data-eh-fila="${s.id}" style="background: ${i % 2 ? 'var(--wk-fila-alt)' : 'var(--wk-fila)'};">
+                                <div class="min-w-0 flex items-center gap-2">
+                                    <span class="w-5 text-right text-[11px] font-bold text-[#A3AED0] tabular-nums shrink-0">${n}</span>
+                                    <span class="w-1.5 h-1.5 rounded-full ${color} shrink-0" title="${txt}"></span>
+                                    <span class="truncate text-[12px] font-semibold text-[#1B2559]" title="${escapeHtml(s.name)} · ${txt}">${escapeHtml(s.name)}</span>
+                                </div>
+                                ${campo(s, 'actualArrival')}
+                                ${campo(s, 'actualDeparture')}
+                            </div>`;
+                        }).join('')}
+                    `).join('')}
+                </div>
+                <div id="eh-paradas-aviso" class="hidden mt-2 rounded-xl bg-rose-50 px-3 py-2 text-[11px] font-semibold text-rose-700 leading-snug"></div>`;
+            ehRevisarParadas();
+        }
+
+        function ehAlCambiarHora(inp, salio) {
+            // Una hora no se puede borrar (el servidor la ignora): si la vaciaron,
+            // vuelve la que tenia
+            if (salio && !inp.value && inp.dataset.ehOrig) inp.value = inp.dataset.ehOrig;
+            ehRevisarParadas();
+        }
+
+        function ehContarCambios() {
+            const n = [...document.querySelectorAll('#eh-paradas .eh-hora')].filter(x => x.value && x.value !== x.dataset.ehOrig).length;
+            const chip = document.getElementById('eh-paradas-cambios');
+            if (chip) {
+                chip.classList.toggle('hidden', !n);
+                chip.textContent = n === 1 ? '1 cambio' : `${n} cambios`;
+            }
+            return n;
+        }
+
+        /** Marca lo que cambio y lo que no cierra; devuelve los problemas. */
+        function ehRevisarParadas() {
+            const stops = _ehParadas?.stops || [];
+            const problemas = [];
+            const a = document.getElementById('eh-start').value;
+            const b = document.getElementById('eh-end').value;
+            const minuto = (d) => d ? Math.floor(d.getTime() / 60000) : null;
+            const ini = a ? minuto(new Date(a)) : null;
+            const fin = b ? minuto(new Date(b)) : null;
+            const rangos = {};
+            for (const s of stops) {
+                const fila = document.querySelector(`[data-eh-fila="${s.id}"]`);
+                if (!fila) continue;
+                const inLl = fila.querySelector('[data-eh-campo="actualArrival"]');
+                const inSa = fila.querySelector('[data-eh-campo="actualDeparture"]');
+                const ll = _ehFechaDe(s, 'actualArrival', inLl.value);
+                const sa = _ehFechaDe(s, 'actualDeparture', inSa.value);
+                const malos = new Set();
+                if (ll && sa && minuto(sa) < minuto(ll)) {
+                    malos.add(inLl); malos.add(inSa);
+                    problemas.push(`«${s.name}»: la salida (${inSa.value}) es antes que la llegada (${inLl.value}).`);
+                }
+                for (const [inp, d] of [[inLl, ll], [inSa, sa]]) {
+                    if (!d) continue;
+                    if ((ini != null && minuto(d) < ini) || (fin != null && minuto(d) > fin)) {
+                        malos.add(inp);
+                        problemas.push(`«${s.name}»: ${inp.value} queda fuera del recorrido (${a ? a.slice(11) : '…'} a ${b ? b.slice(11) : '…'}).`);
+                    }
+                }
+                for (const inp of [inLl, inSa]) {
+                    const cambio = !!inp.value && inp.value !== inp.dataset.ehOrig;
+                    const malo = malos.has(inp);
+                    inp.classList.toggle('ring-2', cambio || malo);
+                    inp.classList.toggle('ring-rose-400', malo);
+                    inp.classList.toggle('bg-rose-50', malo);
+                    inp.classList.toggle('ring-indigo-400', cambio && !malo);
+                    inp.classList.toggle('bg-indigo-50', cambio && !malo);
+                    inp.classList.toggle('bg-[#F4F7FE]', !cambio && !malo);
+                }
+                // Desde/hasta de cada bloque, con lo que esta escrito ahora
+                const bi = fila.dataset.ehBloque;
+                const r = rangos[bi] || (rangos[bi] = { min: null, max: null });
+                for (const d of [ll, sa]) {
+                    if (!d) continue;
+                    if (r.min == null || d < r.min) r.min = d;
+                    if (r.max == null || d > r.max) r.max = d;
+                }
+            }
+            document.querySelectorAll('[data-eh-rango]').forEach(el => {
+                const r = rangos[el.dataset.ehRango];
+                el.textContent = r && r.min ? `${_ehHHMM(r.min.toISOString())} – ${_ehHHMM(r.max.toISOString())}` : '';
+            });
+            const aviso = document.getElementById('eh-paradas-aviso');
+            if (aviso) {
+                aviso.classList.toggle('hidden', !problemas.length);
+                aviso.innerHTML = problemas.slice(0, 4).map(p => escapeHtml(p)).join('<br>')
+                    + (problemas.length > 4 ? `<br>…y ${problemas.length - 4} más.` : '');
+            }
+            ehContarCambios();
+            return problemas;
         }
 
         async function saveEditHours() {
@@ -16681,31 +16937,88 @@
             const err = document.getElementById('eh-error');
             const btn = document.getElementById('eh-save');
             err.classList.add('hidden');
+            const conParadas = !!(_ehParadas && _ehParadas.stops && document.getElementById('eh-paradas-toggle')?.checked);
+            if (conParadas) {
+                const problemas = ehRevisarParadas();
+                if (problemas.length) {
+                    err.textContent = 'Hay horas de paradas que no cierran: corregilas antes de guardar.';
+                    err.classList.remove('hidden');
+                    document.getElementById('eh-paradas-aviso')?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                    return;
+                }
+            }
+            // Sin las paradas abiertas se guarda como siempre. Con ellas, el
+            // recorrido solo si se cambio.
+            const tocoRecorrido = !conParadas || a !== _ehOriginal.start || b !== _ehOriginal.end;
+            const cambiosParadas = [];
+            if (conParadas) {
+                for (const s of _ehParadas.stops) {
+                    const body = {};
+                    for (const c of ['actualArrival', 'actualDeparture']) {
+                        const inp = document.querySelector(`[data-eh-stop="${s.id}"][data-eh-campo="${c}"]`);
+                        if (inp && inp.value && inp.value !== inp.dataset.ehOrig) body[c] = _ehFechaDe(s, c, inp.value).toISOString();
+                    }
+                    if (Object.keys(body).length) cambiosParadas.push({ s, body });
+                }
+            }
+            if (!tocoRecorrido && !cambiosParadas.length) { closeEditHoursModal(); return; }
+
             btn.disabled = true;
             btn.textContent = 'Guardando...';
             try {
-                const res = await fetch(`${API_URL}/routes/${routeId}/horarios`, {
-                    method: 'PATCH',
-                    headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
-                    body: JSON.stringify({
-                        actualStartTime: a ? new Date(a).toISOString() : null,
-                        actualEndTime: b ? new Date(b).toISOString() : null
-                    })
-                });
-                const data = await res.json();
-                if (!res.ok) throw new Error(data.error || 'Error del servidor');
-                // Reflejarlo en memoria para que la tabla lo muestre al instante
-                const t = _ehFindTrip(routeId);
-                if (t) {
-                    t.routeActualStart = data.actualStartTime;
-                    t.routeActualEnd = data.actualEndTime;
-                    t.routeExecutionStatus = data.actualEndTime ? 'COMPLETED' : 'IN_PROGRESS';
+                // Primero el recorrido: si se estiro el fin, las paradas nuevas ya
+                // entran en la ventana
+                if (tocoRecorrido) {
+                    const res = await fetch(`${API_URL}/routes/${routeId}/horarios`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
+                        body: JSON.stringify({
+                            actualStartTime: a ? new Date(a).toISOString() : null,
+                            actualEndTime: b ? new Date(b).toISOString() : null
+                        })
+                    });
+                    const data = await res.json();
+                    if (!res.ok) throw new Error(data.error || 'Error del servidor');
+                    // Reflejarlo en memoria para que la tabla lo muestre al instante
+                    const t = _ehFindTrip(routeId);
+                    if (t) {
+                        t.routeActualStart = data.actualStartTime;
+                        t.routeActualEnd = data.actualEndTime;
+                        t.routeExecutionStatus = data.actualEndTime ? 'COMPLETED' : 'IN_PROGRESS';
+                    }
+                    _ehOriginal = { start: a, end: b };
                 }
-                closeEditHoursModal();
+                // De a una, en orden: es el mismo pedido que la correccion en la
+                // celda, y cada una queda en Auditoria
+                const fallaron = [];
+                for (const { s, body } of cambiosParadas) {
+                    try {
+                        const r = await fetch(`${API_URL}/stops/${s.id}`, {
+                            method: 'PATCH',
+                            headers: { 'Content-Type': 'application/json', ...getActorHeaders() },
+                            body: JSON.stringify(body)
+                        });
+                        const d = await r.json().catch(() => ({}));
+                        if (!r.ok) throw new Error(d.error || 'Error del servidor');
+                        Object.assign(s, body);
+                    } catch (e) {
+                        fallaron.push(`${s.name} (${e.message || e})`);
+                    }
+                }
+                const tripId = _ehParadas?.tripId || _ehFindTrip(routeId)?.id;
+                if (cambiosParadas.length && tripId && weeklyTripStopsFetched[tripId]) loadWeeklyTripStopsBuffer(tripId);
                 // filterWeeklyData reaplica filtros y orden, y redibuja la tabla
                 if (typeof filterWeeklyData === 'function') filterWeeklyData();
+                if (fallaron.length) {
+                    // Las que si se guardaron quedan como nuevas originales
+                    ehDibujarParadas();
+                    throw new Error(`No se pudieron guardar ${fallaron.length}: ${fallaron.slice(0, 3).join(' · ')}`);
+                }
+                closeEditHoursModal();
                 if (typeof addNotification === 'function') {
-                    addNotification('success', 'Horarios corregidos', 'El cambio quedó registrado en Auditoría.');
+                    const n = cambiosParadas.length;
+                    addNotification('success', 'Horarios corregidos',
+                        (n ? `${n} ${n === 1 ? 'parada corregida' : 'paradas corregidas'}. ` : '') + 'El cambio quedó registrado en Auditoría.');
                 }
             } catch (e) {
                 err.textContent = e.message || String(e);
@@ -31522,7 +31835,7 @@ async function renderHdrMap(detail) {
     // Formularios largos: un click al costado cerraba el modal y se perdia todo
     // lo cargado. Estos solo se cierran con la X o con Cancelar.
     // La ficha del cliente tambien: arrastrar el pin y soltar afuera la cerraba.
-    const NO_CIERRAN_POR_CLICK_AFUERA = ['new-trip-modal', 'school-modal'];
+    const NO_CIERRAN_POR_CLICK_AFUERA = ['new-trip-modal', 'school-modal', 'edit-hours-modal'];
 
     /** Devuelve todos los modales actualmente VISIBLES (no tienen clase 'hidden'). */
     function getOpenModals() {
