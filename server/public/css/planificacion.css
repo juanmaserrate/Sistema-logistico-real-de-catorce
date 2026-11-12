@@ -1374,3 +1374,23 @@ html, body { overscroll-behavior-y: none; }
 @media (hover: hover) and (pointer: fine) {
     #td-results > .td-resultado:hover { background: var(--primary-soft); }
 }
+
+/* --- Clientes: marca de seleccion de cada fila y de la cabecera --------- */
+.cl-check {
+    width: 18px; height: 18px; border-radius: 6px;
+    border: 1.5px solid #C7CEE0;
+    background: var(--surface-container-lowest);
+    color: transparent;
+    display: grid; place-items: center;
+    font-size: 11px; font-weight: 900; line-height: 1;
+    transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease;
+}
+.cl-check:active { transform: scale(0.9); }
+.cl-check-on { background: #4f46e5; border-color: #4f46e5; color: #fff; }
+@media (hover: hover) and (pointer: fine) {
+    .cl-check:not(.cl-check-on):hover { border-color: #818cf8; }
+}
+/* La cabecera fija tapa las filas al hacer scroll: necesita fondo propio */
+#schools-table thead th { background: var(--surface-container-low); }
+/* Fila marcada: gana a las filas alternadas (tbody tr:nth-child(even)) */
+#schools-tbody tr[data-sel="1"] { background: rgba(79, 70, 229, 0.08); }
