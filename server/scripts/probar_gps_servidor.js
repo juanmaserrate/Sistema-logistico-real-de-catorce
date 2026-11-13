@@ -119,7 +119,59 @@ const patch = (u, b) => fetch(BASE + u, { method: 'PATCH', headers: { 'Content-T
         esperar('responde con el mes y los topes', !!u.mes && u.topes && u.topes.matching === 90000, u);
     }
 
+    console.log('\n11. Celular con el reloj 3 h atrasado: el servidor corrige la hora');
+    {
+        const tres = 3 * 3600_000;
+        const r = await (await post('/api/v1/tracking/lote', {
+            deviceId: dev + '-reloj', driverId: 'ch1', routeId: route.id,
+            enviadoEn: new Date(Date.now() - tres).toISOString(),
+            points: [{ lat: -34.79, lng: -58.4, acc: 5, t: new Date(Date.now() - tres - 2000).toISOString() }]
+        })).json();
+        const f = await prisma.deviceLocation.findFirst({ where: { deviceId: dev + '-reloj' } });
+        esperar('se guarda con la hora corregida (hace ~2 s, no hace 3 h)', r.guardados === 1 && f && Math.abs(f.timestamp.getTime() - (Date.now() - 2000)) < 5000, f && f.timestamp);
+    }
+
+    // Un viaje con un hueco: 3 min andando, 10 min sin señal (4 km), 3 min andando
+    const chofer = await prisma.user.create({ data: { tenantId: tenant.id, username: 'chofer-gps-' + Date.now(), password: 'x', fullName: 'CHOFER GPS', role: 'DRIVER' } });
+    const trip2 = await prisma.trip.create({ data: { date: new Date(), reparto: 'R98', driver: 'CHOFER GPS', status: 'OUT_OF_PLANT' } });
+    const inicio2 = Date.now() - 20 * 60000;
+    const route2 = await prisma.route.create({ data: { tenantId: tenant.id, date: new Date(), tripId: trip2.id, driverId: chofer.id, status: 'IN_PROGRESS', actualStartTime: new Date(inicio2) } });
+    const lote2 = [];
+    for (let i = 0; i < 30; i++) lote2.push({ lat: -34.8 + (i * 60) / 111000, lng: -58.4, acc: 5, t: new Date(inicio2 + 60000 + i * 6000).toISOString() });
+    for (let i = 0; i < 30; i++) lote2.push({ lat: -34.8 + (5800 + i * 60) / 111000, lng: -58.4, acc: 5, t: new Date(inicio2 + 60000 + 180000 + 600000 + i * 6000).toISOString() });
+    await post('/api/v1/tracking/lote', { deviceId: dev + '-hueco', driverId: chofer.id, routeId: route2.id, points: lote2 });
+
+    console.log('\n12. Recorrido en vivo (sin Mapbox en esta prueba): lo visto + el hueco aparte');
+    {
+        const v = await (await fetch(`${BASE}/api/v1/tracking/recorrido-vivo/${route2.id}`)).json();
+        const tipos = (v.tramos || []).map(t => t.tipo).join(',');
+        esperar('crudo, estimado, crudo (el hueco no se une como si fuera visto)', tipos === 'crudo,estimado,crudo', v);
+        esperar('~3,4 km sin contar el hueco', v.km > 2.5 && v.km < 4.5, v.km);
+    }
+
+    console.log('\n13. Estado de choferes: cuenta el corte de GPS andando');
+    {
+        const ds = await (await fetch(`${BASE}/api/v1/control/driver-status`)).json();
+        const fila = (ds.drivers || []).find(d => d.routeId === route2.id);
+        esperar('1 corte, ~10 min sin datos', fila && fila.gpsCortes === 1 && fila.gpsMinSinDatos >= 9 && fila.gpsMinSinDatos <= 11, fila && { c: fila.gpsCortes, m: fila.gpsMinSinDatos, p: fila.gpsPuntos });
+    }
+
+    console.log('\n14. Viaje cerrado: el recorrido se arma, se guarda y lo trae la hoja de ruta');
+    {
+        await prisma.route.update({ where: { id: route2.id }, data: { actualEndTime: new Date(), status: 'COMPLETED' } });
+        const r = await (await fetch(`${BASE}/api/v1/history/routes/${route2.id}/recorrido`, { method: 'POST' })).json();
+        esperar('se arma cerrado', r.cerrado === true && (r.tramos || []).length === 3, r);
+        const g = await prisma.recorridoReal.findUnique({ where: { routeId: route2.id } });
+        esperar('queda guardado con su ventana', g && g.ventanaFin && g.puntos > 0, g);
+        const h = await (await fetch(`${BASE}/api/v1/history/routes/${route2.id}`)).json();
+        esperar('la hoja de ruta lo trae', h.recorrido && h.recorrido.tramos.length === 3, h.recorrido);
+    }
+
     // ── Limpieza ──
+    await prisma.recorridoReal.deleteMany({ where: { routeId: route2.id } });
+    await prisma.route.delete({ where: { id: route2.id } });
+    await prisma.trip.delete({ where: { id: trip2.id } });
+    await prisma.user.delete({ where: { id: chofer.id } });
     await prisma.deviceLocation.deleteMany({ where: { deviceId: { startsWith: dev } } });
     await prisma.stop.deleteMany({ where: { routeId: route.id } });
     await prisma.route.delete({ where: { id: route.id } });

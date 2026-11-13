@@ -44,6 +44,7 @@ import jwt from 'jsonwebtoken';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import { limpiarLote, distanciaMetros } from './gpsLotes';
 import { usarCuotaMapbox, mesActual, TOPE_MENSUAL } from './mapboxCuota';
+import { prepararPuntos, armarRecorrido, PuntoGps, Coord, Recorrido } from './recorridoReal';
 import helmet from 'helmet';
 import compression from 'compression';
 
@@ -2536,11 +2537,24 @@ app.get('/api/admin/mapbox-uso', async (req: any, res: any) => {
  *  { deviceId, deviceLabel?, driverId?, routeId?, points: [{ lat, lng, acc?, spd?, hdg?, t }] } (max 500) */
 app.post('/api/v1/tracking/lote', trackingLimiter, async (req: any, res: any) => {
     try {
-        const { deviceId, deviceLabel, driverId, routeId, points } = req.body || {};
+        const { deviceId, deviceLabel, driverId, routeId, enviadoEn } = req.body || {};
+        let { points } = req.body || {};
         const dev = String(deviceId || '').trim();
         if (!dev) return res.status(400).json({ error: 'Falta deviceId' });
         if (!Array.isArray(points) || !points.length) return res.json({ ok: true, guardados: 0 });
         if (points.length > 500) return res.status(400).json({ error: 'Máximo 500 puntos por lote' });
+        // Celular con el reloj desfasado (los hay: ver driver-status). La hora
+        // de cada punto es la del reloj del celular, asi que se corrige con la
+        // diferencia entre su reloj y el del servidor al mandar. Sin esto, un
+        // reloj 3 h atrasado dejaba el recorrido fuera del viaje.
+        const msEnviado = enviadoEn ? Date.parse(String(enviadoEn)) : NaN;
+        const desfase = Number.isFinite(msEnviado) ? Date.now() - msEnviado : 0;
+        if (Math.abs(desfase) > 30_000 && Math.abs(desfase) < 7 * 24 * 3600_000) {
+            points = points.map((p: any) => {
+                const ms = p?.t != null ? Date.parse(String(p.t)) : NaN;
+                return Number.isFinite(ms) ? { ...p, t: new Date(ms + desfase).toISOString() } : p;
+            });
+        }
 
         const rid = routeId != null && String(routeId).trim() !== '' && Number.isFinite(Number(routeId)) ? Number(routeId) : null;
         const did = driverId != null && String(driverId).trim() !== '' ? String(driverId).trim() : null;
@@ -3247,6 +3261,51 @@ app.get('/api/v1/control/active-routes', async (_req, res) => {
  *  que nunca reportó sale con signal:'never'.
  *
  *  Query: ?date=YYYY-MM-DD (default: hoy). */
+/** Cuantas veces se corto el GPS con el camion andando, en cada viaje: dos
+ *  puntos seguidos separados por mas de 3 min Y mas de 300 m (se movio sin
+ *  reportar). Parado en una escuela el celular no manda puntos a proposito,
+ *  y eso no cuenta. Se guarda 60 s: la pantalla lo pide cada 15. */
+const _cortesCache = new Map<string, { hecho: number; datos: Record<number, { puntos: number; cortes: number; seg: number }> }>();
+async function cortesDeGps(routeIds: number[]): Promise<Record<number, { puntos: number; cortes: number; seg: number }>> {
+    if (!routeIds.length) return {};
+    const clave = [...routeIds].sort((a, b) => a - b).join(',');
+    const c = _cortesCache.get(clave);
+    if (c && Date.now() - c.hecho < 60000) return c.datos;
+    const datos: Record<number, { puntos: number; cortes: number; seg: number }> = {};
+    // La hora va desde aca, pasada a UTC sin zona: las columnas guardan UTC sin
+    // zona, y NOW() o una fecha con zona se comparan segun la zona de la base
+    // (corridas 3 h si la base no esta en UTC)
+    const ahora = new Date();
+    try {
+        const filas = await prisma.$queryRaw<any[]>`
+            SELECT x."routeId",
+                   COUNT(*)::int AS puntos,
+                   COUNT(*) FILTER (WHERE x.seg > 180 AND x.m > 300)::int AS cortes,
+                   COALESCE(SUM(x.seg) FILTER (WHERE x.seg > 180 AND x.m > 300), 0)::float AS seg
+            FROM (
+                SELECT d."routeId",
+                       EXTRACT(EPOCH FROM d.timestamp - LAG(d.timestamp) OVER w) AS seg,
+                       SQRT(POWER((d.latitude - LAG(d.latitude) OVER w) * 111320, 2)
+                          + POWER((d.longitude - LAG(d.longitude) OVER w) * 111320 * COS(RADIANS(d.latitude)), 2)) AS m
+                FROM "DeviceLocation" d
+                JOIN "Route" r ON r.id = d."routeId"
+                WHERE d."routeId" = ANY(${routeIds}::int[])
+                  AND r."actualStartTime" IS NOT NULL
+                  AND d.timestamp >= r."actualStartTime"
+                  AND d.timestamp <= COALESCE(r."actualEndTime", (${ahora}::timestamptz AT TIME ZONE 'UTC'))
+                WINDOW w AS (PARTITION BY d."routeId" ORDER BY d.timestamp)
+            ) x
+            GROUP BY x."routeId"
+        `;
+        for (const f of filas) datos[Number(f.routeId)] = { puntos: Number(f.puntos) || 0, cortes: Number(f.cortes) || 0, seg: Number(f.seg) || 0 };
+    } catch (e: any) {
+        console.warn('[driver-status] cortes de GPS:', e?.message || e);
+    }
+    _cortesCache.set(clave, { hecho: Date.now(), datos });
+    if (_cortesCache.size > 50) for (const [k, v] of _cortesCache) if (Date.now() - v.hecho > 600000) _cortesCache.delete(k);
+    return datos;
+}
+
 app.get('/api/v1/control/driver-status', async (req, res) => {
     try {
         const dateStr = String(req.query.date || '');
@@ -3317,6 +3376,8 @@ app.get('/api/v1/control/driver-status', async (req, res) => {
             }
         }
 
+        const cortes = await cortesDeGps(routes.filter((r: any) => r.actualStartTime).map((r: any) => Number(r.id)));
+
         const now = Date.now();
         const out = routes.map((route: any) => {
             const stops = route.stops || [];
@@ -3374,7 +3435,11 @@ app.get('/api/v1/control/driver-status', async (req, res) => {
                 lastLat: last?.lat ?? null,
                 lastLng: last?.lng ?? null,
                 minutesAgo,
-                signal
+                signal,
+                // Cortes del GPS con el camion en movimiento durante el viaje
+                gpsPuntos: cortes[route.id]?.puntos ?? (route.actualStartTime ? 0 : null),
+                gpsCortes: cortes[route.id]?.cortes ?? null,
+                gpsMinSinDatos: cortes[route.id] ? Math.round(cortes[route.id].seg / 60) : null
             };
         });
 
@@ -3463,6 +3528,204 @@ app.get('/api/v1/history/completed-routes', async (req, res) => {
 });
 
 /** Detalle completo de una ruta del historial: stops, locations GPS y resumen. */
+// ── Recorrido real pegado a las calles (ver recorridoReal.ts) ──────────────
+// Lo ya pegado de cada ventana de 100 puntos, para no volver a pedirlo: el
+// recorrido en vivo se rearma cada minuto y solo cambia la ultima ventana.
+const _ventanasPegadas = new Map<string, { pedazos: Coord[][] | null; vence: number }>();
+
+async function mapboxPegar(puntos: PuntoGps[]): Promise<Coord[][] | null> {
+    if (puntos.length < 2) return null;
+    const a = puntos[0], z = puntos[puntos.length - 1];
+    const clave = `${puntos.length}|${a.t.getTime()}|${z.t.getTime()}|${a.lat.toFixed(5)},${a.lng.toFixed(5)}|${z.lat.toFixed(5)},${z.lng.toFixed(5)}`;
+    const guardado = _ventanasPegadas.get(clave);
+    if (guardado && guardado.vence > Date.now()) return guardado.pedazos;
+    const token = await resolveMapboxAccessToken();
+    if (!token || !(await usarCuotaMapbox(prisma, 'matching'))) return null;
+    const coords = puntos.map((p) => `${p.lng.toFixed(6)},${p.lat.toFixed(6)}`).join(';');
+    const tiempos = puntos.map((p) => Math.floor(p.t.getTime() / 1000)).join(';');
+    // Sin `radiuses`: con un radio fijo Mapbox no encontraba camino (ver map-matching-batch)
+    const url = `https://api.mapbox.com/matching/v5/mapbox/driving/${coords}` +
+        `?geometries=geojson&overview=full&tidy=true&timestamps=${tiempos}&access_token=${token}`;
+    let pedazos: Coord[][] | null = null;
+    try {
+        const r = await fetchWithTimeout(url, {}, 10000);
+        const d: any = await r.json().catch(() => ({}));
+        const lista: Coord[][] = (Array.isArray(d?.matchings) ? d.matchings : [])
+            .map((m: any) => ((m?.geometry?.coordinates || []) as any[]).map((c) => [Number(c[0]), Number(c[1])] as Coord))
+            .filter((c: Coord[]) => c.length >= 2);
+        pedazos = lista.length ? lista : null;
+    } catch (e: any) {
+        console.warn('[recorrido] map matching:', e?.message || e);
+    }
+    // Lo que salio bien se guarda 12 h; lo que fallo se reintenta en 10 min
+    _ventanasPegadas.set(clave, { pedazos, vence: Date.now() + (pedazos ? 12 * 3600_000 : 10 * 60_000) });
+    if (_ventanasPegadas.size > 3000) {
+        const ahora = Date.now();
+        for (const [k, v] of _ventanasPegadas) if (v.vence < ahora) _ventanasPegadas.delete(k);
+    }
+    return pedazos;
+}
+
+/** El camino por calles entre dos puntos (para completar un hueco). */
+async function mapboxCamino(a: PuntoGps, b: PuntoGps): Promise<Coord[] | null> {
+    const token = await resolveMapboxAccessToken();
+    if (!token || !(await usarCuotaMapbox(prisma, 'directions'))) return null;
+    const url = `https://api.mapbox.com/directions/v5/mapbox/driving/${a.lng.toFixed(6)},${a.lat.toFixed(6)};${b.lng.toFixed(6)},${b.lat.toFixed(6)}` +
+        `?geometries=geojson&overview=full&access_token=${token}`;
+    try {
+        const r = await fetchWithTimeout(url, {}, 8000);
+        const d: any = await r.json().catch(() => ({}));
+        const c = d?.routes?.[0]?.geometry?.coordinates;
+        return Array.isArray(c) && c.length >= 2 ? c.map((x: any) => [Number(x[0]), Number(x[1])] as Coord) : null;
+    } catch {
+        return null;
+    }
+}
+
+/** Arma el recorrido de una ruta con sus puntos GPS (no guarda nada). */
+async function construirRecorrido(routeId: number) {
+    const route = await prisma.route.findUnique({
+        where: { id: routeId },
+        select: { id: true, tripId: true, actualStartTime: true, actualEndTime: true }
+    });
+    if (!route) return null;
+    const margen = 5 * 60000;
+    const filas = await prisma.deviceLocation.findMany({
+        where: {
+            routeId,
+            ...(route.actualStartTime || route.actualEndTime ? {
+                timestamp: {
+                    ...(route.actualStartTime ? { gte: new Date(route.actualStartTime.getTime() - margen) } : {}),
+                    ...(route.actualEndTime ? { lte: new Date(route.actualEndTime.getTime() + margen) } : {})
+                }
+            } : {})
+        },
+        orderBy: { timestamp: 'asc' },
+        select: { latitude: true, longitude: true, timestamp: true, accuracy: true },
+        take: 30000
+    });
+    const puntos = prepararPuntos(
+        filas.map((f) => ({ lat: f.latitude, lng: f.longitude, t: f.timestamp, acc: f.accuracy })),
+        route.actualStartTime, route.actualEndTime
+    );
+    const rec: Recorrido = await armarRecorrido(puntos, mapboxPegar, mapboxCamino);
+    return { route, rec };
+}
+
+/** Arma y guarda el recorrido de una ruta YA cerrada. */
+async function guardarRecorrido(routeId: number) {
+    const r = await construirRecorrido(routeId);
+    if (!r || !r.route.actualEndTime) return r;
+    const datos = {
+        tripId: r.route.tripId,
+        tramos: r.rec.tramos as any,
+        km: r.rec.km,
+        puntos: r.rec.puntos,
+        pedidos: r.rec.pedidos,
+        ventanaInicio: r.route.actualStartTime,
+        ventanaFin: r.route.actualEndTime,
+        calculadoEl: new Date()
+    };
+    await prisma.recorridoReal.upsert({ where: { routeId }, create: { routeId, ...datos }, update: datos });
+    return r;
+}
+
+/** Cada 5 minutos arma los recorridos de los viajes cerrados de los ultimos 3
+ *  dias que no lo tienen, o que hay que rearmar: el operador corrigio las
+ *  horas, o llegaron puntos atrasados de un celular que estaba sin señal.
+ *  De a pocos por vez, para no cargar la base ni Mapbox. */
+let _armandoRecorridos = false;
+async function barrerRecorridos() {
+    if (_armandoRecorridos) return;
+    _armandoRecorridos = true;
+    try {
+        // Horas desde aca, no con now(): ver cortesDeGps
+        const hace3dias = new Date(Date.now() - 3 * 24 * 3600_000);
+        const hace10min = new Date(Date.now() - 10 * 60_000);
+        const pendientes = await prisma.$queryRaw<Array<{ id: number }>>`
+            SELECT r.id FROM "Route" r
+            LEFT JOIN "RecorridoReal" rr ON rr."routeId" = r.id
+            WHERE r."actualEndTime" IS NOT NULL
+              AND r."actualEndTime" > (${hace3dias}::timestamptz AT TIME ZONE 'UTC')
+              AND r."actualEndTime" < (${hace10min}::timestamptz AT TIME ZONE 'UTC')
+              AND (rr."routeId" IS NULL
+                   OR rr."ventanaFin" IS DISTINCT FROM r."actualEndTime"
+                   OR rr."ventanaInicio" IS DISTINCT FROM r."actualStartTime"
+                   OR EXISTS (
+                        SELECT 1 FROM "DeviceLocation" d
+                        WHERE d."routeId" = r.id
+                          AND d."createdAt" > rr."calculadoEl"
+                          AND d.timestamp >= COALESCE(r."actualStartTime", r."actualEndTime" - interval '1 day') - interval '5 minutes'
+                          AND d.timestamp <= r."actualEndTime" + interval '5 minutes'))
+            ORDER BY r."actualEndTime" DESC
+            LIMIT 8
+        `;
+        for (const p of pendientes) {
+            try { await guardarRecorrido(Number(p.id)); }
+            catch (e: any) { console.warn('[recorrido] ruta ' + p.id + ':', e?.message || e); }
+        }
+        if (pendientes.length) console.log(`[recorrido] armados ${pendientes.length}`);
+    } catch (e: any) {
+        console.warn('[recorrido] barrido:', e?.message || e);
+    } finally {
+        _armandoRecorridos = false;
+    }
+}
+setTimeout(() => { void barrerRecorridos(); setInterval(() => void barrerRecorridos(), 5 * 60000); }, 2 * 60000);
+
+/** Arma el recorrido ahora (la hoja de ruta lo pide si todavia no esta).
+ *  Viaje cerrado: lo guarda. En curso: lo devuelve sin guardar.
+ *  POST /api/v1/history/routes/:id/recorrido */
+app.post('/api/v1/history/routes/:id/recorrido', async (req: any, res: any) => {
+    try {
+        const routeId = Number(req.params.id);
+        if (!Number.isFinite(routeId)) return res.status(400).json({ error: 'ID inválido' });
+        const r = await guardarRecorrido(routeId);
+        if (!r) return res.status(404).json({ error: 'Ruta no encontrada' });
+        res.json({ routeId, cerrado: !!r.route.actualEndTime, tramos: r.rec.tramos, km: r.rec.km, puntos: r.rec.puntos });
+    } catch (e: any) {
+        console.error('POST recorrido:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** El recorrido de un viaje EN CURSO, pegado a las calles, para la Torre.
+ *  Lo arma el servidor una vez por minuto y lo comparten todas las pantallas
+ *  (antes lo pedia cada navegador por su cuenta).
+ *  GET /api/v1/tracking/recorrido-vivo/:id (junto al resto de los datos GPS de la
+ *  Torre, que no piden sesion; /routes si la pide) */
+const _recorridoVivo = new Map<number, { hecho: number; datos: any; enCurso?: Promise<any> }>();
+app.get('/api/v1/tracking/recorrido-vivo/:id', async (req: any, res: any) => {
+    try {
+        const routeId = Number(req.params.id);
+        if (!Number.isFinite(routeId)) return res.status(400).json({ error: 'ID inválido' });
+        const c = _recorridoVivo.get(routeId);
+        if (c && Date.now() - c.hecho < 60000) return res.json(c.datos);
+        if (c?.enCurso) return res.json(await c.enCurso);
+        const enCurso = (async () => {
+            const guardado = await prisma.recorridoReal.findUnique({ where: { routeId } });
+            const r = guardado ? null : await construirRecorrido(routeId);
+            const datos = guardado
+                ? { routeId, tramos: guardado.tramos, km: guardado.km, puntos: guardado.puntos, cerrado: true }
+                : { routeId, tramos: r?.rec.tramos || [], km: r?.rec.km || 0, puntos: r?.rec.puntos || 0, cerrado: !!r?.route.actualEndTime };
+            _recorridoVivo.set(routeId, { hecho: Date.now(), datos });
+            return datos;
+        })().catch((e) => {
+            // Que el proximo pedido lo vuelva a intentar (no quedar trabado en el error)
+            _recorridoVivo.delete(routeId);
+            throw e;
+        });
+        _recorridoVivo.set(routeId, { hecho: c?.hecho || 0, datos: c?.datos, enCurso });
+        res.json(await enCurso);
+        if (_recorridoVivo.size > 200) {
+            for (const [k, v] of _recorridoVivo) if (Date.now() - v.hecho > 3600_000) _recorridoVivo.delete(k);
+        }
+    } catch (e: any) {
+        console.error('GET recorrido-vivo:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.get('/api/v1/history/routes/:id', async (req, res) => {
     try {
         const routeId = Number(req.params.id);
@@ -3526,6 +3789,8 @@ app.get('/api/v1/history/routes/:id', async (req, res) => {
 
         const driver = route.driver?.fullName || route.driver?.username || route.trip?.driver || 'SIN CHOFER';
         const reparto = route.trip?.reparto || route.trip?.businessUnit || `Ruta #${route.id}`;
+        // El recorrido pegado a las calles, si ya esta armado
+        const rr = await prisma.recorridoReal.findUnique({ where: { routeId } }).catch(() => null);
 
         res.json({
             routeId: route.id,
@@ -3539,6 +3804,7 @@ app.get('/api/v1/history/routes/:id', async (req, res) => {
             actualStartTime: route.actualStartTime?.toISOString() ?? null,
             actualEndTime: route.actualEndTime?.toISOString() ?? null,
             stops,
+            recorrido: rr ? { tramos: rr.tramos, km: rr.km, puntos: rr.puntos, calculadoEl: rr.calculadoEl } : null,
             locations: locations.map(l => ({
                 lat: l.latitude,
                 lng: l.longitude,
@@ -15636,7 +15902,7 @@ app.get('/api/v1/fleet/locations', async (req, res) => {
         const recentDev = await prisma.$queryRaw<any[]>`
             SELECT DISTINCT ON ("deviceId") *
             FROM "DeviceLocation"
-            WHERE "isActive" = true AND timestamp >= ${since1h}
+            WHERE "isActive" = true AND timestamp >= (${since1h}::timestamptz AT TIME ZONE 'UTC')
             ORDER BY "deviceId", timestamp DESC
         `;
         const latestByDevice = new Map<string, any>();

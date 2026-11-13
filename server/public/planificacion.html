@@ -5654,12 +5654,24 @@
                         if (r.stopsRetry > 0) chips.push(`<span class="status-badge bg-orange-100 text-orange-700 text-[10px]">↻ ${r.stopsRetry} para reintentar</span>`);
                     }
                     const pct = r.stopsTotal > 0 ? Math.round((r.stopsDone / r.stopsTotal) * 100) : 0;
+                    // Cortes del GPS con el camion andando: es lo que deja huecos
+                    // en el recorrido y en la Torre. Parado no cuenta.
+                    let gps = '';
+                    if (r.punchedIn && r.gpsPuntos === 0) {
+                        gps = '<p class="text-[11px] font-bold text-rose-600 mt-0.5">GPS: ningún punto en el viaje</p>';
+                    } else if (r.gpsCortes === 0) {
+                        gps = '<p class="text-[11px] font-bold text-emerald-700 mt-0.5">GPS: sin cortes</p>';
+                    } else if (r.gpsCortes > 0) {
+                        gps = `<p class="text-[11px] font-bold ${r.gpsMinSinDatos > 30 ? 'text-rose-600' : 'text-amber-700'} mt-0.5"
+                                  title="Veces que el camión se movió más de 300 m sin mandar posición (más de 3 min sin datos)">GPS: ${r.gpsCortes} ${r.gpsCortes === 1 ? 'corte' : 'cortes'} · ${r.gpsMinSinDatos} min sin datos andando</p>`;
+                    }
                     return `
                     <div class="${s.card} rounded-xl p-4 flex flex-col sm:flex-row sm:items-center gap-3 ${r.closed ? 'opacity-60' : ''}">
                         <span class="w-3 h-3 rounded-full ${s.dot} shrink-0"></span>
                         <div class="flex-1 min-w-0">
                             <p class="font-bold text-[#1B2559] text-sm truncate">${r.driverName}</p>
                             <p class="text-xs text-[#A3AED0] truncate">${r.reparto}${r.vehicle ? ` · ${r.vehicle}` : ''}</p>
+                            ${gps}
                         </div>
                         <div class="text-left sm:text-right shrink-0">
                             <p class="text-xs font-bold ${s.txt}">${s.label}</p>
@@ -9647,49 +9659,54 @@
         const controlTrailByRouteId = new Map();
         const CONTROL_TRAIL_REFRESH_MS = 12000;  // refrescamos las trazas cada 12s
 
-        // Caché de map-matching de trazas en vivo (pegar el recorrido a las calles).
-        // Re-matchear cada traza en cada refresco (45s) gastaría cuota de Mapbox al pedo:
-        // la historia ya recorrida NO cambia, solo crece en la punta. Por eso solo
-        // re-matcheamos una ruta si pasaron >10min Y creció >=10 puntos nuevos. Entre
-        // medio reusamos la línea ya pegada a la calle. Cada match = 1 request del tier
-        // gratis de Map Matching (100k/mes).
-        // Dimensionado para ~25 repartos simultáneos: ~48 matches/día por reparto
-        // (8h, throttle 10min) × 25 × 30 días ≈ 36k/mes, + el snap de posiciones (~19k/mes)
-        // ≈ 55k/mes. Holgado bajo el tier gratis. La posición EN VIVO del camión no
-        // depende de esto (anima sola cada 5-8s y se snapea cada 45s); esto es solo la
-        // línea del recorrido histórico, que con refrescarse cada 10min sobra.
-        const controlTrailMatchCache = new Map(); // rid -> { ts, rawCount, matched }
-        const CONTROL_TRAIL_MATCH_THROTTLE_MS = 600000; // 10 min por ruta (cuota Mapbox)
-
-        /** Devuelve la traza pegada a las calles (map-matching), con throttle+caché para
-         *  cuidar la cuota. Si no se puede matchear, devuelve el path crudo. */
-        async function controlMatchTrailPath(rid, rawPath, rawCount) {
-            if (!Array.isArray(rawPath) || rawPath.length < 2) return rawPath || [];
-            const now = Date.now();
-            const cached = controlTrailMatchCache.get(rid);
-            if (cached && (now - cached.ts) < CONTROL_TRAIL_MATCH_THROTTLE_MS
-                && Math.abs(rawCount - cached.rawCount) < 10
-                && Array.isArray(cached.matched) && cached.matched.length >= 2) {
-                return cached.matched;
+        // La linea del recorrido la arma el servidor (GET /tracking/recorrido-vivo/:id),
+        // pegada a las calles y una sola vez para todas las pantallas. Antes la
+        // pedia cada navegador por su cuenta, con 90 puntos de todo el dia.
+        // Se refresca cada 2 min; en el medio se le suman los puntos en vivo.
+        setInterval(() => {
+            if (controlMap && controlTrailByRouteId.size && typeof loadControlTrailAllActive === 'function') {
+                loadControlTrailAllActive().catch(() => {});
             }
-            // Map Matching limita 100 puntos/llamada → adelgazamos a ~90.
-            const forMatch = thinRoutePointsForMap(rawPath, 90);
+        }, 120000);
+
+        /** El recorrido de una ruta pegado a las calles, armado por el servidor
+         *  (lo comparten todas las pantallas; se rearma cada 2 min). Devuelve
+         *  { lineas, estimadas } para MultiLineString, o null. */
+        async function controlRecorridoVivo(rid) {
             try {
-                const mm = await fetch(`${API_URL}/control/map-matching-batch`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ points: forMatch })
-                });
-                if (mm.ok) {
-                    const dm = await mm.json();
-                    if (Array.isArray(dm?.geometry) && dm.geometry.length >= 2) {
-                        const matched = dm.geometry.map(p => ({ lat: p.lat, lng: p.lng }));
-                        controlTrailMatchCache.set(rid, { ts: now, rawCount, matched });
-                        return matched;
-                    }
+                const r = await fetch(`${API_URL}/tracking/recorrido-vivo/${rid}`);
+                if (!r.ok) return null;
+                const d = await r.json();
+                const tramos = Array.isArray(d?.tramos) ? d.tramos : [];
+                return {
+                    lineas: tramos.filter(t => t.tipo !== 'estimado').map(t => t.coords).filter(c => c.length >= 2),
+                    estimadas: tramos.filter(t => t.tipo === 'estimado').map(t => t.coords).filter(c => c.length >= 2)
+                };
+            } catch (_) {
+                return null;
+            }
+        }
+
+        /** Dibuja (o actualiza) la linea de una ruta: lo visto en linea llena, lo
+         *  estimado (sin señal) punteado. */
+        function controlPintarTraza(layerId, color, rec, ancho = 4) {
+            const multi = (lineas) => ({ type: 'Feature', properties: {}, geometry: { type: 'MultiLineString', coordinates: lineas } });
+            const capas = [
+                [layerId, rec.lineas, { 'line-color': color, 'line-width': ancho, 'line-opacity': 0.9 }],
+                [layerId + '-est', rec.estimadas, { 'line-color': color, 'line-width': Math.max(2, ancho - 1), 'line-opacity': 0.55, 'line-dasharray': [1.5, 1.5] }]
+            ];
+            for (const [id, lineas, paint] of capas) {
+                const src = controlMap.getSource(id);
+                if (src) {
+                    src.setData(multi(lineas));
+                    try { controlMap.setPaintProperty(id, 'line-color', color); } catch (_) {}
+                    continue;
                 }
-            } catch (_) { /* fallback a crudo */ }
-            return rawPath;
+                if (!lineas.length) continue;
+                controlMap.addSource(id, { type: 'geojson', data: multi(lineas) });
+                controlMap.addLayer({ id, type: 'line', source: id, layout: { 'line-join': 'round', 'line-cap': id.endsWith('-est') ? 'butt' : 'round' }, paint });
+                mapboxTrailLayerIds.push(id);
+            }
         }
 
         async function loadControlTrailAllActive() {
@@ -9706,85 +9723,46 @@
                 clearControlTrailPolylines();
                 return;
             }
-            const results = await Promise.allSettled(routeIds.map(rid =>
-                fetch(`${API_URL}/tracking/history?routeId=${rid}&hours=24&limit=3000`).then(r => r.ok ? r.json() : { points: [] }).then(j => ({ rid, j }))
-            ));
+            // Quince trazas superpuestas no se leen. Solo se dibuja la del
+            // reparto que el operador tiene enfocado (y solo esas se piden).
+            const visibles = routeIds.filter((rid) => {
+                const fila = (controlLiveData || []).find(x => Number(x.plannedRouteId) === Number(rid));
+                return !fila || controlIsTripVisible(String(fila.tripId));
+            });
+            const results = await Promise.all(visibles.map(async (rid) => ({ rid, rec: await controlRecorridoVivo(rid) })));
             const seen = new Set();
             for (let idx = 0; idx < results.length; idx++) {
-                const r = results[idx];
-                if (r.status !== 'fulfilled') continue;
-                const { rid, j } = r.value;
-                const pts = Array.isArray(j.points) ? j.points : [];
-                if (!controlMap) continue;
-                // Quince trazas superpuestas no se leen. Solo se dibuja la del
-                // reparto que el operador tiene enfocado.
-                const filaDeLaRuta = (controlLiveData || []).find(x => Number(x.plannedRouteId) === Number(rid));
-                if (filaDeLaRuta && !controlIsTripVisible(String(filaDeLaRuta.tripId))) continue;
+                const { rid, rec } = results[idx];
+                if (!controlMap || !rec) continue;
                 seen.add(rid);
-                const thin = thinRoutePointsForMap(pts.map(p => ({ lat: p.latitude, lng: p.longitude })), 500);
-                const color = CONTROL_TRAIL_COLORS[idx % CONTROL_TRAIL_COLORS.length];
-                const rawPath = thin.map(p => ({ lat: p.lat, lng: p.lng }));
-                // Pegar el recorrido a las calles (snap), cuidando la cuota con throttle+caché.
-                const path = await controlMatchTrailPath(rid, rawPath, pts.length);
-                const lastTs = pts.length ? new Date(pts[pts.length - 1].timestamp).getTime() : 0;
+                const color = CONTROL_TRAIL_COLORS[routeIds.indexOf(rid) % CONTROL_TRAIL_COLORS.length];
                 const layerId = `trail-${rid}`;
-                let entry = controlTrailByRouteId.get(rid);
-
-                const geojson = {
-                    type: 'Feature',
-                    properties: {},
-                    geometry: {
-                        type: 'LineString',
-                        coordinates: path.map(p => [p.lng, p.lat])
-                    }
-                };
-
-                if (entry && controlMap.getSource(layerId)) {
-                    // MAPBOX: actualizar source data
-                    try {
-                        controlMap.getSource(layerId).setData(geojson);
-                        if (controlMap.getLayer(layerId)) {
-                            controlMap.setPaintProperty(layerId, 'line-color', color);
-                        }
-                        entry.lastTs = lastTs;
-                        entry.color = color;
-                        entry.points = path; // guardamos para appendPointToTrail
-                    } catch (_) {}
-                } else {
-                    if (path.length < 2) continue;
-                    try {
-                        _mbRemoveLayerAndSource(layerId);
-                        controlMap.addSource(layerId, { type: 'geojson', data: geojson });
-                        controlMap.addLayer({
-                            id: layerId,
-                            type: 'line',
-                            source: layerId,
-                            layout: { 'line-join': 'round', 'line-cap': 'round' },
-                            paint: {
-                                'line-color': color,
-                                'line-width': 4,
-                                'line-opacity': 0.9
-                            }
-                        });
-                        mapboxTrailLayerIds.push(layerId);
-                        controlTrailByRouteId.set(rid, { layerId, color, lastTs, points: path });
-                    } catch (e) {
-                        console.warn('Mapbox addLayer trail:', e);
-                    }
+                try {
+                    controlPintarTraza(layerId, color, rec);
+                    // Los puntos que llegan en vivo se suman a la ultima linea
+                    controlTrailByRouteId.set(rid, { layerId, color, lastTs: Date.now(), lineas: rec.lineas.map(l => l.slice()), estimadas: rec.estimadas });
+                } catch (e) {
+                    console.warn('Mapbox trail:', e);
                 }
             }
             // Borrar trazas de rutas que ya no estan activas
             for (const [rid, entry] of controlTrailByRouteId) {
                 if (!seen.has(rid)) {
-                    try { if (entry?.layerId) _mbRemoveLayerAndSource(entry.layerId); } catch (_) {}
+                    for (const id of [entry?.layerId, entry?.layerId ? entry.layerId + '-est' : null]) {
+                        if (!id) continue;
+                        try { _mbRemoveLayerAndSource(id); } catch (_) {}
+                        const i = mapboxTrailLayerIds.indexOf(id);
+                        if (i >= 0) mapboxTrailLayerIds.splice(i, 1);
+                    }
                     controlTrailByRouteId.delete(rid);
-                    const idx = mapboxTrailLayerIds.indexOf(entry.layerId);
-                    if (idx >= 0) mapboxTrailLayerIds.splice(idx, 1);
                 }
             }
         }
 
-        /** Extiende una traza existente con un punto nuevo (llega por socket). MAPBOX. */
+        /** Extiende una traza existente con un punto nuevo (llega por socket). MAPBOX.
+         *  Si el punto esta lejos del ultimo (el celular estuvo sin señal) NO se une
+         *  con una recta: arranca una linea nueva y el hueco lo completa el
+         *  servidor en el proximo armado. */
         function appendPointToTrail(routeId, lat, lng) {
             if (routeId == null || !Number.isFinite(Number(routeId))) return;
             const entry = controlTrailByRouteId.get(Number(routeId));
@@ -9792,23 +9770,18 @@
             try {
                 const src = controlMap.getSource(entry.layerId);
                 if (!src) return;
-                const pts = entry.points || [];
-                const last = pts.length > 0 ? pts[pts.length - 1] : null;
+                const lineas = entry.lineas || (entry.lineas = []);
+                let ultima = lineas[lineas.length - 1];
+                const last = ultima && ultima.length ? ultima[ultima.length - 1] : null;
                 if (last) {
-                    const dLat = lat - last.lat;
-                    const dLng = lng - last.lng;
-                    if (Math.abs(dLat) < 0.000045 && Math.abs(dLng) < 0.000045) return; // ~5m
+                    const d = _distMeters({ lat: last[1], lng: last[0] }, { lat, lng });
+                    if (d < 5) return;
+                    if (d > 300) { ultima = []; lineas.push(ultima); }
+                } else if (!ultima) {
+                    ultima = []; lineas.push(ultima);
                 }
-                pts.push({ lat, lng });
-                entry.points = pts;
-                src.setData({
-                    type: 'Feature',
-                    properties: {},
-                    geometry: {
-                        type: 'LineString',
-                        coordinates: pts.map(p => [p.lng, p.lat])
-                    }
-                });
+                ultima.push([lng, lat]);
+                src.setData({ type: 'Feature', properties: {}, geometry: { type: 'MultiLineString', coordinates: lineas.filter(l => l.length >= 2) } });
             } catch (_) {}
         }
 
@@ -9824,57 +9797,16 @@
             try {
                 await initControlMap();
                 clearControlTrailPolylines();
-                const [histRes, sumRes] = await Promise.all([
-                    fetch(`${API_URL}/tracking/history?routeId=${routeId}&hours=24&limit=5000`),
+                const [rec, sumRes] = await Promise.all([
+                    controlRecorridoVivo(routeId),
                     fetch(`${API_URL}/routes/${routeId}/live-summary`, { headers: getActorHeaders() })
                 ]);
-                const hist = histRes.ok ? await histRes.json() : { points: [] };
                 const summary = sumRes.ok ? await sumRes.json() : null;
-                const pts = Array.isArray(hist.points) ? hist.points : [];
-                // Adelgazar a ~85 puntos (Mapbox Map Matching limita a 100 por llamada,
-                // dejamos margen). Esto es suficiente para una ruta urbana de ~8h.
-                const thin = thinRoutePointsForMap(
-                    pts.map((p) => ({ lat: p.latitude, lng: p.longitude })),
-                    85
-                );
-
-                // Intentar map-matching contra Mapbox para obtener la polyline REAL
-                // (puntos pegados a las calles), si no se pudo, caer al raw GPS.
-                let path = thin.map((p) => ({ lat: p.lat, lng: p.lng }));
-                if (thin.length >= 2) {
-                    try {
-                        const mm = await fetch(`${API_URL}/control/map-matching-batch`, {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ points: thin })
-                        });
-                        if (mm.ok) {
-                            const dm = await mm.json();
-                            if (Array.isArray(dm?.geometry) && dm.geometry.length >= 2) {
-                                path = dm.geometry.map((p) => ({ lat: p.lat, lng: p.lng }));
-                            }
-                        }
-                    } catch (_) { /* fallback al raw GPS */ }
-                }
-
-                if (controlMap && path.length >= 2) {
-                    const layerId = `trail-summary-${routeId}`;
-                    try {
-                        _mbRemoveLayerAndSource(layerId);
-                        controlMap.addSource(layerId, {
-                            type: 'geojson',
-                            data: {
-                                type: 'Feature', properties: {},
-                                geometry: { type: 'LineString', coordinates: path.map(p => [p.lng, p.lat]) }
-                            }
-                        });
-                        controlMap.addLayer({
-                            id: layerId, type: 'line', source: layerId,
-                            layout: { 'line-join': 'round', 'line-cap': 'round' },
-                            paint: { 'line-color': '#f97316', 'line-opacity': 0.92, 'line-width': 3 }
-                        });
-                        mapboxTrailLayerIds.push(layerId);
-                    } catch (e) { console.warn('Mapbox trail-summary:', e); }
+                // La linea la arma el servidor pegada a las calles (antes: 85
+                // puntos de todo el dia unidos de a uno, con diagonales).
+                if (controlMap && rec && (rec.lineas.length || rec.estimadas.length)) {
+                    try { controlPintarTraza(`trail-summary-${routeId}`, '#f97316', rec, 3); }
+                    catch (e) { console.warn('Mapbox trail-summary:', e); }
                 }
                 if (out && summary) {
                     const trk = summary.tracking || {};
@@ -9946,7 +9878,7 @@
                                 <tbody>${stopsRows || '<tr><td colspan="9" class="py-4 text-center text-[#A3AED0]">Sin paradas</td></tr>'}</tbody>
                             </table>
                         </div>
-                        <p class="text-[10px] text-[#A3AED0] mt-2">${pts.length} puntos GPS cargados en el mapa (naranja punteado).</p>`;
+                        <p class="text-[10px] text-[#A3AED0] mt-2">Recorrido en naranja, pegado a las calles; punteado donde el celular estuvo sin señal.</p>`;
                 }
             } catch (e) {
                 console.error(e);
@@ -31834,6 +31766,7 @@ async function openHdrDetail(routeId) {
 
         // Render mapa con polyline real
         renderHdrMap(data);
+        _hdrMostrarKm(data);
     } catch (e) {
         console.error('openHdrDetail:', e);
         if (stopsBox) stopsBox.innerHTML = '<p class="text-rose-600 text-xs">Error al cargar el detalle.</p>';
@@ -31843,6 +31776,46 @@ async function openHdrDetail(routeId) {
 function closeHdrDetailModal() {
     const modal = document.getElementById('hdr-detail-modal');
     if (modal) modal.classList.add('hidden');
+}
+
+/** Los puntos GPS en pedazos: se corta donde hubo un hueco (mas de 3 min y
+ *  300 m, o mas de 1 km entre dos puntos). Es el dibujo de respaldo mientras
+ *  el recorrido pegado a las calles no esta armado. */
+function _hdrCortarEnHuecos(locs) {
+    const R = 6371000, rad = Math.PI / 180;
+    const dist = (a, b) => {
+        const dLat = (b.lat - a.lat) * rad, dLng = (b.lng - a.lng) * rad;
+        const h = Math.sin(dLat / 2) ** 2 + Math.cos(a.lat * rad) * Math.cos(b.lat * rad) * Math.sin(dLng / 2) ** 2;
+        return 2 * R * Math.asin(Math.sqrt(h));
+    };
+    const lineas = [];
+    let actual = [];
+    for (let i = 0; i < locs.length; i++) {
+        const p = locs[i], u = locs[i - 1];
+        if (u) {
+            const min = (new Date(p.t) - new Date(u.t)) / 60000;
+            const m = dist(u, p);
+            if ((min > 3 && m > 300) || m > 1000) { if (actual.length >= 2) lineas.push(actual); actual = []; }
+        }
+        actual.push([p.lng, p.lat]);
+    }
+    if (actual.length >= 2) lineas.push(actual);
+    return lineas;
+}
+
+/** "Recorrido: 48,3 km" en el pie de las estadisticas, si esta armado. */
+function _hdrMostrarKm(detail) {
+    const box = document.getElementById('hdr-detail-stats');
+    if (!box || detail?.recorrido?.km == null) return;
+    let el = document.getElementById('hdr-km-real');
+    if (!el) {
+        el = document.createElement('div');
+        el.id = 'hdr-km-real';
+        el.className = 'bg-white rounded-xl p-3 text-center';
+        box.appendChild(el);
+    }
+    el.innerHTML = `<p class="text-[9px] font-black text-[#A3AED0] uppercase">Recorrido</p>
+        <p class="text-base font-black text-[#1B2559]">${String(Number(detail.recorrido.km).toFixed(1)).replace('.', ',')} km</p>`;
 }
 
 async function renderHdrMap(detail) {
@@ -31879,8 +31852,10 @@ async function renderHdrMap(detail) {
 
     // Limpiar polyline (layer/source) y markers anteriores
     try {
-        if (_hdrMap.getLayer('hdr-route')) _hdrMap.removeLayer('hdr-route');
-        if (_hdrMap.getSource('hdr-route')) _hdrMap.removeSource('hdr-route');
+        for (const id of ['hdr-route', 'hdr-route-est']) {
+            if (_hdrMap.getLayer(id)) _hdrMap.removeLayer(id);
+            if (_hdrMap.getSource(id)) _hdrMap.removeSource(id);
+        }
     } catch (_) {}
     _hdrPolyline = null;
     _hdrStopMarkers.forEach(m => { try { m.remove(); } catch (_) {} });
@@ -31888,22 +31863,53 @@ async function renderHdrMap(detail) {
 
     const bounds = new mapboxgl.LngLatBounds();
 
-    // Polyline del recorrido GPS real
-    if (locs.length >= 2) {
-        const coords = locs.map(l => [l.lng, l.lat]);
-        try {
-            _hdrMap.addSource('hdr-route', {
-                type: 'geojson',
-                data: { type: 'Feature', properties: {}, geometry: { type: 'LineString', coordinates: coords } }
-            });
+    // El recorrido: el guardado (pegado a las calles) si ya esta armado. Si
+    // no, los puntos tal cual, pero cortados donde hubo un hueco: unir un
+    // hueco con una recta era la diagonal que cruzaba manzanas.
+    const tramos = Array.isArray(detail.recorrido?.tramos) ? detail.recorrido.tramos : null;
+    let lineas = [], estimadas = [];
+    if (tramos && tramos.length) {
+        lineas = tramos.filter(t => t.tipo !== 'estimado').map(t => t.coords);
+        estimadas = tramos.filter(t => t.tipo === 'estimado').map(t => t.coords);
+    } else if (locs.length >= 2) {
+        lineas = _hdrCortarEnHuecos(locs);
+    }
+    try {
+        if (lineas.length) {
+            _hdrMap.addSource('hdr-route', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'MultiLineString', coordinates: lineas } } });
             _hdrMap.addLayer({
                 id: 'hdr-route', type: 'line', source: 'hdr-route',
                 layout: { 'line-join': 'round', 'line-cap': 'round' },
                 paint: { 'line-color': '#f97316', 'line-opacity': 0.95, 'line-width': 4 }
             });
             _hdrPolyline = true;
-            coords.forEach(c => bounds.extend(c));
-        } catch (e) { console.warn('hdr route:', e); }
+            lineas.forEach(l => l.forEach(c => bounds.extend(c)));
+        }
+        if (estimadas.length) {
+            // Lo que no se vio (el celular sin señal): el camino por calles, punteado
+            _hdrMap.addSource('hdr-route-est', { type: 'geojson', data: { type: 'Feature', properties: {}, geometry: { type: 'MultiLineString', coordinates: estimadas } } });
+            _hdrMap.addLayer({
+                id: 'hdr-route-est', type: 'line', source: 'hdr-route-est',
+                layout: { 'line-join': 'round', 'line-cap': 'butt' },
+                paint: { 'line-color': '#f97316', 'line-opacity': 0.6, 'line-width': 3, 'line-dasharray': [1.5, 1.5] }
+            });
+            estimadas.forEach(l => l.forEach(c => bounds.extend(c)));
+        }
+    } catch (e) { console.warn('hdr route:', e); }
+
+    // Viaje cerrado sin recorrido armado: se pide ahora y se vuelve a dibujar
+    if (!tramos && detail.actualEndTime && locs.length >= 2 && !detail.__pidioRecorrido) {
+        detail.__pidioRecorrido = true;
+        fetch(`${_hdrApiUrl()}/history/routes/${detail.routeId}/recorrido`, { method: 'POST' })
+            .then(r => r.ok ? r.json() : null)
+            .then(j => {
+                if (!j || !Array.isArray(j.tramos) || !j.tramos.length) return;
+                if (_hdrLastDetail !== detail) return;   // ya se abrio otro viaje
+                detail.recorrido = { tramos: j.tramos, km: j.km };
+                renderHdrMap(detail);
+                _hdrMostrarKm(detail);
+            })
+            .catch(() => {});
     }
 
     const makeCircleEl = (color, size = 18, text = '') => {
@@ -31924,7 +31930,18 @@ async function renderHdrMap(detail) {
         return d;
     };
 
-    if (locs.length > 0) {
+    // Inicio y fin: los del recorrido armado (solo el viaje). Los puntos crudos
+    // pueden seguir de antes o de despues, si el celular quedo prendido.
+    const todas = tramos && tramos.length ? tramos.map(t => t.coords).filter(c => c.length) : [];
+    const ini = todas.length ? todas[0][0] : null, fin = todas.length ? todas[todas.length - 1][todas[todas.length - 1].length - 1] : null;
+    if (ini && fin) {
+        const start = { lng: ini[0], lat: ini[1] }, end = { lng: fin[0], lat: fin[1] };
+        const ms = new mapboxgl.Marker({ element: makeCircleEl('#10b981', 18), anchor: 'center' })
+            .setLngLat([start.lng, start.lat]).setPopup(new mapboxgl.Popup().setText('Inicio')).addTo(_hdrMap);
+        const me = new mapboxgl.Marker({ element: makeCircleEl('#dc2626', 18), anchor: 'center' })
+            .setLngLat([end.lng, end.lat]).setPopup(new mapboxgl.Popup().setText('Fin')).addTo(_hdrMap);
+        _hdrStopMarkers.push(ms, me);
+    } else if (locs.length > 0) {
         const start = locs[0];
         const end = locs[locs.length - 1];
         const ms = new mapboxgl.Marker({ element: makeCircleEl('#10b981', 18), anchor: 'center' })

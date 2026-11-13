@@ -432,6 +432,28 @@ model AppSettings {
   updatedAt DateTime @updatedAt
 }
 
+/// El recorrido real de un viaje ya cerrado, pegado a las calles. Se arma una
+/// vez (los puntos crudos se borran a los 30 dias; esto queda para siempre).
+model RecorridoReal {
+  routeId       Int      @id
+  tripId        Int?
+  /// [{ tipo: "real" | "crudo" | "estimado", coords: [[lng, lat], ...] }]
+  tramos        Json
+  km            Float?
+  /// Puntos GPS que se usaron
+  puntos        Int      @default(0)
+  /// Pedidos a Mapbox que costo armarlo
+  pedidos       Int      @default(0)
+  /// La ventana del viaje con la que se armo: si el operador corrige las
+  /// horas, se vuelve a armar
+  ventanaInicio DateTime?
+  ventanaFin    DateTime?
+  calculadoEl   DateTime @default(now())
+  actualizado   DateTime @updatedAt
+
+  @@index([tripId])
+}
+
 /// Cuantos pedidos se le hicieron a Mapbox desde el servidor, por mes y por
 /// servicio. Sirve para ver el uso real y para cortar antes de pasar lo gratis.
 model MapboxUso {

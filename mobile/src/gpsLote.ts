@@ -63,6 +63,9 @@ async function sendLote(
       body: JSON.stringify({
         ...quien,
         routeId,
+        // La hora del reloj del celular al mandar: el servidor la compara con
+        // la suya y corrige los puntos si el reloj esta desfasado
+        enviadoEn: new Date().toISOString(),
         points: puntos.map((p) => ({ lat: p.lat, lng: p.lng, acc: p.acc, spd: p.spd, hdg: p.hdg, t: p.t })),
       }),
       signal: controller.signal,
