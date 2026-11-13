@@ -27256,6 +27256,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
          *  `ruta` dice de que ruta vino la parada; las que agrego el operador a
          *  mano no la tienen, y por eso nunca se pierden al rearmar. */
         let tripDeliveryRows = [];
+        /** Las paradas como estaban en el servidor al abrir el viaje para
+         *  editarlo ([{ stopId }] en orden). Sirve para saber si solo cambio la
+         *  unidad de alguna: eso se guarda sin reemplazar paradas, y por eso
+         *  funciona tambien en un viaje finalizado. null = viaje nuevo. */
+        let tripDeliveryOriginal = null;
 
         /** Las rutas que hace este viaje, en el orden en que el chofer las recorre. */
         let tripRutas = [];
@@ -28238,6 +28243,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         function resetTripDeliveryPanelForNewTrip() {
             tripDeliveryRows = [];
+            tripDeliveryOriginal = null;
             tripRutas = [];
             if (typeof renderTripRutas === 'function') renderTripRutas();
             const hint = document.getElementById('trip-delivery-hint');
@@ -28480,6 +28486,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             }
             if (editor) editor.classList.remove('hidden');
             tripDeliveryRows = [];
+            tripDeliveryOriginal = null;
             try {
                 const res = await fetch(`${API_URL}/trips/${tripId}/delivery-stops`, { headers: getActorHeaders() });
                 const data = await res.json();
@@ -28492,8 +28499,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     // borraba la ruta a todas las paradas sin que nadie lo
                     // pidiera, y no habia forma de saber cual no tocar.
                     ruta: s.ruta || null,
-                    status: s.status || 'PENDING'
+                    status: s.status || 'PENDING',
+                    // Para reconocer la parada al guardar y ver si le cambiaron la unidad
+                    stopId: s.id || null,
+                    rutaOriginal: s.ruta || null
                 }));
+                if (res.ok) tripDeliveryOriginal = tripDeliveryRows.map((r) => ({ stopId: r.stopId }));
             } catch (e) {
                 console.error(e);
             }
@@ -29633,6 +29644,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             // unidad de negocio es: ni la hoja de ruta, ni el reparto de horas,
             // ni el exportable.
             const rutasDeLasParadas = Array.isArray(tripDeliveryRows) ? tripDeliveryRows.map(r => r.ruta || null) : [];
+            // Se arma antes de cerrar: despues las filas ya no estan
+            const planParadas = id ? _ntPlanDeParadas() : null;
             const quien = (localStorage.getItem('r14.loggedUser') || '').trim();
             const payloads = targetDates.map(dia => {
                 const tripData = { ...baseTripData, date: new Date(dia + 'T12:00:00').toISOString() };
@@ -29647,8 +29660,33 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             // /api/health, que no hace nada), y esperarlo con el modal abierto
             // es lo que hacia sentir que crear un viaje tardaba un monton.
             closeNewTripModal();
-            if (id) guardarEdicionDeFondo(id, payloads[0], paradas, absorbidos, rutasDeLasParadas);
+            if (id) guardarEdicionDeFondo(id, payloads[0], paradas, absorbidos, rutasDeLasParadas, planParadas);
             else crearViajesDeFondo(payloads, paradas, quien, rutasDeLasParadas);
+        }
+
+        /** Que hay que hacer con las paradas al guardar una edicion.
+         *  `misma` = son las mismas paradas, en el mismo orden, que habia al
+         *  abrir. Entonces no se reemplaza nada: si cambio la unidad de alguna,
+         *  se manda solo eso, y anda aunque el viaje ya este finalizado. */
+        function _ntPlanDeParadas() {
+            const orig = Array.isArray(tripDeliveryOriginal) ? tripDeliveryOriginal : null;
+            const filas = Array.isArray(tripDeliveryRows) ? tripDeliveryRows : [];
+            const misma = !!orig && orig.length === filas.length
+                && filas.every((r, i) => r.stopId && r.stopId === orig[i].stopId);
+            const cambiosUnidad = misma
+                ? filas.filter(r => (r.ruta || null) !== (r.rutaOriginal || null)).map(r => ({ stopId: r.stopId, unidad: r.ruta || null }))
+                : [];
+            return { misma, cambiosUnidad };
+        }
+
+        /** Cambia la unidad de paradas de un viaje sin reemplazarlas. */
+        async function guardarUnidadesDeParadas(tripId, cambios) {
+            const res = await fetch(`${API_URL}/trips/${tripId}/unidades-de-paradas`, {
+                method: 'PATCH', headers: getActorHeaders(), body: JSON.stringify({ cambios })
+            });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) throw new Error(data.error || `El servidor respondió ${res.status}`);
+            return data;
         }
 
         /** Las horas de salida y llegada del modal, puestas sobre el dia que
@@ -29835,7 +29873,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
         }
 
         /** Guarda la edicion con la ventana ya cerrada. */
-        async function guardarEdicionDeFondo(id, tripData, paradas, absorbidos, rutas) {
+        async function guardarEdicionDeFondo(id, tripData, paradas, absorbidos, rutas, plan) {
             try {
                 const res = await fetch(`${API_URL}/trips/${id}`, {
                     method: 'PUT', headers: getActorHeaders(), body: JSON.stringify(tripData)
@@ -29847,12 +29885,32 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     addNotification('success', `Viaje #${id} actualizado`,
                         [tripData.reparto, tripData.driver].filter(Boolean).join(' · ') || 'Cambios guardados.');
                 }
-                // En una edicion las paradas se mandan siempre, incluso vacias:
-                // dejar la lista en cero es una decision valida del operador.
-                const guardadas = await putTripDeliveryStops(parseInt(id, 10), paradas, rutas).catch(() => false);
-                if (guardadas === false && typeof addNotification === 'function') {
-                    addNotification('info', 'Paradas sin cambios',
-                        'Se guardaron los datos del viaje, pero no las paradas.');
+                if (plan && plan.misma && !(Array.isArray(absorbidos) && absorbidos.length)) {
+                    // Las mismas paradas que al abrir: no se reemplazan (en un
+                    // viaje finalizado el servidor no lo deja, y antes se perdia
+                    // el cambio de unidad). Solo se manda la unidad que cambio.
+                    if (plan.cambiosUnidad.length) {
+                        try {
+                            const r = await guardarUnidadesDeParadas(parseInt(id, 10), plan.cambiosUnidad);
+                            if (typeof addNotification === 'function') {
+                                const n = plan.cambiosUnidad.length;
+                                addNotification('success', `Unidades del viaje #${id}`,
+                                    `${n} ${n === 1 ? 'parada cambió' : 'paradas cambiaron'} de unidad. El viaje queda: ${r.businessUnit || '—'}. Las horas y el costo por unidad ya lo toman.`);
+                            }
+                        } catch (e) {
+                            if (typeof addNotification === 'function') {
+                                addNotification('critical', `No se pudo cambiar la unidad de las paradas (#${id})`, String(e?.message || e));
+                            }
+                        }
+                    }
+                } else {
+                    // En una edicion las paradas se mandan siempre, incluso vacias:
+                    // dejar la lista en cero es una decision valida del operador.
+                    const guardadas = await putTripDeliveryStops(parseInt(id, 10), paradas, rutas).catch(() => false);
+                    if (guardadas === false && typeof addNotification === 'function') {
+                        addNotification('info', 'Paradas sin cambios',
+                            'Se guardaron los datos del viaje, pero no las paradas.');
+                    }
                 }
                 // Fusion: los viajes absorbidos se borran RECIEN ACA, con el
                 // viaje que queda ya guardado y con sus paradas puestas. Si algo

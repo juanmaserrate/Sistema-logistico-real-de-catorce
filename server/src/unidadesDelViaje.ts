@@ -52,6 +52,9 @@ export interface ViajeParaReparto {
     inicio?: Date | string | null;
     /** Momento en que termino. */
     fin?: Date | string | null;
+    /** El operador reasigno a mano la unidad de alguna parada: los tramos del
+     *  chofer ya no dicen la verdad sobre de quien es cada rato. */
+    unidadesAMano?: boolean | null;
 }
 
 export const SIN_UNIDAD = 'SIN UNIDAD';
@@ -185,7 +188,9 @@ export function repartirHoras(
     // explicitamente "hasta aca fue esta ruta". Cortar por la hora de la ultima
     // parada le regala a la unidad siguiente todo el rato en que el chofer
     // venia manejando sin cerrar nada.
-    const porTramos = horasDeLosTramos(viaje.tramos, unidadPorRuta, unidades, paradas);
+    // Si el operador corrigio a mano de que unidad es cada parada, los tramos
+    // quedaron viejos: manda el horario de las paradas, que ya dice lo nuevo.
+    const porTramos = viaje.unidadesAMano ? null : horasDeLosTramos(viaje.tramos, unidadPorRuta, unidades, paradas);
     if (porTramos) {
         const repartido = Object.values(porTramos).reduce((a, b) => a + b, 0);
         if (repartido > 0) {
@@ -294,4 +299,84 @@ export async function mapaUnidadPorRuta(prisma: any): Promise<Map<string, string
         if (u) m.set(norm(t.name), u);
     }
     return m;
+}
+
+/** Una parada con su id, para reasignarle la unidad a mano. */
+export interface ParadaConId extends ParadaParaReparto {
+    id: number;
+}
+
+export interface ResultadoReasignacion {
+    /** stopId -> ruta nueva. Incluye las paradas a las que se les escribe la
+     *  unidad que ya tenian sin decirla (ver abajo). */
+    rutas: Map<number, string | null>;
+    /** El campo businessUnit del viaje despues del cambio. */
+    unidadesDelViaje: string[];
+}
+
+/**
+ * El operador cambia a mano la unidad de algunas paradas de un viaje.
+ *
+ *  - La parada se lleva la unidad nueva en `ruta`, que es de donde la leen el
+ *    reparto de horas, el exportable y el costo por unidad.
+ *  - Las otras paradas que hasta ahora eran de la unica unidad del viaje SIN
+ *    decirlo (ruta vacia) pasan a decirlo. Si no, apenas el viaje sume una
+ *    segunda unidad quedarian en SIN UNIDAD y sus horas no serian de nadie.
+ *  - El viaje suma la unidad nueva, y pierde una unidad SOLO si se quedo sin
+ *    paradas por este cambio. Las que ya no tenian paradas (un RETIRO o una
+ *    REPOSICION cargados en el viaje) quedan como estaban: no las toco nadie.
+ */
+export function reasignarUnidades(
+    businessUnitAntes: string | null | undefined,
+    paradas: ParadaConId[],
+    cambios: Array<{ stopId: number; unidad: string | null }>,
+    unidadPorRuta: Map<string, string>
+): ResultadoReasignacion {
+    const antes = unidadesDeTexto(businessUnitAntes);
+    const pedidas = new Map<number, string | null>();
+    for (const c of cambios) {
+        const u = norm(c.unidad);
+        pedidas.set(Number(c.stopId), u || null);
+    }
+    // Las unidades nuevas cuentan como del viaje para poder leer las paradas
+    const conNuevas = [...antes];
+    for (const u of pedidas.values()) if (u && !conNuevas.includes(u)) conNuevas.push(u);
+
+    const unidadDe = (p: ParadaParaReparto, lista: string[]) =>
+        esVueltaAlDeposito(p) ? null : unidadDeParada(p, unidadPorRuta, lista);
+
+    const conParadasAntes = new Set<string>();
+    for (const p of paradas) {
+        const u = unidadDe(p, antes);
+        if (u && u !== SIN_UNIDAD) conParadasAntes.add(u);
+    }
+
+    const rutas = new Map<number, string | null>();
+    const despues: ParadaParaReparto[] = [];
+    for (const p of paradas) {
+        if (pedidas.has(p.id) && !esVueltaAlDeposito(p)) {
+            const r = pedidas.get(p.id)!;
+            if (norm(p.ruta) !== norm(r)) rutas.set(p.id, r);
+            despues.push({ ...p, ruta: r });
+            continue;
+        }
+        // La que era de la unica unidad sin decirlo, ahora lo dice
+        if (!esVueltaAlDeposito(p) && !norm(p.ruta) && antes.length === 1) {
+            rutas.set(p.id, antes[0]);
+            despues.push({ ...p, ruta: antes[0] });
+            continue;
+        }
+        despues.push(p);
+    }
+
+    const conParadasDespues: string[] = [];
+    for (const p of despues) {
+        const u = unidadDe(p, conNuevas);
+        if (u && u !== SIN_UNIDAD && !conParadasDespues.includes(u)) conParadasDespues.push(u);
+    }
+
+    let lista = antes.filter((u) => !(conParadasAntes.has(u) && !conParadasDespues.includes(u)));
+    for (const u of conParadasDespues) if (!lista.includes(u)) lista.push(u);
+    if (!lista.length) lista = antes;
+    return { rutas, unidadesDelViaje: lista };
 }

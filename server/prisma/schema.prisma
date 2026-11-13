@@ -283,6 +283,10 @@ model Trip {
   justificacion      String?
   /// Indicaciones para el chofer: se ven en la app y en la hoja de ruta.
   observacionChofer  String?
+  /// El operador cambio a mano la unidad de negocio de alguna parada. Desde
+  /// ahi las horas por unidad salen del horario de cada parada y no de los
+  /// tramos que cerro el chofer, que ya no coinciden con lo corregido.
+  unidadesAMano      Boolean  @default(false)
   stops              TripStop[]
   locations          TripLocation[]
   linkedRoute        Route?

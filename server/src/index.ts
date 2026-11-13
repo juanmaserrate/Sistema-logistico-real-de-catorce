@@ -1,7 +1,7 @@
 
 import express from 'express';
 import crypto from 'crypto';
-import { mapaUnidadPorRuta, unidadDeParada, unidadesDeTexto, repartirHoras, esVueltaAlDeposito, SIN_UNIDAD } from './unidadesDelViaje';
+import { mapaUnidadPorRuta, unidadDeParada, unidadesDeTexto, repartirHoras, esVueltaAlDeposito, SIN_UNIDAD, reasignarUnidades } from './unidadesDelViaje';
 import { normalizarViajeAlCerrar } from './cierreDeViaje';
 import { costoTercerizadoPorHoras } from './costoTercerizado';
 import { auditarMes, filtrarInforme } from './auditoriaDeViajes';
@@ -8329,7 +8329,8 @@ function aperturaPorUnidad(
                 stops: (r?.stops || []) as any,
                 tramos: (t?.tramos || []) as any,
                 inicio: r?.actualStartTime || t?.exitTime,
-                fin: r?.actualEndTime || t?.returnTime
+                fin: r?.actualEndTime || t?.returnTime,
+                unidadesAMano: t?.unidadesAMano
             },
             mapaU,
             horas
@@ -14295,7 +14296,8 @@ async function correrMotorDeCostos(
                     stops: (t.linkedRoute?.stops || []) as any,
                     tramos: (t.tramos || []) as any,
                     inicio: t.routeActualStart || t.exitTime,
-                    fin: t.routeActualEnd || t.returnTime
+                    fin: t.routeActualEnd || t.returnTime,
+                    unidadesAMano: t.unidadesAMano
                 },
                 mapaU,
                 durHrs
@@ -14460,6 +14462,77 @@ app.get('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
         });
     } catch (e: any) {
         console.error('GET trips delivery-stops:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** El operador cambia la unidad de negocio de paradas de un viaje, aunque el
+ *  viaje ya este finalizado. No reemplaza paradas (eso esta protegido para no
+ *  perder lo que marco el chofer): solo les cambia la unidad, y el viaje suma
+ *  o pierde unidades segun corresponda (ver reasignarUnidades).
+ *
+ *  Las horas por unidad, el exportable y el costo por unidad del Motor de
+ *  Costos se calculan en el momento a partir de esto, asi que se actualizan
+ *  solos. El costo del viaje entero no cambia: no depende de la unidad.
+ *
+ *  PATCH /api/v1/trips/:tripId/unidades-de-paradas { cambios: [{ stopId, unidad }] } */
+app.patch('/api/v1/trips/:tripId/unidades-de-paradas', async (req: any, res: any) => {
+    try {
+        const tripId = parseInt(req.params.tripId, 10);
+        if (!Number.isFinite(tripId)) return res.status(400).json({ error: 'ID inválido' });
+        const cambios = (Array.isArray(req.body?.cambios) ? req.body.cambios : [])
+            .map((c: any) => ({ stopId: Number(c?.stopId), unidad: c?.unidad == null ? null : String(c.unidad).trim().slice(0, 80) || null }))
+            .filter((c: any) => Number.isFinite(c.stopId));
+        if (!cambios.length) return res.status(400).json({ error: 'No mandaste ningún cambio' });
+
+        const trip = await prisma.trip.findUnique({
+            where: { id: tripId },
+            select: {
+                id: true, businessUnit: true,
+                linkedRoute: {
+                    select: {
+                        id: true,
+                        stops: {
+                            orderBy: { sequence: 'asc' },
+                            select: { id: true, sequence: true, ruta: true, isReturnToBase: true, client: { select: { name: true } } }
+                        }
+                    }
+                }
+            }
+        });
+        if (!trip) return res.status(404).json({ error: 'Viaje no encontrado' });
+        const paradas = (trip.linkedRoute?.stops || []) as any[];
+        const ajenas = cambios.filter((c: any) => !paradas.some((s) => s.id === c.stopId));
+        if (ajenas.length) return res.status(400).json({ error: 'Hay paradas que no son de este viaje', stopIds: ajenas.map((c: any) => c.stopId) });
+
+        const mapaU = await unidadesPorRutaCacheado();
+        const r = reasignarUnidades(trip.businessUnit, paradas, cambios, mapaU);
+        const nuevoBU = r.unidadesDelViaje.join(', ');
+        const cambiaViaje = nuevoBU !== unidadesDeTexto(trip.businessUnit).join(', ');
+        if (!r.rutas.size && !cambiaViaje) {
+            return res.json({ ok: true, cambiadas: 0, businessUnit: trip.businessUnit });
+        }
+
+        await prisma.$transaction([
+            ...[...r.rutas.entries()].map(([id, ruta]) => prisma.stop.update({ where: { id }, data: { ruta } })),
+            // La marca va siempre que alguna parada cambio: ver Trip.unidadesAMano
+            prisma.trip.update({ where: { id: tripId }, data: { ...(cambiaViaje ? { businessUnit: nuevoBU } : {}), ...(r.rutas.size ? { unidadesAMano: true } : {}) } })
+        ]);
+
+        const nombre = (id: number) => paradas.find((s) => s.id === id)?.client?.name || ('parada ' + id);
+        await logAction(req, 'UPDATE', 'trip', tripId, `Unidad de negocio de paradas (viaje ${tripId})`,
+            {
+                businessUnit: trip.businessUnit,
+                paradas: [...r.rutas.keys()].map((id) => ({ id, parada: nombre(id), unidad: paradas.find((s) => s.id === id)?.ruta ?? null }))
+            },
+            {
+                businessUnit: nuevoBU,
+                paradas: [...r.rutas.entries()].map(([id, ruta]) => ({ id, parada: nombre(id), unidad: ruta }))
+            });
+        io.emit('trip:updated', { tripId, hint: 'unidades_de_paradas' });
+        res.json({ ok: true, cambiadas: r.rutas.size, businessUnit: nuevoBU });
+    } catch (e: any) {
+        console.error('PATCH unidades-de-paradas:', e);
         res.status(500).json({ error: e?.message || 'Error' });
     }
 });

@@ -294,7 +294,7 @@ async function filasViajesDe(prisma: Prisma, where: any, conPadres = false) {
         const fin = r?.actualEndTime || t.completedAt;
         const horasTotales = Number(fila['Duracion horas']) || 0;
         const reparto = repartirHoras(
-            { businessUnit: t.businessUnit, stops: (r?.stops || []) as any, tramos: t.tramos as any, inicio, fin },
+            { businessUnit: t.businessUnit, stops: (r?.stops || []) as any, tramos: t.tramos as any, inicio, fin, unidadesAMano: t.unidadesAMano },
             unidadPorRuta,
             horasTotales
         );
