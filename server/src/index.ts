@@ -41,7 +41,9 @@ import * as XLSX from 'xlsx';
 import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
+import { limpiarLote, distanciaMetros } from './gpsLotes';
+import { usarCuotaMapbox, mesActual, TOPE_MENSUAL } from './mapboxCuota';
 import helmet from 'helmet';
 import compression from 'compression';
 
@@ -190,6 +192,12 @@ const trackingLimiter = rateLimit({
     max: 600,
     standardHeaders: true,
     legacyHeaders: false,
+    // Por CELULAR, no por IP: varios choferes de la misma compañia salen por la
+    // misma IP, y con puntos cada 2 s se frenaban entre ellos.
+    keyGenerator: (req: any) => {
+        const dev = String(req.body?.deviceId || '').trim().slice(0, 100);
+        return dev ? `dev:${dev}` : ipKeyGenerator(String(req.ip || ''));
+    },
     message: { error: 'Demasiadas actualizaciones de ubicación.' }
 });
 // El limite general NO se aplica al reporte de ubicacion: ese camino tiene el
@@ -197,7 +205,7 @@ const trackingLimiter = rateLimit({
 // primero y le gana, y varios choferes detras de la misma IP de Claro/Movistar
 // se quedan sin reportar la señal.
 app.use('/api/', (req: any, res: any, next: any) => {
-    if (req.path === '/v1/tracking/location') return next();
+    if (req.path === '/v1/tracking/location' || req.path === '/v1/tracking/lote') return next();
     return generalLimiter(req, res, next);
 });
 
@@ -2416,9 +2424,7 @@ app.post('/api/v1/tracking/location', trackingLimiter, async (req, res) => {
                 capturedAt: sanitizeClientDate(capturedAt, null)
             }
         });
-        io.emit('location:update', record);
-        // También emitir al room del chofer (para suscriptores específicos)
-        if (record.driverId) io.to(`driver:${record.driverId}`).emit('location:own', record);
+        avisarPosicionEnVivo(record);
         res.json(record);
 
         // Calcular offRoute en background — no bloquea la respuesta HTTP
@@ -2439,6 +2445,153 @@ app.post('/api/v1/tracking/location', trackingLimiter, async (req, res) => {
     } catch (e: any) {
         console.error('POST /tracking/location:', e);
         res.status(500).json({ error: e?.message || 'Error al guardar ubicación' });
+    }
+});
+
+// ── Posiciones en vivo ──────────────────────────────────────────────────────
+// Lo ultimo que se le aviso a la Torre de cada celular. Un punto mas viejo (la
+// cola de un celular que recupero señal) se guarda, pero NO mueve el camion:
+// antes lo hacia saltar para atras.
+const _ultimoAvisoPorCelular = new Map<string, number>();
+// El ultimo punto guardado de cada celular, para descartar rebotes del GPS sin
+// ir a la base en cada lote.
+const _ultimoPuntoPorCelular = new Map<string, { lat: number; lng: number; t: Date }>();
+
+function avisarPosicionEnVivo(record: any) {
+    const dev = String(record?.deviceId || '');
+    const t = new Date(record?.capturedAt || record?.timestamp || Date.now()).getTime();
+    if (dev) {
+        const ult = _ultimoAvisoPorCelular.get(dev) || 0;
+        if (t < ult) return;
+        _ultimoAvisoPorCelular.set(dev, t);
+    }
+    // La Torre arma la clave del camion con el celular: "gps-<celular>"
+    const aviso = { ...record, tripKey: dev ? `gps-${dev}` : null };
+    io.to('torre').emit('location:update', aviso);
+    if (record?.driverId) io.to(`driver:${record.driverId}`).emit('location:own', aviso);
+}
+
+/** Como manda los puntos la app. Se puede cambiar sin publicar la app:
+ *  lotes = todos los puntos juntos y con su hora (si no, el camino viejo de a
+ *  uno); intervaloMs / distanciaM = cada cuanto toma un punto el celular. */
+async function leerConfigGps(): Promise<{ lotes: 'todos' | 'ninguno' | string[]; intervaloMs: number; distanciaM: number }> {
+    const porDefecto = { lotes: 'ninguno' as const, intervaloMs: 5000, distanciaM: 15 };
+    try {
+        const fila = await prisma.appSettings.findUnique({ where: { key: 'gps_config' } });
+        if (!fila) return porDefecto;
+        const v = JSON.parse(fila.value || '{}');
+        return {
+            lotes: v.lotes === 'todos' || Array.isArray(v.lotes) ? v.lotes : 'ninguno',
+            intervaloMs: Math.min(30000, Math.max(1000, Number(v.intervaloMs) || porDefecto.intervaloMs)),
+            distanciaM: Math.min(100, Math.max(0, Number.isFinite(Number(v.distanciaM)) ? Number(v.distanciaM) : porDefecto.distanciaM))
+        };
+    } catch {
+        return porDefecto;
+    }
+}
+
+/** La app lo pide al fichar entrada. GET /api/v1/tracking/config?driverId=...&deviceId=... */
+app.get('/api/v1/tracking/config', async (req: any, res: any) => {
+    const cfg = await leerConfigGps();
+    const driverId = String(req.query.driverId || '').trim();
+    const deviceId = String(req.query.deviceId || '').trim();
+    const enLotes = cfg.lotes === 'todos'
+        || (Array.isArray(cfg.lotes) && (cfg.lotes.includes(driverId) || cfg.lotes.includes(deviceId)));
+    // Lo rapido va con el modo lotes: el camino viejo no da abasto cada 2 s
+    res.json(enLotes
+        ? { lotes: true, intervaloMs: cfg.intervaloMs, distanciaM: cfg.distanciaM }
+        : { lotes: false, intervaloMs: 5000, distanciaM: 15 });
+});
+
+/** Prender o apagar el modo nuevo, para todos o para algunos choferes.
+ *  POST /api/admin/gps-config { key, lotes: 'todos'|'ninguno'|[driverId...], intervaloMs?, distanciaM? } */
+app.post('/api/admin/gps-config', async (req: any, res: any) => {
+    const { key, lotes, intervaloMs, distanciaM } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const actual = await leerConfigGps();
+    const nuevo = {
+        lotes: lotes === 'todos' || lotes === 'ninguno' ? lotes
+            : Array.isArray(lotes) ? lotes.map((x: any) => String(x).trim()).filter(Boolean) : actual.lotes,
+        intervaloMs: intervaloMs != null ? Number(intervaloMs) : actual.intervaloMs,
+        distanciaM: distanciaM != null ? Number(distanciaM) : actual.distanciaM
+    };
+    await prisma.appSettings.upsert({
+        where: { key: 'gps_config' },
+        create: { key: 'gps_config', value: JSON.stringify(nuevo) },
+        update: { value: JSON.stringify(nuevo) }
+    });
+    await logAction(req, 'UPDATE', 'settings', 0, 'gps_config (admin)', actual, nuevo);
+    res.json({ antes: actual, ahora: await leerConfigGps() });
+});
+
+/** Lo que se le pidio a Mapbox este mes y el anterior. GET /api/admin/mapbox-uso?key=... */
+app.get('/api/admin/mapbox-uso', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const filas = await prisma.mapboxUso.findMany({ orderBy: [{ mes: 'desc' }, { api: 'asc' }], take: 12 });
+    res.json({ mes: mesActual(), topes: TOPE_MENSUAL, filas });
+});
+
+/** Puntos GPS en lote, con la hora en que los tomo el celular.
+ *  POST /api/v1/tracking/lote
+ *  { deviceId, deviceLabel?, driverId?, routeId?, points: [{ lat, lng, acc?, spd?, hdg?, t }] } (max 500) */
+app.post('/api/v1/tracking/lote', trackingLimiter, async (req: any, res: any) => {
+    try {
+        const { deviceId, deviceLabel, driverId, routeId, points } = req.body || {};
+        const dev = String(deviceId || '').trim();
+        if (!dev) return res.status(400).json({ error: 'Falta deviceId' });
+        if (!Array.isArray(points) || !points.length) return res.json({ ok: true, guardados: 0 });
+        if (points.length > 500) return res.status(400).json({ error: 'Máximo 500 puntos por lote' });
+
+        const rid = routeId != null && String(routeId).trim() !== '' && Number.isFinite(Number(routeId)) ? Number(routeId) : null;
+        const did = driverId != null && String(driverId).trim() !== '' ? String(driverId).trim() : null;
+        const label = deviceLabel ? String(deviceLabel).trim().slice(0, 120) : null;
+
+        // El ultimo punto guardado de este celular (memoria, o la base)
+        let anterior = _ultimoPuntoPorCelular.get(dev) || null;
+        if (!anterior) {
+            const u = await prisma.deviceLocation.findFirst({
+                where: { deviceId: dev, timestamp: { gte: new Date(Date.now() - 2 * 3600 * 1000) } },
+                orderBy: { timestamp: 'desc' },
+                select: { latitude: true, longitude: true, timestamp: true }
+            });
+            if (u) anterior = { lat: u.latitude, lng: u.longitude, t: u.timestamp };
+        }
+        const { buenos, descartados } = limpiarLote(points, anterior, new Date());
+        if (!buenos.length) return res.json({ ok: true, guardados: 0, descartados });
+
+        const fila = (p: typeof buenos[number]) => ({
+            deviceId: dev, deviceLabel: label, driverId: did, routeId: rid,
+            latitude: p.lat, longitude: p.lng,
+            accuracy: p.acc, speed: p.spd, heading: p.hdg,
+            capturedAt: p.horaDelServidor ? null : p.t,
+            // La hora del punto es la del GPS: asi el recorrido sale en orden
+            // aunque los puntos lleguen tarde y mezclados.
+            timestamp: p.t
+        });
+        // El mas nuevo va aparte para tener su id (el desvio se le calcula a el)
+        const ultimo = buenos[buenos.length - 1];
+        if (buenos.length > 1) await prisma.deviceLocation.createMany({ data: buenos.slice(0, -1).map(fila) });
+        const record = await prisma.deviceLocation.create({ data: fila(ultimo) });
+
+        const previo = _ultimoPuntoPorCelular.get(dev);
+        if (!previo || ultimo.t >= previo.t) _ultimoPuntoPorCelular.set(dev, { lat: ultimo.lat, lng: ultimo.lng, t: ultimo.t });
+        avisarPosicionEnVivo(record);
+        res.json({ ok: true, guardados: buenos.length, descartados });
+
+        if (rid != null) {
+            setImmediate(async () => {
+                try {
+                    const poly = await getRoutePolylinePointsCachedOrBuild(rid);
+                    if (poly && poly.length >= 2) {
+                        const meters = minDistanceToPolylineMeters(ultimo.lat, ultimo.lng, poly);
+                        await prisma.deviceLocation.update({ where: { id: record.id }, data: { offRouteMeters: meters } }).catch(() => {});
+                    }
+                } catch { /* sin geometria */ }
+            });
+        }
+    } catch (e: any) {
+        console.error('POST /tracking/lote:', e);
+        res.status(500).json({ error: e?.message || 'Error al guardar ubicaciones' });
     }
 });
 
@@ -2690,6 +2843,8 @@ async function mapboxSnapPoints(
     token: string
 ): Promise<Array<{ lat: number; lng: number } | null>> {
     if (points.length === 0) return [];
+    // Mes en el tope: sin pegar a la calle (se usa el punto tal cual)
+    if (!(await usarCuotaMapbox(prisma, 'matching'))) return points.map(() => null);
     // Map Matching requiere al menos 2 puntos. Para 1 punto, repetimos el mismo
     // dos veces (Mapbox lo acepta y devuelve la calle más cercana).
     const coords = points.length === 1
@@ -2881,7 +3036,11 @@ app.post('/api/v1/control/map-matching-batch', async (req, res) => {
         // "raw" y no habia manera de saber si faltaba el token, si Mapbox
         // rechazaba la llamada o si no encontraba camino. Nunca lleva el token.
         let motivo = 'sin-token';
-        const mapboxToken = await resolveMapboxAccessToken();
+        let mapboxToken = await resolveMapboxAccessToken();
+        if (mapboxToken && !(await usarCuotaMapbox(prisma, 'matching'))) {
+            motivo = 'tope-mensual';
+            mapboxToken = null;
+        }
         if (mapboxToken) {
             const coords = valid.map(p => `${p.lng},${p.lat}`).join(';');
             // SIN `radiuses`. Con un radio fijo de 25 m, Mapbox devolvia el
@@ -3353,7 +3512,15 @@ app.get('/api/v1/history/routes/:id', async (req, res) => {
                 proofPhotoUrl: s.proofPhotoUrl ?? null,
                 deliveryWithoutIssues: s.deliveryWithoutIssues ?? null,
                 reasonCode: s.reasonCode ?? null,
-                legFromPreviousMinutes
+                legFromPreviousMinutes,
+                // Donde estaba el celular al marcar, y a cuantos metros de la escuela
+                llegadaLat: s.llegadaLat ?? null,
+                llegadaLng: s.llegadaLng ?? null,
+                salidaLat: s.salidaLat ?? null,
+                salidaLng: s.salidaLng ?? null,
+                ubicacionOrigen: s.ubicacionOrigen ?? null,
+                llegadaDistanciaM: distanciaDeMarca(s.llegadaLat, s.llegadaLng, s.client),
+                salidaDistanciaM: distanciaDeMarca(s.salidaLat, s.salidaLng, s.client)
             };
         });
 
@@ -7629,6 +7796,9 @@ async function ubicarDireccion(token: string, address: string, localidad?: strin
     if (!tieneAltura) return { ok: false, busca: q, motivo: 'la direccion no tiene altura (es una esquina o una manzana)' };
     let f: any = null;
     for (const conTipo of [true, false]) {
+        if (!(await usarCuotaMapbox(prisma, 'geocoding'))) {
+            return { ok: false, busca: q, motivo: 'se llego al tope mensual de busquedas de Mapbox; probá el mes que viene o ubicala tocando el mapa' };
+        }
         const url = 'https://api.mapbox.com/search/geocode/v6/forward'
             + `?q=${encodeURIComponent(q)}&country=ar&limit=1&language=es`
             + (conTipo ? '&types=address' : '')
@@ -12395,6 +12565,54 @@ app.post('/api/admin/resync-mobile-users', async (req: any, res: any) => {
     }
 });
 
+/** { lat, lng, acc } valido, o null. */
+function ubicacionDeMarca(v: any): { lat: number; lng: number; acc: number | null } | null {
+    if (!v || typeof v !== 'object') return null;
+    const lat = Number(v.lat), lng = Number(v.lng);
+    if (!Number.isFinite(lat) || !Number.isFinite(lng) || Math.abs(lat) > 90 || Math.abs(lng) > 180 || (lat === 0 && lng === 0)) return null;
+    const acc = Number(v.acc);
+    return { lat, lng, acc: Number.isFinite(acc) ? acc : null };
+}
+
+/** La marca llego sin ubicacion (app vieja, o el celular no tenia GPS en ese
+ *  momento): se usa el punto del recorrido de ese viaje mas cercano en hora,
+ *  dentro de los 3 minutos. Nunca pisa una ubicacion que ya tenga. */
+async function completarUbicacionDeParada(stopId: number, routeId: number, campo: 'llegada' | 'salida', cuando: Date) {
+    try {
+        const ms = cuando.getTime();
+        if (!Number.isFinite(ms)) return;
+        const pts = await prisma.deviceLocation.findMany({
+            where: {
+                routeId,
+                timestamp: { gte: new Date(ms - 3 * 60000), lte: new Date(ms + 3 * 60000) },
+                OR: [{ accuracy: null }, { accuracy: { lte: 100 } }]
+            },
+            select: { latitude: true, longitude: true, accuracy: true, timestamp: true },
+            take: 400
+        });
+        if (!pts.length) return;
+        const mejor = pts.reduce((a, b) => Math.abs(b.timestamp.getTime() - ms) < Math.abs(a.timestamp.getTime() - ms) ? b : a);
+        const actual = await prisma.stop.findUnique({ where: { id: stopId }, select: { llegadaLat: true, salidaLat: true, ubicacionOrigen: true } });
+        if (!actual) return;
+        if (campo === 'llegada' && actual.llegadaLat != null) return;
+        if (campo === 'salida' && actual.salidaLat != null) return;
+        await prisma.stop.update({
+            where: { id: stopId },
+            data: campo === 'llegada'
+                ? { llegadaLat: mejor.latitude, llegadaLng: mejor.longitude, llegadaPrecision: mejor.accuracy, ubicacionOrigen: actual.ubicacionOrigen || 'recorrido' }
+                : { salidaLat: mejor.latitude, salidaLng: mejor.longitude, salidaPrecision: mejor.accuracy, ubicacionOrigen: actual.ubicacionOrigen || 'recorrido' }
+        });
+    } catch (e: any) {
+        console.warn('[parada] no se pudo completar la ubicacion de ' + stopId + ':', e?.message || e);
+    }
+}
+
+/** A cuantos metros de la escuela se marco. null = falta alguno de los dos puntos. */
+function distanciaDeMarca(lat: number | null | undefined, lng: number | null | undefined, cliente: any): number | null {
+    if (lat == null || lng == null || cliente?.latitude == null || cliente?.longitude == null) return null;
+    return Math.round(distanciaMetros({ lat, lng }, { lat: Number(cliente.latitude), lng: Number(cliente.longitude) }));
+}
+
 app.patch('/api/v1/stops/:id', async (req, res) => {
     // Bug fix: antes prisma.stop.update y el resto del handler estaban fuera de try/catch.
     // Si Prisma rechazaba (id inexistente, datos inválidos), la promesa burbujeaba
@@ -12410,6 +12628,19 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
         const data: any = {};
         if (body.actualArrival != null) data.actualArrival = new Date(body.actualArrival);
         if (body.actualDeparture != null) data.actualDeparture = new Date(body.actualDeparture);
+        // Donde estaba el celular al marcar. Opcional: la app vieja no lo manda
+        // y la marca nunca espera al GPS. Sin esto, se completa con el
+        // recorrido (ver completarUbicacionDeParada).
+        const ubicLl = ubicacionDeMarca(body.llegadaUbicacion);
+        const ubicSa = ubicacionDeMarca(body.salidaUbicacion);
+        if (ubicLl && data.actualArrival) {
+            data.llegadaLat = ubicLl.lat; data.llegadaLng = ubicLl.lng; data.llegadaPrecision = ubicLl.acc;
+            data.ubicacionOrigen = 'celular';
+        }
+        if (ubicSa && data.actualDeparture) {
+            data.salidaLat = ubicSa.lat; data.salidaLng = ubicSa.lng; data.salidaPrecision = ubicSa.acc;
+            data.ubicacionOrigen = 'celular';
+        }
         if (body.status != null) data.status = String(body.status);
         if (body.observations != null) data.observations = String(body.observations);
         if (body.reasonCode != null) data.reasonCode = String(body.reasonCode);
@@ -12506,6 +12737,13 @@ app.patch('/api/v1/stops/:id', async (req, res) => {
                     actualDeparture: stop.actualDeparture?.toISOString() ?? null
                 }
             );
+        }
+
+        // Marca sin ubicacion: se completa con el punto del recorrido mas
+        // cercano en hora. En segundo plano: no demora la respuesta al chofer.
+        if (stop.route?.id) {
+            if (data.actualArrival && !ubicLl) void completarUbicacionDeParada(stopId, stop.route.id, 'llegada', data.actualArrival);
+            if (data.actualDeparture && !ubicSa) void completarUbicacionDeParada(stopId, stop.route.id, 'salida', data.actualDeparture);
         }
 
         io.emit('stop:updated', { stop });
@@ -14440,6 +14678,14 @@ app.get('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
                 unidad: unidadDeParada(s as any, mapaU, unidadesDelViaje),
                 actualArrival: s.actualArrival?.toISOString() ?? null,
                 actualDeparture: s.actualDeparture?.toISOString() ?? null,
+                // Donde estaba el celular al marcar, y a cuantos metros de la escuela
+                llegadaLat: (s as any).llegadaLat ?? null,
+                llegadaLng: (s as any).llegadaLng ?? null,
+                salidaLat: (s as any).salidaLat ?? null,
+                salidaLng: (s as any).salidaLng ?? null,
+                ubicacionOrigen: (s as any).ubicacionOrigen ?? null,
+                llegadaDistanciaM: distanciaDeMarca((s as any).llegadaLat, (s as any).llegadaLng, s.client),
+                salidaDistanciaM: distanciaDeMarca((s as any).salidaLat, (s as any).salidaLng, s.client),
                 observations: s.observations ?? null,
                 reasonCode: s.reasonCode ?? null,
                 proofPhotoUrl: s.proofPhotoUrl ?? null,
@@ -15384,11 +15630,16 @@ app.get('/api/v1/fleet/locations', async (req, res) => {
         }));
 
         const since1h = new Date(Date.now() - 60 * 60000);
-        const recentDev = await prisma.deviceLocation.findMany({
-            where: { isActive: true, timestamp: { gte: since1h } },
-            orderBy: { timestamp: 'desc' }
-        });
-        const latestByDevice = new Map<string, (typeof recentDev)[0]>();
+        // Solo el ultimo punto de cada celular. Antes traia TODOS los puntos de
+        // la ultima hora (miles, cada 8 s y por cada pantalla abierta) para
+        // quedarse con uno por celular.
+        const recentDev = await prisma.$queryRaw<any[]>`
+            SELECT DISTINCT ON ("deviceId") *
+            FROM "DeviceLocation"
+            WHERE "isActive" = true AND timestamp >= ${since1h}
+            ORDER BY "deviceId", timestamp DESC
+        `;
+        const latestByDevice = new Map<string, any>();
         for (const r of recentDev) {
             if (!latestByDevice.has(r.deviceId)) latestByDevice.set(r.deviceId, r);
         }
@@ -16692,12 +16943,19 @@ app.post('/api/v1/trips/bulk', async (req, res) => {
 // ── WebSocket: rooms por chofer ───────────────────────────────────────────────
 io.on('connection', (socket) => {
     console.log(`[ws] Cliente conectado: ${socket.id}`);
+    // Las posiciones en vivo van a la sala "torre". Antes iban a TODAS las
+    // conexiones, tambien a los celulares de los choferes, que bajaban las
+    // posiciones de la flota entera sin usarlas (datos y bateria). Todos entran
+    // a la sala; el celular sale apenas dice que es de un chofer. Asi una
+    // pantalla de la web abierta desde antes sigue recibiendo sin recargar.
+    socket.join('torre');
 
     // El cliente puede suscribirse a actualizaciones de un chofer específico
     // Uso: socket.emit('join:driver', 'id_del_chofer')
     socket.on('join:driver', (driverId: unknown) => {
         if (typeof driverId === 'string' && driverId.trim()) {
             socket.join(`driver:${driverId.trim()}`);
+            socket.leave('torre');
         }
     });
 

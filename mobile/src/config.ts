@@ -34,4 +34,8 @@ export const STORAGE_KEYS = {
   offlineRetryQueue: 'r14_offline_retry_queue',   // Cola de paradas pospuestas ("vuelvo más tarde") sin señal
   offlineTramoQueue: 'r14_offline_tramo_queue',   // Cola de rutas cerradas y viajes finalizados sin señal
   routesCache: 'r14_routes_today_cache',          // Cache de las rutas del día (fallback offline)
+  gpsConfig: 'r14_gps_config',                    // Como mandar el GPS: { lotes, intervaloMs, distanciaM } (lo dice el servidor)
+  gpsLoteQueue: 'r14_gps_lote_queue',             // Puntos GPS sin mandar (modo lotes), en formato compacto
+  gpsOpcionesActivas: 'r14_gps_opciones_activas', // Intervalo con el que esta corriendo el GPS ahora
+  bateriaPedida: 'r14_bateria_pedida',            // Cuando se le pidio al chofer sacar la app del ahorro de bateria
 } as const;

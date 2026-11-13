@@ -1394,3 +1394,8 @@ html, body { overscroll-behavior-y: none; }
 #schools-table thead th { background: var(--surface-container-low); }
 /* Fila marcada: gana a las filas alternadas (tbody tr:nth-child(even)) */
 #schools-tbody tr[data-sel="1"] { background: rgba(79, 70, 229, 0.08); }
+
+/* --- Torre: camion sin un punto GPS nuevo hace mas de 30 s ---------------- */
+/* Se anima el SVG de adentro: el elemento del marcador lo mueve Mapbox. */
+.r14-truck-marker svg { transition: filter 0.3s ease, opacity 0.3s ease; }
+.r14-truck-marker.r14-camion-viejo svg { filter: grayscale(1); opacity: 0.55; }

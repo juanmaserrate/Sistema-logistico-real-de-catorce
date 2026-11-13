@@ -1,6 +1,7 @@
 import { API_BASE, assertApiConfigured, STORAGE_KEYS } from './config';
 import type { Route, RouteGeometry, SessionUser, Incident } from './types';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Location from 'expo-location';
 
 function apiUrl(path: string): string {
   assertApiConfigured();
@@ -356,6 +357,8 @@ interface OfflineStopAction {
     cratesDeliveredDeposito?: number | null;
     cratesRecoveredDeposito?: number | null;
     reasonCode?: string | null;
+    llegadaUbicacion?: UbicacionDeMarca | null;
+    salidaUbicacion?: UbicacionDeMarca | null;
   };
   timestamp: string;
 }
@@ -450,6 +453,50 @@ export async function getPendingStopCount(): Promise<number> {
   return q.length;
 }
 
+export interface UbicacionDeMarca { lat: number; lng: number; acc: number | null }
+
+/** La ultima posicion que tiene el celular (la del seguimiento, de hace
+ *  segundos), sin pedirle al GPS una nueva. Tope 1,5 s; si no hay, null. */
+async function ubicacionRapida(): Promise<UbicacionDeMarca | null> {
+  try {
+    const pos = await Promise.race([
+      Location.getLastKnownPositionAsync({ maxAge: 120000, requiredAccuracy: 150 }),
+      new Promise<null>((ok) => setTimeout(() => ok(null), 1500)),
+    ]);
+    if (!pos) return null;
+    return { lat: pos.coords.latitude, lng: pos.coords.longitude, acc: pos.coords.accuracy ?? null };
+  } catch {
+    return null;
+  }
+}
+
+/** Como tiene que mandar el GPS este celular (lo decide el servidor). Se
+ *  guarda para la tarea de fondo; si no hay señal, queda lo ultimo que se supo. */
+export interface ConfigGps { lotes: boolean; intervaloMs: number; distanciaM: number }
+export async function cargarConfigGps(driverId: string, deviceId: string): Promise<ConfigGps> {
+  const porDefecto: ConfigGps = { lotes: false, intervaloMs: 5000, distanciaM: 15 };
+  try {
+    const q = `?driverId=${encodeURIComponent(driverId)}&deviceId=${encodeURIComponent(deviceId)}`;
+    const res = await fetchWithTimeout(apiUrl(`/api/v1/tracking/config${q}`), { timeout: 4000 });
+    if (!res.ok) throw new Error(String(res.status));
+    const d = (await res.json()) as Partial<ConfigGps>;
+    const cfg: ConfigGps = {
+      lotes: !!d.lotes,
+      intervaloMs: Math.min(30000, Math.max(1000, Number(d.intervaloMs) || 5000)),
+      distanciaM: Math.min(100, Math.max(0, Number.isFinite(Number(d.distanciaM)) ? Number(d.distanciaM) : 15)),
+    };
+    await AsyncStorage.setItem(STORAGE_KEYS.gpsConfig, JSON.stringify(cfg));
+    return cfg;
+  } catch {
+    try {
+      const raw = await AsyncStorage.getItem(STORAGE_KEYS.gpsConfig);
+      const c = raw ? JSON.parse(raw) : null;
+      if (c && typeof c === 'object') return { ...porDefecto, ...c };
+    } catch { /* sin nada guardado */ }
+    return porDefecto;
+  }
+}
+
 export async function patchStop(
   stopId: number,
   body: {
@@ -472,8 +519,17 @@ export async function patchStop(
     cratesDeliveredDeposito?: number | null;
     cratesRecoveredDeposito?: number | null;
     reasonCode?: string | null;
+    llegadaUbicacion?: UbicacionDeMarca | null;
+    salidaUbicacion?: UbicacionDeMarca | null;
   }
 ): Promise<unknown> {
+  // Donde esta el celular al marcar. Nunca demora la marca: si en 1,5 s no hay
+  // una posicion reciente, se manda sin ella (el servidor la completa con el
+  // recorrido).
+  if ((body.actualArrival || body.actualDeparture) && !body.llegadaUbicacion && !body.salidaUbicacion) {
+    const u = await ubicacionRapida();
+    if (u) body = { ...body, ...(body.actualArrival ? { llegadaUbicacion: u } : {}), ...(body.actualDeparture ? { salidaUbicacion: u } : {}) };
+  }
   const enqueue = async () => {
     const queue = await readStopQueue();
     queue.push({ stopId, body, timestamp: new Date().toISOString() });

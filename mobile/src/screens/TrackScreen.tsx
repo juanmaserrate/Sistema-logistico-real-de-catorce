@@ -45,7 +45,9 @@ import {
   getPendingTotalCount,
   getPendingLocationCount,
   pingServer,
+  cargarConfigGps,
 } from '../api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import StopDeliveryModal from '../components/StopDeliveryModal';
 import MotivoModal from '../components/MotivoModal';
 import CratesModal from '../components/CratesModal';
@@ -58,7 +60,7 @@ import {
   clearSession,
 } from '../sessionStorage';
 import { BACKGROUND_LOCATION_TASK } from '../locationTask';
-import { API_BASE } from '../config';
+import { API_BASE, STORAGE_KEYS } from '../config';
 import { colors, font, radius, spacing, shadow } from '../theme';
 
 type Props = {
@@ -734,12 +736,24 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
         .catch(() => {});
     }
     try {
-      const started = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+      // Cada cuanto tomar un punto lo dice el servidor (con el modo nuevo, cada
+      // 2 s en movimiento). Sin señal, queda lo ultimo que se supo.
+      const cfg = await cargarConfigGps(session.id, deviceIdRef.current || '');
+      const opciones = `${cfg.intervaloMs}/${cfg.distanciaM}`;
+      let started = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+      if (started) {
+        // Corriendo con otro intervalo (cambio la configuracion): se reinicia
+        const activas = await AsyncStorage.getItem(STORAGE_KEYS.gpsOpcionesActivas).catch(() => null);
+        if (activas !== opciones) {
+          await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK).catch(() => {});
+          started = false;
+        }
+      }
       if (!started) {
         await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
           accuracy: Location.Accuracy.High,
-          timeInterval: 5000,
-          distanceInterval: 15,
+          timeInterval: cfg.intervaloMs,
+          distanceInterval: cfg.distanciaM,
           pausesUpdatesAutomatically: false,
           showsBackgroundLocationIndicator: true,
           foregroundService: {
@@ -747,6 +761,7 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
             notificationBody: 'Tu posición se envía a planificación en tiempo real',
           },
         });
+        await AsyncStorage.setItem(STORAGE_KEYS.gpsOpcionesActivas, opciones).catch(() => {});
       }
     } catch (e) {
       // El fichaje ya salio (el viaje figura iniciado); lo que fallo es el
@@ -755,6 +770,39 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       return;
     }
     setTracking(true);
+    void pedirSacarDelAhorroDeBateria();
+  };
+
+  /** Algunos celulares (Xiaomi, Samsung, Motorola) cortan la app de fondo para
+   *  ahorrar bateria y la Torre deja de ver al camion. Se le pide al chofer
+   *  sacarla del ahorro, una sola vez (o de nuevo a la semana si dijo «mas
+   *  tarde»). No se puede saber desde aca si ya lo hizo: por eso no insiste. */
+  const pedirSacarDelAhorroDeBateria = async () => {
+    if (Platform.OS !== 'android') return;
+    try {
+      const raw = await AsyncStorage.getItem(STORAGE_KEYS.bateriaPedida);
+      const antes = raw ? JSON.parse(raw) : null;
+      if (antes?.abrio) return;
+      if (antes?.cuando && Date.now() - Number(antes.cuando) < 7 * 24 * 3600 * 1000) return;
+    } catch { /* se pregunta */ }
+    Alert.alert(
+      'Que la Torre te vea siempre',
+      'Para que tu posición no se corte, sacá «R14» del ahorro de batería: en la pantalla que se abre buscá la app y elegí «Sin restricciones» o «No optimizar».',
+      [
+        {
+          text: 'Más tarde', style: 'cancel',
+          onPress: () => { AsyncStorage.setItem(STORAGE_KEYS.bateriaPedida, JSON.stringify({ cuando: Date.now() })).catch(() => {}); },
+        },
+        {
+          text: 'Abrir ajuste',
+          onPress: () => {
+            AsyncStorage.setItem(STORAGE_KEYS.bateriaPedida, JSON.stringify({ cuando: Date.now(), abrio: true })).catch(() => {});
+            Linking.sendIntent('android.settings.IGNORE_BATTERY_OPTIMIZATION_SETTINGS')
+              .catch(() => Linking.openSettings().catch(() => {}));
+          },
+        },
+      ]
+    );
   };
 
   /** Lo que se esta por cerrar cuando hace falta un motivo. Se usa un modal

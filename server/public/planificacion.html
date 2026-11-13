@@ -34,7 +34,7 @@
          Plan gratuito: 50k cargas de mapa/mes. -->
     <script src="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.js"></script>
     <link href="https://api.mapbox.com/mapbox-gl-js/v3.7.0/mapbox-gl.css" rel="stylesheet">
-    <link rel="stylesheet" href="/css/planificacion.css?v=20261112b">
+    <link rel="stylesheet" href="/css/planificacion.css?v=20261113">
     <!-- Capa de movimiento: solo COMO aparecen las cosas, nada de colores ni
          tamanos. Sacando estas dos lineas (y el script de abajo) el sistema
          queda exactamente como estaba. -->
@@ -3871,13 +3871,18 @@
          *  continuo aunque el cache reuse el snap anterior. */
         async function onLiveLocationUpdate(record) {
             if (!record || !controlMap) return;
-            const tripId = String(record.tripId || '');
+            // La Torre nombra cada camion por su celular: "gps-<celular>". Antes
+            // se buscaba record.tripId, que el servidor nunca manda: el aviso en
+            // vivo no movia nada y los camiones solo andaban con la consulta de
+            // cada 8 s.
+            const tripId = String(record.tripKey || record.tripId || (record.deviceId ? 'gps-' + record.deviceId : ''));
             if (record.latitude == null || record.longitude == null) return;
             // Descartar pings con accuracy mala (>50m) si la app la envía
             const acc = Number(record.accuracy);
             if (Number.isFinite(acc) && acc > 50) return;
             const lat = Number(record.latitude);
             const lng = Number(record.longitude);
+            const tsPunto = new Date(record.capturedAt || record.timestamp || Date.now()).getTime();
 
             if (tripId && controlMarkersByTrip.has(tripId)) {
                 // OPTIMIZACION: mover el marker AL INSTANTE con GPS crudo.
@@ -3886,6 +3891,8 @@
                 // desfasado. Ahora el ping solo anima el marker — inmediato y fluido.
                 // El snap a calle (cosmetico) lo hace el refresh completo cada 45s.
                 const marker = controlMarkersByTrip.get(tripId);
+                // Un punto mas viejo que el que ya se mostro no mueve el camion
+                if (marker.__lastTs && Number.isFinite(tsPunto) && tsPunto < marker.__lastTs) return;
                 // Bearing: orientar el camion segun el movimiento
                 let bearing = null;
                 if (marker.__lastPos) {
@@ -3897,9 +3904,23 @@
                         if (el) el.innerHTML = makeTruckIconSvg(bearing);
                     }
                 }
-                if (typeof marker.setLngLat === 'function') animateControlMarker(marker, lng, lat, 4500);
-                else animateMarkerTo(marker, { lat, lng }, 4500);
+                // El camion tarda en deslizarse lo mismo que tardo en llegar este
+                // punto desde el anterior: asi no frena ni queda atrasado. Antes
+                // eran 4,5 s fijos, que con puntos cada 2 s lo dejaban detras.
+                // Despues de una pausa (camion parado, o sin señal) no hay ritmo
+                // que copiar: el primer punto va en 1 s, para no quedar atrasado.
+                const ahoraMs = performance.now();
+                const gap = marker.__lastLiveAt ? ahoraMs - marker.__lastLiveAt : Infinity;
+                const dur = gap > 6000 ? 1000 : Math.max(800, gap);
+                marker.__lastLiveAt = ahoraMs;
+                if (typeof marker.setLngLat === 'function') animateControlMarker(marker, lng, lat, dur);
+                else animateMarkerTo(marker, { lat, lng }, dur);
                 marker.__lastPos = { lat, lng };
+                if (Number.isFinite(tsPunto)) {
+                    marker.__lastTs = tsPunto;
+                    if (marker.__ctrl) marker.__ctrl.ts = new Date(tsPunto).toISOString();
+                    _controlAnotarPunto(tripId, tsPunto);
+                }
                 if (record.routeId != null && typeof appendPointToTrail === 'function') {
                     appendPointToTrail(record.routeId, lat, lng);
                 }
@@ -8397,6 +8418,7 @@
                         <span class="w-2.5 h-2.5 rounded-full shrink-0 ${isVisible ? '' : 'opacity-30'}" style="background:${color}"></span>
                         <span>${escapeHtml(reparto)}</span>
                         ${avance ? `<span class="text-[9px] font-bold ${enfocado ? 'text-indigo-200' : 'text-[#A3AED0]'}">${avance}</span>` : ''}
+                        <span data-frescura="${escapeHtml(tid)}" class="text-[9px] font-bold tabular-nums whitespace-nowrap" title="Cuando llego el ultimo punto GPS"></span>
                         ${sinUbicacion ? '<span class="text-[9px] text-amber-500" title="Este reparto no esta reportando GPS">\u26a0</span>' : ''}
                     </button>`;
             }).join('');
@@ -8929,6 +8951,35 @@
          *  de teletransportarse entre pings (cada 5-8s), que es lo que se veía como saltos
          *  diagonales. Si llega un ping nuevo mientras anima, cancela y rearranca desde
          *  donde está (sin saltos hacia atrás). Es 100% del navegador: NO consume Mapbox. */
+        // ── Que tan fresco es lo que se ve de cada camion ──
+        // Cada reparto dice "hace 3 s"; si pasan mas de 30 s sin un punto nuevo
+        // el camion se pone gris, para que nadie tome por actual algo viejo.
+        const _controlUltimoPunto = new Map();   // tripId -> ms del ultimo punto
+        function _controlAnotarPunto(tid, ts) {
+            const t = typeof ts === 'number' ? ts : new Date(ts).getTime();
+            if (!tid || !Number.isFinite(t)) return;
+            if (t > (_controlUltimoPunto.get(String(tid)) || 0)) _controlUltimoPunto.set(String(tid), t);
+        }
+        function _controlPintarFrescura() {
+            if (!controlMap) return;
+            const ahora = Date.now();
+            document.querySelectorAll('[data-frescura]').forEach((el) => {
+                const t = _controlUltimoPunto.get(el.dataset.frescura);
+                if (!t) { el.textContent = ''; return; }
+                const seg = Math.max(0, Math.round((ahora - t) / 1000));
+                el.textContent = seg < 60 ? `hace ${seg} s` : seg < 3600 ? `hace ${Math.floor(seg / 60)} min` : `hace ${Math.floor(seg / 3600)} h`;
+                el.classList.toggle('text-emerald-600', seg <= 30);
+                el.classList.toggle('text-amber-600', seg > 30 && seg <= 300);
+                el.classList.toggle('text-rose-600', seg > 300);
+            });
+            for (const [tid, m] of controlMarkersByTrip.entries()) {
+                const t = _controlUltimoPunto.get(String(tid));
+                const el = m.getElement && m.getElement();
+                if (el) el.classList.toggle('r14-camion-viejo', !t || ahora - t > 30000);
+            }
+        }
+        setInterval(_controlPintarFrescura, 1000);
+
         function animateControlMarker(marker, lng, lat, durationMs) {
             if (!marker) return;
             if (marker.__animFrameId) {
@@ -9002,21 +9053,32 @@
                     offRouteMeters: loc.offRouteMeters
                 };
 
+                const tsConsulta = new Date(loc.timestamp).getTime();
+                _controlAnotarPunto(id, tsConsulta);
                 if (marker) {
-                    // Deslizamiento suave hasta la nueva posición (en vez de teletransporte
-                    // diagonal). 2.5s cubre el ritmo de pings (5-8s) sin quedar atrasado.
-                    animateControlMarker(marker, lng, lat, 2500);
+                    // La consulta de cada 8 s (y la de las calles, cada 45 s) puede
+                    // traer un punto mas viejo que el que ya llego en vivo: ahi el
+                    // camion no se toca, si no volvia para atras.
+                    const masNuevo = !marker.__lastTs || !Number.isFinite(tsConsulta) || tsConsulta >= marker.__lastTs;
                     // Actualizar visibilidad via display CSS
                     const el = marker.getElement();
                     if (el) {
                         el.style.display = isVisible ? '' : 'none';
                         el.title = `${ctrlData.driver} . ${ctrlData.vehicle} . ${ctrlData.reparto}`;
-                        // Actualizar SVG del camion con nuevo bearing
-                        el.innerHTML = makeTruckIconSvg(bearing);
                     }
-                    marker.__lastPos = pos;
-                    if (bearing != null) marker.__lastBearing = bearing;
-                    marker.__ctrl = ctrlData;
+                    if (masNuevo) {
+                        // Deslizamiento suave hasta la nueva posición (en vez de teletransporte
+                        // diagonal). 2.5s cubre el ritmo de pings (5-8s) sin quedar atrasado.
+                        animateControlMarker(marker, lng, lat, 2500);
+                        // Actualizar SVG del camion con nuevo bearing
+                        if (el) el.innerHTML = makeTruckIconSvg(bearing);
+                        marker.__lastPos = pos;
+                        if (bearing != null) marker.__lastBearing = bearing;
+                        if (Number.isFinite(tsConsulta)) marker.__lastTs = tsConsulta;
+                        marker.__ctrl = ctrlData;
+                    } else if (marker.__ctrl) {
+                        marker.__ctrl = { ...ctrlData, ts: marker.__ctrl.ts };
+                    }
                 } else {
                     // Crear elemento HTML custom para el marker
                     const el = document.createElement('div');
@@ -9037,6 +9099,7 @@
                         .addTo(controlMap);
 
                     marker.__lastPos = pos;
+                    if (Number.isFinite(tsConsulta)) marker.__lastTs = tsConsulta;
                     marker.__ctrl = ctrlData;
                     marker.__popup = popup;
 
@@ -16487,6 +16550,26 @@
             return `<span class="font-bold">${txt}</span>${tarde ? ' <span title="Cargado después de cerrar la entrega">⏱</span>' : ''}`;
         }
 
+        /** La llegada o la salida se marco lejos de la escuela (mas de 300 m). No
+         *  frena nada: avisa, para revisar si el chofer marco de pasada o si el
+         *  pin de la escuela esta corrido. `conDetalle` muestra tambien la
+         *  distancia cuando esta bien (en la hoja de ruta). */
+        const MARCA_LEJOS_M = 300;
+        function avisoMarcaLejos(m, conDetalle = false) {
+            const ll = Number(m?.llegadaDistanciaM), sa = Number(m?.salidaDistanciaM);
+            const hayLl = m?.llegadaDistanciaM != null && Number.isFinite(ll);
+            const haySa = m?.salidaDistanciaM != null && Number.isFinite(sa);
+            if (!hayLl && !haySa) return '';
+            const metros = (x) => x >= 1000 ? `${(x / 1000).toFixed(1).replace('.', ',')} km` : `${Math.round(x)} m`;
+            const lejos = (hayLl && ll > MARCA_LEJOS_M) || (haySa && sa > MARCA_LEJOS_M);
+            const origen = m?.ubicacionOrigen === 'recorrido' ? ' (según el recorrido GPS)' : '';
+            const partes = [hayLl ? `llegada a ${metros(ll)}` : '', haySa ? `salida a ${metros(sa)}` : ''].filter(Boolean).join(' · ');
+            if (lejos) {
+                return `<span class="block mt-0.5 text-[10px] font-bold text-amber-700" title="Donde estaba el celular al marcar${origen}. Puede ser que marcó de pasada, o que el pin de la escuela esté corrido.">📍 Marcada lejos de la escuela: ${partes}</span>`;
+            }
+            return conDetalle ? `<span class="block mt-0.5 text-[10px] font-semibold text-emerald-700" title="Donde estaba el celular al marcar${origen}">📍 En la escuela: ${partes}</span>` : '';
+        }
+
         /** Carga o corrige los cajones de una parada desde la web. Solo manda los
          *  cajones: no toca el estado de la entrega ni los horarios del viaje. */
         function editStopCrates(td, tripId, stopId) {
@@ -17464,6 +17547,10 @@
                         cratesDelivered: s.cratesDelivered ?? null,
                         cratesRecovered: s.cratesRecovered ?? null,
                         cratesUpdatedAt: s.cratesUpdatedAt ?? null,
+                        // A cuantos metros de la escuela marco el chofer
+                        llegadaDistanciaM: s.llegadaDistanciaM ?? null,
+                        salidaDistanciaM: s.salidaDistanciaM ?? null,
+                        ubicacionOrigen: s.ubicacionOrigen ?? null,
                         // De que ruta y de que unidad es la parada. El renglon
                         // que separa los bloques leia `unidad` y nunca estaba,
                         // asi que no aparecia nunca.
@@ -17977,7 +18064,7 @@
                                     return `${encabezado}
                                     <tr class="border-t border-[#F4F7FE] hover:bg-[#F8FAFF]">
                                         <td class="px-2 py-2 text-[#A3AED0] font-bold">${i + 1}</td>
-                                        <td class="px-2 py-2 font-bold text-[#2B3674]">${escapeHtmlWeekly(row.name)}${esParadaDeposito(row.name) ? '' : lineaDireccionParada(row, 'semana-' + tripId)}</td>
+                                        <td class="px-2 py-2 font-bold text-[#2B3674]">${escapeHtmlWeekly(row.name)}${esParadaDeposito(row.name) ? '' : lineaDireccionParada(row, 'semana-' + tripId)}${esParadaDeposito(row.name) ? '' : avisoMarcaLejos(m)}</td>
                                         <td class="px-2 py-2 text-center"><span class="status-badge ${lbl.cls} text-[9px]">${lbl.txt}</span></td>
                                         <td class="px-2 py-2 text-center text-[10px] text-[#2B3674] hover:bg-indigo-50 cursor-pointer"
                                             ondblclick="editStopTime(this, ${tripId}, ${m.stopId || 'null'}, 'actualArrival')"
@@ -31737,6 +31824,7 @@ async function openHdrDetail(routeId) {
                             🕐 ${_hdrFmtTime(s.actualArrival)} → ${_hdrFmtTime(s.actualDeparture)}
                             ${s.legFromPreviousMinutes != null ? ` · Tramo: ${s.legFromPreviousMinutes} min` : ''}
                         </p>
+                        ${typeof avisoMarcaLejos === 'function' ? avisoMarcaLejos(s, true) : ''}
                         ${obs ? `<p class="text-[10px] text-[#2B3674] italic mt-1">"${obs}"</p>` : ''}
                         ${photoLink}
                     </div>
@@ -31854,6 +31942,17 @@ async function renderHdrMap(detail) {
             .addTo(_hdrMap);
         _hdrStopMarkers.push(m);
         bounds.extend([s.longitude, s.latitude]);
+        // Marcada lejos de la escuela: un punto chico donde estaba el celular
+        const MARCA_LEJOS = typeof MARCA_LEJOS_M === 'number' ? MARCA_LEJOS_M : 300;
+        [['llegada', s.llegadaLat, s.llegadaLng, s.llegadaDistanciaM], ['salida', s.salidaLat, s.salidaLng, s.salidaDistanciaM]].forEach(([cual, la, lo, d]) => {
+            if (la == null || lo == null || d == null || Number(d) <= MARCA_LEJOS) return;
+            const mm = new mapboxgl.Marker({ element: makeCircleEl('#f59e0b', 12), anchor: 'center' })
+                .setLngLat([lo, la])
+                .setPopup(new mapboxgl.Popup().setText(`${s.sequence}. ${s.name}: ${cual} marcada acá, a ${Math.round(d)} m de la escuela`))
+                .addTo(_hdrMap);
+            _hdrStopMarkers.push(mm);
+            bounds.extend([lo, la]);
+        });
     });
 
     if (!bounds.isEmpty()) {

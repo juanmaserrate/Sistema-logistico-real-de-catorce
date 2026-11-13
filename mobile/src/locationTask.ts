@@ -2,6 +2,7 @@ import * as TaskManager from 'expo-task-manager';
 import * as Location from 'expo-location';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { STORAGE_KEYS } from './config';
+import { enviarEnLotes, aPuntoLote } from './gpsLote';
 
 export const BACKGROUND_LOCATION_TASK = 'r14-background-location';
 
@@ -183,6 +184,7 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
       STORAGE_KEYS.driverName,
       STORAGE_KEYS.deviceId,
       STORAGE_KEYS.activeRouteId,
+      STORAGE_KEYS.gpsConfig,
     ]);
     const map = Object.fromEntries(entries) as Record<string, string | null>;
 
@@ -198,6 +200,20 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
       routeRaw != null && routeRaw !== '' && Number.isFinite(Number(routeRaw))
         ? Number(routeRaw)
         : null;
+
+    // Modo lotes (lo prende el servidor): todos los puntos, con su hora.
+    let enLotes = false;
+    try { enLotes = !!JSON.parse(map[STORAGE_KEYS.gpsConfig] || '{}')?.lotes; } catch { enLotes = false; }
+    if (enLotes) {
+      const quien = { deviceId, deviceLabel: map[STORAGE_KEYS.driverName] || 'Chofer', driverId };
+      const huboRed = await enviarEnLotes(apiBase, quien, locations.map((l) => aPuntoLote(l, routeId)));
+      // Lo que quedo en la cola vieja (de antes de prender el modo) sale igual
+      if (huboRed) {
+        await flushQueue(apiBase);
+        await flushPendingDataQueues();
+      }
+      return;
+    }
 
     // Marca de tiempo del dispositivo. Algunos Android viejos / ROMs raras devuelven
     // valores fuera de rango (NaN, 0, o futuros lejanos) que rompen Date.toISOString().

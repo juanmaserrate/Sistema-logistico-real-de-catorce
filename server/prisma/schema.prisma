@@ -215,6 +215,18 @@ model Stop {
   /// varias rutas y la vuelta al deposito; sin esto no hay forma de cerrarlas
   /// de a una. null = viaje de una sola ruta, como fue siempre.
   ruta                  String?
+  /// Donde estaba el celular cuando el chofer marco la llegada y la salida.
+  /// null = no se pudo saber (app vieja, o sin GPS y sin recorrido cerca).
+  llegadaLat            Float?
+  llegadaLng            Float?
+  /// Precision del GPS en metros en ese momento
+  llegadaPrecision      Float?
+  salidaLat             Float?
+  salidaLng             Float?
+  salidaPrecision       Float?
+  /// De donde salio la ubicacion: "celular" (la mando la app al marcar) o
+  /// "recorrido" (el punto del recorrido GPS mas cercano en hora)
+  ubicacionOrigen       String?
   client                Client    @relation(fields: [clientId], references: [id])
   route                 Route     @relation(fields: [routeId], references: [id])
 
@@ -420,6 +432,21 @@ model AppSettings {
   updatedAt DateTime @updatedAt
 }
 
+/// Cuantos pedidos se le hicieron a Mapbox desde el servidor, por mes y por
+/// servicio. Sirve para ver el uso real y para cortar antes de pasar lo gratis.
+model MapboxUso {
+  /// "2026-11"
+  mes         String
+  /// "matching" | "geocoding" | "directions"
+  api         String
+  pedidos     Int      @default(0)
+  /// Los que no se hicieron porque el mes ya estaba en el tope
+  frenados    Int      @default(0)
+  actualizado DateTime @updatedAt
+
+  @@id([mes, api])
+}
+
 model Alert {
   id        String   @id @default(uuid())
   tenantId  String?  @default("default-tenant")
@@ -519,6 +546,8 @@ model DeviceLocation {
   isActive       Boolean   @default(true)
 
   @@index([deviceId])
+  /// El ultimo punto de cada celular (Torre de Control, cada pocos segundos)
+  @@index([deviceId, timestamp])
   @@index([timestamp])
   @@index([routeId, timestamp])
   @@index([driverId])
