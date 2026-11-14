@@ -60,6 +60,7 @@ import {
   clearSession,
 } from '../sessionStorage';
 import { BACKGROUND_LOCATION_TASK } from '../locationTask';
+import { decidirGpsAlAbrir } from '../gpsAuto';
 import { API_BASE, STORAGE_KEYS } from '../config';
 import { colors, font, radius, spacing, shadow } from '../theme';
 
@@ -72,6 +73,12 @@ type Props = {
 /** Un viaje esta concluido si la ruta tiene fin real o el trip esta en estado
  *  final. Los concluidos DE HOY se siguen mostrando (solo consulta): antes se
  *  le "desaparecia la ruta" al chofer apenas el viaje se finalizaba. */
+/** AAAA-MM-DD con la fecha del celular (sin depender del idioma del telefono). */
+function hoyLocal(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
 function isConcluded(r: Route): boolean {
   if (r.actualEndTime) return true;
   const ts = (r.trip?.status || '').toUpperCase();
@@ -348,6 +355,8 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       // silent y necesita que el error desaparezca cuando la red vuelve.
       setErr('');
       setErrIsOffline(false);
+      // Con la lista del dia a mano: prender (o apagar) el GPS solo, si corresponde
+      void asegurarGpsRef.current?.(list);
     } catch (e) {
       // Distinguimos "no pude bajar las rutas" de "hoy no tenés viajes": antes
       // los dos casos terminaban mostrando "No tenés rutas asignadas para hoy"
@@ -603,7 +612,10 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   useEffect(() => {
     (async () => {
       const on = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
-      setTracking(on);
+      // Si el GPS lo prendio la app sola, el chofer todavia no ficho: tiene
+      // que seguir viendo «Fichar entrada» (es lo que marca la hora de inicio)
+      const prendidoSolo = (await AsyncStorage.getItem(STORAGE_KEYS.gpsAutoIniciado).catch(() => null)) === '1';
+      setTracking(on && !prendidoSolo);
     })();
   }, []);
 
@@ -739,39 +751,99 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       // Cada cuanto tomar un punto lo dice el servidor (con el modo nuevo, cada
       // 2 s en movimiento). Sin señal, queda lo ultimo que se supo.
       const cfg = await cargarConfigGps(session.id, deviceIdRef.current || '');
-      const opciones = `${cfg.intervaloMs}/${cfg.distanciaM}`;
-      let started = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
-      if (started) {
-        // Corriendo con otro intervalo (cambio la configuracion): se reinicia
-        const activas = await AsyncStorage.getItem(STORAGE_KEYS.gpsOpcionesActivas).catch(() => null);
-        if (activas !== opciones) {
-          await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK).catch(() => {});
-          started = false;
-        }
-      }
-      if (!started) {
-        await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
-          accuracy: Location.Accuracy.High,
-          timeInterval: cfg.intervaloMs,
-          distanceInterval: cfg.distanciaM,
-          pausesUpdatesAutomatically: false,
-          showsBackgroundLocationIndicator: true,
-          foregroundService: {
-            notificationTitle: 'R14 · Seguimiento activo',
-            notificationBody: 'Tu posición se envía a planificación en tiempo real',
-          },
-        });
-        await AsyncStorage.setItem(STORAGE_KEYS.gpsOpcionesActivas, opciones).catch(() => {});
-      }
+      await arrancarGpsDeFondo(cfg);
     } catch (e) {
       // El fichaje ya salio (el viaje figura iniciado); lo que fallo es el
       // GPS. El boton sigue en «Fichar entrada» para poder reintentar.
       avisarGpsNoArranca(e);
       return;
     }
+    // Lo prendio el chofer: deja de contar como prendido solo, y si habia
+    // fichado salida antes en el dia, vuelve a estar en jornada
+    await AsyncStorage.multiRemove([STORAGE_KEYS.gpsAutoIniciado, STORAGE_KEYS.gpsSalidaFichada]).catch(() => {});
     setTracking(true);
     void pedirSacarDelAhorroDeBateria();
   };
+
+  /** Prende el GPS de fondo (o lo reinicia si cambio el intervalo). Lo usan
+   *  «Fichar entrada» y la apertura de la app. Tira error si no arranca. */
+  const arrancarGpsDeFondo = async (cfg: { intervaloMs: number; distanciaM: number }) => {
+    const opciones = `${cfg.intervaloMs}/${cfg.distanciaM}`;
+    let started = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+    if (started) {
+      // Corriendo con otro intervalo (cambio la configuracion): se reinicia
+      const activas = await AsyncStorage.getItem(STORAGE_KEYS.gpsOpcionesActivas).catch(() => null);
+      if (activas !== opciones) {
+        await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK).catch(() => {});
+        started = false;
+      }
+    }
+    if (!started) {
+      await Location.startLocationUpdatesAsync(BACKGROUND_LOCATION_TASK, {
+        accuracy: Location.Accuracy.High,
+        timeInterval: cfg.intervaloMs,
+        distanceInterval: cfg.distanciaM,
+        pausesUpdatesAutomatically: false,
+        showsBackgroundLocationIndicator: true,
+        foregroundService: {
+          notificationTitle: 'R14 · Seguimiento activo',
+          notificationBody: 'Tu posición se envía a planificación en tiempo real',
+        },
+      });
+      await AsyncStorage.setItem(STORAGE_KEYS.gpsOpcionesActivas, opciones).catch(() => {});
+    }
+  };
+
+  /** Al abrir la app (o volver a ella): si el chofer tiene un viaje de hoy sin
+   *  terminar, el GPS arranca solo, aunque no haya tocado «Fichar entrada».
+   *  NO ficha: la hora de inicio del viaje la sigue marcando «Fichar entrada»
+   *  (la usan las horas y el Motor de Costos), y el boton queda a la vista.
+   *  - Si hoy ficho salida, no se vuelve a prender solo.
+   *  - Si ya no queda ningun viaje abierto, el GPS que se prendio solo se
+   *    apaga solo (antes los celulares seguian mandando horas despues).
+   *  Se prende desde el servidor (gps_config.autoInicio), sin publicar la app. */
+  const autoEnCurso = useRef(false);
+  const asegurarGpsAlAbrir = async (lista: Route[]) => {
+    if (autoEnCurso.current) return;
+    autoEnCurso.current = true;
+    try {
+      const cfg = await cargarConfigGps(session.id, deviceIdRef.current || '');
+      const corriendo = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
+      const prendidoSolo = (await AsyncStorage.getItem(STORAGE_KEYS.gpsAutoIniciado).catch(() => null)) === '1';
+      const abierta = lista.find((r) => !isConcluded(r)) || null;
+      const salidaFichadaHoy = (await AsyncStorage.getItem(STORAGE_KEYS.gpsSalidaFichada).catch(() => null)) === hoyLocal();
+      const que = decidirGpsAlAbrir({
+        autoInicio: cfg.autoInicio, hayViajeAbierto: !!abierta, corriendo, prendidoSolo, salidaFichadaHoy,
+      });
+      if (que === 'apagar') {
+        await Location.stopLocationUpdatesAsync(BACKGROUND_LOCATION_TASK).catch(() => {});
+        await setActiveRouteId(null);
+        await AsyncStorage.removeItem(STORAGE_KEYS.gpsAutoIniciado).catch(() => {});
+        return;
+      }
+      if (que !== 'prender' || !abierta) return;
+      // Permiso: se pide solo si nunca se pidio; si lo nego, no se insiste
+      // (eso lo resuelve «Fichar entrada», que explica que hacer)
+      const perm = await Location.getForegroundPermissionsAsync();
+      let permiso = perm.status === 'granted';
+      if (!permiso && perm.status === 'undetermined') {
+        permiso = (await Location.requestForegroundPermissionsAsync()).status === 'granted';
+      }
+      if (!permiso) return;
+      if (!(await Location.hasServicesEnabledAsync().catch(() => false))) return;
+      const rid = selected && !isConcluded(selected) ? selected.id : abierta.id;
+      await setActiveRouteId(rid);
+      await arrancarGpsDeFondo(cfg);
+      await AsyncStorage.setItem(STORAGE_KEYS.gpsAutoIniciado, '1').catch(() => {});
+      void sendOnePing(rid);
+    } catch {
+      // Si no arranca, queda «Fichar entrada» como siempre
+    } finally {
+      autoEnCurso.current = false;
+    }
+  };
+  const asegurarGpsRef = useRef(asegurarGpsAlAbrir);
+  asegurarGpsRef.current = asegurarGpsAlAbrir;
 
   /** Algunos celulares (Xiaomi, Samsung, Motorola) cortan la app de fondo para
    *  ahorrar bateria y la Torre deja de ver al camion. Se le pide al chofer
@@ -964,6 +1036,9 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       await deactivateDevice(deviceIdRef.current);
     }
     await setActiveRouteId(null);
+    // Termino la jornada: hoy el GPS ya no se prende solo al abrir la app
+    await AsyncStorage.setItem(STORAGE_KEYS.gpsSalidaFichada, hoyLocal()).catch(() => {});
+    await AsyncStorage.removeItem(STORAGE_KEYS.gpsAutoIniciado).catch(() => {});
     setTracking(false);
   };
 

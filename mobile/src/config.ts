@@ -38,4 +38,6 @@ export const STORAGE_KEYS = {
   gpsLoteQueue: 'r14_gps_lote_queue',             // Puntos GPS sin mandar (modo lotes), en formato compacto
   gpsOpcionesActivas: 'r14_gps_opciones_activas', // Intervalo con el que esta corriendo el GPS ahora
   bateriaPedida: 'r14_bateria_pedida',            // Cuando se le pidio al chofer sacar la app del ahorro de bateria
+  gpsSalidaFichada: 'r14_gps_salida_fichada',     // Dia (AAAA-MM-DD) en que el chofer ficho salida: ese dia el GPS no se prende solo
+  gpsAutoIniciado: 'r14_gps_auto_iniciado',       // '1' = el GPS lo prendio la app sola al abrirse (no el chofer con «Fichar entrada»)
 } as const;

@@ -2475,14 +2475,17 @@ function avisarPosicionEnVivo(record: any) {
 /** Como manda los puntos la app. Se puede cambiar sin publicar la app:
  *  lotes = todos los puntos juntos y con su hora (si no, el camino viejo de a
  *  uno); intervaloMs / distanciaM = cada cuanto toma un punto el celular. */
-async function leerConfigGps(): Promise<{ lotes: 'todos' | 'ninguno' | string[]; intervaloMs: number; distanciaM: number }> {
-    const porDefecto = { lotes: 'ninguno' as const, intervaloMs: 5000, distanciaM: 15 };
+type ListaGps = 'todos' | 'ninguno' | string[];
+async function leerConfigGps(): Promise<{ lotes: ListaGps; autoInicio: ListaGps; intervaloMs: number; distanciaM: number }> {
+    const porDefecto = { lotes: 'ninguno' as const, autoInicio: 'ninguno' as const, intervaloMs: 5000, distanciaM: 15 };
     try {
         const fila = await prisma.appSettings.findUnique({ where: { key: 'gps_config' } });
         if (!fila) return porDefecto;
         const v = JSON.parse(fila.value || '{}');
         return {
             lotes: v.lotes === 'todos' || Array.isArray(v.lotes) ? v.lotes : 'ninguno',
+            // El GPS arranca solo al abrir la app (sin esperar «Fichar entrada»)
+            autoInicio: v.autoInicio === 'todos' || Array.isArray(v.autoInicio) ? v.autoInicio : 'ninguno',
             intervaloMs: Math.min(30000, Math.max(1000, Number(v.intervaloMs) || porDefecto.intervaloMs)),
             distanciaM: Math.min(100, Math.max(0, Number.isFinite(Number(v.distanciaM)) ? Number(v.distanciaM) : porDefecto.distanciaM))
         };
@@ -2496,23 +2499,29 @@ app.get('/api/v1/tracking/config', async (req: any, res: any) => {
     const cfg = await leerConfigGps();
     const driverId = String(req.query.driverId || '').trim();
     const deviceId = String(req.query.deviceId || '').trim();
-    const enLotes = cfg.lotes === 'todos'
-        || (Array.isArray(cfg.lotes) && (cfg.lotes.includes(driverId) || cfg.lotes.includes(deviceId)));
+    const incluye = (l: ListaGps) => l === 'todos' || (Array.isArray(l) && (l.includes(driverId) || l.includes(deviceId)));
+    const enLotes = incluye(cfg.lotes);
     // Lo rapido va con el modo lotes: el camino viejo no da abasto cada 2 s
-    res.json(enLotes
-        ? { lotes: true, intervaloMs: cfg.intervaloMs, distanciaM: cfg.distanciaM }
-        : { lotes: false, intervaloMs: 5000, distanciaM: 15 });
+    res.json({
+        ...(enLotes
+            ? { lotes: true, intervaloMs: cfg.intervaloMs, distanciaM: cfg.distanciaM }
+            : { lotes: false, intervaloMs: 5000, distanciaM: 15 }),
+        autoInicio: incluye(cfg.autoInicio)
+    });
 });
 
 /** Prender o apagar el modo nuevo, para todos o para algunos choferes.
- *  POST /api/admin/gps-config { key, lotes: 'todos'|'ninguno'|[driverId...], intervaloMs?, distanciaM? } */
+ *  POST /api/admin/gps-config { key, lotes?, autoInicio?, intervaloMs?, distanciaM? }
+ *  lotes / autoInicio: 'todos' | 'ninguno' | [driverId...] */
 app.post('/api/admin/gps-config', async (req: any, res: any) => {
-    const { key, lotes, intervaloMs, distanciaM } = req.body || {};
+    const { key, lotes, autoInicio, intervaloMs, distanciaM } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     const actual = await leerConfigGps();
+    const lista = (v: any, antes: ListaGps): ListaGps => v === 'todos' || v === 'ninguno' ? v
+        : Array.isArray(v) ? v.map((x: any) => String(x).trim()).filter(Boolean) : antes;
     const nuevo = {
-        lotes: lotes === 'todos' || lotes === 'ninguno' ? lotes
-            : Array.isArray(lotes) ? lotes.map((x: any) => String(x).trim()).filter(Boolean) : actual.lotes,
+        lotes: lista(lotes, actual.lotes),
+        autoInicio: lista(autoInicio, actual.autoInicio),
         intervaloMs: intervaloMs != null ? Number(intervaloMs) : actual.intervaloMs,
         distanciaM: distanciaM != null ? Number(distanciaM) : actual.distanciaM
     };

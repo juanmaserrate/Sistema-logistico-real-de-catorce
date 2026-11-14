@@ -472,9 +472,9 @@ async function ubicacionRapida(): Promise<UbicacionDeMarca | null> {
 
 /** Como tiene que mandar el GPS este celular (lo decide el servidor). Se
  *  guarda para la tarea de fondo; si no hay señal, queda lo ultimo que se supo. */
-export interface ConfigGps { lotes: boolean; intervaloMs: number; distanciaM: number }
+export interface ConfigGps { lotes: boolean; intervaloMs: number; distanciaM: number; autoInicio: boolean }
 export async function cargarConfigGps(driverId: string, deviceId: string): Promise<ConfigGps> {
-  const porDefecto: ConfigGps = { lotes: false, intervaloMs: 5000, distanciaM: 15 };
+  const porDefecto: ConfigGps = { lotes: false, intervaloMs: 5000, distanciaM: 15, autoInicio: false };
   try {
     const q = `?driverId=${encodeURIComponent(driverId)}&deviceId=${encodeURIComponent(deviceId)}`;
     const res = await fetchWithTimeout(apiUrl(`/api/v1/tracking/config${q}`), { timeout: 4000 });
@@ -484,6 +484,7 @@ export async function cargarConfigGps(driverId: string, deviceId: string): Promi
       lotes: !!d.lotes,
       intervaloMs: Math.min(30000, Math.max(1000, Number(d.intervaloMs) || 5000)),
       distanciaM: Math.min(100, Math.max(0, Number.isFinite(Number(d.distanciaM)) ? Number(d.distanciaM) : 15)),
+      autoInicio: !!d.autoInicio,
     };
     await AsyncStorage.setItem(STORAGE_KEYS.gpsConfig, JSON.stringify(cfg));
     return cfg;
