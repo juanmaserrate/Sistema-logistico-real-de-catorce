@@ -3,6 +3,7 @@ import express from 'express';
 import crypto from 'crypto';
 import { mapaUnidadPorRuta, unidadDeParada, unidadesDeTexto, repartirHoras, esVueltaAlDeposito, SIN_UNIDAD, reasignarUnidades } from './unidadesDelViaje';
 import { calcularOtif, EntregaOtif, IncidenciaOtif, REGLAS_OTIF } from './otif';
+import { repartirAuxiliares, auxiliaresDeTexto, ViajeConAuxiliares, SueldoDelAuxiliar, ModoDePago } from './costoAuxiliares';
 import { normalizarViajeAlCerrar } from './cierreDeViaje';
 import { costoTercerizadoPorHoras } from './costoTercerizado';
 import { auditarMes, filtrarInforme } from './auditoriaDeViajes';
@@ -8917,7 +8918,11 @@ function aperturaPorUnidad(
     viajes: any[], mapaU: Map<string, string>,
     /** De donde sale el costo de un viaje. Por defecto, el que tiene cargado.
      *  El costo por unidad le pasa otra para los propios: el que vale hoy. */
-    costoDelViaje: (t: any) => number = (t) => Number(t?.value) || 0
+    costoDelViaje: (t: any) => number = (t) => Number(t?.value) || 0,
+    /** Lo de sus auxiliares, para los que NO son propios (en los propios ya
+     *  esta adentro del costo). Va despues del reparto del dia del
+     *  tercerizado: ese reparto es de la tarifa, el auxiliar ya viene por viaje. */
+    auxDeTercerizados: Map<number, number> | null = null
 ): Record<string, AperturaUnidad> {
     const acc: Record<string, AperturaUnidad> = {};
     const sumar = (u: string, horas: number, monto: number, esPropio: boolean) => {
@@ -8944,8 +8949,9 @@ function aperturaPorUnidad(
     for (const t of viajes) {
         const r = t?.linkedRoute;
         const horas = horasDe(t);
-        const monto = delDia.has(Number(t?.id)) ? delDia.get(Number(t?.id))! : costoDelViaje(t);
         const esPropio = String(t?.contractType || '').toLowerCase() === 'propio';
+        const monto = (delDia.has(Number(t?.id)) ? delDia.get(Number(t?.id))! : costoDelViaje(t))
+            + (!esPropio && auxDeTercerizados ? (auxDeTercerizados.get(Number(t?.id)) || 0) : 0);
         const reparto = repartirHoras(
             {
                 businessUnit: t?.businessUnit,
@@ -9017,14 +9023,18 @@ app.get('/api/v1/costs/unidades-anual', async (req: any, res: any) => {
         });
         const mapaU = await unidadesPorRutaCacheado();
         const limpios = sinViajesDePrueba(viajes as any[]);
+        // El sueldo de los auxiliares que anduvieron en tercerizados
+        const aux = await auxiliaresDelPeriodo(ini, fin, 8);
+        const auxTerc = new Map<number, number>();
+        for (const [id, monto] of aux.porViaje) if (!aux.propio.get(id)) auxTerc.set(id, monto);
 
         // Los doce meses por separado, y ademas el ano entero
         const porMes: Record<string, any[]> = {};
         for (let m = 0; m < 12; m++) {
             const delMes = limpios.filter((t: any) => new Date(t.date).getMonth() === m);
-            porMes[MESES_ES[m]] = aperturaEnFilas(aperturaPorUnidad(delMes, mapaU));
+            porMes[MESES_ES[m]] = aperturaEnFilas(aperturaPorUnidad(delMes, mapaU, undefined, auxTerc));
         }
-        const total = aperturaEnFilas(aperturaPorUnidad(limpios, mapaU));
+        const total = aperturaEnFilas(aperturaPorUnidad(limpios, mapaU, undefined, auxTerc));
 
         res.json({ anio, meses: MESES_ES, porMes, total });
     } catch (e: any) {
@@ -9074,6 +9084,7 @@ app.get('/api/admin/panel-coherencia', async (req: any, res: any) => {
         const viajes = sinViajesDePrueba(crudos as any[]);
 
         const vivo = await _costosPropiosDeHoy(mes, anio);
+        const auxTerc = await auxiliaresTercerizadosDelMes(mes, anio);
         const costoDe = (t: any) => vivo.costos.get(Number(t?.id)) ?? (Number(t?.value) || 0);
         const esPropio = (t: any) => String(t?.contractType || '').toLowerCase() === 'propio';
         const horasDe = (t: any) => parseTripDurationHrs({
@@ -9087,13 +9098,13 @@ app.get('/api/admin/panel-coherencia', async (req: any, res: any) => {
         for (const t of viajes as any[]) {
             const c = costoDe(t);
             if (esPropio(t)) { tarjetas.propio += c; tarjetas.propios++; }
-            else { tarjetas.terc += c; tarjetas.tercerizados++; }
+            else { tarjetas.terc += c + (auxTerc.get(Number(t?.id)) || 0); tarjetas.tercerizados++; }
             tarjetas.horas += horasDe(t);
         }
 
         // ── Contado por unidad de negocio, que es como lo hace el cuadro ──
         const mapaU = await unidadesPorRutaCacheado();
-        const filas = aperturaEnFilas(aperturaPorUnidad(viajes as any[], mapaU, costoDe));
+        const filas = aperturaEnFilas(aperturaPorUnidad(viajes as any[], mapaU, costoDe, auxTerc));
         const cuadro = filas.reduce((a: any, f: any) => ({
             viajes: a.viajes + f.viajes, propio: a.propio + f.propio,
             terc: a.terc + f.tercerizado, horas: a.horas + f.horas
@@ -9188,6 +9199,39 @@ async function _costosPropiosDeHoy(mes: string, anio: number): Promise<{ costos:
     return { costos: salida, pudo: true };
 }
 
+/** El costo de los auxiliares de cada viaje de un mes, propios y
+ *  tercerizados. Lo usa el Panel Logistico: el tercerizado suma esto a su
+ *  tarifa (la planilla de viajes no, sigue con la tarifa sola).
+ *  GET /api/v1/costs/auxiliares?month=octubre&year=2026 */
+app.get('/api/v1/costs/auxiliares', async (req: any, res: any) => {
+    try {
+        const mes = String(req.query.month || '').toLowerCase();
+        const mesNum = MONTH_TO_NUM[mes];
+        if (mesNum === undefined) return res.status(400).json({ error: 'Mes invalido' });
+        const anio = Number(req.query.year) > 0 ? Number(req.query.year) : new Date().getFullYear();
+        let horasPorDefecto = 8;
+        try {
+            const guardado = await prisma.appSettings.findUnique({ where: { key: 'costs_data' } });
+            const p = guardado ? (JSON.parse(guardado.value || '{}') || {})[claveCostos(mes, anio)] : null;
+            const fb = parseFloat(p?.fallback_hours);
+            if (Number.isFinite(fb) && fb > 0 && fb <= 24) horasPorDefecto = fb;
+        } catch { /* 8 */ }
+        const r = await auxiliaresDelPeriodo(new Date(anio, mesNum, 1), new Date(anio, mesNum + 1, 0, 23, 59, 59), horasPorDefecto);
+        const porViaje: Record<number, number> = {};
+        for (const [id, monto] of r.porViaje) porViaje[id] = Math.round(monto);
+        const suma = (f: (p: any) => number) => Math.round(r.personas.reduce((a, p) => a + f(p), 0));
+        res.json({
+            mes, anio, porViaje,
+            propios: suma((p) => p.costoPropios),
+            tercerizados: suma((p) => p.costoTercerizados),
+            sinSueldo: r.sinSueldo
+        });
+    } catch (e: any) {
+        console.error('costs/auxiliares:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** La apertura por unidad de negocio del costo de un mes.
  *
  *  Se calcula EN EL SERVIDOR sobre los costos que los viajes tienen cargados
@@ -9237,9 +9281,12 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
         // cosa. Es el mismo calculo del Motor, no una copia: corre su funcion
         // sin escribir nada.
         const costoVivo = await _costosPropiosDeHoy(mes, anio);
+        // Y el sueldo de los auxiliares que anduvieron en tercerizados
+        const auxTerc = await auxiliaresTercerizadosDelMes(mes, anio);
         const acc = aperturaPorUnidad(
             sinViajesDePrueba(viajes as any[]), mapaU,
-            (t) => costoVivo.costos.get(Number(t?.id)) ?? (Number(t?.value) || 0)
+            (t) => costoVivo.costos.get(Number(t?.id)) ?? (Number(t?.value) || 0),
+            auxTerc
         );
         const unidades = aperturaEnFilas(acc);
 
@@ -14744,6 +14791,110 @@ type SalidaDelMotor = any;
 function _malPedido(x: any): SalidaDelMotor { return { ...x, _malPedido: true }; }
 function _resultado(x: any): SalidaDelMotor { return x; }
 
+/** El costo de los auxiliares de cada viaje de un periodo, propios Y
+ *  tercerizados (ver costoAuxiliares.ts). Solo lee.
+ *
+ *  Como cobra cada uno lo dice su ficha de Personal (FIJO / JORNAL); cuanto,
+ *  la planilla de Sueldos del mes de ese anio. `sueldosDelNavegador` es lo que
+ *  manda la pantalla vieja del Motor cuando el mes no tiene sueldos en la base. */
+async function auxiliaresDelPeriodo(
+    desde: Date, hasta: Date, horasPorDefecto: number, sueldosDelNavegador: any[] | null = null
+) {
+    const crudos = await prisma.trip.findMany({
+        where: { date: { gte: desde, lte: hasta } },
+        select: {
+            id: true, date: true, contractType: true, driver: true, assignedMobileUser: true,
+            auxiliar: true, auxiliar2: true, auxiliar3: true,
+            exitTime: true, returnTime: true,
+            linkedRoute: { select: { actualStartTime: true, actualEndTime: true } }
+        }
+    });
+    const viajes: ViajeConAuxiliares[] = [];
+    const propio = new Map<number, boolean>();
+    for (const t of sinViajesDePrueba(crudos as any[]) as any[]) {
+        const auxiliares = auxiliaresDeTexto(t.auxiliar, t.auxiliar2, t.auxiliar3);
+        if (!auxiliares.length) continue;
+        const esPropio = String(t.contractType || '').trim().toLowerCase() === 'propio';
+        propio.set(t.id, esPropio);
+        viajes.push({
+            id: t.id,
+            // El dia como lo cuenta el Motor (mismo criterio que el jornal de antes)
+            dia: new Date(t.date).toISOString().slice(0, 10),
+            horas: parseTripDurationHrs({
+                ...t,
+                routeActualStart: t.linkedRoute?.actualStartTime ?? null,
+                routeActualEnd: t.linkedRoute?.actualEndTime ?? null
+            }, horasPorDefecto),
+            tercerizado: !esPropio,
+            auxiliares
+        });
+    }
+
+    // Sueldos de los meses que aparecen, cada uno con su anio
+    type Sueldo = { palabras: string[]; bruto: number; jornal: number };
+    const meses = [...new Set(viajes.map((v) => v.dia.slice(0, 7)))];
+    const filas = meses.length ? await prisma.employeeSalary.findMany({
+        where: { OR: meses.map((m) => ({ year: Number(m.slice(0, 4)), month: MESES_ES[Number(m.slice(5, 7)) - 1] })) }
+    }) : [];
+    const sueldosPorMes = new Map<string, Sueldo[]>();
+    const agregar = (mes: string, apellido: any, nombre: any, bruto: any, jornal: any) => {
+        const palabras = normPersonaCosto(`${apellido || ''} ${nombre || ''}`);
+        if (!palabras.length) return;
+        if (!sueldosPorMes.has(mes)) sueldosPorMes.set(mes, []);
+        sueldosPorMes.get(mes)!.push({ palabras, bruto: Number(bruto) || 0, jornal: Number(jornal) || 0 });
+    };
+    for (const e of filas) {
+        const n = MESES_ES.indexOf(String(e.month || '').toLowerCase());
+        if (n >= 0) agregar(`${e.year}-${String(n + 1).padStart(2, '0')}`, e.lastName, e.firstName, e.grossSalary, e.dailyWage);
+    }
+    if (Array.isArray(sueldosDelNavegador)) {
+        for (const m of meses) {
+            if (sueldosPorMes.has(m)) continue;
+            for (const e of sueldosDelNavegador) agregar(m, e?.Apellido, e?.Nombre, e?.Bruto, e?.Jornal);
+        }
+    }
+
+    // Como cobra cada uno, segun su ficha
+    const fichas = (await prisma.user.findMany({
+        where: { role: 'AUXILIAR' }, select: { fullName: true, username: true, payType: true }
+    })).map((f) => ({
+        palabras: normPersonaCosto(f.fullName || f.username || ''),
+        modo: (['FIJO', 'JORNAL'].includes(String(f.payType || '').toUpperCase()) ? String(f.payType).toUpperCase() : null) as ModoDePago | null
+    })).filter((f) => f.palabras.length);
+
+    /** Palabra por palabra, sin importar el orden: "DENIS RODRIGUEZ" (viaje)
+     *  encuentra a "RODRIGUEZ DENIS" (sueldos). El mismo criterio de siempre. */
+    const coincide = (buscadas: string[], palabras: string[]) =>
+        buscadas.every((b) => palabras.some((p) => p.includes(b) || b.includes(p)));
+    const reparto = repartirAuxiliares(viajes, (nombre: string, mes: string): SueldoDelAuxiliar | null => {
+        const buscadas = normPersonaCosto(nombre);
+        if (!buscadas.length) return null;
+        const s = (sueldosPorMes.get(mes) || []).find((e) => coincide(buscadas, e.palabras));
+        if (!s) return null;
+        const ficha = fichas.find((f) => coincide(buscadas, f.palabras));
+        return { bruto: s.bruto, jornal: s.jornal, modo: ficha?.modo ?? null };
+    });
+    return { ...reparto, viajes, propio };
+}
+
+/** Lo de los tercerizados de un mes, con las horas por defecto que tenga
+ *  guardadas ese mes en el Motor (8 si no tiene). */
+async function auxiliaresTercerizadosDelMes(mes: string, anio: number): Promise<Map<number, number>> {
+    const mesNum = MONTH_TO_NUM[mes];
+    const salida = new Map<number, number>();
+    if (mesNum === undefined) return salida;
+    let horasPorDefecto = 8;
+    try {
+        const guardado = await prisma.appSettings.findUnique({ where: { key: 'costs_data' } });
+        const p = guardado ? (JSON.parse(guardado.value || '{}') || {})[claveCostos(mes, anio)] : null;
+        const fb = parseFloat(p?.fallback_hours);
+        if (Number.isFinite(fb) && fb > 0 && fb <= 24) horasPorDefecto = fb;
+    } catch { /* se queda con 8 */ }
+    const r = await auxiliaresDelPeriodo(new Date(anio, mesNum, 1), new Date(anio, mesNum + 1, 0, 23, 59, 59), horasPorDefecto);
+    for (const [id, monto] of r.porViaje) if (!r.propio.get(id)) salida.set(id, monto);
+    return salida;
+}
+
 async function correrMotorDeCostos(
     month: any, yearArg: any, costsParams: any, salariesData: any, dryRun: boolean,
     quienLoCorre: string | null = null
@@ -14834,79 +14985,17 @@ async function correrMotorDeCostos(
 
         if (trips.length === 0) return _resultado({ updated: 0, trips: [], message: 'No hay viajes propios en ese mes' });
 
-        // 4. Sueldos del mes. Se leen de la base; si el mes no tiene nada cargado,
-        // se usa lo que mande el navegador (compatibilidad con la pantalla vieja).
-        // BUG (16-sep): el cruce era por texto exacto "APELLIDO NOMBRE", pero en los
-        // viajes el auxiliar figura como "NOMBRE APELLIDO". No coincidia NUNCA y el
-        // costo del auxiliar se guardaba en CERO, aunque en pantalla se viera bien.
-        // Los del mes DE ESE ANIO: sin el anio, recalcular octubre 2026 despues
-        // de cargar octubre 2027 usaba los sueldos nuevos.
-        const sueldosDb = await prisma.employeeSalary.findMany({ where: { month: String(month).toLowerCase(), year: anioDelCalculo } });
-        type SueldoCosto = { palabras: string[]; bruto: number; jornal: number };
-        const sueldos: SueldoCosto[] = [];
-        const agregarSueldo = (apellido: any, nombre: any, bruto: any, jornal: any) => {
-            const palabras = normPersonaCosto(`${apellido || ''} ${nombre || ''}`);
-            if (palabras.length) sueldos.push({ palabras, bruto: Number(bruto) || 0, jornal: Number(jornal) || 0 });
-        };
-        if (sueldosDb.length) {
-            for (const e of sueldosDb) agregarSueldo(e.lastName, e.firstName, e.grossSalary, e.dailyWage);
-        } else if (Array.isArray(salariesData)) {
-            for (const e of salariesData as any[]) agregarSueldo(e.Apellido, e.Nombre, e.Bruto, e.Jornal);
-        }
-        /** Busca el sueldo comparando palabra por palabra, sin importar el orden:
-         *  "DENIS RODRIGUEZ" (viaje) encuentra a "RODRIGUEZ DENIS" (sueldos). */
-        const buscarSueldo = (nombre: string): SueldoCosto | null => {
-            const buscadas = normPersonaCosto(nombre);
-            if (!buscadas.length) return null;
-            return sueldos.find((e) => buscadas.every((b) => e.palabras.some((p) => p.includes(b) || b.includes(p)))) || null;
-        };
-
-        // 5. Para cada auxiliar único en todos los viajes del mes, sumar horas totales
-        // Bug fix: antes se leian t.assistant / t.assistant2 / t.assistant3 que NO existen
-        // en el modelo Trip (solo auxiliar / auxiliar2 / auxiliar3). Siempre eran undefined.
-        const auxNames = new Set<string>();
-        trips.forEach((t: any) => {
-            [t.auxiliar, t.auxiliar2, t.auxiliar3]
-                .filter(Boolean)
-                .flatMap((a: string) => a.toString().split(',').map((n: string) => n.trim()))
-                .filter((n: string) => n && n !== '--' && n !== 'N/A' && n !== 'SIN AUXILIAR')
-                .forEach((n: string) => auxNames.add(n));
-        });
-
+        // 4 y 5. Los auxiliares (ver costoAuxiliares.ts). Antes se miraban solo
+        // los viajes propios: el jornal se cobraba el dia que el auxiliar salia
+        // en uno propio y el resto de su sueldo no iba a ningun lado (octubre:
+        // entraban $10,9 M de una nomina de $25,1 M). Ahora el sueldo entra
+        // entero y se reparte entre TODOS sus viajes, propios y tercerizados,
+        // segun las horas; a cada propio le toca su parte. La de los
+        // tercerizados se informa aparte: no cambia lo que se le paga al
+        // proveedor ni la planilla de viajes.
+        const aux = await auxiliaresDelPeriodo(startDate, endDate, fallbackHours, Array.isArray(salariesData) ? salariesData : null);
         const auxTotalHours: Record<string, number> = {};
-        auxNames.forEach(name => {
-            auxTotalHours[name] = trips.reduce((sum: number, t: any) => {
-                const auxList = [t.auxiliar, t.auxiliar2, t.auxiliar3]
-                    .filter(Boolean)
-                    .flatMap((a: string) => a.toString().split(',').map((n: string) => n.trim()));
-                if (auxList.includes(name)) {
-                    return sum + parseTripDurationHrs(t, fallbackHours);
-                }
-                return sum;
-            }, 0);
-        });
-
-        // Auxiliar por jornal: cobra el DIA, no el viaje. Se le carga el jornal una
-        // sola vez por dia, en su primer viaje; las vueltas siguientes no suman.
-        const primerViajeDelDia: Record<string, number> = {};
-        const ordenados = [...trips].sort((a: any, b: any) => {
-            const ha = String(a.exitTime || a.departureTime || a.date || '');
-            const hb = String(b.exitTime || b.departureTime || b.date || '');
-            return ha.localeCompare(hb) || a.id - b.id;
-        });
-        for (const t of ordenados as any[]) {
-            const dia = new Date(t.date).toISOString().slice(0, 10);
-            const auxList = [...new Set(
-                [t.auxiliar, t.auxiliar2, t.auxiliar3]
-                    .filter(Boolean)
-                    .flatMap((a: string) => a.toString().split(',').map((n: string) => n.trim()))
-                    .filter((n: string) => n && !['--', 'N/A', 'SIN AUXILIAR'].includes(n.toUpperCase()))
-            )];
-            for (const name of auxList) {
-                const clave = `${name.toLowerCase()}|${dia}`;
-                if (primerViajeDelDia[clave] === undefined) primerViajeDelDia[clave] = t.id;
-            }
-        }
+        for (const p of aux.personas) auxTotalHours[p.nombre] = Math.round((p.horasPropios + p.horasTercerizados) * 100) / 100;
 
         // 6. Calcular y guardar costo de cada viaje
         // De paso se arma la apertura por unidad de negocio: un viaje que
@@ -14917,14 +15006,18 @@ async function correrMotorDeCostos(
         // Su costo se suma en CERO y el viaje queda barato sin que nadie lo
         // note: paso en septiembre con tres auxiliares y recien se encontro
         // de casualidad. Se devuelve la lista para que la pantalla avise ANTES.
-        const sinSueldo = new Map<string, { nombre: string; viajes: number; dias: Set<string> }>();
-        const registrarSinSueldo = (nombre: string, dia: string) => {
-            const clave = nombre.toLowerCase();
-            if (!sinSueldo.has(clave)) sinSueldo.set(clave, { nombre, viajes: 0, dias: new Set() });
-            const x = sinSueldo.get(clave)!;
-            x.viajes += 1;
-            x.dias.add(dia);
-        };
+        // Frena solo por los que andan en propios (como siempre); los de
+        // tercerizados se informan aparte, porque pueden ser del proveedor.
+        const propiosDeCadaUno = new Map<string, { viajes: number; dias: Set<string> }>();
+        for (const v of aux.viajes) {
+            if (v.tercerizado) continue;
+            for (const n of v.auxiliares) {
+                const k = n.toLowerCase();
+                if (!propiosDeCadaUno.has(k)) propiosDeCadaUno.set(k, { viajes: 0, dias: new Set() });
+                propiosDeCadaUno.get(k)!.viajes++;
+                propiosDeCadaUno.get(k)!.dias.add(v.dia);
+            }
+        }
 
         const mapaU = await unidadesPorRutaCacheado();
         const porUnidad: Record<string, { horas: number; costo: number; viajes: number }> = {};
@@ -14958,30 +15051,10 @@ async function correrMotorDeCostos(
                     });
                 }
             }
-            let tripCost = durHrs * vehicleHourlyRate;
-
-            // Dedupe: si el mismo auxiliar figura en auxiliar y auxiliar2 (error de carga),
-            // antes se le sumaba el costo DOS veces al viaje.
-            const auxList = [...new Set(
-                [t.auxiliar, t.auxiliar2, t.auxiliar3]
-                    .filter(Boolean)
-                    .flatMap((a: string) => a.toString().split(',').map((n: string) => n.trim()))
-                    .filter((n: string) => n && n !== '--' && n !== 'N/A' && n !== 'SIN AUXILIAR')
-            )];
-
-            const dia = new Date(t.date).toISOString().slice(0, 10);
-            auxList.forEach((name: string) => {
-                const sueldo = buscarSueldo(name);
-                if (!sueldo || (!sueldo.bruto && !sueldo.jornal)) { registrarSinSueldo(name, dia); return; }
-                if (sueldo.jornal > 0) {
-                    // Por jornal: el dia se cobra una sola vez (primer viaje del dia)
-                    if (primerViajeDelDia[`${name.toLowerCase()}|${dia}`] === t.id) tripCost += sueldo.jornal;
-                } else {
-                    // Mensualizado: el sueldo se reparte entre las horas que hizo ese mes
-                    const totalHrsAux = auxTotalHours[name] || durHrs || 1;
-                    tripCost += (sueldo.bruto / totalHrsAux) * durHrs;
-                }
-            });
+            // El camion (y el chofer) por hora, mas la parte de sus auxiliares
+            let tripCost = durHrs * vehicleHourlyRate + (aux.porViaje.get(t.id) || 0);
+            // Los nombres, sin repetidos (un auxiliar cargado dos veces se cobra una)
+            const auxList = auxiliaresDeTexto(t.auxiliar, t.auxiliar2, t.auxiliar3);
 
             const value = Math.round(tripCost);
             // La apertura por unidad: el mismo costo, abierto por quien lo gasto
@@ -15046,9 +15119,28 @@ async function correrMotorDeCostos(
             });
         }
 
-        const auxiliaresSinSueldo = [...sinSueldo.values()]
-            .map((x) => ({ nombre: x.nombre, viajes: x.viajes, dias: x.dias.size }))
+        const enPropios = (nombre: string) => propiosDeCadaUno.get(nombre.toLowerCase());
+        const auxiliaresSinSueldo = aux.sinSueldo
+            .filter((x) => enPropios(x.nombre))
+            .map((x) => ({ nombre: x.nombre, viajes: enPropios(x.nombre)!.viajes, dias: enPropios(x.nombre)!.dias.size }))
             .sort((a, b) => b.dias - a.dias || b.viajes - a.viajes);
+        // Lo de los tercerizados: aparte, para el Panel y el costo por unidad
+        const auxTercerizados: Record<number, number> = {};
+        for (const [id, monto] of aux.porViaje) if (!aux.propio.get(id)) auxTercerizados[id] = Math.round(monto);
+        const suma = (f: (p: any) => number) => Math.round(aux.personas.reduce((a, p) => a + f(p), 0));
+        const auxiliares = {
+            propios: suma((p) => p.costoPropios),
+            tercerizados: suma((p) => p.costoTercerizados),
+            viajesTercerizados: Object.keys(auxTercerizados).length,
+            sinSueldoEnTercerizados: aux.sinSueldo.filter((x) => !enPropios(x.nombre)),
+            personas: aux.personas.map((p) => ({
+                nombre: p.nombre, modo: p.modo, viajes: p.viajes, dias: p.dias,
+                horasPropios: Math.round(p.horasPropios * 100) / 100,
+                horasTercerizados: Math.round(p.horasTercerizados * 100) / 100,
+                costoPropios: Math.round(p.costoPropios), costoTercerizados: Math.round(p.costoTercerizados),
+                sinSueldo: p.sinSueldo
+            }))
+        };
 
         return _resultado({
             unidades,
@@ -15064,6 +15156,10 @@ async function correrMotorDeCostos(
             costoPorViaje: Object.fromEntries(updates.map((u: any) => [u.id, u.value])),
             vehicleHourlyRate: Math.round(vehicleHourlyRate),
             auxTotalHours,
+            // El sueldo de los auxiliares: cuanto quedo en propios y cuanto en
+            // tercerizados (este no toca Trip.value: va aparte)
+            auxiliares,
+            auxTercerizados,
             // Para que la pantalla pueda avisar antes de pisar los viajes
             viajes: updates.length,
             horasRepartidas,

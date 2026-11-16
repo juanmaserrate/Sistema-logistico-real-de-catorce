@@ -1060,6 +1060,7 @@
                     <div class="card-dark p-5 border border-indigo-100 bg-gradient-to-br from-indigo-50/80 to-white">
                         <p class="text-[10px] font-black text-indigo-600 uppercase tracking-widest mb-1">Costo tercerizado</p>
                         <p id="dash-kpi-tercerizado" class="text-xl font-black text-indigo-700">$ 0</p>
+                        <p id="dash-kpi-tercerizado-aux" class="text-[10px] text-indigo-500/80 font-medium mt-1 tabular-nums" title="Sueldo de los auxiliares propios que anduvieron en camiones tercerizados. No esta en la planilla de viajes: ahi el tercerizado muestra solo la tarifa."></p>
                     </div>
                     <div class="card-dark p-5 border border-[#F4F7FE]">
                         <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">Costo total</p>
@@ -17261,7 +17262,12 @@
             const fbHours = parseFloat(minData.fallback_hours) > 0 ? parseFloat(minData.fallback_hours) : 8;
             const durationHrs = getTripDurationHours(t, fbHours);
             let tripTotal = durationHrs * vehicleHourlyRate;
-            
+
+            // El sueldo de los auxiliares: el reparto del servidor (el mismo
+            // del Motor). Solo si ese mes no llego se hace la cuenta vieja.
+            const delServidor = auxiliaresDelViajeServidor(t);
+            if (delServidor != null) return Math.round(tripTotal + delServidor);
+
             const assistants = auxiliaresDelViaje(t);
 
             assistants.forEach(name => {
@@ -17286,8 +17292,13 @@
             return (t.contractType || '') === 'Propio';
         }
 
+        /** El costo logistico del viaje: el del Panel y el costo por unidad.
+         *  En los tercerizados es la tarifa MAS el sueldo de los auxiliares
+         *  propios que iban arriba. La planilla de viajes no usa esto: sigue
+         *  mostrando la tarifa sola (getTripCalculatedCost). */
         function getTripLogisticCost(t) {
-            return tripIsPropioForCost(t) ? getTripCalculatedCost(t) : (Number(t.value) || 0);
+            if (tripIsPropioForCost(t)) return getTripCalculatedCost(t);
+            return (Number(t.value) || 0) + (auxiliaresDelViajeServidor(t) || 0);
         }
 
         function getTripLocalDateKey(t) {
@@ -18817,6 +18828,8 @@
         async function _weeklyFetchMonth(key) {
             // key = "junio-2026"
             const [mName, yStr] = key.split('-');
+            // En paralelo con los viajes: no los hace esperar
+            const auxEnCamino = cargarAuxiliaresDelMes(mName, yStr);
             const url = `${API_URL}/trips?month=${encodeURIComponent(mName)}&year=${encodeURIComponent(yStr)}`;
             const res = await fetch(url, { headers: getActorHeaders() });
             if (res.status === 401 || res.status === 403) throw new Error(`Auth ${res.status}`);
@@ -18825,7 +18838,36 @@
             // Merge idempotente por tripId: seguro aunque las respuestas lleguen desordenadas
             (Array.isArray(data) ? data : []).forEach(t => { if (t && t.id != null) __weeklyTripsById.set(t.id, t); });
             __weeklyMonthsLoaded.set(key, Date.now());
+            // El sueldo de los auxiliares de esos viajes lo reparte el servidor
+            // (propios y tercerizados). Si no llega, los propios usan la
+            // cuenta vieja de aca y los tercerizados quedan con su tarifa.
+            await auxEnCamino;
             return Array.isArray(data) ? data.length : 0;
+        }
+
+        // ── Sueldo de los auxiliares por viaje (lo calcula el servidor) ──
+        // { "octubre-2026": { tripId: monto } }. El mismo reparto que el Motor
+        // de Costos: el sueldo entero, entre todos sus viajes por horas.
+        const __auxPorMes = new Map();
+        async function cargarAuxiliaresDelMes(mes, anio) {
+            try {
+                const res = await fetch(`${API_URL}/costs/auxiliares?month=${encodeURIComponent(mes)}&year=${encodeURIComponent(anio)}`, { headers: getActorHeaders() });
+                if (!res.ok) return;
+                const d = await res.json();
+                __auxPorMes.set(`${String(mes).toLowerCase()}-${anio}`, d.porViaje || {});
+            } catch (e) {
+                console.warn('[auxiliares]', mes, anio, e);
+            }
+        }
+        /** Lo que le toca al viaje del sueldo de sus auxiliares, o null si
+         *  todavia no se trajo ese mes. */
+        function auxiliaresDelViajeServidor(t) {
+            if (!t?.date) return null;
+            const d = new Date(t.date);
+            if (isNaN(d.getTime())) return null;
+            const mapa = __auxPorMes.get(`${getMonthKeyFromDate(t.date)}-${d.getFullYear()}`);
+            if (!mapa) return null;
+            return Number(mapa[t.id]) || 0;
         }
 
         /** opts.silencioso = no muestra el cartel de "Cargando viajes...".
@@ -27330,11 +27372,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             let totalPropio = 0;
             let totalTerc = 0;
             let viajesPropios = 0;
+            let auxEnTerc = 0;
             trips.forEach(t => {
                 const c = getTripLogisticCost(t);
                 if (tripIsPropioForCost(t)) { totalPropio += c; viajesPropios++; }
-                else totalTerc += c;
+                else { totalTerc += c; auxEnTerc += auxiliaresDelViajeServidor(t) || 0; }
             });
+            _txt('dash-kpi-tercerizado-aux', auxEnTerc > 0 ? `incluye ${formatDashMoney(auxEnTerc)} de auxiliares propios` : '');
             // Porcentaje de viajes propios = (viajes propios / viajes totales) x 100
             _txt('dash-kpi-trips-propios', trips.length
                 ? `${(Math.round(1000 * viajesPropios / trips.length) / 10).toLocaleString('es-AR')}% propios · (${viajesPropios.toLocaleString('es-AR')} ÷ ${trips.length.toLocaleString('es-AR')}) × 100`
