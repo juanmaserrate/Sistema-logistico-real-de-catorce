@@ -1898,12 +1898,19 @@ app.get('/api/v1/kpi/otif', sesionOClave, async (req: any, res: any) => {
         });
         const mapaU = await unidadesPorRutaCacheado();
         const entregas: EntregaOtif[] = [];
+        // Hoy y los dias que vienen no cuentan: sus paradas todavia no se
+        // hicieron y saldrian "sin marcar" (con el mes en curso daba 33%).
+        const hoyAR = new Date(Date.now() - 3 * 3600_000).toISOString().slice(0, 10);
+        let hastaDia = '';
         for (const t of sinViajesDePrueba(crudos as any[])) {
+            const fecha = new Date(t.date).toISOString().slice(0, 10);
+            if (fecha >= hoyAR) continue;
+            if (fecha > hastaDia) hastaDia = fecha;
             const unidades = unidadesDeTexto(t.businessUnit);
             for (const s of t.linkedRoute?.stops || []) {
                 if (esVueltaAlDeposito(s as any)) continue;
                 entregas.push({
-                    viajeId: t.id, fecha: new Date(t.date).toISOString().slice(0, 10),
+                    viajeId: t.id, fecha,
                     reparto: t.reparto || '', chofer: t.driver || '', contrato: t.contractType || '',
                     unidad: unidadDeParada(s as any, mapaU, unidades), escuela: s.client?.name || '',
                     estado: s.status || 'PENDING', llegada: s.actualArrival, salida: s.actualDeparture
@@ -1917,11 +1924,13 @@ app.get('/api/v1/kpi/otif', sesionOClave, async (req: any, res: any) => {
         });
         const incidencias: IncidenciaOtif[] = filasInc.map((i) => ({
             fecha: i.fecha.toISOString().slice(0, 10), unidad: i.unidad || '', establecimiento: i.establecimiento, tipo: i.tipo || ''
-        }));
+        })).filter((i) => i.fecha < hoyAR);
         const r = calcularOtif(entregas, incidencias);
         const carga = await prisma.appSettings.findUnique({ where: { key: 'otif_incidencias_carga' } }).catch(() => null);
         res.json({
             formula: r.formula, aTiempo: r.aTiempo, completas: r.completas, fuera: r.fuera,
+            // El periodo llega hasta hoy o despues: se corto en ayer
+            hastaDia: rango.hasta.getTime() >= new Date(hoyAR + 'T00:00:00Z').getTime() ? hastaDia : null,
             porUnidad: r.porUnidad, motivos: r.motivos,
             incidencias: {
                 delPeriodo: incidencias.length,

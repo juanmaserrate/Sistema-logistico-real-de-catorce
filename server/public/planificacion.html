@@ -26822,6 +26822,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                             <p class="text-5xl font-black text-[#1B2559] tabular-nums leading-none">${pc(f.otif)}</p>
                             <p class="text-sm font-bold text-[#1B2559] mt-3 tabular-nums">(${_otifNro(f.aTiempoYCompletos)} ÷ ${_otifNro(f.evaluados)}) × 100</p>
                             <p class="text-[11px] text-[#A3AED0] mt-0.5">pedidos a tiempo y completos ÷ pedidos evaluados</p>
+                            ${d.hastaDia ? `<p class="text-[11px] font-bold text-indigo-600 mt-1">Hasta el ${_otifEsc(d.hastaDia.split('-').reverse().slice(0, 2).join('/'))}: hoy y los días que vienen todavía no cuentan.</p>` : ''}
                         </div>
                         <div class="grid grid-cols-2 gap-3">
                             <div class="rounded-xl bg-[#F4F7FE] px-3 py-2.5">
