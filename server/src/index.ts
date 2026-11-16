@@ -14941,7 +14941,8 @@ app.get('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
                 clientId: s.clientId,
                 name: s.client?.name || 'Cliente',
                 address: s.client?.address || null,
-                // Para la columna Localidad de la hoja de ruta
+                // Para las columnas Zona y Localidad de la hoja de ruta
+                zona: s.client?.zone || null,
                 localidad: s.client?.localidad || null,
                 partido: s.client?.partido || null,
                 isReturnToBase: !!(s as any).isReturnToBase,
