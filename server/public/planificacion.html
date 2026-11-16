@@ -1046,6 +1046,7 @@
                     <div class="card-dark p-5 border border-[#F4F7FE]">
                         <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">Viajes (mes)</p>
                         <p id="dash-kpi-trips" class="text-2xl font-black text-[#1B2559]">0</p>
+                        <p id="dash-kpi-trips-propios" class="text-[10px] text-[#A3AED0] font-medium mt-1 tabular-nums" title="Porcentaje de viajes propios = (viajes propios ÷ viajes totales) × 100"></p>
                     </div>
                     <div class="card-dark p-5 border border-[#F4F7FE]">
                         <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">Duración media</p>
@@ -1064,6 +1065,28 @@
                         <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-1">Costo total</p>
                         <p id="dash-kpi-total" class="text-2xl font-black text-[#1B2559]">$ 0</p>
                     </div>
+                </div>
+
+                <!-- OTIF: pedidos entregados a tiempo y completos (lo calcula el servidor) -->
+                <div id="dash-otif" class="card-dark p-6 md:p-8">
+                    <div class="flex flex-col md:flex-row md:items-start md:justify-between gap-4 mb-6">
+                        <div>
+                            <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest">OTIF · a tiempo y completos</h4>
+                            <p class="text-xs text-[#A3AED0] font-medium mt-1">Cada parada es un pedido. A tiempo: llegó antes del límite de su unidad. Completo: entregado y sin incidencia. Retiros y reposiciones no cuentan.</p>
+                        </div>
+                        <div class="flex flex-wrap gap-2 shrink-0">
+                            <input type="file" id="otif-archivo" accept=".xlsx,.xls,.xlsm" class="hidden" onchange="otifSubirIncidencias(this)">
+                            <button type="button" id="otif-btn-cargar" onclick="document.getElementById('otif-archivo').click()"
+                                    class="px-4 py-2.5 rounded-xl bg-white border border-[#E0E5F2] text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] active:scale-[0.97] transition-transform flex items-center gap-2">
+                                <i data-lucide="upload" class="w-3.5 h-3.5"></i> Cargar incidencias
+                            </button>
+                            <button type="button" id="otif-btn-detalle" onclick="otifBajarDetalle()"
+                                    class="px-4 py-2.5 rounded-xl bg-white border border-[#E0E5F2] text-[11px] font-bold text-[#1B2559] hover:bg-[#F4F7FE] active:scale-[0.97] transition-transform flex items-center gap-2">
+                                <i data-lucide="download" class="w-3.5 h-3.5"></i> Bajar detalle
+                            </button>
+                        </div>
+                    </div>
+                    <div id="otif-cuerpo" class="text-xs text-[#A3AED0]">Cargando…</div>
                 </div>
 
                 <div class="card-dark p-6 md:p-8">
@@ -18702,6 +18725,7 @@
                 if (typeof _dashAsegurarMesDelPanel === 'function') await _dashAsegurarMesDelPanel();
                 renderLogisticsDashboard();
                 if (typeof renderMetricasOperativas === 'function') renderMetricasOperativas();
+                if (typeof cargarOtif === 'function') cargarOtif();
             }
         }
 
@@ -26612,6 +26636,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             // El costo por unidad lo calcula el servidor, asi que va por su
             // cuenta: no se cuelga del resto ni lo hace esperar.
             cargarCostosPorUnidad();
+            cargarOtif();
         }
 
         /** Se asegura de que los viajes del mes que muestra el panel esten en
@@ -26692,6 +26717,272 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 });
             } catch (e) {
                 console.warn('[dash] metricas operativas:', e);
+            }
+        }
+
+        // ─── OTIF: pedidos a tiempo y completos ───────────────────────────────
+        //   OTIF (%) = (pedidos a tiempo y completos / pedidos evaluados) x 100
+        // Lo calcula el servidor (src/otif.ts) con las paradas del periodo y las
+        // incidencias de Atencion al Cliente, que se suben desde este panel.
+        let __otifCache = {};
+        let __otifPedido = 0;
+        const _otifEsc = (v) => String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+        const _otifNro = (n) => Number(n || 0).toLocaleString('es-AR');
+        const _otifPct = (a, b) => b ? (Math.round(1000 * a / b) / 10).toLocaleString('es-AR') + '%' : '—';
+
+        function _otifPeriodo() {
+            const anio = nowBuenosAires().year;
+            if (dashEsAnio()) return { anio, mes: '', nombre: String(anio) };
+            const mes = (document.getElementById('dashboard-month-select')
+                || document.getElementById('planning-month-select'))?.value || 'enero';
+            return { anio, mes, nombre: mes + ' ' + anio };
+        }
+
+        async function cargarOtif(forzar) {
+            const cuerpo = document.getElementById('otif-cuerpo');
+            if (!cuerpo) return;
+            const p = _otifPeriodo();
+            const clave = p.anio + '-' + (p.mes || 'anio');
+            const pedido = ++__otifPedido;
+            if (forzar) delete __otifCache[clave];
+            if (!__otifCache[clave]) cuerpo.innerHTML = '<p class="text-xs text-[#A3AED0]">Calculando el OTIF de ' + _otifEsc(p.nombre) + '…</p>';
+            try {
+                if (!__otifCache[clave]) {
+                    const res = await fetch(`${API_URL}/kpi/otif?year=${p.anio}${p.mes ? '&month=' + p.mes : ''}`, { headers: getActorHeaders() });
+                    const d = await res.json().catch(() => ({}));
+                    if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
+                    __otifCache[clave] = d;
+                }
+                // Si mientras tanto cambiaron de mes, este resultado ya no va
+                if (pedido === __otifPedido) pintarOtif(__otifCache[clave], p);
+            } catch (e) {
+                if (pedido === __otifPedido) cuerpo.innerHTML = '<p class="text-xs font-bold text-red-600">No se pudo calcular el OTIF: ' + _otifEsc(e.message) + '</p>';
+            }
+        }
+
+        function pintarOtif(d, p) {
+            const cuerpo = document.getElementById('otif-cuerpo');
+            const f = d.formula || {};
+            if (!f.evaluados) {
+                cuerpo.innerHTML = '<p class="text-xs text-[#A3AED0]">No hay pedidos para medir en ' + _otifEsc(p.nombre) + '.</p>';
+                return;
+            }
+            const pc = (n) => Number(n || 0).toLocaleString('es-AR', { maximumFractionDigits: 1 }) + '%';
+            const inc = d.incidencias || {};
+            const carga = d.ultimaCarga;
+
+            const motivos = Object.entries(d.motivos || {}).sort((a, b) => b[1] - a[1]);
+            const htmlMotivos = motivos.length ? `
+                <div>
+                    <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mb-2">Por qué no cumplieron</p>
+                    <ul class="space-y-1">
+                        ${motivos.map(([m, n]) => `<li class="flex justify-between gap-3 text-xs"><span class="text-[#1B2559] font-medium">${_otifEsc(m)}</span><span class="font-bold text-[#1B2559] tabular-nums">${_otifNro(n)}</span></li>`).join('')}
+                    </ul>
+                </div>` : '';
+
+            const filas = (d.porUnidad || []).map((u) => {
+                const ancho = Math.max(0, Math.min(100, u.porcentaje || 0));
+                return `<tr>
+                    <td class="py-2 pr-2 text-xs font-bold text-[#1B2559] whitespace-nowrap">${_otifEsc(u.unidad)}</td>
+                    <td class="py-2 px-2 text-xs text-[#A3AED0] whitespace-nowrap">${u.limite ? _otifEsc(u.limite) + ' h' : 'sin límite'}</td>
+                    <td class="py-2 px-2 text-right text-xs text-[#1B2559] tabular-nums">${_otifNro(u.pedidos)}</td>
+                    <td class="py-2 px-2 text-right text-xs text-[#1B2559] tabular-nums" title="${_otifNro(u.aTiempo)} de ${_otifNro(u.pedidos)}">${_otifPct(u.aTiempo, u.pedidos)}</td>
+                    <td class="py-2 px-2 text-right text-xs text-[#1B2559] tabular-nums" title="${_otifNro(u.completas)} de ${_otifNro(u.pedidos)}">${_otifPct(u.completas, u.pedidos)}</td>
+                    <td class="py-2 pl-2 text-right whitespace-nowrap" title="(${_otifNro(u.otif)} ÷ ${_otifNro(u.pedidos)}) × 100">
+                        <span class="inline-block align-middle w-16 h-1.5 rounded-full bg-[#F4F7FE] overflow-hidden mr-2"><span class="block h-full bg-indigo-500 rounded-full" style="width:${ancho}%"></span></span>
+                        <span class="text-xs font-black text-[#1B2559] tabular-nums">${pc(u.porcentaje)}</span>
+                    </td>
+                </tr>`;
+            }).join('');
+
+            const listaInc = (titulo, l) => l && l.length ? `
+                <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest mt-3 mb-1">${titulo}</p>
+                <ul class="space-y-0.5">${l.map((i) => `<li class="text-[11px] text-[#1B2559]"><span class="tabular-nums text-[#A3AED0]">${_otifEsc(i.fecha.split('-').reverse().join('/'))}</span> · ${_otifEsc(i.unidad || '—')} · <b>${_otifEsc(i.establecimiento)}</b> · ${_otifEsc(i.tipo || '')}</li>`).join('')}</ul>` : '';
+            const sinCruzar = (inc.generales?.length || 0) + (inc.sinAsignar?.length || 0);
+
+            const htmlInc = !inc.delPeriodo
+                ? `<div class="rounded-xl bg-amber-50 border border-amber-200 px-4 py-3 text-xs text-amber-800">
+                        <b>No hay incidencias cargadas para ${_otifEsc(p.nombre)}.</b> Mientras tanto, todo pedido entregado cuenta como completo.
+                        Subí la planilla de Atención al Cliente (Incidencias ${p.anio}.xlsx) con «Cargar incidencias».
+                   </div>`
+                : `<div class="rounded-xl bg-[#F4F7FE] px-4 py-3 text-xs text-[#1B2559]">
+                        <p><b>${_otifNro(inc.delPeriodo)}</b> ${inc.delPeriodo === 1 ? 'incidencia' : 'incidencias'} en ${_otifEsc(p.nombre)} · <b>${_otifNro(inc.asignadas)}</b> ${inc.asignadas === 1 ? 'cruzada' : 'cruzadas'} con su pedido${sinCruzar ? ` · <b>${_otifNro(sinCruzar)}</b> sin cruzar` : ''}</p>
+                        ${sinCruzar ? `<details class="mt-1"><summary class="cursor-pointer text-[11px] font-bold text-indigo-600">Ver las que no se cruzaron</summary>
+                            ${listaInc('No dicen qué escuela', inc.generales)}
+                            ${listaInc('No hay una entrega a esa escuela ese día', inc.sinAsignar)}
+                        </details>` : ''}
+                   </div>`;
+
+            const htmlCarga = carga ? `<p class="text-[11px] text-[#A3AED0] mt-2">Última carga de incidencias: ${_otifEsc(carga.archivo || 'planilla')} · ${_otifEsc(new Date(carga.cuando).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }))}${carga.subidoPor ? ' · ' + _otifEsc(carga.subidoPor) : ''}</p>` : '';
+
+            cuerpo.innerHTML = `
+                <div class="grid grid-cols-1 lg:grid-cols-[minmax(0,300px)_minmax(0,1fr)] gap-8">
+                    <div class="space-y-5">
+                        <div>
+                            <p class="text-5xl font-black text-[#1B2559] tabular-nums leading-none">${pc(f.otif)}</p>
+                            <p class="text-sm font-bold text-[#1B2559] mt-3 tabular-nums">(${_otifNro(f.aTiempoYCompletos)} ÷ ${_otifNro(f.evaluados)}) × 100</p>
+                            <p class="text-[11px] text-[#A3AED0] mt-0.5">pedidos a tiempo y completos ÷ pedidos evaluados</p>
+                        </div>
+                        <div class="grid grid-cols-2 gap-3">
+                            <div class="rounded-xl bg-[#F4F7FE] px-3 py-2.5">
+                                <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">A tiempo</p>
+                                <p class="text-lg font-black text-[#1B2559] tabular-nums">${pc(d.aTiempo)}</p>
+                            </div>
+                            <div class="rounded-xl bg-[#F4F7FE] px-3 py-2.5">
+                                <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">Completos</p>
+                                <p class="text-lg font-black text-[#1B2559] tabular-nums">${pc(d.completas)}</p>
+                            </div>
+                        </div>
+                        ${htmlMotivos}
+                        ${d.fuera ? `<p class="text-[11px] text-[#A3AED0]">${d.fuera === 1 ? '1 parada de retiro o reposición no entra' : _otifNro(d.fuera) + ' paradas de retiro o reposición no entran'} en el cálculo.</p>` : ''}
+                    </div>
+                    <div class="min-w-0">
+                        <div class="overflow-x-auto">
+                            <table class="w-full text-left">
+                                <thead>
+                                    <tr class="border-b border-[#E0E5F2] text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">
+                                        <th class="py-2 pr-2">Unidad</th><th class="py-2 px-2">Límite</th>
+                                        <th class="py-2 px-2 text-right">Pedidos</th><th class="py-2 px-2 text-right">A tiempo</th>
+                                        <th class="py-2 px-2 text-right">Completos</th><th class="py-2 pl-2 text-right">OTIF</th>
+                                    </tr>
+                                </thead>
+                                <tbody class="divide-y divide-[#F4F7FE]">${filas}</tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-6">${htmlInc}${htmlCarga}</div>`;
+        }
+
+        /** Lee la planilla de incidencias en el navegador: la hoja "Incidentes"
+         *  (o la primera que tenga columnas Fecha y Establecimiento). */
+        function otifLeerIncidencias(wb) {
+            const norm = (s) => String(s ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+                .toUpperCase().replace(/[^A-Z ]/g, ' ').replace(/\s+/g, ' ').trim();
+            const dos = (n) => String(n).padStart(2, '0');
+            const fechaISO = (v) => {
+                if (typeof v === 'number' && v > 20000 && v < 80000) {
+                    const d = XLSX.SSF.parse_date_code(v);
+                    return d ? `${d.y}-${dos(d.m)}-${dos(d.d)}` : null;
+                }
+                const s = String(v ?? '').trim();
+                let m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+                if (m) return m[0];
+                m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})/);
+                if (m) return `${m[3].length === 2 ? '20' + m[3] : m[3]}-${dos(m[2])}-${dos(m[1])}`;
+                return null;
+            };
+            const hojas = [...wb.SheetNames].sort((a, b) => (/INCIDENT/i.test(b) ? 1 : 0) - (/INCIDENT/i.test(a) ? 1 : 0));
+            for (const nombre of hojas) {
+                const filas = XLSX.utils.sheet_to_json(wb.Sheets[nombre], { header: 1, raw: true, defval: '' });
+                for (let h = 0; h < Math.min(filas.length, 15); h++) {
+                    const cab = (filas[h] || []).map(norm);
+                    // Primero el nombre exacto; si no, el que empiece asi
+                    const col = (...nombres) => {
+                        for (const n of nombres) { const i = cab.indexOf(n); if (i >= 0) return i; }
+                        for (const n of nombres) { const i = cab.findIndex((c) => c.startsWith(n)); if (i >= 0) return i; }
+                        return -1;
+                    };
+                    const cFecha = col('FECHA'), cEsc = col('ESTABLECIMIENTO');
+                    if (cFecha < 0 || cEsc < 0) continue;
+                    const c = {
+                        unidad: col('UNID NEGOCIO', 'UNIDAD DE NEGOCIO', 'UNIDAD'), municipio: col('MUNICIPIO'),
+                        tipo: col('INCIDENCIA'), reparto: col('REPARTO'), detalle: col('DETALLE DE INCIDENCIA', 'DETALLE'),
+                        resolucion: col('RESOLUCION'), responsable: col('RESPONSABLE'), cargadoPor: col('CARGADO POR')
+                    };
+                    const val = (fila, i) => i >= 0 ? String(fila[i] ?? '').trim() : '';
+                    const out = [];
+                    for (const fila of filas.slice(h + 1)) {
+                        const fecha = fechaISO(fila[cFecha]);
+                        const establecimiento = val(fila, cEsc);
+                        if (!fecha || !establecimiento) continue;
+                        out.push({
+                            fecha, establecimiento, unidad: val(fila, c.unidad), municipio: val(fila, c.municipio),
+                            tipo: val(fila, c.tipo), reparto: val(fila, c.reparto), detalle: val(fila, c.detalle),
+                            resolucion: val(fila, c.resolucion), responsable: val(fila, c.responsable), cargadoPor: val(fila, c.cargadoPor)
+                        });
+                    }
+                    return out;
+                }
+            }
+            return [];
+        }
+
+        async function otifSubirIncidencias(input) {
+            const archivo = input.files && input.files[0];
+            input.value = '';
+            if (!archivo) return;
+            const btn = document.getElementById('otif-btn-cargar');
+            const cuerpo = document.getElementById('otif-cuerpo');
+            const textoBtn = btn ? btn.innerHTML : '';
+            if (btn) { btn.disabled = true; btn.textContent = 'Subiendo…'; }
+            try {
+                if (typeof XLSX === 'undefined') throw new Error('No cargó el lector de Excel. Recargá la página.');
+                const wb = XLSX.read(await archivo.arrayBuffer(), { type: 'array' });
+                const filas = otifLeerIncidencias(wb);
+                if (!filas.length) throw new Error('No encontré una hoja con columnas «Fecha» y «Establecimiento».');
+                const res = await fetch(`${API_URL}/kpi/incidencias`, {
+                    method: 'POST', headers: getActorHeaders(),
+                    body: JSON.stringify({ archivo: archivo.name, filas })
+                });
+                const d = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
+                __otifCache = {};
+                await cargarOtif(true);
+                const aviso = document.createElement('p');
+                aviso.className = 'text-[11px] font-bold text-emerald-700 mt-2';
+                aviso.textContent = `Se cargaron ${_otifNro(d.filas)} incidencias de ${d.meses.length} ${d.meses.length === 1 ? 'mes' : 'meses'} (${d.meses.join(', ')}). Reemplazan a las anteriores de esos meses.`;
+                cuerpo?.appendChild(aviso);
+            } catch (e) {
+                alert('No se pudieron cargar las incidencias: ' + e.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = textoBtn; }
+                if (window.lucide) lucide.createIcons();
+            }
+        }
+
+        /** El detalle pedido por pedido, en Excel, para revisar de donde sale el numero. */
+        async function otifBajarDetalle() {
+            const p = _otifPeriodo();
+            const btn = document.getElementById('otif-btn-detalle');
+            const textoBtn = btn ? btn.innerHTML : '';
+            if (btn) { btn.disabled = true; btn.textContent = 'Armando…'; }
+            try {
+                if (typeof XLSX === 'undefined') throw new Error('No cargó el lector de Excel. Recargá la página.');
+                const res = await fetch(`${API_URL}/kpi/otif?year=${p.anio}${p.mes ? '&month=' + p.mes : ''}&detalle=1`, { headers: getActorHeaders() });
+                const d = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
+                const f = d.formula || {};
+                const resumen = [
+                    ['OTIF ' + p.nombre],
+                    [],
+                    ['OTIF (%) = (pedidos a tiempo y completos / pedidos evaluados) x 100'],
+                    ['Pedidos a tiempo y completos', f.aTiempoYCompletos],
+                    ['Pedidos evaluados', f.evaluados],
+                    ['OTIF %', f.otif],
+                    ['A tiempo %', d.aTiempo],
+                    ['Completos %', d.completas],
+                    ['Retiros y reposiciones (no cuentan)', d.fuera],
+                    [],
+                    ['Unidad', 'Límite', 'Pedidos', 'A tiempo', 'Completos', 'A tiempo y completos', 'OTIF %'],
+                    ...(d.porUnidad || []).map((u) => [u.unidad, u.limite || 'sin límite', u.pedidos, u.aTiempo, u.completas, u.otif, u.porcentaje])
+                ];
+                const si = (v) => v == null ? '' : (v ? 'Sí' : 'No');
+                const detalle = (d.detalle || []).map((e) => ({
+                    Fecha: e.fecha, Viaje: e.viaje, Reparto: e.reparto, Chofer: e.chofer, Contrato: e.contrato,
+                    Unidad: e.unidad, Escuela: e.escuela, Estado: e.estado, 'Hora llegada': e.hora || '',
+                    'Límite': e.limite || '', 'A tiempo': si(e.aTiempo), Incidencias: e.incidencias || '',
+                    Completo: si(e.completa), OTIF: e.otif === 'Si' ? 'Sí' : e.otif, Motivo: e.motivo || ''
+                }));
+                const wb = XLSX.utils.book_new();
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(resumen), 'Resumen');
+                XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detalle), 'Detalle');
+                XLSX.writeFile(wb, `OTIF_${p.mes || 'anio'}_${p.anio}.xlsx`);
+            } catch (e) {
+                alert('No se pudo bajar el detalle: ' + e.message);
+            } finally {
+                if (btn) { btn.disabled = false; btn.innerHTML = textoBtn; }
+                if (window.lucide) lucide.createIcons();
             }
         }
 
@@ -27001,11 +27292,16 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
             let totalPropio = 0;
             let totalTerc = 0;
+            let viajesPropios = 0;
             trips.forEach(t => {
                 const c = getTripLogisticCost(t);
-                if (tripIsPropioForCost(t)) totalPropio += c;
+                if (tripIsPropioForCost(t)) { totalPropio += c; viajesPropios++; }
                 else totalTerc += c;
             });
+            // Porcentaje de viajes propios = (viajes propios / viajes totales) x 100
+            _txt('dash-kpi-trips-propios', trips.length
+                ? `${(Math.round(1000 * viajesPropios / trips.length) / 10).toLocaleString('es-AR')}% propios · (${viajesPropios.toLocaleString('es-AR')} ÷ ${trips.length.toLocaleString('es-AR')}) × 100`
+                : '');
 
             const kpiTrips = document.getElementById('dash-kpi-trips');
             const kpiP = document.getElementById('dash-kpi-propio');

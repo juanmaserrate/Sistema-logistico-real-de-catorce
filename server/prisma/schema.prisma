@@ -454,6 +454,30 @@ model RecorridoReal {
   @@index([tripId])
 }
 
+/// Incidencias de Atencion al Cliente (planilla "Incidencias AAAA.xlsx"). Se
+/// suben desde el Panel Logistico y sirven para el OTIF: una entrega con
+/// incidencia no cuenta como completa.
+model IncidenciaCliente {
+  id              String   @id @default(uuid())
+  /// El dia de la incidencia (a las 12:00 UTC)
+  fecha           DateTime
+  unidad          String?
+  municipio       String?
+  establecimiento String
+  tipo            String?
+  reparto         String?
+  detalle         String?
+  resolucion      String?
+  responsable     String?
+  /// Quien la cargo en la planilla
+  cargadoPor      String?
+  /// Quien subio el archivo al sistema
+  subidoPor       String?
+  createdAt       DateTime @default(now())
+
+  @@index([fecha])
+}
+
 /// Cuantos pedidos se le hicieron a Mapbox desde el servidor, por mes y por
 /// servicio. Sirve para ver el uso real y para cortar antes de pasar lo gratis.
 model MapboxUso {

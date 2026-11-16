@@ -2,6 +2,7 @@
 import express from 'express';
 import crypto from 'crypto';
 import { mapaUnidadPorRuta, unidadDeParada, unidadesDeTexto, repartirHoras, esVueltaAlDeposito, SIN_UNIDAD, reasignarUnidades } from './unidadesDelViaje';
+import { calcularOtif, EntregaOtif, IncidenciaOtif, REGLAS_OTIF } from './otif';
 import { normalizarViajeAlCerrar } from './cierreDeViaje';
 import { costoTercerizadoPorHoras } from './costoTercerizado';
 import { auditarMes, filtrarInforme } from './auditoriaDeViajes';
@@ -1852,6 +1853,140 @@ app.get('/api/v1/dashboard/metricas', async (req: any, res: any) => {
         res.json(await metricasDelMes(prisma, desde, hasta));
     } catch (e: any) {
         console.error('GET dashboard/metricas:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+// ── OTIF: entregas a tiempo y completas (ver otif.ts) ─────────────────────
+/** El rango de un mes (o del ano, sin mes), igual que las metricas del panel. */
+function rangoDelPeriodo(q: any): { desde: Date; hasta: Date } | null {
+    const anio = Number(q.year) || new Date().getFullYear();
+    if (!q.month) return { desde: new Date(Date.UTC(anio, 0, 1)), hasta: new Date(Date.UTC(anio, 11, 31, 23, 59, 59)) };
+    const mes = MONTH_TO_NUM[String(q.month).toLowerCase()];
+    if (mes === undefined) return null;
+    return { desde: new Date(Date.UTC(anio, mes, 1)), hasta: new Date(Date.UTC(anio, mes + 1, 0, 23, 59, 59)) };
+}
+
+/** Sesion iniciada, o la clave de servicio (como el export y el Presupuesto):
+ *  sirve para cargar la planilla de incidencias desde un script. */
+function sesionOClave(req: any, res: any, next: any) {
+    if ((req.query?.key || req.body?.key) === 'r14-basestop-2026') return next();
+    return requireAuth(req, res, next);
+}
+
+/** GET /api/v1/kpi/otif?month=octubre&year=2026  (sin month: el ano)
+ *  ?detalle=1 agrega cada entrega (para bajarla a Excel). */
+app.get('/api/v1/kpi/otif', sesionOClave, async (req: any, res: any) => {
+    try {
+        const rango = rangoDelPeriodo(req.query);
+        if (!rango) return res.status(400).json({ error: 'Mes invalido' });
+        const crudos = await prisma.trip.findMany({
+            where: { date: { gte: rango.desde, lte: rango.hasta } },
+            select: {
+                id: true, date: true, reparto: true, driver: true, contractType: true, businessUnit: true, assignedMobileUser: true,
+                linkedRoute: {
+                    select: {
+                        stops: {
+                            select: {
+                                sequence: true, status: true, ruta: true, isReturnToBase: true,
+                                actualArrival: true, actualDeparture: true, client: { select: { name: true } }
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        const mapaU = await unidadesPorRutaCacheado();
+        const entregas: EntregaOtif[] = [];
+        for (const t of sinViajesDePrueba(crudos as any[])) {
+            const unidades = unidadesDeTexto(t.businessUnit);
+            for (const s of t.linkedRoute?.stops || []) {
+                if (esVueltaAlDeposito(s as any)) continue;
+                entregas.push({
+                    viajeId: t.id, fecha: new Date(t.date).toISOString().slice(0, 10),
+                    reparto: t.reparto || '', chofer: t.driver || '', contrato: t.contractType || '',
+                    unidad: unidadDeParada(s as any, mapaU, unidades), escuela: s.client?.name || '',
+                    estado: s.status || 'PENDING', llegada: s.actualArrival, salida: s.actualDeparture
+                });
+            }
+        }
+        // Solo las del periodo (como en el Excel de octubre). Una del 30/9 con
+        // margen se pegaria a una entrega del 1/10, que no es la suya.
+        const filasInc = await prisma.incidenciaCliente.findMany({
+            where: { fecha: { gte: rango.desde, lte: rango.hasta } }
+        });
+        const incidencias: IncidenciaOtif[] = filasInc.map((i) => ({
+            fecha: i.fecha.toISOString().slice(0, 10), unidad: i.unidad || '', establecimiento: i.establecimiento, tipo: i.tipo || ''
+        }));
+        const r = calcularOtif(entregas, incidencias);
+        const carga = await prisma.appSettings.findUnique({ where: { key: 'otif_incidencias_carga' } }).catch(() => null);
+        res.json({
+            formula: r.formula, aTiempo: r.aTiempo, completas: r.completas, fuera: r.fuera,
+            porUnidad: r.porUnidad, motivos: r.motivos,
+            incidencias: {
+                delPeriodo: incidencias.length,
+                asignadas: r.incidencias.asignadas,
+                generales: r.incidencias.generales,
+                sinAsignar: r.incidencias.sinAsignar
+            },
+            reglas: REGLAS_OTIF,
+            ultimaCarga: carga ? JSON.parse(carga.value || 'null') : null,
+            ...(req.query.detalle ? {
+                detalle: r.entregas.map((e) => ({
+                    fecha: e.fecha, viaje: e.viajeId, reparto: e.reparto, chofer: e.chofer, contrato: e.contrato,
+                    unidad: e.unidad, escuela: e.escuela, estado: e.estado, hora: e.hora, limite: e.limite,
+                    aTiempo: e.fuera ? null : e.aTiempo, incidencias: e.incidencias.join(' / '),
+                    completa: e.fuera ? null : e.completa, otif: e.fuera ? 'Fuera' : (e.otif ? 'Si' : 'No'), motivo: e.motivo
+                }))
+            } : {})
+        });
+    } catch (e: any) {
+        console.error('GET kpi/otif:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Sube las incidencias de la planilla de Atencion al Cliente. Reemplaza las
+ *  de los meses que trae el archivo: subir la planilla actualizada pisa la
+ *  version anterior de esos meses y no duplica nada.
+ *  POST /api/v1/kpi/incidencias { archivo, filas: [{ fecha: 'AAAA-MM-DD', unidad, establecimiento, tipo, ... }] } */
+app.post('/api/v1/kpi/incidencias', sesionOClave, async (req: any, res: any) => {
+    try {
+        const filas = Array.isArray(req.body?.filas) ? req.body.filas : [];
+        if (!filas.length) return res.status(400).json({ error: 'El archivo no trae incidencias' });
+        if (filas.length > 30000) return res.status(400).json({ error: 'Demasiadas filas' });
+        const txt = (v: any, max = 500) => { const s = String(v ?? '').trim(); return s ? s.slice(0, max) : null; };
+        const quien = String(req.headers['x-actor-name'] || req.user?.fullName || '').trim() || null;
+        const datos = filas
+            .filter((f: any) => /^\d{4}-\d{2}-\d{2}$/.test(String(f?.fecha || '')) && txt(f?.establecimiento))
+            .map((f: any) => ({
+                fecha: new Date(String(f.fecha) + 'T12:00:00Z'),
+                unidad: txt(f.unidad, 80), municipio: txt(f.municipio, 80), establecimiento: txt(f.establecimiento, 200)!,
+                tipo: txt(f.tipo, 120), reparto: txt(f.reparto, 80), detalle: txt(f.detalle, 1000),
+                resolucion: txt(f.resolucion, 1000), responsable: txt(f.responsable, 120), cargadoPor: txt(f.cargadoPor, 120),
+                subidoPor: quien
+            }));
+        if (!datos.length) return res.status(400).json({ error: 'Ninguna fila tiene fecha y establecimiento' });
+        const meses = [...new Set(datos.map((d: any) => d.fecha.toISOString().slice(0, 7)))].sort() as string[];
+        await prisma.$transaction([
+            ...meses.map((m) => {
+                const [a, mm] = m.split('-').map(Number);
+                return prisma.incidenciaCliente.deleteMany({
+                    where: { fecha: { gte: new Date(Date.UTC(a, mm - 1, 1)), lte: new Date(Date.UTC(a, mm, 0, 23, 59, 59)) } }
+                });
+            }),
+            prisma.incidenciaCliente.createMany({ data: datos })
+        ]);
+        const carga = { archivo: txt(req.body?.archivo, 200), subidoPor: quien, cuando: new Date().toISOString(), filas: datos.length, meses };
+        await prisma.appSettings.upsert({
+            where: { key: 'otif_incidencias_carga' },
+            create: { key: 'otif_incidencias_carga', value: JSON.stringify(carga) },
+            update: { value: JSON.stringify(carga) }
+        });
+        await logAction(req, 'UPDATE', 'settings', 0, `Incidencias para OTIF (${datos.length} filas, ${meses.join(', ')})`, null, carga);
+        res.json({ ok: true, ...carga, descartadas: filas.length - datos.length });
+    } catch (e: any) {
+        console.error('POST kpi/incidencias:', e);
         res.status(500).json({ error: e?.message || 'Error' });
     }
 });
