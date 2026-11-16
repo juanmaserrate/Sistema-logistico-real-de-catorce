@@ -366,6 +366,11 @@ model RouteStopTemplate {
 
 model EmployeeSalary {
   id          String   @id @default(uuid())
+  /// Anio de la liquidacion. Antes no existia y "octubre" de un anio pisaba al
+  /// del anterior. Los cargados antes de este campo son de 2026 (el sistema
+  /// arranco ese anio): el default solo sirve para ellos, toda alta nueva
+  /// manda su anio.
+  year        Int      @default(2026)
   month       String
   firstName   String?
   lastName    String
@@ -377,7 +382,11 @@ model EmployeeSalary {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@unique([month, lastName])
+  // Antes habia un unico por mes + apellido: dos personas con el mismo
+  // apellido no podian tener sueldo el mismo mes (con los BUNGS se cargo el
+  // nombre dentro del apellido para esquivarlo). Ahora la persona es
+  // anio + mes + apellido + nombre, y eso lo controla el servidor.
+  @@index([year, month])
 }
 
 model MaintenanceRecord {

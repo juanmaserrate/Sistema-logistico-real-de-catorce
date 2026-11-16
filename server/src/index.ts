@@ -1357,11 +1357,33 @@ app.delete('/api/v1/clients/:id', async (req, res) => {
 });
 
 // --- SALARIES API ---
+/** El anio de un sueldo: el que viene, o el de hoy en Buenos Aires. */
+function anioDeSueldo(v: any): number {
+    const n = Number(v);
+    return Number.isInteger(n) && n >= 2020 && n <= 2100 ? n : Number(buenosAiresYmd().slice(0, 4));
+}
+
+/** La misma persona en la liquidacion de un mes: anio + mes + apellido +
+ *  nombre (sin importar mayusculas). Antes era mes + apellido y nada mas. */
+function mismaPersonaSueldo(year: number, month: string, lastName: string, firstName: string | null) {
+    return {
+        year,
+        month: String(month).toLowerCase(),
+        lastName: { equals: lastName, mode: 'insensitive' as const },
+        firstName: firstName ? { equals: firstName, mode: 'insensitive' as const } : null
+    };
+}
+
 app.get('/api/v1/salaries', async (req, res) => {
     try {
-        const salaries = await prisma.employeeSalary.findMany();
+        const anio = Number(req.query.year);
+        const salaries = await prisma.employeeSalary.findMany({
+            where: Number.isInteger(anio) && anio > 0 ? { year: anio } : undefined,
+            orderBy: [{ year: 'asc' }, { lastName: 'asc' }]
+        });
         const mapped = salaries.map(s => ({
             id: s.id,
+            year: s.year,
             month: s.month,
             Nombre: s.firstName,
             Apellido: s.lastName,
@@ -1380,7 +1402,8 @@ app.get('/api/v1/salaries', async (req, res) => {
 app.post('/api/v1/salaries', async (req, res) => {
     try {
         const body = req.body || {};
-        const month = String(body.month || '').trim();
+        const month = String(body.month || '').trim().toLowerCase();
+        const year = anioDeSueldo(body.year);
         const lastName = String(body.Apellido || '').trim().toUpperCase();
         if (!month) return res.status(400).json({ error: 'month es obligatorio' });
         if (!lastName) return res.status(400).json({ error: 'Apellido es obligatorio' });
@@ -1403,27 +1426,37 @@ app.post('/api/v1/salaries', async (req, res) => {
         const seniority = toInt(body['Antigüedad']);
         const baseScale = toFloat(body['Escala Base']);
 
-        const salary = await prisma.employeeSalary.upsert({
-            where: { month_lastName: { month, lastName } },
-            update: { firstName, role, grossSalary, dailyWage, seniority, baseScale },
-            create: { month, lastName, firstName, role, grossSalary, dailyWage, seniority, baseScale }
+        const datos = { year, month, lastName, firstName, role, grossSalary, dailyWage, seniority, baseScale };
+        // Editar manda el id de la fila: asi se puede corregir el apellido o el
+        // nombre sin dejar la fila vieja colgada. Sin id, es la misma persona
+        // si coincide anio + mes + apellido + nombre.
+        const id = /^[0-9a-f-]{36}$/i.test(String(body.id || '')) ? String(body.id) : null;
+        const otra = await prisma.employeeSalary.findFirst({
+            where: { ...mismaPersonaSueldo(year, month, lastName, firstName), ...(id ? { id: { not: id } } : {}) }
         });
+        let salary;
+        if (id) {
+            if (otra) return res.status(409).json({ error: `Ya hay un sueldo de ${lastName}${firstName ? ' ' + firstName : ''} en ${month} ${year}.` });
+            salary = await prisma.employeeSalary.update({ where: { id }, data: datos });
+        } else if (otra) {
+            salary = await prisma.employeeSalary.update({ where: { id: otra.id }, data: datos });
+        } else {
+            salary = await prisma.employeeSalary.create({ data: datos });
+        }
         res.json(salary);
     } catch (e: any) {
         console.error("Error saving salary:", e);
-        const msg = e?.message || 'Error al guardar salario';
-        if (e?.code === 'P2002') return res.status(409).json({ error: 'Salario duplicado (mes + apellido)' });
-        res.status(500).json({ error: msg });
+        if (e?.code === 'P2025') return res.status(404).json({ error: 'Ese sueldo ya no existe. Recargá la pantalla.' });
+        res.status(500).json({ error: e?.message || 'Error al guardar salario' });
     }
 });
 
-app.delete('/api/v1/salaries/:month/:lastName', async (req, res) => {
+app.delete('/api/v1/salaries/:id', async (req, res) => {
     try {
-        await prisma.employeeSalary.delete({
-            where: { month_lastName: { month: req.params.month, lastName: req.params.lastName.toUpperCase() } }
-        });
+        await prisma.employeeSalary.delete({ where: { id: String(req.params.id) } });
         res.json({ success: true });
-    } catch (e) {
+    } catch (e: any) {
+        if (e?.code === 'P2025') return res.status(404).json({ error: 'Ese sueldo ya no existe' });
         res.status(500).json({ error: "Failed to delete salary" });
     }
 });
@@ -8641,12 +8674,13 @@ app.get('/api/admin/salaries-dump', async (req: any, res: any) => {
     if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     try {
         const month = String(req.query.month || '').trim().toLowerCase();
+        const anio = Number(req.query.anio || req.query.year);
         const rows = await prisma.employeeSalary.findMany({
-            where: month ? { month } : undefined,
-            orderBy: [{ month: 'asc' }, { lastName: 'asc' }]
+            where: { ...(month ? { month } : {}), ...(Number.isInteger(anio) && anio > 0 ? { year: anio } : {}) },
+            orderBy: [{ year: 'asc' }, { month: 'asc' }, { lastName: 'asc' }]
         });
         const porMes: Record<string, number> = {};
-        for (const r of rows) porMes[r.month] = (porMes[r.month] || 0) + 1;
+        for (const r of rows) porMes[`${r.year}-${r.month}`] = (porMes[`${r.year}-${r.month}`] || 0) + 1;
         res.json({ total: rows.length, porMes, empleados: rows });
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error' });
@@ -8739,12 +8773,13 @@ app.post('/api/admin/maintenance-set-category', async (req: any, res: any) => {
     }
 });
 
-/** Carga sueldos de un mes en lote (crea o actualiza por mes + apellido).
- *  POST /api/admin/salaries-bulk { key, month, dryRun?, rows: [{ Apellido, Nombre, 'Tipo Puesto', Bruto, Jornal }] } */
+/** Carga sueldos de un mes en lote (crea o actualiza por anio + mes + apellido + nombre).
+ *  POST /api/admin/salaries-bulk { key, month, year?, dryRun?, rows: [{ Apellido, Nombre, 'Tipo Puesto', Bruto, Jornal }] } */
 app.post('/api/admin/salaries-bulk', async (req: any, res: any) => {
     const { key, month, rows, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     const mes = String(month || '').trim().toLowerCase();
+    const year = anioDeSueldo(req.body?.year);
     if (!mes) return res.status(400).json({ error: 'Falta month (ej. septiembre)' });
     if (!Array.isArray(rows) || !rows.length) return res.status(400).json({ error: 'Falta rows' });
     try {
@@ -8765,19 +8800,18 @@ app.post('/api/admin/salaries-bulk', async (req: any, res: any) => {
                 seniority: null as any,
                 baseScale: null as any,
             };
-            const existe = await prisma.employeeSalary.findUnique({ where: { month_lastName: { month: mes, lastName } } });
+            const existe = await prisma.employeeSalary.findFirst({ where: mismaPersonaSueldo(year, mes, lastName, datos.firstName) });
             if (dryRun) {
                 (existe ? actualizados : creados).push({ lastName, ...datos, brutoAnterior: existe?.grossSalary ?? null });
                 continue;
             }
-            const guardado = await prisma.employeeSalary.upsert({
-                where: { month_lastName: { month: mes, lastName } },
-                update: { firstName: datos.firstName, role: datos.role, grossSalary: datos.grossSalary, dailyWage: datos.dailyWage },
-                create: { month: mes, lastName, firstName: datos.firstName, role: datos.role, grossSalary: datos.grossSalary, dailyWage: datos.dailyWage }
-            });
+            const cambios = { firstName: datos.firstName, role: datos.role, grossSalary: datos.grossSalary, dailyWage: datos.dailyWage };
+            const guardado = existe
+                ? await prisma.employeeSalary.update({ where: { id: existe.id }, data: cambios })
+                : await prisma.employeeSalary.create({ data: { year, month: mes, lastName, ...cambios } });
             (existe ? actualizados : creados).push({ lastName, bruto: guardado.grossSalary, jornal: guardado.dailyWage, brutoAnterior: existe?.grossSalary ?? null });
         }
-        res.json({ dryRun: !!dryRun, mes, creados: creados.length, actualizados: actualizados.length, errores, detalleCreados: creados, detalleActualizados: actualizados });
+        res.json({ dryRun: !!dryRun, mes, year, creados: creados.length, actualizados: actualizados.length, errores, detalleCreados: creados, detalleActualizados: actualizados });
     } catch (e: any) {
         console.error('salaries-bulk:', e);
         res.status(500).json({ error: e?.message || 'Error' });
@@ -11423,7 +11457,7 @@ app.post('/api/admin/renombrar-persona', async (req: any, res: any) => {
         // Solo se informan: aca el nombre forma parte de la clave
         const sueldos = (await prisma.employeeSalary.findMany())
             .filter((x: any) => norm(`${x.firstName || ''} ${x.lastName}`) === objetivo || norm(x.lastName) === objetivo)
-            .map((x: any) => ({ id: x.id, month: x.month, firstName: x.firstName, lastName: x.lastName }));
+            .map((x: any) => ({ id: x.id, year: x.year, month: x.month, firstName: x.firstName, lastName: x.lastName }));
 
         // Cuanto se usa cada cuenta, para poder decidir cual conviene dejar
         const candidatas = [...usuariosACambiar, ...users.filter((u) => norm(u.fullName) === norm(a))];
@@ -12190,7 +12224,8 @@ app.get('/api/admin/fichas-sin-identificar', async (req: any, res: any) => {
                     reparto: true, contractType: true, provider: true
                 }
             }),
-            prisma.employeeSalary.findMany(),
+            // El mas nuevo primero: se muestra el sueldo de la ultima liquidacion
+            prisma.employeeSalary.findMany({ orderBy: [{ year: 'desc' }, { updatedAt: 'desc' }] }),
             prisma.provider.findMany({ select: { id: true, name: true } })
         ]);
 
@@ -12651,9 +12686,10 @@ app.get('/api/v1/control-carga', async (req: any, res: any) => {
             prisma.employeeSalary.findMany()
         ]);
 
+        // Por anio y mes: "octubre" de dos anios distintos son dos liquidaciones
         const nominaPorMes = new Map<string, any[]>();
         for (const e of nominaToda) {
-            const k = String(e.month || '').toLowerCase();
+            const k = `${e.year}-${String(e.month || '').toLowerCase()}`;
             if (!nominaPorMes.has(k)) nominaPorMes.set(k, []);
             nominaPorMes.get(k)!.push(e);
         }
@@ -12687,7 +12723,7 @@ app.get('/api/v1/control-carga', async (req: any, res: any) => {
         for (const t of viajes as any[]) {
             const propio = String(t.contractType || '').toLowerCase() === 'propio';
             const mes = mesDe(t.date);
-            const nomina = nominaPorMes.get(mes) || [];
+            const nomina = nominaPorMes.get(`${new Date(t.date).getFullYear()}-${mes}`) || [];
             const fecha = new Date(t.date).toISOString().slice(0, 10);
 
             if (propio) {
@@ -14803,7 +14839,9 @@ async function correrMotorDeCostos(
         // BUG (16-sep): el cruce era por texto exacto "APELLIDO NOMBRE", pero en los
         // viajes el auxiliar figura como "NOMBRE APELLIDO". No coincidia NUNCA y el
         // costo del auxiliar se guardaba en CERO, aunque en pantalla se viera bien.
-        const sueldosDb = await prisma.employeeSalary.findMany({ where: { month: String(month).toLowerCase() } });
+        // Los del mes DE ESE ANIO: sin el anio, recalcular octubre 2026 despues
+        // de cargar octubre 2027 usaba los sueldos nuevos.
+        const sueldosDb = await prisma.employeeSalary.findMany({ where: { month: String(month).toLowerCase(), year: anioDelCalculo } });
         type SueldoCosto = { palabras: string[]; bruto: number; jornal: number };
         const sueldos: SueldoCosto[] = [];
         const agregarSueldo = (apellido: any, nombre: any, bruto: any, jornal: any) => {
@@ -17830,7 +17868,7 @@ if (false) app.post('/api/admin/migrate-sqlite', async (req: any, res: any) => {
         await migrate('TripStop', tripStops, r => prisma.tripStop.upsert({ where: { id: r.id }, create: { id: r.id, tripId: r.tripId, name: r.name, clientId: n(r.clientId), sequence: r.sequence, actualArrival: d(r.actualArrival), actualDeparture: d(r.actualDeparture), status: r.status ?? 'PENDING', observations: n(r.observations), failedReason: n(r.failedReason), latitude: n(r.latitude), longitude: n(r.longitude) }, update: { status: r.status ?? 'PENDING' } }));
 
         const salaries = db.prepare('SELECT * FROM "EmployeeSalary"').all() as any[];
-        await migrate('EmployeeSalary', salaries, r => prisma.employeeSalary.upsert({ where: { id: r.id }, create: { id: r.id, month: r.month, firstName: n(r.firstName), lastName: r.lastName, role: n(r.role), grossSalary: n(r.grossSalary), dailyWage: n(r.dailyWage), seniority: n(r.seniority), baseScale: n(r.baseScale), createdAt: d(r.createdAt) ?? new Date(), updatedAt: d(r.updatedAt) ?? new Date() }, update: { grossSalary: n(r.grossSalary) } }));
+        await migrate('EmployeeSalary', salaries, r => prisma.employeeSalary.upsert({ where: { id: r.id }, create: { id: r.id, year: Number(r.year) || 2026, month: r.month, firstName: n(r.firstName), lastName: r.lastName, role: n(r.role), grossSalary: n(r.grossSalary), dailyWage: n(r.dailyWage), seniority: n(r.seniority), baseScale: n(r.baseScale), createdAt: d(r.createdAt) ?? new Date(), updatedAt: d(r.updatedAt) ?? new Date() }, update: { grossSalary: n(r.grossSalary) } }));
 
         const maintenance = db.prepare('SELECT * FROM "MaintenanceRecord"').all() as any[];
         await migrate('MaintenanceRecord', maintenance, r => prisma.maintenanceRecord.upsert({ where: { id: r.id }, create: { id: r.id, plate: r.plate, category: n(r.category), month: n(r.month), date: n(r.date), mileage: n(r.mileage), workshop: n(r.workshop), workDone: n(r.workDone), cost: n(r.cost), notes: n(r.notes), createdAt: d(r.createdAt) ?? new Date(), updatedAt: d(r.updatedAt) ?? new Date() }, update: { cost: n(r.cost) } }));

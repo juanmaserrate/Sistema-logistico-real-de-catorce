@@ -1532,6 +1532,7 @@
                                 <option value="septiembre">Septiembre</option><option value="octubre">Octubre</option>
                                 <option value="noviembre">Noviembre</option><option value="diciembre">Diciembre</option>
                             </select>
+                            <select id="salary-year-select-emp" onchange="loadSalariesTable()" title="Año de la liquidación" class="bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-xs font-bold text-[#1B2559] outline-none"></select>
                             <input type="text" id="salary-search-emp" oninput="loadSalariesTable()" placeholder="Buscar empleado..." class="bg-[#F4F7FE] border-0 rounded-xl px-4 py-3 text-xs font-medium text-[#1B2559] outline-none w-48">
                             <button onclick="openAddEmployeeModal()" class="px-5 py-3 rounded-xl bg-emerald-600 text-white text-[11px] font-bold hover:bg-emerald-700 transition-all flex items-center gap-2">
                                 <i data-lucide="plus" class="w-4 h-4"></i> Agregar salario
@@ -17074,8 +17075,8 @@
             return monthNames[dte.getMonth()] || 'enero';
         }
 
-        function findSalariedEmployee(name, monthKey) {
-            const db = salariesDatabase[monthKey] || salariesDatabase['enero'] || [];
+        function findSalariedEmployee(name, monthKey, anio) {
+            const db = salariesDatabase[claveSueldos(monthKey, anio)] || salariesDatabase[claveSueldos('enero', anio)] || [];
             const searchName = (name || '').toString().toLowerCase().trim();
             if (!searchName || searchName === '--' || searchName === 'n/a' || searchName.includes('sin auxiliar')) return null;
             
@@ -17095,14 +17096,14 @@
             });
         }
 
-        function getSalaryBruto(name, monthKey) {
-            const employee = findSalariedEmployee(name, monthKey);
+        function getSalaryBruto(name, monthKey, anio) {
+            const employee = findSalariedEmployee(name, monthKey, anio);
             return employee ? (employee.Bruto || 0) : 0;
         }
 
-        function isEmployeeJornal(name, monthKey) {
-            if (monthKey === 'enero') return false; 
-            const employee = findSalariedEmployee(name, monthKey);
+        function isEmployeeJornal(name, monthKey, anio) {
+            if (monthKey === 'enero') return false;
+            const employee = findSalariedEmployee(name, monthKey, anio);
             return employee ? (Number(employee.Jornal || 0) > 0) : false;
         }
 
@@ -17181,8 +17182,8 @@
                 .filter(n => n && n !== '--' && n !== 'N/A' && n.toUpperCase() !== 'SIN AUXILIAR');
         }
 
-        function getSalaryJornal(name, monthKey) {
-            const e = findSalariedEmployee(name, monthKey);
+        function getSalaryJornal(name, monthKey, anio) {
+            const e = findSalariedEmployee(name, monthKey, anio);
             return e ? Number(e.Jornal || 0) : 0;
         }
 
@@ -17264,8 +17265,9 @@
             const assistants = auxiliaresDelViaje(t);
 
             assistants.forEach(name => {
-                const bruto = getSalaryBruto(name, monthKey);
-                const jornal = getSalaryJornal(name, monthKey);
+                // Los sueldos del mes DEL ANIO DEL VIAJE
+                const bruto = getSalaryBruto(name, monthKey, anioDelViaje);
+                const jornal = getSalaryJornal(name, monthKey, anioDelViaje);
                 if (!bruto && !jornal) return;
                 if (jornal > 0) {
                     // Por jornal: cobra el DIA. Se carga una sola vez, en su primer viaje del dia.
@@ -23589,36 +23591,70 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
 
         // --- BASE DE DATOS DE SALARIOS ---
+        // Agrupada por ANIO y mes ("2026-octubre"): octubre de un anio y el del
+        // siguiente son dos liquidaciones distintas.
         let salariesDatabase = {};
-        
+
+        function claveSueldos(mes, anio) {
+            return `${anio || nowBuenosAires().year}-${String(mes || '').toLowerCase()}`;
+        }
+        /** Los sueldos de un mes de un anio (lista vacia si no hay). */
+        function sueldosDelMes(mes, anio) {
+            return salariesDatabase[claveSueldos(mes, anio)] || [];
+        }
+        /** El anio que esta mirando la pantalla de Sueldos. */
+        function anioSueldos() {
+            return Number(document.getElementById('salary-year-select-emp')?.value) || nowBuenosAires().year;
+        }
+        /** El desplegable de anio: los que tienen sueldos cargados, mas el
+         *  anterior, el actual y el que viene. No pisa lo que estaba elegido. */
+        function pintarAniosSueldos() {
+            const el = document.getElementById('salary-year-select-emp');
+            if (!el) return;
+            const hoy = nowBuenosAires().year;
+            const anios = new Set([hoy - 1, hoy, hoy + 1]);
+            Object.keys(salariesDatabase).forEach(k => { const a = Number(String(k).slice(0, 4)); if (a) anios.add(a); });
+            const previo = el.value;
+            const lista = [...anios].sort((a, b) => b - a);
+            el.innerHTML = lista.map(a => `<option value="${a}">${a}</option>`).join('');
+            el.value = lista.map(String).includes(previo) ? previo : String(hoy);
+        }
+
         async function loadSalariesData() {
             try {
                 const res = await fetch(`${API_URL}/salaries`, { headers: getActorHeaders() });
                 if (res.ok) {
                     const data = await res.json();
-                    if (data.length > 0) {
-                        const grouped = {};
-                        data.forEach(s => {
-                            if (!grouped[s.month]) grouped[s.month] = [];
-                            grouped[s.month].push(s);
-                        });
-                        salariesDatabase = grouped;
-                    }
+                    const grouped = {};
+                    (Array.isArray(data) ? data : []).forEach(s => {
+                        const k = claveSueldos(s.month, s.year);
+                        if (!grouped[k]) grouped[k] = [];
+                        grouped[k].push(s);
+                    });
+                    salariesDatabase = grouped;
                 }
             } catch (e) { console.error("Error loading salaries", e); }
+            pintarAniosSueldos();
         }
 
 
-        async function deleteEmployeeSalary(apellido) {
+        async function deleteEmployeeSalary(id) {
             const month = (document.getElementById('salary-month-select-emp') || document.getElementById('salary-month-select'))?.value || 'enero';
-            if(!confirm(`¿Seguro que desea eliminar a ${apellido} de este mes?`)) return;
-            
+            const emp = sueldosDelMes(month, anioSueldos()).find(e => e.id === id);
+            if (!emp) return;
+            const nombre = `${emp.Apellido}${emp.Nombre ? ', ' + emp.Nombre : ''}`;
+            if (!confirm(`¿Seguro que desea eliminar a ${nombre} de ${month} ${anioSueldos()}?`)) return;
+
             try {
-                const res = await fetch(`${API_URL}/salaries/${month}/${apellido}`, { method: 'DELETE' });
+                // Con la sesion: sin ella el servidor lo rechazaba y no se borraba nada
+                const res = await fetch(`${API_URL}/salaries/${encodeURIComponent(id)}`, { method: 'DELETE', headers: getActorHeaders() });
                 if (res.ok) {
                     await loadSalariesData();
                     loadSalariesTable();
-                    addNotification('info', 'Nómina Actualizada', `Se eliminó a ${apellido} del período.`);
+                    addNotification('info', 'Nómina Actualizada', `Se eliminó a ${nombre} del período.`);
+                } else {
+                    const d = await res.json().catch(() => ({}));
+                    alert('No se pudo eliminar: ' + (d.error || 'HTTP ' + res.status));
                 }
             } catch (e) { console.error(e); }
         }
@@ -23629,7 +23665,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const month = monthEl ? monthEl.value : 'enero';
             const searchTerm = (document.getElementById('salary-search-emp')?.value || document.getElementById('salary-search')?.value || '').toLowerCase();
 
-            let staff = salariesDatabase[month] || [];
+            let staff = sueldosDelMes(month, anioSueldos());
 
             // Apply Filters
             staff = staff.filter(e => {
@@ -23661,8 +23697,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     </td>
                     <td class="px-6 py-4 text-center">
                         <div class="flex justify-center gap-1">
-                            <button onclick="editEmployeeSalary('${e.Apellido}')" class="p-2 text-[#A3AED0] hover:text-indigo-600 transition-all"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
-                            <button onclick="deleteEmployeeSalary('${e.Apellido}')" class="p-2 text-[#A3AED0] hover:text-rose-600 transition-all"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
+                            <button onclick="editEmployeeSalary('${e.id}')" class="p-2 text-[#A3AED0] hover:text-indigo-600 transition-all"><i data-lucide="edit-3" class="w-4 h-4"></i></button>
+                            <button onclick="deleteEmployeeSalary('${e.id}')" class="p-2 text-[#A3AED0] hover:text-rose-600 transition-all"><i data-lucide="trash-2" class="w-4 h-4"></i></button>
                         </div>
                     </td>
                 </tr>
@@ -25092,7 +25128,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             // ({ enero: [...], febrero: [...] }), no una lista: el .filter de antes
             // reventaba siempre con "filter is not a function" y cortaba el calculo
             // antes de empezar. Por eso el Motor nunca se pudo correr.
-            const salariesData = salariesDatabase[month] || [];
+            const salariesData = sueldosDelMes(month, anioCostos());
 
             // ── La alarma: se simula primero y se comparan las dos cifras ──
             // Calcular pisa el costo de TODOS los viajes propios del mes. Si lo
@@ -29027,10 +29063,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             document.getElementById('modal-salary-edit').classList.remove('hidden');
         }
 
-        function editEmployeeSalary(apellido) {
+        function editEmployeeSalary(id) {
             const month = (document.getElementById('salary-month-select-emp') || document.getElementById('salary-month-select'))?.value || 'enero';
-            const staff = salariesDatabase[month] || [];
-            const emp = staff.find(e => (e.Apellido || '').toLowerCase() === (apellido || '').toLowerCase());
+            // Por id y no por apellido: con dos BUNGS el mismo mes, el apellido
+            // abria siempre al primero.
+            const emp = sueldosDelMes(month, anioSueldos()).find(e => e.id === id);
             if (!emp) return;
 
             document.getElementById('edit-salary-title').innerText = 'Editar Empleado';
@@ -29039,7 +29076,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             document.getElementById('edit-salary-type').value = emp['Tipo Puesto'] || 'Chofer';
             document.getElementById('edit-salary-bruto').value = emp.Bruto || 0;
             document.getElementById('edit-salary-jornal').value = emp.Jornal || 0;
-            document.getElementById('edit-salary-id').value = emp.Apellido; 
+            document.getElementById('edit-salary-id').value = emp.id;
 
             document.getElementById('jornal-edit-container').style.display = (emp['Tipo Puesto'] || '').toLowerCase().includes('auxiliar') ? 'block' : 'none';
             document.getElementById('modal-salary-edit').classList.remove('hidden');
@@ -29056,7 +29093,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
             const payload = {
                 month,
-                id, // existing ID if any
+                year: anioSueldos(),
+                id, // el id de la fila si se esta editando; vacio si es nuevo
                 Nombre: nombre,
                 Apellido: apellido,
                 "Tipo Puesto": tipo,
@@ -29078,6 +29116,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     loadSalariesTable();
                     addNotification('info', 'Nómina Actualizada', `Se guardaron los cambios para ${apellido}.`);
                     closeSalaryModal();
+                } else {
+                    const d = await res.json().catch(() => ({}));
+                    alert('No se pudo guardar: ' + (d.error || 'HTTP ' + res.status));
                 }
             } catch (e) { console.error(e); }
         }
