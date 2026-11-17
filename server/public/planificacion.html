@@ -658,7 +658,7 @@
                     <div class="flex flex-col lg:flex-row lg:items-center gap-3">
                         <div class="flex-1 relative min-w-0">
                             <i data-lucide="search" class="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-[#A3AED0]"></i>
-                            <input type="text" id="planning-search" oninput="debouncedFilterWeekly()" placeholder="Buscar por chofer, zona o unidad..." class="w-full bg-[#F4F7FE] border-0 rounded-xl py-2.5 pl-10 pr-4 text-[13px] font-medium text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500/20">
+                            <input type="text" id="planning-search" oninput="debouncedFilterWeekly()" placeholder="Buscar por chofer, zona, unidad o N° de viaje..." class="w-full bg-[#F4F7FE] border-0 rounded-xl py-2.5 pl-10 pr-4 text-[13px] font-medium text-[#1B2559] outline-none focus:ring-2 focus:ring-indigo-500/20">
                         </div>
                         <div class="flex flex-wrap items-center gap-2 shrink-0">
                             <label class="px-3.5 py-2.5 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold flex items-center gap-1.5 cursor-pointer whitespace-nowrap">
@@ -779,6 +779,9 @@
                     <div class="flex-1"></div>
                     <button type="button" onclick="printSelectedHDR()" title="Imprimir HDR" aria-label="Imprimir HDR" class="px-3.5 py-2 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
                         <i data-lucide="printer" class="w-4 h-4"></i><span class="hidden sm:inline">Imprimir HDR</span>
+                    </button>
+                    <button type="button" onclick="printSelectedHDRFusionada()" title="Una sola hoja con todas las vueltas elegidas: paradas de cada vuelta, cajones, observaciones y firmas" aria-label="HDR fusionada" class="px-3.5 py-2 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
+                        <i data-lucide="layers" class="w-4 h-4"></i><span class="hidden sm:inline">HDR fusionada</span>
                     </button>
                     <button type="button" onclick="fusionarViajes()" title="Fusionar" aria-label="Fusionar" class="px-3.5 py-2 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
                         <i data-lucide="git-merge" class="w-4 h-4"></i><span class="hidden sm:inline">Fusionar</span>
@@ -19242,6 +19245,9 @@
   .env th { background: #2B3674; }
   .env td { height: 30px; text-align: center; }
   .env .sec { background: #F4F7FE; font-weight: bold; text-align: left; }
+  /* El titulo SECTOR va como los demas: con el fondo claro de las celdas
+     quedaba blanco sobre blanco y no se leia. */
+  .env thead th.sec { background: #2B3674; color: #fff; }
   /* Firmas al pie de la hoja: margin-top auto las empuja abajo, y el padding
      garantiza lugar para firmar aunque la hoja venga llena de paradas. */
   .firmas { display: grid; grid-template-columns: 1fr 1fr; gap: 40px; margin-top: auto; padding-top: 22mm; }
@@ -19249,21 +19255,10 @@
 </style></head><body>${body}</body></html>`;
         }
 
-        function hdrPageHtml(trip, stops, logo) {
-            const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
-            // El encabezado nombra todas las rutas del viaje ("R6 + SAM 1"),
-            // no solo la primera: si no, la hoja parece de un reparto solo.
-            const reparto = (typeof rutasDelViaje === 'function')
-                ? rutasDelViaje(trip)
-                : (trip.tripType || trip.reparto || '—');
-            const transportista = trip.driver || '';
-            const aux = [trip.auxiliar, trip.auxiliar2, trip.auxiliar3].filter(Boolean).join(' / ');
-            const vehiculo = trip.vehicleType || '';
-            const motivo = (typeof formatBusinessUnit === 'function' ? formatBusinessUnit(trip.businessUnit) : (trip.businessUnit || '')) || '';
-            let fecha = ''; try { fecha = trip.date ? new Date(trip.date).toLocaleDateString('es-AR') : ''; } catch (_) {}
-            const refrig = trip.isRefrigerated ? 'SÍ' : 'NO';
-            const temp = (trip.temperature != null && trip.temperature !== '') ? `${trip.temperature}°` : '';
-
+        /** Las filas de paradas de una HDR: salida del deposito, cada parada
+         *  con sus horas, y separadores por ruta si el viaje tiene varias. La usan
+         *  la HDR de un viaje y la HDR fusionada, asi las dos dicen lo mismo. */
+        function _hdrFilasDeParadas(trip, stops, motivo, esc) {
             // UNA SOLA HOJA, aunque el viaje tenga dos o mas rutas predefinidas:
             // el chofer hace un recorrido, no dos, y las paradas se intercalan.
             //
@@ -19334,6 +19329,25 @@
                     <td></td>
                 </tr>`;
             }).join('');
+            return stopRows;
+        }
+
+        function hdrPageHtml(trip, stops, logo) {
+            const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+            // El encabezado nombra todas las rutas del viaje ("R6 + SAM 1"),
+            // no solo la primera: si no, la hoja parece de un reparto solo.
+            const reparto = (typeof rutasDelViaje === 'function')
+                ? rutasDelViaje(trip)
+                : (trip.tripType || trip.reparto || '—');
+            const transportista = trip.driver || '';
+            const aux = [trip.auxiliar, trip.auxiliar2, trip.auxiliar3].filter(Boolean).join(' / ');
+            const vehiculo = trip.vehicleType || '';
+            const motivo = (typeof formatBusinessUnit === 'function' ? formatBusinessUnit(trip.businessUnit) : (trip.businessUnit || '')) || '';
+            let fecha = ''; try { fecha = trip.date ? new Date(trip.date).toLocaleDateString('es-AR') : ''; } catch (_) {}
+            const refrig = trip.isRefrigerated ? 'SÍ' : 'NO';
+            const temp = (trip.temperature != null && trip.temperature !== '') ? `${trip.temperature}°` : '';
+
+            const stopRows = _hdrFilasDeParadas(trip, stops, motivo, esc);
 
             const envCols = ['PALLETS', 'PECO', 'BURZACO', 'PLÁSTICO', 'CANASTO', 'DEPO', 'JAULA', 'CARRETA'];
             const envHead = '<th class="sec">SECTOR</th>' + envCols.map((c) => `<th>${c}</th>`).join('') + '<th>FIRMA Y ACLARACIÓN</th>';
@@ -19376,6 +19390,215 @@
                     <div class="f">Firma y aclaración auxiliar</div>
                 </div>
             </div>`;
+        }
+
+        // ─────────────── HDR FUSIONADA: varias vueltas en UNA hoja ───────────────
+        // Arriba las paradas de la 1ra vuelta, abajo las de la 2da, la 3ra...
+        // Debajo de todo, los cajones de cada vuelta, observaciones y firmas.
+        // La hoja se ajusta sola: si sobra lugar agranda las filas, y si no
+        // entra achica todo parejo. Siempre sale en una sola hoja.
+        async function printSelectedHDRFusionada() {
+            const ids = [...selectedTripIds];
+            if (ids.length < 2) {
+                if (typeof addNotification === 'function') addNotification('warning', 'HDR fusionada', 'Elegí dos o más viajes (las vueltas) para armar una sola hoja.');
+                return;
+            }
+            const trips = ids.map((id) => (planningData || []).find((t) => String(t.id) === String(id))).filter(Boolean);
+            const norm = (v) => String(v || '').trim().toUpperCase();
+            const choferes = new Set(trips.map((t) => norm(t.driver)).filter(Boolean));
+            const dias = new Set(trips.map((t) => (typeof getTripLocalDateKey === 'function' ? getTripLocalDateKey(t) : String(t.date || '').slice(0, 10))));
+            if ((choferes.size > 1 || dias.size > 1) &&
+                !confirm(`Los viajes elegidos son de ${choferes.size > 1 ? 'distintos choferes' : ''}${choferes.size > 1 && dias.size > 1 ? ' y ' : ''}${dias.size > 1 ? 'distintos días' : ''}.\n\n¿Armar la HDR fusionada igual?`)) return;
+            await printHDRFusionada(ids);
+        }
+
+        async function printHDRFusionada(ids) {
+            // La ventana se abre YA, con el click: abierta despues de esperar al
+            // servidor, el navegador la toma por publicidad y la bloquea.
+            const w = window.open('', '_blank');
+            if (!w) {
+                if (typeof addNotification === 'function') addNotification('error', 'HDR', 'El navegador bloqueó la ventana. Permití las ventanas emergentes.');
+                return;
+            }
+            w.document.write('<p style="font-family:Arial;padding:24px;color:#1B2559">Armando la HDR fusionada…</p>');
+            try {
+                let logo = '';
+                try { if (typeof budgetLoadLogo === 'function') logo = (await budgetLoadLogo('azul')) || ''; } catch (_) {}
+                const viajes = await Promise.all(ids.map(async (id) => {
+                    const trip = (planningData || []).find((t) => String(t.id) === String(id));
+                    if (!trip) return null;
+                    let stops = [];
+                    try {
+                        const res = await fetch(`${API_URL}/trips/${id}/delivery-stops`, { headers: getActorHeaders() });
+                        if (res.ok) { const d = await res.json(); stops = Array.isArray(d.stops) ? d.stops : []; }
+                    } catch (e) { console.warn('HDR stops', id, e); }
+                    return { trip, stops };
+                }));
+                const lista = viajes.filter(Boolean);
+                if (!lista.length) { w.close(); return; }
+                w.document.open();
+                w.document.write(hdrDocumentoUnaHojaHtml(hdrFusionadaHtml(lista, logo)));
+                w.document.close();
+            } catch (e) {
+                console.error('printHDRFusionada', e);
+                try { w.close(); } catch (_) {}
+                if (typeof addNotification === 'function') addNotification('error', 'HDR', e.message || String(e));
+            }
+        }
+
+        function hdrFusionadaHtml(viajes, logo) {
+            const esc = (v) => String(v == null ? '' : v).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+            const unicos = (arr) => [...new Set(arr.map((x) => String(x == null ? '' : x).trim()).filter(Boolean))];
+            const repartoDe = (t) => (typeof rutasDelViaje === 'function') ? rutasDelViaje(t) : (t.tripType || t.reparto || '—');
+            const motivoDe = (t) => (typeof formatBusinessUnit === 'function' ? formatBusinessUnit(t.businessUnit) : (t.businessUnit || '')) || '';
+            const fechaDe = (t) => { try { return t.date ? new Date(t.date).toLocaleDateString('es-AR') : ''; } catch (_) { return ''; } };
+
+            // Orden: la vuelta que dice el viaje; a igual vuelta, el que salio antes
+            const inicio = (t) => new Date(t.routeActualStart || t.date || 0).getTime() || 0;
+            viajes = [...viajes].sort((a, b) =>
+                (Number(a.trip.vuelta) || 1) - (Number(b.trip.vuelta) || 1) ||
+                inicio(a.trip) - inicio(b.trip) || Number(a.trip.id) - Number(b.trip.id));
+            // Si cada viaje tiene su numero de vuelta se usa ese (puede ser 2da y
+            // 3ra); si no estan cargados, el orden en que salieron.
+            const vueltasPropias = new Set(viajes.map((v) => Number(v.trip.vuelta) || 1)).size === viajes.length;
+            const nroVuelta = (i) => vueltasPropias ? (Number(viajes[i].trip.vuelta) || 1) : i + 1;
+
+            const trips = viajes.map((v) => v.trip);
+            const nros = trips.map((t) => t.id);
+            const choferes = unicos(trips.map((t) => t.driver)).join(' / ');
+            const aux = unicos(trips.flatMap((t) => [t.auxiliar, t.auxiliar2, t.auxiliar3])).join(' / ');
+            const vehiculos = unicos(trips.map((t) => t.vehicleType)).join(' / ');
+            const repartos = unicos(trips.map(repartoDe)).join(' + ');
+            const motivos = unicos(trips.map(motivoDe)).join(' + ');
+            const fechas = unicos(trips.map(fechaDe)).join(' / ');
+            const temps = unicos(trips.map((t) => (t.temperature != null && t.temperature !== '') ? `${t.temperature}°` : '')).join(' / ');
+            const refrig = unicos(trips.map((t) => t.isRefrigerated ? 'SÍ' : 'NO')).join(' / ');
+
+            // Paradas: un bloque por vuelta, con su linea de KM para completar
+            const filasParadas = viajes.map((v, i) => `
+                <tr class="vuelta">
+                    <td colspan="3" class="vt">${nroVuelta(i)}ª vuelta · Viaje N° ${esc(v.trip.id)} · ${esc(repartoDe(v.trip))}</td>
+                    <td colspan="4" class="vkm">KM salida<span class="kmln"></span>KM llegada<span class="kmln"></span></td>
+                </tr>${_hdrFilasDeParadas(v.trip, v.stops, motivoDe(v.trip), esc)}`).join('');
+
+            // Cajones: los tres renglones de siempre, para cada vuelta
+            const envCols = ['PALLETS', 'PECO', 'BURZACO', 'PLÁSTICO', 'CANASTO', 'DEPO', 'JAULA', 'CARRETA'];
+            const envHead = '<th class="vtc">Vuelta</th><th class="sec">SECTOR</th>' + envCols.map((c) => `<th>${c}</th>`).join('') + '<th>FIRMA Y ACLARACIÓN</th>';
+            const envFilas = viajes.map((v, i) => ['ARMADO (salida)', 'CARGA (salida)', 'RECEPCIÓN (entrada)'].map((lab, k) => `
+                <tr class="${k === 0 ? 'v0' : ''}">
+                    ${k === 0 ? `<td class="vtc" rowspan="3">${nroVuelta(i)}ª<br><small>N° ${esc(v.trip.id)}</small></td>` : ''}
+                    <td class="sec">${lab}</td>${envCols.map(() => '<td></td>').join('')}<td></td>
+                </tr>`).join('')).join('');
+
+            const obs = viajes
+                .map((v, i) => v.trip.observacionChofer ? `${nroVuelta(i)}ª vuelta (N° ${v.trip.id}): ${v.trip.observacionChofer}` : '')
+                .filter(Boolean).join('\n');
+
+            return `<div class="hoja"><div class="hdr una-hoja">
+                <div class="hdr-top">
+                    ${logo ? `<img src="${logo}" alt="Real de Catorce" style="height:56px;width:auto;object-fit:contain;-webkit-print-color-adjust:exact;print-color-adjust:exact;">` : ''}
+                    <div class="hdr-title">
+                        <h1>HOJA DE RUTA</h1>
+                        <div class="sub">Fusionada · ${viajes.length} vueltas · Viajes N° ${esc(nros.join(' + '))} · ${esc(fechas)}</div>
+                    </div>
+                    <div class="viaje-n"><b>VIAJES N°</b><div class="nro chico">${nros.map(esc).join('<br>')}</div></div>
+                </div>
+                <div class="info">
+                    <div class="cell"><div class="k">Transportista</div><div class="v">${esc(choferes) || '&nbsp;'}</div></div>
+                    <div class="cell"><div class="k">Auxiliar</div><div class="v">${esc(aux) || '&nbsp;'}</div></div>
+                    <div class="cell"><div class="k">Vehículo</div><div class="v">${esc(vehiculos) || '&nbsp;'}</div></div>
+                    <div class="cell"><div class="k">Patente</div><div class="v">&nbsp;</div></div>
+                    <div class="cell"><div class="k">Reparto</div><div class="v">${esc(repartos)}</div></div>
+                    <div class="cell"><div class="k">Motivo / Unidad</div><div class="v">${esc(motivos) || '&nbsp;'}</div></div>
+                    <div class="cell"><div class="k">Temperatura</div><div class="v">${esc(temps) || '&nbsp;'}</div></div>
+                    <div class="cell"><div class="k">Refrigerado</div><div class="v">${esc(refrig)}</div></div>
+                </div>
+                <table class="stops">
+                    <thead><tr><th class="n">#</th><th>Destino</th><th class="loc">Localidad</th><th class="hr">Hora llegada</th><th class="hr">Hora salida</th><th class="mot">Motivo</th><th>Observaciones</th></tr></thead>
+                    <tbody>${filasParadas}</tbody>
+                </table>
+                <div class="sec-title">Envases · Entrada y salida de cajones con seña (por vuelta)</div>
+                <table class="env">
+                    <thead><tr>${envHead}</tr></thead>
+                    <tbody>${envFilas}</tbody>
+                </table>
+                <div class="sec-title">Observaciones</div>
+                <div class="obs">${esc(obs)}</div>
+                <div class="firmas">
+                    <div class="f">Firma y aclaración chofer</div>
+                    <div class="f">Firma y aclaración auxiliar</div>
+                </div>
+            </div></div>`;
+        }
+
+        /** El documento de la HDR fusionada: el mismo estilo que la HDR comun,
+         *  mas lo que hace falta para que todo entre en UNA hoja A4. */
+        function hdrDocumentoUnaHojaHtml(body) {
+            const css = `
+  .hoja { width: 192mm; height: 277mm; overflow: hidden; margin: 0 auto; break-inside: avoid; page-break-after: auto; }
+  .hdr.una-hoja { min-height: 0; page-break-after: auto; transform-origin: 0 0; }
+  .hdr.una-hoja .firmas { padding-top: 12mm; }
+  .hdr.una-hoja .stops td { height: 20px; }
+  .hdr.una-hoja .env td { height: 20px; }
+  .viaje-n .nro.chico { font-size: 12px; line-height: 1.25; }
+  .stops .vuelta td { height: 18px; border-color: #1B2559; }
+  .stops .vuelta .vt { background: #1B2559; color: #fff; font-weight: bold; font-size: 10px; letter-spacing: .6px; text-transform: uppercase; }
+  .stops .vuelta .vkm { background: #fff; color: #1B2559; font-weight: bold; font-size: 9px; text-transform: uppercase; text-align: right; white-space: nowrap; }
+  .kmln { display: inline-block; width: 24mm; height: 11px; border-bottom: 1px solid #333; margin: 0 8px 0 4px; vertical-align: bottom; }
+  .env .vtc { width: 52px; background: #E8ECF8; color: #1B2559; font-weight: bold; text-align: center; font-size: 10px; line-height: 1.15; }
+  .env thead th.vtc { background: #2B3674; color: #fff; }
+  .env .vtc small { font-size: 8px; color: #555; }
+  .env tr.v0 td { border-top: 2px solid #1B2559; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  @media screen { html { background: #e5e7eb; } body { padding: 12px 0; } .hoja { background: #fff; box-shadow: 0 2px 12px rgba(0,0,0,.25); } }
+  @media print { html, body { background: none; padding: 0; } .hoja { box-shadow: none; } }`;
+            // Ajuste a una hoja. Se mide la hoja a su ancho real de impresion:
+            // si el contenido es mas alto, se achica todo parejo (y se le da mas
+            // ancho para que siga ocupando el ancho de la hoja); si sobra
+            // lugar, se agrandan las filas para escribir comodo y las firmas
+            // quedan al pie.
+            const script = `<script>
+(function () {
+  function ajustar() {
+    var hoja = document.querySelector('.hoja');
+    if (!hoja) return;
+    var hdr = hoja.querySelector('.hdr');
+    var H = hoja.clientHeight - 2, W = hoja.clientWidth, z = 1, i, k;
+    hdr.style.height = 'auto';
+    for (i = 0; i < 8; i++) {
+      hdr.style.width = (W / z) + 'px';
+      var nz = Math.min(1, H / hdr.offsetHeight);
+      if (Math.abs(nz - z) < 0.002) { z = nz; break; }
+      z = nz;
+    }
+    hdr.style.width = (W / z) + 'px';
+    if (z < 1) {
+      hdr.style.transform = 'scale(' + z + ')';
+      hdr.style.height = (H / z) + 'px';
+      return;
+    }
+    var crecer = function (filas, tope, parte) {
+      var sobra = H - hdr.offsetHeight;
+      if (sobra <= 0 || !filas.length) return;
+      var extra = Math.min(tope, sobra * parte / filas.length);
+      for (k = 0; k < filas.length; k++) filas[k].style.height = (filas[k].offsetHeight + extra) + 'px';
+    };
+    crecer(hdr.querySelectorAll('.stops tbody tr:not(.bloque):not(.vuelta)'), 14, 0.6);
+    crecer(hdr.querySelectorAll('.env tbody tr'), 10, 0.5);
+    var obs = hdr.querySelector('.obs'), sobra = H - hdr.offsetHeight;
+    if (obs && sobra > 0) obs.style.minHeight = (obs.offsetHeight + sobra * 0.6) + 'px';
+    if (hdr.offsetHeight > H) { hdr.style.transform = 'scale(' + (H / hdr.offsetHeight) + ')'; }
+    else hdr.style.height = H + 'px';
+  }
+  window.addEventListener('load', function () {
+    ajustar();
+    setTimeout(function () { try { window.focus(); window.print(); } catch (e) {} }, 200);
+  });
+})();
+<\/script>`;
+            return hdrDocumentHtml(body)
+                .replace('</style>', css + '\n</style>')
+                .replace('</body>', script + '</body>');
         }
 
         /** Saca viajes de la tabla en el acto, antes de que conteste el
@@ -20655,6 +20878,19 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const query = (document.getElementById('planning-search')?.value || '').toLowerCase();
             const mode = activeDateFilterMode || 'mes';
 
+            // Un numero (con o sin "#") es un numero de viaje. Se busca entre
+            // TODOS los viajes cargados, sin importar el dia o el mes elegido:
+            // quien busca el 10063 quiere ese viaje, no el de hoy.
+            const nroViaje = (query.trim().match(/^(?:#|n[°º]\s*|viaje\s*)?(\d{3,})$/) || [])[1] || null;
+            if (nroViaje) {
+                filteredPlanning = applyWeeklySort(planningData.filter(t => String(t.id).startsWith(nroViaje)));
+                renderPlanningTable(filteredPlanning);
+                try { _updateSortIndicators(); } catch(_) {}
+                // No esta cargado (es de otro mes): se lo pide al servidor
+                if (!filteredPlanning.some(t => String(t.id) === nroViaje)) _traerViajePorNumero(nroViaje);
+                return;
+            }
+
             const matchesSearch = (t) =>
                 (t.driver || '').toLowerCase().includes(query) ||
                 (t.zone || '').toLowerCase().includes(query) ||
@@ -20772,6 +21008,29 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             renderPlanningTable(filteredPlanning);
             // Refrescar flechita ↑/↓ en el header (se redibuja tras cada render)
             try { _updateSortIndicators(); } catch(_) {}
+        }
+
+        /** Trae un viaje por su numero cuando no esta entre los cargados y lo
+         *  suma a la planilla. Cada numero se pide una sola vez. */
+        const __viajesPedidosPorNumero = new Set();
+        async function _traerViajePorNumero(nro) {
+            if (__viajesPedidosPorNumero.has(nro)) return;
+            __viajesPedidosPorNumero.add(nro);
+            try {
+                const res = await fetch(`${API_URL}/trips?id=${encodeURIComponent(nro)}`, { headers: getActorHeaders() });
+                if (!res.ok) { __viajesPedidosPorNumero.delete(nro); return; }
+                const data = await res.json();
+                const t = (Array.isArray(data) ? data : []).find(x => String(x.id) === String(nro));
+                if (!t) return;
+                __weeklyTripsById.set(t.id, t);
+                _weeklyRebuildPlanningData();
+                // Solo se redibuja si todavia estan buscando ese numero
+                const q = (document.getElementById('planning-search')?.value || '').trim().toLowerCase();
+                if ((q.match(/(\d{3,})$/) || [])[1] === String(nro)) filterWeeklyData();
+            } catch (e) {
+                __viajesPedidosPorNumero.delete(nro);
+                console.warn('[Buscar viaje]', nro, e);
+            }
         }
 
         // ─── COLUMN VISIBILITY (POR USUARIO) ──────────────────────────────────

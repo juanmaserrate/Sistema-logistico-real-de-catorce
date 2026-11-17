@@ -13698,11 +13698,15 @@ app.get('/api/v1/trips', async (req, res) => {
     const monthKey = month ? String(month).toLowerCase() : '';
     const monthIdx = monthKey ? monthMap[monthKey] : undefined;
     const yearNum = year ? Number(year) : undefined;
+    // ?id=10063: un viaje por su numero, sea del mes que sea (el buscador de
+    // la planilla lo pide cuando el viaje no esta entre los cargados).
+    const idNum = Number(req.query.id);
+    if (Number.isInteger(idNum) && idNum > 0) where.id = idNum;
 
     // Bug fix: antes el filtro mes/año se aplicaba en memoria DESPUÉS de take: 2000.
     // Con más de 2000 viajes en la base, los meses viejos quedaban fuera del slice
     // y devolvían VACIO. Ahora aplicamos el rango directo al `where` de Prisma.
-    if (monthIdx !== undefined || yearNum) {
+    if (!where.id && (monthIdx !== undefined || yearNum)) {
         const yForRange = yearNum || new Date().getFullYear();
         if (monthIdx !== undefined) {
             // Mes específico (con año explícito o asumiendo año actual)
