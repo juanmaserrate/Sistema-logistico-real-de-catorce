@@ -780,7 +780,7 @@
                     <button type="button" onclick="printSelectedHDR()" title="Imprimir HDR" aria-label="Imprimir HDR" class="px-3.5 py-2 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
                         <i data-lucide="printer" class="w-4 h-4"></i><span class="hidden sm:inline">Imprimir HDR</span>
                     </button>
-                    <button type="button" onclick="printSelectedHDRFusionada()" title="Una sola hoja con todas las vueltas elegidas: paradas de cada vuelta, cajones, observaciones y firmas" aria-label="HDR fusionada" class="px-3.5 py-2 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
+                    <button type="button" onclick="printSelectedHDRFusionada()" title="Una hoja por usuario de la app (y por día): los viajes del mismo usuario salen fusionados en su hoja, vuelta por vuelta, con cajones, observaciones y firmas" aria-label="HDR fusionada" class="px-3.5 py-2 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
                         <i data-lucide="layers" class="w-4 h-4"></i><span class="hidden sm:inline">HDR fusionada</span>
                     </button>
                     <button type="button" onclick="fusionarViajes()" title="Fusionar" aria-label="Fusionar" class="px-3.5 py-2 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-[11px] font-bold flex items-center gap-1.5 whitespace-nowrap">
@@ -19397,19 +19397,40 @@
         // Debajo de todo, los cajones de cada vuelta, observaciones y firmas.
         // La hoja se ajusta sola: si sobra lugar agranda las filas, y si no
         // entra achica todo parejo. Siempre sale en una sola hoja.
+        //
+        // Con muchos viajes tildados: UNA HOJA POR USUARIO DE LA APP (y por
+        // dia). Los viajes del mismo usuario van fusionados en su hoja; el que
+        // tiene un solo viaje sale con su HDR comun; los viajes sin usuario de
+        // la app salen cada uno en su hoja. Todo en una sola impresion.
         async function printSelectedHDRFusionada() {
             const ids = [...selectedTripIds];
-            if (ids.length < 2) {
-                if (typeof addNotification === 'function') addNotification('warning', 'HDR fusionada', 'Elegí dos o más viajes (las vueltas) para armar una sola hoja.');
+            if (!ids.length) {
+                if (typeof addNotification === 'function') addNotification('warning', 'HDR fusionada', 'Seleccioná los viajes para imprimir sus HDR.');
                 return;
             }
-            const trips = ids.map((id) => (planningData || []).find((t) => String(t.id) === String(id))).filter(Boolean);
-            const norm = (v) => String(v || '').trim().toUpperCase();
-            const choferes = new Set(trips.map((t) => norm(t.driver)).filter(Boolean));
-            const dias = new Set(trips.map((t) => (typeof getTripLocalDateKey === 'function' ? getTripLocalDateKey(t) : String(t.date || '').slice(0, 10))));
-            if ((choferes.size > 1 || dias.size > 1) &&
-                !confirm(`Los viajes elegidos son de ${choferes.size > 1 ? 'distintos choferes' : ''}${choferes.size > 1 && dias.size > 1 ? ' y ' : ''}${dias.size > 1 ? 'distintos días' : ''}.\n\n¿Armar la HDR fusionada igual?`)) return;
             await printHDRFusionada(ids);
+        }
+
+        /** El usuario de la app de un viaje, o '' si no tiene. */
+        function _usuarioAppDelViaje(t) {
+            const u = String(t?.assignedMobileUser || '').trim().toUpperCase();
+            return ['', '-', '--', 'N/A'].includes(u) ? '' : u;
+        }
+
+        /** Agrupa los viajes en hojas: por usuario de la app y dia. */
+        function _hojasPorUsuarioApp(trips) {
+            const dia = (t) => (typeof getTripLocalDateKey === 'function' ? getTripLocalDateKey(t) : null) || String(t.date || '').slice(0, 10);
+            const grupos = new Map();
+            for (const t of trips) {
+                const u = _usuarioAppDelViaje(t);
+                const k = u ? `${dia(t)}|1|${u}` : `${dia(t)}|2|${t.id}`;
+                if (!grupos.has(k)) grupos.set(k, []);
+                grupos.get(k).push(t);
+            }
+            // Por dia y usuario; los que no tienen usuario de la app, al final de su dia
+            return [...grupos.entries()]
+                .sort(([a], [b]) => a.localeCompare(b, 'es', { numeric: true }))
+                .map(([, viajes]) => viajes);
         }
 
         async function printHDRFusionada(ids) {
@@ -19420,25 +19441,42 @@
                 if (typeof addNotification === 'function') addNotification('error', 'HDR', 'El navegador bloqueó la ventana. Permití las ventanas emergentes.');
                 return;
             }
-            w.document.write('<p style="font-family:Arial;padding:24px;color:#1B2559">Armando la HDR fusionada…</p>');
+            w.document.write('<p style="font-family:Arial;padding:24px;color:#1B2559">Armando las HDR…</p>');
             try {
                 let logo = '';
                 try { if (typeof budgetLoadLogo === 'function') logo = (await budgetLoadLogo('azul')) || ''; } catch (_) {}
-                const viajes = await Promise.all(ids.map(async (id) => {
-                    const trip = (planningData || []).find((t) => String(t.id) === String(id));
-                    if (!trip) return null;
-                    let stops = [];
-                    try {
-                        const res = await fetch(`${API_URL}/trips/${id}/delivery-stops`, { headers: getActorHeaders() });
-                        if (res.ok) { const d = await res.json(); stops = Array.isArray(d.stops) ? d.stops : []; }
-                    } catch (e) { console.warn('HDR stops', id, e); }
-                    return { trip, stops };
-                }));
-                const lista = viajes.filter(Boolean);
-                if (!lista.length) { w.close(); return; }
+                const trips = ids.map((id) => (planningData || []).find((t) => String(t.id) === String(id))).filter(Boolean);
+                if (!trips.length) { w.close(); return; }
+
+                // Las paradas de cada viaje, de a 6 pedidos por vez: con toda la
+                // planilla tildada no se le tiran 40 juntos al servidor.
+                const paradas = new Map();
+                for (let i = 0; i < trips.length; i += 6) {
+                    await Promise.all(trips.slice(i, i + 6).map(async (t) => {
+                        let stops = [];
+                        try {
+                            const res = await fetch(`${API_URL}/trips/${t.id}/delivery-stops`, { headers: getActorHeaders() });
+                            if (res.ok) { const d = await res.json(); stops = Array.isArray(d.stops) ? d.stops : []; }
+                        } catch (e) { console.warn('HDR stops', t.id, e); }
+                        paradas.set(t.id, stops);
+                    }));
+                }
+
+                const hojas = _hojasPorUsuarioApp(trips);
+                const html = hojas.map((viajes) => viajes.length > 1
+                    ? hdrFusionadaHtml(viajes.map((t) => ({ trip: t, stops: paradas.get(t.id) || [] })), logo)
+                    // Un solo viaje: su HDR de siempre, ajustada a la hoja
+                    : '<div class="hoja">' + hdrPageHtml(viajes[0], paradas.get(viajes[0].id) || [], logo)
+                        .replace('<div class="hdr">', '<div class="hdr una-hoja">') + '</div>'
+                ).join('');
+
                 w.document.open();
-                w.document.write(hdrDocumentoUnaHojaHtml(hdrFusionadaHtml(lista, logo)));
+                w.document.write(hdrDocumentoUnaHojaHtml(html));
                 w.document.close();
+                const fusionadas = hojas.filter((h) => h.length > 1);
+                if (typeof addNotification === 'function') addNotification('info', 'HDR',
+                    `${hojas.length} ${hojas.length === 1 ? 'hoja' : 'hojas'}` +
+                    (fusionadas.length ? ` · ${fusionadas.length} fusionada${fusionadas.length === 1 ? '' : 's'} (${fusionadas.reduce((n, h) => n + h.length, 0)} viajes)` : '') + '.');
             } catch (e) {
                 console.error('printHDRFusionada', e);
                 try { w.close(); } catch (_) {}
@@ -19536,6 +19574,9 @@
         function hdrDocumentoUnaHojaHtml(body) {
             const css = `
   .hoja { width: 192mm; height: 277mm; overflow: hidden; margin: 0 auto; break-inside: avoid; page-break-after: auto; }
+  /* Varias hojas en la misma impresion: cada una arranca en una pagina nueva */
+  .hoja ~ .hoja { break-before: page; page-break-before: always; }
+  @media screen { .hoja ~ .hoja { margin-top: 14px; } }
   .hdr.una-hoja { min-height: 0; page-break-after: auto; transform-origin: 0 0; }
   .hdr.una-hoja .firmas { padding-top: 12mm; }
   .hdr.una-hoja .stops td { height: 20px; }
@@ -19559,10 +19600,9 @@
             // quedan al pie.
             const script = `<script>
 (function () {
-  function ajustar() {
-    var hoja = document.querySelector('.hoja');
-    if (!hoja) return;
+  function ajustar(hoja) {
     var hdr = hoja.querySelector('.hdr');
+    if (!hdr) return;
     var H = hoja.clientHeight - 2, W = hoja.clientWidth, z = 1, i, k;
     hdr.style.height = 'auto';
     for (i = 0; i < 8; i++) {
@@ -19591,7 +19631,8 @@
     else hdr.style.height = H + 'px';
   }
   window.addEventListener('load', function () {
-    ajustar();
+    var hojas = document.querySelectorAll('.hoja');
+    for (var n = 0; n < hojas.length; n++) ajustar(hojas[n]);
     setTimeout(function () { try { window.focus(); window.print(); } catch (e) {} }, 200);
   });
 })();
