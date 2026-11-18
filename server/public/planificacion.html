@@ -746,7 +746,7 @@
                 </div>
 
                 <!-- Los numeros, primero -->
-                <div class="grid gap-2 sm:gap-4 grid-cols-2 lg:grid-cols-4">
+                <div class="grid gap-2 sm:gap-4 grid-cols-2 md:grid-cols-4 2xl:grid-cols-7">
                     <div class="card-dark px-4 py-3 sm:px-5 sm:py-4 min-w-0">
                         <div class="text-[11px] font-semibold text-[#A3AED0] truncate">En la vista</div>
                         <div id="summary-filtered-count" class="mt-1 text-xl sm:text-2xl font-extrabold text-[#1B2559] tabular-nums">0</div>
@@ -766,6 +766,22 @@
                         <div class="text-[11px] font-semibold text-[#A3AED0] truncate">Cargados</div>
                         <div id="summary-total-trips" class="mt-1 text-xl sm:text-2xl font-extrabold text-[#1B2559] tabular-nums">0</div>
                         <div class="text-[11px] text-[#A3AED0] mt-0.5 truncate">En el período traído</div>
+                    </div>
+                    <!-- Estados: el mismo criterio que la columna Estado -->
+                    <div class="card-dark px-4 py-3 sm:px-5 sm:py-4 min-w-0" title="Todavía no arrancaron">
+                        <div class="flex items-center gap-1.5 text-[11px] font-semibold text-[#A3AED0] truncate"><span class="w-2 h-2 rounded-full bg-slate-400 shrink-0"></span>Pendientes</div>
+                        <div id="summary-pendientes" class="mt-1 text-xl sm:text-2xl font-extrabold text-[#1B2559] tabular-nums">0</div>
+                        <div id="summary-pendientes-pct" class="text-[11px] text-[#A3AED0] mt-0.5 truncate">&nbsp;</div>
+                    </div>
+                    <div class="card-dark px-4 py-3 sm:px-5 sm:py-4 min-w-0" title="Arrancaron y todavía no terminaron">
+                        <div class="flex items-center gap-1.5 text-[11px] font-semibold text-[#A3AED0] truncate"><span class="w-2 h-2 rounded-full bg-sky-500 shrink-0"></span>En curso</div>
+                        <div id="summary-encurso" class="mt-1 text-xl sm:text-2xl font-extrabold text-[#1B2559] tabular-nums">0</div>
+                        <div id="summary-encurso-pct" class="text-[11px] text-[#A3AED0] mt-0.5 truncate">&nbsp;</div>
+                    </div>
+                    <div class="card-dark px-4 py-3 sm:px-5 sm:py-4 min-w-0" title="Ya terminaron">
+                        <div class="flex items-center gap-1.5 text-[11px] font-semibold text-[#A3AED0] truncate"><span class="w-2 h-2 rounded-full bg-emerald-500 shrink-0"></span>Finalizados</div>
+                        <div id="summary-finalizados" class="mt-1 text-xl sm:text-2xl font-extrabold text-[#1B2559] tabular-nums">0</div>
+                        <div id="summary-finalizados-pct" class="text-[11px] text-[#A3AED0] mt-0.5 truncate">&nbsp;</div>
                     </div>
                 </div>
 
@@ -18484,6 +18500,18 @@
             const _st = document.getElementById('summary-terc'); if (_st) _st.innerText = _nTerc.toLocaleString('es-AR');
             const _spp = document.getElementById('summary-propios-pct'); if (_spp) _spp.innerText = _pct(_nProp);
             const _stp = document.getElementById('summary-terc-pct'); if (_stp) _stp.innerText = _pct(_nTerc);
+            // Estados, con el mismo criterio que la columna Estado: arranco y
+            // termino segun la ruta (lo que marca el chofer en la app).
+            let _nPend = 0, _nCurso = 0, _nFin = 0;
+            for (const t of data) {
+                if (t.routeActualEnd) _nFin++;
+                else if (t.routeActualStart) _nCurso++;
+                else _nPend++;
+            }
+            for (const [id, n] of [['pendientes', _nPend], ['encurso', _nCurso], ['finalizados', _nFin]]) {
+                const el = document.getElementById('summary-' + id); if (el) el.innerText = n.toLocaleString('es-AR');
+                const pc = document.getElementById('summary-' + id + '-pct'); if (pc) pc.innerText = _pct(n);
+            }
             pintarMesesLog();
             applyColumnVisibility();
             lucide.createIcons();
