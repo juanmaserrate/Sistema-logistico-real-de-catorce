@@ -144,6 +144,20 @@ export interface MovimientoApp {
 type Celda = { ps: number; pe: number; ad: number; ar: number; enPlanilla: boolean; enApp: boolean };
 
 /** Cruza planilla y app por reparto, dia y tipo. */
+/** Cuantos dias quedaron en cada estado (con el campo de estado que se pida). */
+function resumenDe(dias: any[], campo: string) {
+    const r = { dias: dias.length, ok: 0, conDiferencia: 0, soloPlanilla: 0, soloApp: 0, antesDeLaApp: 0 };
+    for (const d of dias) {
+        const e = d[campo];
+        if (e === 'ok') r.ok++;
+        else if (e === 'diferencia') r.conDiferencia++;
+        else if (e === 'solo planilla') r.soloPlanilla++;
+        else if (e === 'solo app') r.soloApp++;
+        else if (e === 'antes de la app') r.antesDeLaApp++;
+    }
+    return r;
+}
+
 export function compararCajones(filas: FilaPlanilla[], app: MovimientoApp[], hojas: Array<{ nombre: string; codigo: string; patente: string | null }>, appDesde?: string | null) {
     const vacia = (): Celda => ({ ps: 0, pe: 0, ad: 0, ar: 0, enPlanilla: false, enApp: false });
     // codigo -> fecha -> tipo -> celda
@@ -183,29 +197,33 @@ export function compararCajones(filas: FilaPlanilla[], app: MovimientoApp[], hoj
             }
             const enPlanilla = [...tipos.values()].some((c) => c.enPlanilla);
             const enApp = [...tipos.values()].some((c) => c.enApp);
-            // Hay diferencia si algun envase no da igual (lo que no esta cargado cuenta 0)
-            const diferencias = comparables.filter((k) => {
+            // Hay diferencia si algun envase no da igual (lo que no esta cargado cuenta 0).
+            // Se mira la salida, la entrada y las dos juntas: la pantalla muestra
+            // una u otra, y el estado tiene que hablar de lo que se esta viendo.
+            const difEn = (cual: 'salida' | 'entrada' | 'ambos') => comparables.filter((k) => {
                 const c = tipos.get(k);
-                return c && (c.ps !== c.ad || c.pe !== c.ar);
+                if (!c) return false;
+                const s = c.ps !== c.ad, e = c.pe !== c.ar;
+                return cual === 'salida' ? s : cual === 'entrada' ? e : (s || e);
             });
-            // La planilla en cero y la app sin nada es un dia sin movimiento: esta bien
-            // Antes de que la app pidiera los cajones no hay con que comparar
-            const estado = !diferencias.length ? 'ok'
+            // La planilla en cero y la app sin nada es un dia sin movimiento: esta bien.
+            // Antes de que la app pidiera los cajones no hay con que comparar.
+            const estadoDe = (dif: string[]) => !dif.length ? 'ok'
                 : enPlanilla && enApp ? 'diferencia'
                 : enPlanilla ? (appDesde && fecha < appDesde ? 'antes de la app' : 'solo planilla') : 'solo app';
-            return { fecha, tipos: t, estado, diferencias, viajes: [...(viajes.get(`${codigo}|${fecha}`) || [])].sort((a, b) => a - b) };
+            const diferencias = difEn('ambos');
+            return {
+                fecha, tipos: t, estado: estadoDe(diferencias), diferencias,
+                estadoSalida: estadoDe(difEn('salida')), estadoEntrada: estadoDe(difEn('entrada')),
+                viajes: [...(viajes.get(`${codigo}|${fecha}`) || [])].sort((a, b) => a - b)
+            };
         });
         const h = hojaDe.get(codigo);
         return {
             codigo, hoja: h?.nombre || null, totales, dias,
-            resumen: {
-                dias: dias.length,
-                ok: dias.filter((d) => d.estado === 'ok').length,
-                conDiferencia: dias.filter((d) => d.estado === 'diferencia').length,
-                soloPlanilla: dias.filter((d) => d.estado === 'solo planilla').length,
-                soloApp: dias.filter((d) => d.estado === 'solo app').length,
-                antesDeLaApp: dias.filter((d) => d.estado === 'antes de la app').length,
-            }
+            resumen: resumenDe(dias, 'estado'),
+            resumenSalida: resumenDe(dias, 'estadoSalida'),
+            resumenEntrada: resumenDe(dias, 'estadoEntrada')
         };
     });
     // R1, R2 ... R22, LIBRE y lo que no tiene hoja al final
@@ -237,20 +255,24 @@ export function agruparPorPeriodo(repartos: ReturnType<typeof compararCajones>['
             acc[k].ps += c.ps; acc[k].pe += c.pe; acc[k].ad += c.ad; acc[k].ar += c.ar;
         }
     };
-    const periodos = new Map<string, { periodo: string; tipos: Record<string, any>; resumen: ResumenDias; repartos: Map<string, any> }>();
+    const periodos = new Map<string, { periodo: string; tipos: Record<string, any>; resumen: ResumenDias; resumenSalida: ResumenDias; resumenEntrada: ResumenDias; repartos: Map<string, any> }>();
     for (const r of repartos) {
         for (const d of r.dias) {
             const k = clave(d.fecha);
-            if (!periodos.has(k)) periodos.set(k, { periodo: k, tipos: {}, resumen: resumenVacio(), repartos: new Map() });
+            if (!periodos.has(k)) periodos.set(k, { periodo: k, tipos: {}, resumen: resumenVacio(), resumenSalida: resumenVacio(), resumenEntrada: resumenVacio(), repartos: new Map() });
             const P = periodos.get(k)!;
             sumar(P.tipos, d.tipos);
             contarEstado(P.resumen, d.estado);
-            if (!P.repartos.has(r.codigo)) P.repartos.set(r.codigo, { codigo: r.codigo, hoja: r.hoja, tipos: {}, resumen: resumenVacio(), estado: null, viajes: [] as number[] });
+            contarEstado(P.resumenSalida, d.estadoSalida);
+            contarEstado(P.resumenEntrada, d.estadoEntrada);
+            if (!P.repartos.has(r.codigo)) P.repartos.set(r.codigo, { codigo: r.codigo, hoja: r.hoja, tipos: {}, resumen: resumenVacio(), resumenSalida: resumenVacio(), resumenEntrada: resumenVacio(), estado: null, viajes: [] as number[] });
             const R = P.repartos.get(r.codigo);
             sumar(R.tipos, d.tipos);
             contarEstado(R.resumen, d.estado);
+            contarEstado(R.resumenSalida, d.estadoSalida);
+            contarEstado(R.resumenEntrada, d.estadoEntrada);
             // Por dia, el reparto ES ese dia: su estado y sus viajes
-            if (agrupar === 'dia') { R.estado = d.estado; R.viajes = d.viajes; }
+            if (agrupar === 'dia') { R.estado = d.estado; R.estadoSalida = d.estadoSalida; R.estadoEntrada = d.estadoEntrada; R.viajes = d.viajes; }
         }
     }
     return [...periodos.values()]

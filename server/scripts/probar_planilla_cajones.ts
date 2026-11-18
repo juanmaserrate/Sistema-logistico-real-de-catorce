@@ -53,6 +53,8 @@ console.log('\n2. Formato de la planilla (bloques SALIDA / ENTRADA / DIFERENCIA)
     const r1 = c.repartos.find((x) => x.codigo === 'R1')!;
     const dia = (f: string) => r1.dias.find((d) => d.fecha === f)!;
     esperar('16/11: diferencia solo en DEPO (entrada 15 vs 14)', dia('2026-11-16').estado === 'diferencia' && JSON.stringify(dia('2026-11-16').diferencias) === '["deposito"]', dia('2026-11-16'));
+    esperar('16/11 en salida coincide y en entrada no', dia('2026-11-16').estadoSalida === 'ok' && dia('2026-11-16').estadoEntrada === 'diferencia', dia('2026-11-16'));
+    esperar('el resumen tambien se separa', r1.resumenSalida.ok === 1 && r1.resumenEntrada.conDiferencia === 1, [r1.resumenSalida, r1.resumenEntrada]);
     esperar('17/11: solo en la planilla', dia('2026-11-17').estado === 'solo planilla', dia('2026-11-17'));
     esperar('18/11: solo en la app', dia('2026-11-18').estado === 'solo app', dia('2026-11-18'));
     esperar('pallet no cuenta como diferencia (la app no lo carga)', !dia('2026-11-16').diferencias.includes('pallet'));

@@ -7137,7 +7137,7 @@ app.get('/api/v1/cajones/planilla-vs-app', sesionOClave, async (req: any, res: a
                 desde, hasta, agrupar,
                 planilla: { nombre: pl.nombre, url: pl.url, modificado: pl.modificado, leida: new Date(pl.leida).toISOString(), hojas: lectura.hojas, ignoradas: lectura.ignoradas },
                 paradasSinTipo: sinTipo, tipos: comp.tipos, appDesde,
-                repartos: comp.repartos.map((r) => ({ codigo: r.codigo, hoja: r.hoja, resumen: r.resumen })),
+                repartos: comp.repartos.map((r) => ({ codigo: r.codigo, hoja: r.hoja, resumen: r.resumen, resumenSalida: r.resumenSalida, resumenEntrada: r.resumenEntrada })),
                 periodos
             });
         }
