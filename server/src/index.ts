@@ -30,7 +30,8 @@ import {
 import { armarLibroViajes } from './libroViajes';
 import { presupuestoDelAnio } from './presupuestoViajes';
 import { metricasDelMes } from './metricasDashboard';
-import { subirArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnosticoSharepoint, limpiarTokenSharepoint } from './sharepoint';
+import { subirArchivo, bajarArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnosticoSharepoint, limpiarTokenSharepoint } from './sharepoint';
+import { leerPlanillaCajones, compararCajones, repartoDeViaje, MovimientoApp, TipoPlanilla } from './planillaCajones';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
@@ -7050,6 +7051,82 @@ app.get('/api/v1/crates/control', async (req: any, res: any) => {
  *  siguiente, asi que se puede mirar una fecha y saber cuantos habia.
  *
  *  GET /api/v1/crates/historial?agrupar=dia|mes|anio&desde=&hasta=&key= */
+// ── PLANILLA DE CAJONES DE TRAFICO vs APP (ver planillaCajones.ts) ──────────
+// La planilla vive en SharePoint y la carga Trafico a mano. Se baja cada vez
+// que alguien la pide, salvo que se haya bajado hace menos de 5 minutos.
+let _planillaCajones: { leida: number; buffer: Buffer; nombre?: string; modificado?: string; url?: string } | null = null;
+async function planillaDeCajones(refrescar: boolean) {
+    if (!refrescar && _planillaCajones && Date.now() - _planillaCajones.leida < 5 * 60_000) return _planillaCajones;
+    const ruta = process.env.SP_PLANILLA_CAJONES || 'Operaciones/LOGISTICA/CONTROL CAJONES Y PALLET_ TRAFICO.xlsx';
+    const r = await bajarArchivo(ruta);
+    if (!r.ok || !r.buffer) throw new Error(`No se pudo leer la planilla de SharePoint (${ruta}): ${r.error || 'sin datos'}`);
+    _planillaCajones = { leida: Date.now(), buffer: r.buffer, nombre: r.nombre, modificado: r.modificado, url: r.url };
+    return _planillaCajones;
+}
+
+/** GET /api/v1/cajones/planilla-vs-app?desde=AAAA-MM-DD&hasta=AAAA-MM-DD[&refrescar=1] */
+app.get('/api/v1/cajones/planilla-vs-app', sesionOClave, async (req: any, res: any) => {
+    try {
+        const ymd = (v: any) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) ? String(v) : null;
+        const hoy = buenosAiresYmd();
+        const desde = ymd(req.query.desde) || hoy.slice(0, 8) + '01';
+        const hasta = ymd(req.query.hasta) || hoy;
+        if (desde > hasta) return res.status(400).json({ error: 'La fecha desde es posterior a hasta' });
+
+        const pl = await planillaDeCajones(String(req.query.refrescar || '') === '1');
+        const lectura = leerPlanillaCajones(pl.buffer, desde, hasta);
+        const patentesLibre = lectura.hojas.map((h) => h.patente).filter(Boolean) as string[];
+
+        // Lo que cargaron los choferes: las paradas con envases de los viajes
+        // de esos dias (el dia del viaje, en hora de Buenos Aires).
+        const ini = new Date(`${desde}T03:00:00.000Z`);
+        const fin = new Date(new Date(`${hasta}T03:00:00.000Z`).getTime() + 24 * 3600_000);
+        const campos: any = {};
+        for (const t of TIPOS_DE_ENVASE) { campos[t.dej] = true; campos[t.rec] = true; }
+        const stops = await prisma.stop.findMany({
+            where: {
+                isReturnToBase: false,
+                route: { trip: { is: { date: { gte: ini, lt: fin } } } },
+                OR: TIPOS_DE_ENVASE.flatMap((t) => [{ [t.dej]: { not: null } }, { [t.rec]: { not: null } }]) as any
+            },
+            select: {
+                ...campos, cratesDelivered: true, cratesRecovered: true,
+                route: { select: { trip: { select: { id: true, date: true, reparto: true, assignedMobileUser: true, vehicle: true, driver: true } } } }
+            }
+        });
+        const movs: MovimientoApp[] = [];
+        let sinTipo = 0;
+        for (const s of stops as any[]) {
+            const t = s.route?.trip;
+            if (!t || esCuentaDePrueba(t.assignedMobileUser) || esCuentaDePrueba(t.driver)) continue;
+            const codigo = repartoDeViaje(t, patentesLibre);
+            const fecha = new Date(new Date(t.date).getTime() - 3 * 3600_000).toISOString().slice(0, 10);
+            let algo = false;
+            for (const tipo of TIPOS_DE_ENVASE) {
+                const d = Number(s[tipo.dej]) || 0, r = Number(s[tipo.rec]) || 0;
+                if (!d && !r) continue;
+                algo = true;
+                movs.push({ codigo, fecha, tipo: tipo.clave as TipoPlanilla, dejados: d, recuperados: r, viajeId: t.id });
+            }
+            // Paradas viejas con el total pero sin el tipo: no se pueden comparar
+            if (!algo && ((Number(s.cratesDelivered) || 0) || (Number(s.cratesRecovered) || 0))) sinTipo++;
+        }
+        const comp = compararCajones(lectura.filas, movs, lectura.hojas);
+        res.json({
+            desde, hasta,
+            planilla: {
+                nombre: pl.nombre, url: pl.url, modificado: pl.modificado, leida: new Date(pl.leida).toISOString(),
+                hojas: lectura.hojas, ignoradas: lectura.ignoradas
+            },
+            paradasSinTipo: sinTipo,
+            ...comp
+        });
+    } catch (e: any) {
+        console.error('GET cajones/planilla-vs-app:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.get('/api/v1/crates/historial', async (req: any, res: any) => {
     try {
         const agrupar = String(req.query?.agrupar || 'mes').toLowerCase();

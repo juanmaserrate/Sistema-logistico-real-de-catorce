@@ -127,6 +127,36 @@ export async function subirArchivo(nombre: string, contenido: Buffer): Promise<R
     }
 }
 
+export type ResultadoBajada = { ok: boolean; buffer?: Buffer; nombre?: string; modificado?: string; url?: string; error?: string; codigo?: string };
+
+/**
+ * Baja un archivo del sitio (ruta dentro de "Documentos compartidos", ej.
+ * "Operaciones/LOGISTICA/CONTROL CAJONES.xlsx"). Solo lee: con Sites.Selected
+ * alcanza el mismo permiso que se usa para subir.
+ */
+export async function bajarArchivo(ruta: string): Promise<ResultadoBajada> {
+    if (!sharepointConfigurado()) {
+        return { ok: false, error: `Faltan variables: ${faltanVariablesSharepoint().join(', ')}` };
+    }
+    const drive = String(process.env.SP_DRIVE_ID).trim();
+    const limpia = String(ruta || '').replace(/^\/+|\/+$/g, '');
+    try {
+        const token = await obtenerToken();
+        const base = `https://graph.microsoft.com/v1.0/drives/${encodeURIComponent(drive)}/root:/${encodeURI(limpia)}`;
+        const meta = await fetch(base, { headers: { Authorization: `Bearer ${token}` } });
+        const info: any = await meta.json().catch(() => ({}));
+        if (!meta.ok) return { ok: false, error: info?.error?.message || `HTTP ${meta.status}`, codigo: info?.error?.code || String(meta.status) };
+        const res = await fetch(`${base}:/content`, { headers: { Authorization: `Bearer ${token}` } });
+        if (!res.ok) return { ok: false, error: `No se pudo bajar el archivo: HTTP ${res.status}`, codigo: String(res.status) };
+        return {
+            ok: true, buffer: Buffer.from(await res.arrayBuffer()),
+            nombre: info?.name, modificado: info?.lastModifiedDateTime, url: info?.webUrl
+        };
+    } catch (e: any) {
+        return { ok: false, error: e?.message || String(e) };
+    }
+}
+
 /** Archivos grandes: sesion de carga, pedazos de 5 MB. */
 async function subirEnPedazos(drive: string, ruta: string, nombre: string, contenido: Buffer): Promise<ResultadoSubida> {
     const token = await obtenerToken();
