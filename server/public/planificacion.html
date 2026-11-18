@@ -2220,54 +2220,76 @@
             <!-- VIEW: CAJONES (dejados / recuperados) -->
             <div id="view-crates" class="hidden view-animate space-y-6">
                 <div class="card-dark overflow-hidden">
-                    <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col lg:flex-row lg:items-end lg:justify-between gap-3">
-                        <div>
-                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Cajones</h4>
-                            <p class="text-xs text-[#A3AED0] mt-1">Lo que cargan los choferes en la app al finalizar cada parada, separado por tipo de envase: <b>Peco</b>, <b>Plásticos</b>, <b>Burzaco</b>, <b>Jaula</b> y <b>Cajones del depósito</b>. <b>Saldo</b> = dejados &minus; recuperados = envases que quedaron en el establecimiento.</p>
+                    <div class="px-6 pt-6 pb-4 bg-white flex flex-col xl:flex-row xl:items-end xl:justify-between gap-4">
+                        <div class="min-w-0">
+                            <h4 class="text-base font-black text-[#1B2559]">Cajones</h4>
+                            <p class="text-xs text-[#A3AED0] mt-1 max-w-2xl">Lo que cargan los choferes en la app al cerrar cada parada. <b class="text-[#1B2559] font-bold">Saldo</b> = dejados − recuperados: los envases que quedaron en el establecimiento.</p>
                         </div>
                         <div class="flex flex-wrap items-end gap-2">
-                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase">Desde<input type="date" id="crates-from" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></label>
-                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase">Hasta<input type="date" id="crates-to" class="block bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm font-bold text-[#1B2559]"></label>
-                            <button onclick="loadCratesModule()" class="bg-[#451ebb] text-white rounded-lg px-4 py-2 text-sm font-bold">Actualizar</button>
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase tracking-wider">Desde<input type="date" id="crates-from" class="block mt-1 bg-[#F4F7FE] border-0 rounded-xl px-3 py-2 text-sm font-bold text-[#1B2559]"></label>
+                            <label class="text-[10px] font-bold text-[#A3AED0] uppercase tracking-wider">Hasta<input type="date" id="crates-to" class="block mt-1 bg-[#F4F7FE] border-0 rounded-xl px-3 py-2 text-sm font-bold text-[#1B2559]"></label>
+                            <button type="button" onclick="loadCratesModule()" class="h-9 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold flex items-center gap-2 active:scale-[0.97] transition-transform">
+                                <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Actualizar
+                            </button>
                         </div>
                     </div>
-                    <div class="p-6 bg-white space-y-6">
-                        <div id="crates-kpis" class="grid grid-cols-2 sm:grid-cols-4 gap-3"></div>
+                    <div class="px-6 pb-6 bg-white space-y-6">
+                        <div id="crates-resumen"></div>
+
                         <div>
-                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-wider mb-2">Por tipo de envase</h5>
-                            <div class="overflow-x-auto"><table class="w-full text-sm">
-                                <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left">
-                                    <th class="py-2 px-2">Tipo de envase</th><th class="py-2 px-2 text-right">Dejados</th>
-                                    <th class="py-2 px-2 text-right">Recuperados</th><th class="py-2 px-2 text-right">Saldo en la calle</th>
-                                </tr></thead>
-                                <tbody id="crates-by-proveedor"></tbody>
-                            </table></div>
+                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-wider mb-3">Por tipo de envase</h5>
+                            <div id="crates-tipos" class="grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-5 gap-3"></div>
                         </div>
+
                         <div>
-                            <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-wider mb-2">Por reparto <span class="font-normal normal-case text-[#A3AED0]">&mdash; click en un reparto para ver sus establecimientos</span></h5>
-                            <div class="overflow-x-auto"><table class="w-full text-sm">
-                                <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left">
-                                    <th class="py-2 px-2">Reparto</th><th class="py-2 px-2">Usuario</th><th class="py-2 px-2 text-right">Paradas</th>
-                                    <th class="py-2 px-2 text-right">Dejados</th><th class="py-2 px-2 text-right">Recuperados</th><th class="py-2 px-2 text-right">Saldo</th>
-                                </tr></thead>
-                                <tbody id="crates-by-reparto"></tbody>
-                            </table></div>
+                            <div class="flex flex-wrap items-baseline justify-between gap-2 mb-3">
+                                <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-wider">Por reparto</h5>
+                                <span class="text-[11px] text-[#A3AED0]">Click en un reparto para ver sus establecimientos</span>
+                            </div>
+                            <div class="overflow-x-auto rounded-2xl border border-[#EEF1F8]">
+                                <table class="w-full text-sm">
+                                    <thead><tr class="bg-[#F8FAFF] text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">
+                                        <th class="py-3 px-4 text-left">Reparto</th>
+                                        <th class="py-3 px-3 text-right">Paradas</th>
+                                        <th class="py-3 px-3 text-right">Dejados</th>
+                                        <th class="py-3 px-3 text-right">Recuperados</th>
+                                        <th class="py-3 px-3 text-left">Recuperado</th>
+                                        <th class="py-3 px-3 text-center">Saldo</th>
+                                        <th class="py-3 px-4 text-left">Saldo por envase</th>
+                                    </tr></thead>
+                                    <tbody id="crates-by-reparto"></tbody>
+                                </table>
+                            </div>
                         </div>
+
                         <div>
-                            <div class="flex flex-wrap items-center justify-between gap-2 mb-2">
-                                <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-wider">Detalle por establecimiento <span id="crates-est-filter-label" class="font-normal normal-case text-[#A3AED0]"></span></h5>
-                                <div class="flex items-center gap-2">
-                                    <input id="crates-est-search" oninput="renderCratesEstablishments()" placeholder="Buscar establecimiento..." class="bg-[#F4F7FE] border-0 rounded-lg p-2 text-sm text-[#1B2559] w-56">
-                                    <button id="crates-clear-reparto" onclick="setCratesRepartoFilter(null)" class="hidden text-xs font-bold text-indigo-600 hover:underline">Ver todos</button>
+                            <div class="flex flex-wrap items-center justify-between gap-3 mb-3">
+                                <div class="flex items-center gap-2 min-w-0">
+                                    <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-wider">Por establecimiento</h5>
+                                    <button id="crates-clear-reparto" type="button" onclick="setCratesRepartoFilter(null)" class="hidden items-center gap-1 px-2.5 py-1 rounded-full bg-indigo-50 text-indigo-700 text-[11px] font-bold hover:bg-indigo-100" title="Ver todos los repartos">
+                                        <span id="crates-est-filter-label"></span><i data-lucide="x" class="w-3 h-3"></i>
+                                    </button>
+                                </div>
+                                <div class="relative">
+                                    <i data-lucide="search" class="w-4 h-4 text-[#A3AED0] absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"></i>
+                                    <input id="crates-est-search" oninput="_cratesEstVer = 50; renderCratesEstablishments()" placeholder="Buscar establecimiento…" class="bg-[#F4F7FE] border-0 rounded-xl py-2 pl-9 pr-3 text-sm text-[#1B2559] w-64 max-w-full outline-none focus:ring-2 focus:ring-indigo-500/20">
                                 </div>
                             </div>
-                            <div class="overflow-x-auto"><table class="w-full text-sm">
-                                <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left">
-                                    <th class="py-2 px-2">Establecimiento</th><th class="py-2 px-2">Reparto</th><th class="py-2 px-2 text-right">Visitas</th>
-                                    <th class="py-2 px-2 text-right">Dejados</th><th class="py-2 px-2 text-right">Recuperados</th><th class="py-2 px-2 text-right">Saldo</th><th class="py-2 px-2">&Uacute;ltima visita</th>
-                                </tr></thead>
-                                <tbody id="crates-by-est"></tbody>
-                            </table></div>
+                            <div class="overflow-x-auto rounded-2xl border border-[#EEF1F8]">
+                                <table class="w-full text-sm">
+                                    <thead><tr class="bg-[#F8FAFF] text-[10px] font-black text-[#A3AED0] uppercase tracking-wider">
+                                        <th class="py-3 px-4 text-left">Establecimiento</th>
+                                        <th class="py-3 px-3 text-left">Reparto</th>
+                                        <th class="py-3 px-3 text-right">Visitas</th>
+                                        <th class="py-3 px-3 text-right">Dejados</th>
+                                        <th class="py-3 px-3 text-right">Recuperados</th>
+                                        <th class="py-3 px-3 text-center">Saldo</th>
+                                        <th class="py-3 px-4 text-right">Última visita</th>
+                                    </tr></thead>
+                                    <tbody id="crates-by-est"></tbody>
+                                </table>
+                            </div>
+                            <div id="crates-est-mas" class="mt-3 text-center"></div>
                         </div>
                     </div>
                 </div>
@@ -5805,7 +5827,7 @@
             if (!toEl.value) toEl.value = _cratesYmd(new Date());
             if (!fromEl.value) fromEl.value = toEl.value.slice(0, 8) + '01';
             const body = document.getElementById('crates-by-reparto');
-            if (body) body.innerHTML = '<tr><td colspan="6" class="py-3 px-2 text-[#A3AED0]">Cargando...</td></tr>';
+            if (body) body.innerHTML = '<tr><td colspan="7" class="py-6 px-4 text-xs text-[#A3AED0]">Cargando…</td></tr>';
             // La planilla de trafico va por su cuenta: baja de SharePoint y no
             // tiene que hacer esperar al resto.
             cargarPlanillaCajones(false);
@@ -5816,7 +5838,7 @@
                 _cratesData = data;
                 renderCratesModule();
             } catch (e) {
-                if (body) body.innerHTML = `<tr><td colspan="6" class="py-3 px-2 text-rose-600 font-bold">Error: ${_cratesEsc(e.message || e)}</td></tr>`;
+                if (body) body.innerHTML = `<tr><td colspan="7" class="py-6 px-4 text-xs text-rose-600 font-bold">No se pudieron traer los cajones: ${_cratesEsc(e.message || e)}</td></tr>`;
             }
         }
 
@@ -6063,6 +6085,7 @@
 
         function setCratesRepartoFilter(reparto) {
             _cratesReparto = reparto;
+            _cratesEstVer = 50;
             renderCratesModule();
         }
 
@@ -6077,53 +6100,102 @@
                 .join(' · ');
         }
 
+        const _cratesNro = (n) => Number(n || 0).toLocaleString('es-AR');
+        // Cuantos establecimientos se muestran (los de mas saldo primero)
+        let _cratesEstVer = 50;
+
+        /** El saldo como pildora: ambar si quedaron en la calle, verde si se
+         *  recupero mas de lo que se dejo, gris si da cero. */
+        function _cratesSaldoPildora(n) {
+            const v = Number(n) || 0;
+            const cls = v > 0 ? 'bg-amber-100 text-amber-800' : v < 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-[#F4F7FE] text-[#A3AED0]';
+            return `<span class="inline-block min-w-[2.75rem] px-2 py-1 rounded-full text-xs font-black tabular-nums ${cls}">${v > 0 ? '+' : ''}${_cratesNro(v)}</span>`;
+        }
+
+        /** Cuanto de lo dejado se recupero: barrita y porcentaje. */
+        function _cratesRecupero(dej, rec, ancho) {
+            if (!dej) return `<span class="text-[11px] text-[#A3AED0]">${rec ? 'sin dejados' : '—'}</span>`;
+            const pct = Math.round(100 * rec / dej);
+            const color = pct >= 90 ? '#22C55E' : pct >= 60 ? '#F59E0B' : '#F43F5E';
+            // Mas de 100%: se trajeron envases de entregas anteriores
+            return `<div class="${ancho || 'w-24'} h-1.5 rounded-full bg-[#F4F7FE] overflow-hidden"><span class="block h-full rounded-full" style="width:${Math.min(100, pct)}%;background:${color}"></span></div>
+                <div class="text-[10px] text-[#A3AED0] mt-1 tabular-nums whitespace-nowrap">${pct > 100 ? 'más de lo dejado' : pct + '% recuperado'}</div>`;
+        }
+
+        /** Chips con el saldo de cada envase (solo los que tienen saldo). */
+        function _cratesChipsTipos(pp) {
+            if (!pp) return '';
+            return Object.keys(_CRATES_TIPO_CORTO).filter(k => pp[k] && pp[k].saldo).map(k => {
+                const s = pp[k].saldo;
+                return `<span class="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-md text-[10px] font-bold whitespace-nowrap ${s > 0 ? 'bg-amber-50 text-amber-800' : 'bg-emerald-50 text-emerald-700'}">${_CRATES_TIPO_CORTO[k]} <span class="tabular-nums">${s > 0 ? '+' : ''}${_cratesNro(s)}</span></span>`;
+            }).join(' ');
+        }
+
         function renderCratesTipos() {
             const d = _cratesData;
-            const tbody = document.getElementById('crates-by-proveedor');
-            if (!d || !tbody) return;
+            const cont = document.getElementById('crates-tipos');
+            if (!d || !cont) return;
             const pp = d.totales?.porTipoDeEnvase || {};
-            const filas = (d.tiposDeEnvase || []).map(p => ({ nombre: p.nombre, ...(pp[p.clave] || { dejados: 0, recuperados: 0, saldo: 0 }) }));
-            tbody.innerHTML = filas.length ? filas.map(f => `
-                <tr class="border-t border-[#F4F7FE]">
-                    <td class="py-2 px-2 font-black text-[#1B2559]">${_cratesEsc(f.nombre)}</td>
-                    <td class="py-2 px-2 text-right font-bold">${f.dejados}</td>
-                    <td class="py-2 px-2 text-right font-bold">${f.recuperados}</td>
-                    ${_cratesSaldoCell(f.saldo)}
-                </tr>`).join('') : '<tr><td colspan="4" class="py-3 px-2 text-[#A3AED0]">Todavía no hay cajones cargados en este periodo.</td></tr>';
+            const lindo = { PECO: 'Peco', PLASTICOS: 'Plásticos', BURZACO: 'Burzaco', JAULA: 'Jaula', 'CAJONES DEL DEPOSITO': 'Cajones del depósito' };
+            cont.innerHTML = (d.tiposDeEnvase || []).map(p => {
+                const x = pp[p.clave] || { dejados: 0, recuperados: 0, saldo: 0 };
+                const color = x.saldo > 0 ? 'text-amber-600' : x.saldo < 0 ? 'text-emerald-600' : 'text-[#1B2559]';
+                return `<div class="rounded-2xl border border-[#EEF1F8] px-4 py-3.5 min-w-0">
+                    <p class="text-[11px] font-bold text-[#A3AED0] truncate">${_cratesEsc(lindo[p.nombre] || p.nombre)}</p>
+                    <p class="text-2xl font-black tabular-nums leading-tight mt-1 ${color}">${x.saldo > 0 ? '+' : ''}${_cratesNro(x.saldo)}</p>
+                    <p class="text-[10px] text-[#A3AED0] mb-2.5">${x.saldo < 0 ? 'recuperados de más' : 'en la calle'}</p>
+                    ${_cratesRecupero(x.dejados, x.recuperados, 'w-full')}
+                    <p class="text-[10px] text-[#A3AED0] tabular-nums mt-0.5">${_cratesNro(x.dejados)} dejados · ${_cratesNro(x.recuperados)} recuperados</p>
+                </div>`;
+            }).join('');
         }
 
         function renderCratesModule() {
             const d = _cratesData;
             if (!d) return;
-            const t = d.totales;
-            const kpis = [
-                { label: 'Dejados', val: t.dejados, cls: 'text-[#451ebb]' },
-                { label: 'Recuperados', val: t.recuperados, cls: 'text-emerald-600' },
-                { label: 'Saldo en la calle', val: t.saldo, cls: t.saldo > 0 ? 'text-amber-600' : 'text-[#1B2559]' },
-                { label: 'Paradas registradas', val: t.paradas, cls: 'text-[#1B2559]' },
-                // Cajones que el chofer fue a buscar mas tarde, con la entrega ya cerrada.
-                { label: '⏱ Retiros tardíos', val: t.tardias || 0, cls: 'text-[#1B2559]' }
-            ];
-            document.getElementById('crates-kpis').innerHTML = kpis.map(k => `
-                <div class="bg-[#F4F7FE] rounded-xl p-3">
-                    <p class="text-[10px] font-bold text-[#A3AED0] uppercase tracking-wider">${k.label}</p>
-                    <p class="text-2xl font-black ${k.cls} mt-1">${k.val}</p>
-                </div>`).join('');
+            const t = d.totales || {};
+            const pct = t.dejados ? Math.round(100 * t.recuperados / t.dejados) : null;
+            const dato = (valor, rotulo, ayuda) => `<div${ayuda ? ` title="${ayuda}"` : ''}>
+                <p class="text-xl font-black text-[#1B2559] tabular-nums leading-none">${valor}</p>
+                <p class="text-[11px] text-[#A3AED0] mt-1.5">${rotulo}</p></div>`;
+            const resumen = document.getElementById('crates-resumen');
+            if (resumen) resumen.innerHTML = `
+                <div class="grid grid-cols-2 lg:grid-cols-[auto_auto_minmax(0,1fr)] gap-x-10 gap-y-5 items-center rounded-2xl bg-[#F8FAFF] px-6 py-5">
+                    <div>
+                        <p class="text-4xl font-black tabular-nums leading-none ${t.saldo > 0 ? 'text-amber-600' : t.saldo < 0 ? 'text-emerald-600' : 'text-[#1B2559]'}">${t.saldo > 0 ? '+' : ''}${_cratesNro(t.saldo)}</p>
+                        <p class="text-xs text-[#A3AED0] mt-2" ${t.saldo < 0 ? 'title="En el período se trajeron más envases de los que se dejaron: son de entregas anteriores"' : ''}>${t.saldo < 0 ? 'cajones recuperados de más' : 'cajones en la calle'}</p>
+                    </div>
+                    <div>
+                        <p class="text-4xl font-black tabular-nums leading-none text-[#1B2559]">${pct == null ? '—' : pct + '%'}</p>
+                        <p class="text-xs text-[#A3AED0] mt-2">de lo dejado se recuperó</p>
+                    </div>
+                    <div class="col-span-2 lg:col-span-1 grid grid-cols-2 sm:grid-cols-4 gap-4 lg:pl-8 lg:border-l lg:border-[#E0E5F2]">
+                        ${dato(_cratesNro(t.dejados), 'dejados')}
+                        ${dato(_cratesNro(t.recuperados), 'recuperados')}
+                        ${dato(_cratesNro(t.paradas), 'paradas con cajones')}
+                        ${dato(_cratesNro(t.tardias || 0), 'retiros tardíos', 'Cajones que el chofer cargó después de cerrar la entrega')}
+                    </div>
+                </div>`;
 
             const rows = d.porReparto || [];
             document.getElementById('crates-by-reparto').innerHTML = rows.length ? rows.map((r, idx) => {
                 const on = _cratesReparto === r.reparto;
-                return `<tr data-idx="${idx}" onclick="setCratesRepartoFilter(_cratesData.porReparto[${idx}].reparto)" class="cursor-pointer border-t border-[#F4F7FE] ${on ? 'bg-indigo-50' : 'hover:bg-[#F4F7FE]'}">
-                    <td class="py-2 px-2"><p class="font-black text-[#1B2559]">${_cratesEsc(r.reparto)}</p>${_cratesTipoLinea(r.porTipoDeEnvase) ? `<p class="text-[10px] text-[#A3AED0] font-bold">${_cratesTipoLinea(r.porTipoDeEnvase)}</p>` : ''}</td>
-                    <td class="py-2 px-2 text-[#A3AED0] text-xs">${_cratesEsc((r.usuarios || []).join(', '))}</td>
-                    <td class="py-2 px-2 text-right">${r.paradas}${r.tardias ? ` <span title="${r.tardias} carga(s) hecha(s) despues de cerrar la entrega">⏱</span>` : ''}</td>
-                    <td class="py-2 px-2 text-right font-bold">${r.dejados}</td>
-                    <td class="py-2 px-2 text-right font-bold">${r.recuperados}</td>
-                    ${_cratesSaldoCell(r.saldo)}
+                return `<tr onclick="setCratesRepartoFilter(${on ? 'null' : `_cratesData.porReparto[${idx}].reparto`})" class="cursor-pointer border-t border-[#EEF1F8] ${on ? 'bg-indigo-50/70' : 'hover:bg-[#F8FAFF]'}">
+                    <td class="py-2.5 px-4" style="${on ? 'box-shadow: inset 3px 0 0 #6366F1' : ''}">
+                        <p class="font-black text-[#1B2559]">${_cratesEsc(r.reparto)}</p>
+                        <p class="text-[10px] text-[#A3AED0] truncate max-w-[200px]">${_cratesEsc((r.usuarios || []).join(', '))}</p>
+                    </td>
+                    <td class="py-2.5 px-3 text-right tabular-nums text-[#1B2559]">${_cratesNro(r.paradas)}${r.tardias ? `<div class="text-[10px] text-[#A3AED0]" title="Cargas hechas después de cerrar la entrega">⏱ ${_cratesNro(r.tardias)} tardías</div>` : ''}</td>
+                    <td class="py-2.5 px-3 text-right tabular-nums font-bold text-[#1B2559]">${_cratesNro(r.dejados)}</td>
+                    <td class="py-2.5 px-3 text-right tabular-nums font-bold text-[#1B2559]">${_cratesNro(r.recuperados)}</td>
+                    <td class="py-2.5 px-3">${_cratesRecupero(r.dejados, r.recuperados)}</td>
+                    <td class="py-2.5 px-3 text-center">${_cratesSaldoPildora(r.saldo)}</td>
+                    <td class="py-2.5 px-4"><div class="flex flex-wrap gap-1">${_cratesChipsTipos(r.porTipoDeEnvase) || '<span class="text-[#D5DBEA]">·</span>'}</div></td>
                 </tr>`;
-            }).join('') : '<tr><td colspan="6" class="py-3 px-2 text-[#A3AED0]">Todavia no hay cajones cargados en este periodo.</td></tr>';
+            }).join('') : '<tr><td colspan="7" class="py-6 px-4 text-xs text-[#A3AED0]">Todavía no hay cajones cargados en este período.</td></tr>';
             renderCratesTipos();
             renderCratesEstablishments();
+            if (window.lucide) lucide.createIcons();
         }
 
         function renderCratesEstablishments() {
@@ -6136,19 +6208,34 @@
                 (!q || String(e.establecimiento).toLowerCase().includes(q))
             );
             const lbl = document.getElementById('crates-est-filter-label');
-            if (lbl) lbl.textContent = _cratesReparto ? `— reparto ${_cratesReparto}` : '';
-            document.getElementById('crates-clear-reparto')?.classList.toggle('hidden', !_cratesReparto);
+            if (lbl) lbl.textContent = _cratesReparto ? `Reparto ${_cratesReparto}` : '';
+            const chip = document.getElementById('crates-clear-reparto');
+            if (chip) { chip.classList.toggle('hidden', !_cratesReparto); chip.classList.toggle('inline-flex', !!_cratesReparto); }
             const fmt = iso => iso ? new Date(iso).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' }) : '—';
-            tbody.innerHTML = list.length ? list.map(e => `
-                <tr class="border-t border-[#F4F7FE]">
-                    <td class="py-2 px-2"><p class="font-bold text-[#1B2559]">${_cratesEsc(e.establecimiento)}</p>${e.direccion ? `<p class="text-[10px] text-[#A3AED0]">${_cratesEsc(e.direccion)}</p>` : ''}${_cratesTipoLinea(e.porTipoDeEnvase) ? `<p class="text-[10px] text-[#A3AED0] font-bold">${_cratesTipoLinea(e.porTipoDeEnvase)}</p>` : ''}</td>
-                    <td class="py-2 px-2 text-xs">${_cratesEsc((e.repartos || []).join(', '))}</td>
-                    <td class="py-2 px-2 text-right">${e.visitas}${e.tardias ? ` <span title="${e.tardias} carga(s) hecha(s) despues de cerrar la entrega">⏱</span>` : ''}</td>
-                    <td class="py-2 px-2 text-right font-bold">${e.dejados}</td>
-                    <td class="py-2 px-2 text-right font-bold">${e.recuperados}</td>
-                    ${_cratesSaldoCell(e.saldo)}
-                    <td class="py-2 px-2 text-xs text-[#A3AED0]">${fmt(e.ultimaVisita)}</td>
-                </tr>`).join('') : '<tr><td colspan="7" class="py-3 px-2 text-[#A3AED0]">Sin establecimientos para mostrar.</td></tr>';
+            const visibles = list.slice(0, _cratesEstVer);
+            tbody.innerHTML = visibles.length ? visibles.map(e => {
+                const chips = _cratesChipsTipos(e.porTipoDeEnvase);
+                return `<tr class="border-t border-[#EEF1F8] hover:bg-[#F8FAFF]">
+                    <td class="py-2.5 px-4">
+                        <p class="font-bold text-[#1B2559]">${_cratesEsc(e.establecimiento)}</p>
+                        ${e.direccion ? `<p class="text-[10px] text-[#A3AED0]">${_cratesEsc(e.direccion)}</p>` : ''}
+                        ${chips ? `<div class="flex flex-wrap gap-1 mt-1">${chips}</div>` : ''}
+                    </td>
+                    <td class="py-2.5 px-3 text-xs text-[#1B2559] whitespace-nowrap">${_cratesEsc((e.repartos || []).join(', '))}</td>
+                    <td class="py-2.5 px-3 text-right tabular-nums text-[#1B2559]">${_cratesNro(e.visitas)}${e.tardias ? `<div class="text-[10px] text-[#A3AED0]" title="Cargas hechas después de cerrar la entrega">⏱ ${_cratesNro(e.tardias)}</div>` : ''}</td>
+                    <td class="py-2.5 px-3 text-right tabular-nums font-bold text-[#1B2559]">${_cratesNro(e.dejados)}</td>
+                    <td class="py-2.5 px-3 text-right tabular-nums font-bold text-[#1B2559]">${_cratesNro(e.recuperados)}</td>
+                    <td class="py-2.5 px-3 text-center">${_cratesSaldoPildora(e.saldo)}</td>
+                    <td class="py-2.5 px-4 text-right text-xs text-[#A3AED0] tabular-nums">${fmt(e.ultimaVisita)}</td>
+                </tr>`;
+            }).join('') : '<tr><td colspan="7" class="py-6 px-4 text-xs text-[#A3AED0]">Sin establecimientos para mostrar.</td></tr>';
+            const mas = document.getElementById('crates-est-mas');
+            if (mas) {
+                const resto = list.length - visibles.length;
+                mas.innerHTML = resto > 0
+                    ? `<button type="button" onclick="_cratesEstVer += 100; renderCratesEstablishments()" class="px-4 py-2 rounded-xl bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-xs font-bold active:scale-[0.97] transition-transform">Ver ${_cratesNro(Math.min(100, resto))} más · quedan ${_cratesNro(resto)}</button>`
+                    : (list.length ? `<p class="text-[11px] text-[#A3AED0]">${_cratesNro(list.length)} ${list.length === 1 ? 'establecimiento' : 'establecimientos'}</p>` : '');
+            }
         }
 
         // ─── TARIFAS POR PROVEEDOR ──────────────────────────────────────────
