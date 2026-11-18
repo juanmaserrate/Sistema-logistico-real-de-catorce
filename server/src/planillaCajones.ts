@@ -183,12 +183,15 @@ export function compararCajones(filas: FilaPlanilla[], app: MovimientoApp[], hoj
             }
             const enPlanilla = [...tipos.values()].some((c) => c.enPlanilla);
             const enApp = [...tipos.values()].some((c) => c.enApp);
-            // Hay diferencia si, con los dos lados cargados, algun envase no da igual
+            // Hay diferencia si algun envase no da igual (lo que no esta cargado cuenta 0)
             const diferencias = comparables.filter((k) => {
                 const c = tipos.get(k);
                 return c && (c.ps !== c.ad || c.pe !== c.ar);
             });
-            const estado = enPlanilla && enApp ? (diferencias.length ? 'diferencia' : 'ok') : (enPlanilla ? 'solo planilla' : 'solo app');
+            // La planilla en cero y la app sin nada es un dia sin movimiento: esta bien
+            const estado = !diferencias.length ? 'ok'
+                : enPlanilla && enApp ? 'diferencia'
+                : enPlanilla ? 'solo planilla' : 'solo app';
             return { fecha, tipos: t, estado, diferencias, viajes: [...(viajes.get(`${codigo}|${fecha}`) || [])].sort((a, b) => a - b) };
         });
         const h = hojaDe.get(codigo);

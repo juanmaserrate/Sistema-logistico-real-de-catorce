@@ -2271,6 +2271,34 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- La planilla que carga Trafico a mano (SharePoint) contra la app -->
+                <div class="card-dark overflow-hidden">
+                    <div class="p-6 border-b border-[#F4F7FE] bg-white flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
+                        <div class="min-w-0">
+                            <h4 class="text-xs font-bold text-[#A3AED0] uppercase tracking-widest">Planilla de tráfico vs app</h4>
+                            <p class="text-xs text-[#A3AED0] mt-1">Lo que carga Tráfico a mano en <a id="cpl-link" href="#" target="_blank" rel="noopener" class="font-bold text-indigo-600 hover:underline">CONTROL CAJONES Y PALLET_ TRAFICO</a> contra lo que cargaron los choferes en la app, por reparto y día. <b>Salida</b> de la planilla = <b>dejados</b> en la app · <b>Entrada</b> = <b>recuperados</b>. Usa las fechas de arriba.</p>
+                            <p id="cpl-fuente" class="text-[11px] text-[#A3AED0] mt-1"></p>
+                        </div>
+                        <button type="button" id="cpl-btn" onclick="cargarPlanillaCajones(true)" class="shrink-0 px-4 py-2 rounded-lg bg-[#F4F7FE] hover:bg-[#E8ECF8] text-[#1B2559] text-xs font-bold flex items-center gap-2 active:scale-[0.97] transition-transform">
+                            <i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i> Leer la planilla de nuevo
+                        </button>
+                    </div>
+                    <div class="p-6 bg-white space-y-4">
+                        <div id="cpl-kpis" class="grid grid-cols-2 sm:grid-cols-5 gap-3"></div>
+                        <p class="text-[11px] text-[#A3AED0]">En cada envase: <b class="text-[#1B2559]">S</b> = salida / dejados · <b class="text-[#1B2559]">E</b> = entrada / recuperados, siempre <b class="text-[#1B2559]">planilla / app</b>. En rojo, lo que no coincide. Click en un reparto para ver día por día.</p>
+                        <div class="overflow-x-auto"><table class="w-full text-sm">
+                            <thead><tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-wider text-left border-b border-[#E0E5F2]">
+                                <th class="py-2 px-2">Reparto</th><th class="py-2 px-2">Días</th>
+                                <th class="py-2 px-2 text-right">Peco</th><th class="py-2 px-2 text-right">Burzaco</th><th class="py-2 px-2 text-right">Plásticos</th>
+                                <th class="py-2 px-2 text-right">Depo</th><th class="py-2 px-2 text-right">Jaula</th>
+                                <th class="py-2 px-2 text-right" title="La app no los carga: solo planilla">Pallet*</th><th class="py-2 px-2 text-right" title="La app no los carga: solo planilla">Canasto*</th>
+                            </tr></thead>
+                            <tbody id="cpl-body"><tr><td colspan="9" class="py-3 px-2 text-[#A3AED0] text-xs">Cargando…</td></tr></tbody>
+                        </table></div>
+                        <p class="text-[10px] text-[#A3AED0]">* Pallet y Canasto los carga solo Tráfico: la app no los registra.</p>
+                    </div>
+                </div>
             </div>
 
             <!-- VIEW: STOCK DE CAJONES -->
@@ -5771,6 +5799,9 @@
             if (!fromEl.value) fromEl.value = toEl.value.slice(0, 8) + '01';
             const body = document.getElementById('crates-by-reparto');
             if (body) body.innerHTML = '<tr><td colspan="6" class="py-3 px-2 text-[#A3AED0]">Cargando...</td></tr>';
+            // La planilla de trafico va por su cuenta: baja de SharePoint y no
+            // tiene que hacer esperar al resto.
+            cargarPlanillaCajones(false);
             try {
                 const res = await fetch(`${API_URL}/crates/summary?from=${fromEl.value}&to=${toEl.value}`, { headers: getActorHeaders() });
                 const data = await res.json();
@@ -5780,6 +5811,126 @@
             } catch (e) {
                 if (body) body.innerHTML = `<tr><td colspan="6" class="py-3 px-2 text-rose-600 font-bold">Error: ${_cratesEsc(e.message || e)}</td></tr>`;
             }
+        }
+
+        // ─── PLANILLA DE TRAFICO (SharePoint) vs APP ─────────────────────────
+        // Salida de la planilla = dejados en la app; entrada = recuperados.
+        let _cplData = null;
+        let _cplAbierto = null;
+        let _cplPedido = 0;
+        const _CPL_TIPOS = ['peco', 'burzaco', 'plasticos', 'deposito', 'jaula'];
+        const _CPL_SOLO_PLANILLA = ['pallet', 'canasto'];
+
+        async function cargarPlanillaCajones(refrescar) {
+            const desde = document.getElementById('crates-from')?.value;
+            const hasta = document.getElementById('crates-to')?.value;
+            const body = document.getElementById('cpl-body');
+            const btn = document.getElementById('cpl-btn');
+            if (!body || !desde || !hasta) return;
+            const pedido = ++_cplPedido;
+            if (refrescar || !_cplData) body.innerHTML = '<tr><td colspan="9" class="py-3 px-2 text-[#A3AED0] text-xs">Leyendo la planilla de SharePoint…</td></tr>';
+            if (btn) btn.disabled = true;
+            try {
+                const res = await fetch(`${API_URL}/cajones/planilla-vs-app?desde=${desde}&hasta=${hasta}${refrescar ? '&refrescar=1' : ''}`, { headers: getActorHeaders() });
+                const d = await res.json().catch(() => ({}));
+                if (!res.ok) throw new Error(d.error || 'HTTP ' + res.status);
+                if (pedido !== _cplPedido) return;
+                _cplData = d;
+                pintarPlanillaCajones();
+            } catch (e) {
+                if (pedido === _cplPedido) body.innerHTML = `<tr><td colspan="9" class="py-3 px-2 text-rose-600 font-bold text-xs">No se pudo comparar con la planilla: ${_cratesEsc(e.message || e)}</td></tr>`;
+            } finally {
+                if (btn) btn.disabled = false;
+            }
+        }
+
+        function abrirRepartoPlanilla(codigo) {
+            _cplAbierto = _cplAbierto === codigo ? null : codigo;
+            pintarPlanillaCajones();
+        }
+
+        function pintarPlanillaCajones() {
+            const d = _cplData;
+            if (!d) return;
+            const nro = (n) => Number(n || 0).toLocaleString('es-AR');
+            const link = document.getElementById('cpl-link');
+            if (link && d.planilla?.url) link.href = d.planilla.url;
+            const cuando = (iso) => iso ? new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
+            const fuente = document.getElementById('cpl-fuente');
+            if (fuente) fuente.textContent = `Planilla modificada ${cuando(d.planilla?.modificado)} · leída ${cuando(d.planilla?.leida)}` +
+                (d.paradasSinTipo ? ` · ${nro(d.paradasSinTipo)} paradas de la app sin tipo de envase (no se comparan)` : '');
+
+            const R = d.repartos || [];
+            const sum = (k) => R.reduce((a, r) => a + (r.resumen?.[k] || 0), 0);
+            const kpi = (t, v, sub, color) => `<div class="rounded-xl bg-[#F4F7FE] px-3 py-2.5 min-w-0">
+                <p class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest truncate">${t}</p>
+                <p class="text-lg font-black tabular-nums ${color || 'text-[#1B2559]'}">${nro(v)}</p>
+                <p class="text-[10px] text-[#A3AED0] truncate">${sub}</p></div>`;
+            const kp = document.getElementById('cpl-kpis');
+            if (kp) kp.innerHTML =
+                kpi('Repartos', R.filter((r) => r.hoja).length, 'con hoja en la planilla') +
+                kpi('Días que coinciden', sum('ok'), 'planilla = app') +
+                kpi('Días con diferencia', sum('conDiferencia'), 'cargados en los dos', sum('conDiferencia') ? 'text-rose-600' : '') +
+                kpi('Sin cargar en la app', sum('soloPlanilla'), 'la planilla tiene, la app no', sum('soloPlanilla') ? 'text-amber-600' : '') +
+                kpi('Sin cargar en la planilla', sum('soloApp'), 'la app tiene, la planilla no', sum('soloApp') ? 'text-amber-600' : '');
+
+            const linea = (letra, p, a) => {
+                const igual = p === a;
+                const cero = !p && !a;
+                const dif = a - p;
+                return `<div class="tabular-nums whitespace-nowrap ${cero ? 'text-[#C9D1E8]' : igual ? 'text-[#1B2559]' : 'text-rose-600 font-bold'}"><span class="text-[#A3AED0] font-normal">${letra}</span> ${nro(p)}<span class="text-[#A3AED0] font-normal"> / </span>${nro(a)}${!igual ? `<span class="text-[10px] font-bold"> (${dif > 0 ? '+' : ''}${nro(dif)})</span>` : ''}</div>`;
+            };
+            const celda = (c) => {
+                const x = c || { ps: 0, pe: 0, ad: 0, ar: 0 };
+                return `<td class="py-2 px-2 text-right text-xs align-top">${linea('S', x.ps, x.ad)}${linea('E', x.pe, x.ar)}</td>`;
+            };
+            const soloPlanilla = (c) => {
+                const x = c || { ps: 0, pe: 0 };
+                const t = (l, v) => `<div class="tabular-nums ${v ? 'text-[#1B2559]' : 'text-[#C9D1E8]'}"><span class="text-[#A3AED0]">${l}</span> ${nro(v)}</div>`;
+                return `<td class="py-2 px-2 text-right text-xs align-top">${t('S', x.ps)}${t('E', x.pe)}</td>`;
+            };
+            const ESTADOS = {
+                ok: ['Coincide', 'bg-emerald-50 text-emerald-700'],
+                diferencia: ['Diferencia', 'bg-rose-50 text-rose-700'],
+                'solo planilla': ['Sin cargar en la app', 'bg-amber-50 text-amber-700'],
+                'solo app': ['Sin cargar en la planilla', 'bg-amber-50 text-amber-700']
+            };
+            const chip = (e) => `<span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${ESTADOS[e]?.[1] || ''}">${ESTADOS[e]?.[0] || e}</span>`;
+
+            const filas = R.map((r) => {
+                const s = r.resumen || {};
+                const abierto = _cplAbierto === r.codigo;
+                const nombre = r.hoja ? r.hoja.replace(/^\S+\s*-\s*/, '') : 'sin hoja en la planilla';
+                const dias = [
+                    s.ok ? `<span class="text-emerald-700">${s.ok} bien</span>` : '',
+                    s.conDiferencia ? `<span class="text-rose-600 font-bold">${s.conDiferencia} con dif.</span>` : '',
+                    s.soloPlanilla ? `<span class="text-amber-700">${s.soloPlanilla} sin app</span>` : '',
+                    s.soloApp ? `<span class="text-amber-700">${s.soloApp} sin planilla</span>` : ''
+                ].filter(Boolean).join('<br>');
+                let html = `<tr class="border-b border-[#F4F7FE] hover:bg-[#F8FAFF] cursor-pointer" onclick="abrirRepartoPlanilla('${_cratesEsc(r.codigo)}')">
+                    <td class="py-2 px-2 align-top"><div class="font-black text-[#1B2559] flex items-center gap-1"><i data-lucide="${abierto ? 'chevron-down' : 'chevron-right'}" class="w-3.5 h-3.5 text-[#A3AED0]"></i>${_cratesEsc(r.codigo)}</div><div class="text-[10px] text-[#A3AED0] pl-[18px] truncate max-w-[160px]">${_cratesEsc(nombre)}</div></td>
+                    <td class="py-2 px-2 text-[11px] align-top whitespace-nowrap">${dias || '<span class="text-[#A3AED0]">—</span>'}</td>
+                    ${_CPL_TIPOS.map((k) => celda(r.totales?.[k])).join('')}
+                    ${_CPL_SOLO_PLANILLA.map((k) => soloPlanilla(r.totales?.[k])).join('')}
+                </tr>`;
+                if (abierto) {
+                    html += (r.dias || []).map((dia) => {
+                        const f = new Date(dia.fecha + 'T12:00:00');
+                        const lindo = f.toLocaleDateString('es-AR', { weekday: 'short', day: '2-digit', month: '2-digit' });
+                        const viajes = (dia.viajes || []).map((v) => '#' + v).join(' ');
+                        return `<tr class="bg-[#F8FAFF] border-b border-white">
+                            <td class="py-1.5 px-2 pl-7 text-xs font-bold text-[#1B2559] align-top whitespace-nowrap">${_cratesEsc(lindo)}${viajes ? `<div class="text-[10px] font-normal text-[#A3AED0]">${_cratesEsc(viajes)}</div>` : ''}</td>
+                            <td class="py-1.5 px-2 align-top">${chip(dia.estado)}</td>
+                            ${_CPL_TIPOS.map((k) => celda(dia.tipos?.[k])).join('')}
+                            ${_CPL_SOLO_PLANILLA.map((k) => soloPlanilla(dia.tipos?.[k])).join('')}
+                        </tr>`;
+                    }).join('');
+                }
+                return html;
+            }).join('');
+            const body = document.getElementById('cpl-body');
+            if (body) body.innerHTML = filas || '<tr><td colspan="9" class="py-3 px-2 text-[#A3AED0] text-xs">No hay datos en la planilla ni en la app para estas fechas.</td></tr>';
+            if (window.lucide) lucide.createIcons();
         }
 
         function setCratesRepartoFilter(reparto) {

@@ -57,6 +57,11 @@ console.log('\n2. Formato de la planilla (bloques SALIDA / ENTRADA / DIFERENCIA)
     esperar('18/11: solo en la app', dia('2026-11-18').estado === 'solo app', dia('2026-11-18'));
     esperar('pallet no cuenta como diferencia (la app no lo carga)', !dia('2026-11-16').diferencias.includes('pallet'));
     esperar('totales', r1.totales.peco.ps === 10 && r1.totales.peco.ad === 13 && r1.totales.deposito.pe === 15, r1.totales);
+
+    // Un dia con la planilla en cero y la app sin nada: sin movimiento, esta bien
+    const ceros = compararCajones([{ hoja: 'R2', codigo: 'R2', patente: null, fecha: '2026-11-11', tipo: 'peco', salida: 0, entrada: 0 },
+        { hoja: 'R2', codigo: 'R2', patente: null, fecha: '2026-11-11', tipo: 'pallet', salida: 4, entrada: 4 }], [], [{ nombre: 'R2', codigo: 'R2', patente: null }]);
+    esperar('planilla en cero (con pallet) y app vacia = ok', ceros.repartos[0].dias[0].estado === 'ok', ceros.repartos[0].dias[0]);
 }
 
 const ruta = process.argv[2];
