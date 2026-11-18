@@ -5902,6 +5902,7 @@
             const cuando = (iso) => iso ? new Date(iso).toLocaleString('es-AR', { dateStyle: 'short', timeStyle: 'short' }) : '—';
             const fuente = document.getElementById('cpl-fuente');
             if (fuente) fuente.textContent = `${_cplRango()?.titulo || ''} · Planilla modificada ${cuando(d.planilla?.modificado)} · leída ${cuando(d.planilla?.leida)}` +
+                (d.appDesde ? ` · La app registra cajones desde el ${d.appDesde.split('-').reverse().join('/')}` : '') +
                 (d.paradasSinTipo ? ` · ${nro(d.paradasSinTipo)} paradas de la app sin tipo de envase (no se comparan)` : '');
 
             const R = d.repartos || [];
@@ -5937,14 +5938,16 @@
                 ok: ['Coincide', 'bg-emerald-50 text-emerald-700'],
                 diferencia: ['Diferencia', 'bg-rose-50 text-rose-700'],
                 'solo planilla': ['Sin cargar en la app', 'bg-amber-50 text-amber-700'],
-                'solo app': ['Sin cargar en la planilla', 'bg-amber-50 text-amber-700']
+                'solo app': ['Sin cargar en la planilla', 'bg-amber-50 text-amber-700'],
+                'antes de la app': ['Antes de la app', 'bg-[#F4F7FE] text-[#A3AED0]']
             };
             const chip = (e) => `<span class="inline-block px-2 py-0.5 rounded-full text-[10px] font-bold whitespace-nowrap ${ESTADOS[e]?.[1] || ''}">${ESTADOS[e]?.[0] || e}</span>`;
             const resumenDias = (s) => [
                 s.ok ? `<span class="text-emerald-700">${nro(s.ok)} bien</span>` : '',
                 s.conDiferencia ? `<span class="text-rose-600 font-bold">${nro(s.conDiferencia)} con dif.</span>` : '',
                 s.soloPlanilla ? `<span class="text-amber-700">${nro(s.soloPlanilla)} sin app</span>` : '',
-                s.soloApp ? `<span class="text-amber-700">${nro(s.soloApp)} sin planilla</span>` : ''
+                s.soloApp ? `<span class="text-amber-700">${nro(s.soloApp)} sin planilla</span>` : '',
+                s.antesDeLaApp ? `<span class="text-[#A3AED0]" title="La app todavía no pedía los cajones">${nro(s.antesDeLaApp)} antes de la app</span>` : ''
             ].filter(Boolean).join('<br>') || '<span class="text-[#A3AED0]">—</span>';
             const nombreHoja = (r) => r.hoja ? r.hoja.replace(/^\S+\s*-\s*/, '') : 'sin hoja en la planilla';
 
@@ -5985,7 +5988,8 @@
                     s.ok ? `<span class="text-emerald-700">${s.ok} bien</span>` : '',
                     s.conDiferencia ? `<span class="text-rose-600 font-bold">${s.conDiferencia} con dif.</span>` : '',
                     s.soloPlanilla ? `<span class="text-amber-700">${s.soloPlanilla} sin app</span>` : '',
-                    s.soloApp ? `<span class="text-amber-700">${s.soloApp} sin planilla</span>` : ''
+                    s.soloApp ? `<span class="text-amber-700">${s.soloApp} sin planilla</span>` : '',
+                    s.antesDeLaApp ? `<span class="text-[#A3AED0]">${s.antesDeLaApp} antes de la app</span>` : ''
                 ].filter(Boolean).join('<br>');
                 let html = `<tr class="border-b border-[#F4F7FE] hover:bg-[#F8FAFF] cursor-pointer" onclick="abrirRepartoPlanilla('${_cratesEsc(r.codigo)}')">
                     <td class="py-2 px-2 align-top"><div class="font-black text-[#1B2559] flex items-center gap-1"><i data-lucide="${abierto ? 'chevron-down' : 'chevron-right'}" class="w-3.5 h-3.5 text-[#A3AED0]"></i>${_cratesEsc(r.codigo)}</div><div class="text-[10px] text-[#A3AED0] pl-[18px] truncate max-w-[160px]">${_cratesEsc(nombre)}</div></td>

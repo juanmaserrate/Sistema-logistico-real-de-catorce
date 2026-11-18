@@ -7064,6 +7064,21 @@ async function planillaDeCajones(refrescar: boolean) {
     return _planillaCajones;
 }
 
+/** El primer dia en que algun chofer cargo cajones por tipo en la app. Antes
+ *  de eso la app no los pedia: no hay con que comparar la planilla. */
+let _appDesde: { valor: string | null; al: number } | null = null;
+async function primerDiaConCajonesEnLaApp(): Promise<string | null> {
+    if (_appDesde && Date.now() - _appDesde.al < 3600_000) return _appDesde.valor;
+    const s = await prisma.stop.findFirst({
+        where: { isReturnToBase: false, OR: TIPOS_DE_ENVASE.flatMap((t) => [{ [t.dej]: { not: null } }, { [t.rec]: { not: null } }]) as any },
+        orderBy: { route: { date: 'asc' } },
+        select: { route: { select: { date: true } } }
+    });
+    const valor = s?.route?.date ? new Date(new Date(s.route.date).getTime() - 3 * 3600_000).toISOString().slice(0, 10) : null;
+    _appDesde = { valor, al: Date.now() };
+    return valor;
+}
+
 /** GET /api/v1/cajones/planilla-vs-app?desde=AAAA-MM-DD&hasta=AAAA-MM-DD[&refrescar=1] */
 app.get('/api/v1/cajones/planilla-vs-app', sesionOClave, async (req: any, res: any) => {
     try {
@@ -7111,7 +7126,8 @@ app.get('/api/v1/cajones/planilla-vs-app', sesionOClave, async (req: any, res: a
             // Paradas viejas con el total pero sin el tipo: no se pueden comparar
             if (!algo && ((Number(s.cratesDelivered) || 0) || (Number(s.cratesRecovered) || 0))) sinTipo++;
         }
-        const comp = compararCajones(lectura.filas, movs, lectura.hojas);
+        const appDesde = await primerDiaConCajonesEnLaApp();
+        const comp = compararCajones(lectura.filas, movs, lectura.hojas, appDesde);
         // ?agrupar=dia|mes|anio: los totales por periodo, sin el detalle de cada
         // dia de cada reparto (con un año entero seria mucho para nada).
         const agrupar = String(req.query.agrupar || '');
@@ -7120,7 +7136,7 @@ app.get('/api/v1/cajones/planilla-vs-app', sesionOClave, async (req: any, res: a
             return res.json({
                 desde, hasta, agrupar,
                 planilla: { nombre: pl.nombre, url: pl.url, modificado: pl.modificado, leida: new Date(pl.leida).toISOString(), hojas: lectura.hojas, ignoradas: lectura.ignoradas },
-                paradasSinTipo: sinTipo, tipos: comp.tipos,
+                paradasSinTipo: sinTipo, tipos: comp.tipos, appDesde,
                 repartos: comp.repartos.map((r) => ({ codigo: r.codigo, hoja: r.hoja, resumen: r.resumen })),
                 periodos
             });
@@ -7131,7 +7147,7 @@ app.get('/api/v1/cajones/planilla-vs-app', sesionOClave, async (req: any, res: a
                 nombre: pl.nombre, url: pl.url, modificado: pl.modificado, leida: new Date(pl.leida).toISOString(),
                 hojas: lectura.hojas, ignoradas: lectura.ignoradas
             },
-            paradasSinTipo: sinTipo,
+            paradasSinTipo: sinTipo, appDesde,
             ...comp
         });
     } catch (e: any) {

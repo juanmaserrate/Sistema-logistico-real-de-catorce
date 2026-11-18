@@ -144,7 +144,7 @@ export interface MovimientoApp {
 type Celda = { ps: number; pe: number; ad: number; ar: number; enPlanilla: boolean; enApp: boolean };
 
 /** Cruza planilla y app por reparto, dia y tipo. */
-export function compararCajones(filas: FilaPlanilla[], app: MovimientoApp[], hojas: Array<{ nombre: string; codigo: string; patente: string | null }>) {
+export function compararCajones(filas: FilaPlanilla[], app: MovimientoApp[], hojas: Array<{ nombre: string; codigo: string; patente: string | null }>, appDesde?: string | null) {
     const vacia = (): Celda => ({ ps: 0, pe: 0, ad: 0, ar: 0, enPlanilla: false, enApp: false });
     // codigo -> fecha -> tipo -> celda
     const m = new Map<string, Map<string, Map<string, Celda>>>();
@@ -189,9 +189,10 @@ export function compararCajones(filas: FilaPlanilla[], app: MovimientoApp[], hoj
                 return c && (c.ps !== c.ad || c.pe !== c.ar);
             });
             // La planilla en cero y la app sin nada es un dia sin movimiento: esta bien
+            // Antes de que la app pidiera los cajones no hay con que comparar
             const estado = !diferencias.length ? 'ok'
                 : enPlanilla && enApp ? 'diferencia'
-                : enPlanilla ? 'solo planilla' : 'solo app';
+                : enPlanilla ? (appDesde && fecha < appDesde ? 'antes de la app' : 'solo planilla') : 'solo app';
             return { fecha, tipos: t, estado, diferencias, viajes: [...(viajes.get(`${codigo}|${fecha}`) || [])].sort((a, b) => a - b) };
         });
         const h = hojaDe.get(codigo);
@@ -203,6 +204,7 @@ export function compararCajones(filas: FilaPlanilla[], app: MovimientoApp[], hoj
                 conDiferencia: dias.filter((d) => d.estado === 'diferencia').length,
                 soloPlanilla: dias.filter((d) => d.estado === 'solo planilla').length,
                 soloApp: dias.filter((d) => d.estado === 'solo app').length,
+                antesDeLaApp: dias.filter((d) => d.estado === 'antes de la app').length,
             }
         };
     });
@@ -213,14 +215,15 @@ export function compararCajones(filas: FilaPlanilla[], app: MovimientoApp[], hoj
 
 const ordenReparto = (c: string) => (/^R\d+$/.test(c) ? Number(c.slice(1)) : c === 'LIBRE' ? 1000 : 2000);
 
-type ResumenDias = { dias: number; ok: number; conDiferencia: number; soloPlanilla: number; soloApp: number };
-const resumenVacio = (): ResumenDias => ({ dias: 0, ok: 0, conDiferencia: 0, soloPlanilla: 0, soloApp: 0 });
+type ResumenDias = { dias: number; ok: number; conDiferencia: number; soloPlanilla: number; soloApp: number; antesDeLaApp: number };
+const resumenVacio = (): ResumenDias => ({ dias: 0, ok: 0, conDiferencia: 0, soloPlanilla: 0, soloApp: 0, antesDeLaApp: 0 });
 const contarEstado = (r: ResumenDias, estado: string) => {
     r.dias++;
     if (estado === 'ok') r.ok++;
     else if (estado === 'diferencia') r.conDiferencia++;
     else if (estado === 'solo planilla') r.soloPlanilla++;
     else if (estado === 'solo app') r.soloApp++;
+    else if (estado === 'antes de la app') r.antesDeLaApp++;
 };
 
 /** Lo mismo, pero por dia, mes o año: cada periodo con el total de todos los
