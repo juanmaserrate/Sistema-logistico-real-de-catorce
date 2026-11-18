@@ -34,7 +34,7 @@ import { subirArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnos
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
-import { PrismaClient } from '@prisma/client';
+import { PrismaClient, Prisma } from '@prisma/client';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
@@ -10370,6 +10370,106 @@ app.post('/api/admin/paradas-rellenar-ruta', async (req: any, res: any) => {
 /** Las paradas de unos viajes, con sus horarios. Para poder reconstruir a que
  *  hora empezo de verdad la segunda ruta de un viaje partido en dos.
  *  GET /api/admin/paradas-de-viajes?key=...&ids=1,2,3 */
+/** Los puntos de GPS de un dia cuyo recorrido ya no existe (el viaje se
+ *  borro). Al borrar un viaje los puntos no se borran: quedan con el numero
+ *  de la ruta vieja. Sirven para reconstruir a que hora estuvo en cada lugar.
+ *  Solo lee. GET /api/admin/gps-huerfano?key=...&fecha=AAAA-MM-DD */
+app.get('/api/admin/gps-huerfano', async (req: any, res: any) => {
+    if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    try {
+        const ymd = String(req.query.fecha || '');
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(ymd)) return res.status(400).json({ error: 'Falta fecha=AAAA-MM-DD' });
+        // El dia de Buenos Aires
+        const desde = new Date(`${ymd}T03:00:00.000Z`), hasta = new Date(desde.getTime() + 24 * 3600_000);
+        const rutasConPuntos = await prisma.deviceLocation.findMany({
+            where: { timestamp: { gte: desde, lt: hasta }, routeId: { not: null } },
+            distinct: ['routeId'], select: { routeId: true }
+        });
+        const ids = rutasConPuntos.map((r) => r.routeId!) as number[];
+        const vivas = new Set((await prisma.route.findMany({ where: { id: { in: ids } }, select: { id: true } })).map((r) => r.id));
+        const huerfanas = ids.filter((id) => !vivas.has(id));
+        const salida: any[] = [];
+        for (const routeId of huerfanas) {
+            const pts = await prisma.deviceLocation.findMany({
+                where: { routeId, timestamp: { gte: desde, lt: hasta } },
+                orderBy: { timestamp: 'asc' },
+                select: { deviceId: true, deviceLabel: true, driverId: true, latitude: true, longitude: true, accuracy: true, speed: true, timestamp: true }
+            });
+            // Uno cada 10 s alcanza para saber cuando llego y cuando se fue
+            const finos: any[] = [];
+            let ult = 0;
+            for (const p of pts) {
+                const t = p.timestamp.getTime();
+                if (t - ult < 10_000) continue;
+                ult = t;
+                finos.push([p.latitude, p.longitude, p.timestamp.toISOString(), p.speed ?? null, p.accuracy ?? null]);
+            }
+            salida.push({
+                routeId, deviceId: pts[0]?.deviceId, deviceLabel: pts[0]?.deviceLabel, driverId: pts[0]?.driverId,
+                total: pts.length, desde: pts[0]?.timestamp, hasta: pts[pts.length - 1]?.timestamp, puntos: finos
+            });
+        }
+        res.json({ fecha: ymd, rutasConGps: ids.length, huerfanas: salida.length, rutas: salida });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
+/** Vuelve a crear viajes borrados por error, con su MISMO numero, su ruta y
+ *  sus paradas (con las horas que se pudieron reconstruir). Si se pasa la
+ *  ruta vieja del GPS, le devuelve sus puntos al recorrido nuevo.
+ *  No pisa nada: si el numero de viaje ya existe, ese viaje se saltea.
+ *  POST /api/admin/restaurar-viajes { key, dryRun?, viajes: [{ trip: {...}, route: {...}, stops: [...] }] } */
+app.post('/api/admin/restaurar-viajes', async (req: any, res: any) => {
+    const { key, dryRun, viajes } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!Array.isArray(viajes) || !viajes.length) return res.status(400).json({ error: 'Faltan viajes' });
+    const camposViaje = new Set(Object.values(Prisma.TripScalarFieldEnum) as string[]);
+    const camposParada = new Set(Object.values(Prisma.StopScalarFieldEnum) as string[]);
+    const resultado: any[] = [];
+    for (const v of viajes as any[]) {
+        const id = Number(v?.trip?.id);
+        try {
+            if (!Number.isInteger(id) || id <= 0) { resultado.push({ id, error: 'Falta el numero de viaje' }); continue; }
+            if (await prisma.trip.findUnique({ where: { id }, select: { id: true } })) { resultado.push({ id, salteado: 'ya existe' }); continue; }
+            const datosViaje: any = {};
+            for (const [k, val] of Object.entries(v.trip)) if (camposViaje.has(k) && k !== 'createdAt' && k !== 'updatedAt') datosViaje[k] = val;
+            const paradas = (Array.isArray(v.stops) ? v.stops : []).map((s: any) => {
+                const d: any = {};
+                for (const [k, val] of Object.entries(s)) if (camposParada.has(k) && !['id', 'routeId', 'createdAt', 'updatedAt'].includes(k)) d[k] = val;
+                return d;
+            });
+            const faltanClientes = paradas.filter((p: any) => !p.clientId).length;
+            if (faltanClientes) { resultado.push({ id, error: `${faltanClientes} parada(s) sin cliente` }); continue; }
+            const gpsDe = Number(v?.route?.gpsRouteId) || null;
+            if (dryRun) { resultado.push({ id, dryRun: true, paradas: paradas.length, gpsDe }); continue; }
+
+            const hecho = await prisma.$transaction(async (tx) => {
+                const trip = await tx.trip.create({ data: datosViaje });
+                const route = await tx.route.create({
+                    data: {
+                        tenantId: 'default-tenant', date: trip.date, tripId: trip.id,
+                        driverId: v.route?.driverId || null, status: v.route?.status || 'COMPLETED',
+                        actualStartTime: v.route?.actualStartTime || null, actualEndTime: v.route?.actualEndTime || null
+                    }
+                });
+                if (paradas.length) await tx.stop.createMany({ data: paradas.map((p: any) => ({ ...p, routeId: route.id })) });
+                const gps = gpsDe
+                    ? (await tx.deviceLocation.updateMany({ where: { routeId: gpsDe }, data: { routeId: route.id, isActive: false } })).count
+                    : 0;
+                return { routeId: route.id, gps };
+            });
+            await logAction(req, 'CREATE', 'trip', id, `Restaurado: ${datosViaje.driver || ''} ${datosViaje.reparto || ''}`.trim(), null,
+                { restaurado: true, paradas: paradas.length, ...hecho });
+            io.emit('trip:updated', { tripId: id });
+            resultado.push({ id, restaurado: true, paradas: paradas.length, ...hecho });
+        } catch (e: any) {
+            resultado.push({ id, error: e?.message || String(e) });
+        }
+    }
+    res.json({ dryRun: !!dryRun, resultado });
+});
+
 app.get('/api/admin/paradas-de-viajes', async (req: any, res: any) => {
     if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     try {
