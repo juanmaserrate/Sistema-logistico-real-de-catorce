@@ -5,7 +5,7 @@
  */
 import * as fs from 'fs';
 import * as XLSX from 'xlsx';
-import { leerPlanillaCajones, compararCajones, repartoDeHoja, repartoDeViaje, MovimientoApp } from '../src/planillaCajones';
+import { leerPlanillaCajones, compararCajones, agruparPorPeriodo, repartoDeHoja, repartoDeViaje, MovimientoApp } from '../src/planillaCajones';
 
 let todo = true;
 const esperar = (que: string, ok: boolean, detalle?: any) => {
@@ -62,6 +62,14 @@ console.log('\n2. Formato de la planilla (bloques SALIDA / ENTRADA / DIFERENCIA)
     const ceros = compararCajones([{ hoja: 'R2', codigo: 'R2', patente: null, fecha: '2026-11-11', tipo: 'peco', salida: 0, entrada: 0 },
         { hoja: 'R2', codigo: 'R2', patente: null, fecha: '2026-11-11', tipo: 'pallet', salida: 4, entrada: 4 }], [], [{ nombre: 'R2', codigo: 'R2', patente: null }]);
     esperar('planilla en cero (con pallet) y app vacia = ok', ceros.repartos[0].dias[0].estado === 'ok', ceros.repartos[0].dias[0]);
+
+    console.log('\n4. Por dia, mes y año');
+    const porMes = agruparPorPeriodo(c.repartos, 'mes');
+    esperar('un solo mes con los totales de R1', porMes.length === 1 && porMes[0].periodo === '2026-11' && porMes[0].tipos.peco.ps === 10 && porMes[0].tipos.peco.ad === 13, porMes);
+    esperar('los dias se cuentan por reparto y dia', porMes[0].resumen.dias === 3 && porMes[0].resumen.conDiferencia === 1 && porMes[0].resumen.soloPlanilla === 1 && porMes[0].resumen.soloApp === 1, porMes[0].resumen);
+    const porDia = agruparPorPeriodo(c.repartos, 'dia');
+    esperar('por dia: 3 dias en orden, cada reparto con su estado', porDia.map((p) => p.periodo).join(',') === '2026-11-16,2026-11-17,2026-11-18' && porDia[0].repartos[0].estado === 'diferencia', porDia);
+    esperar('por año: 2026', agruparPorPeriodo(c.repartos, 'anio')[0].periodo === '2026');
 }
 
 const ruta = process.argv[2];

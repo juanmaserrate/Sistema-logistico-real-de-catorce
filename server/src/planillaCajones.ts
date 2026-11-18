@@ -207,7 +207,53 @@ export function compararCajones(filas: FilaPlanilla[], app: MovimientoApp[], hoj
         };
     });
     // R1, R2 ... R22, LIBRE y lo que no tiene hoja al final
-    const orden = (c: string) => (/^R\d+$/.test(c) ? Number(c.slice(1)) : c === 'LIBRE' ? 1000 : 2000);
-    repartos.sort((a, b) => orden(a.codigo) - orden(b.codigo) || a.codigo.localeCompare(b.codigo));
+    repartos.sort((a, b) => ordenReparto(a.codigo) - ordenReparto(b.codigo) || a.codigo.localeCompare(b.codigo));
     return { tipos: TIPOS_PLANILLA, repartos };
+}
+
+const ordenReparto = (c: string) => (/^R\d+$/.test(c) ? Number(c.slice(1)) : c === 'LIBRE' ? 1000 : 2000);
+
+type ResumenDias = { dias: number; ok: number; conDiferencia: number; soloPlanilla: number; soloApp: number };
+const resumenVacio = (): ResumenDias => ({ dias: 0, ok: 0, conDiferencia: 0, soloPlanilla: 0, soloApp: 0 });
+const contarEstado = (r: ResumenDias, estado: string) => {
+    r.dias++;
+    if (estado === 'ok') r.ok++;
+    else if (estado === 'diferencia') r.conDiferencia++;
+    else if (estado === 'solo planilla') r.soloPlanilla++;
+    else if (estado === 'solo app') r.soloApp++;
+};
+
+/** Lo mismo, pero por dia, mes o año: cada periodo con el total de todos los
+ *  repartos y, adentro, cada reparto. Los dias que coinciden / con diferencia
+ *  se cuentan por reparto y dia (un mes con 20 repartos y 20 dias son 400). */
+export function agruparPorPeriodo(repartos: ReturnType<typeof compararCajones>['repartos'], agrupar: 'dia' | 'mes' | 'anio') {
+    const clave = (f: string) => (agrupar === 'dia' ? f : agrupar === 'mes' ? f.slice(0, 7) : f.slice(0, 4));
+    const sumar = (acc: Record<string, any>, tipos: Record<string, any>) => {
+        for (const [k, c] of Object.entries(tipos)) {
+            if (!acc[k]) acc[k] = { ps: 0, pe: 0, ad: 0, ar: 0 };
+            acc[k].ps += c.ps; acc[k].pe += c.pe; acc[k].ad += c.ad; acc[k].ar += c.ar;
+        }
+    };
+    const periodos = new Map<string, { periodo: string; tipos: Record<string, any>; resumen: ResumenDias; repartos: Map<string, any> }>();
+    for (const r of repartos) {
+        for (const d of r.dias) {
+            const k = clave(d.fecha);
+            if (!periodos.has(k)) periodos.set(k, { periodo: k, tipos: {}, resumen: resumenVacio(), repartos: new Map() });
+            const P = periodos.get(k)!;
+            sumar(P.tipos, d.tipos);
+            contarEstado(P.resumen, d.estado);
+            if (!P.repartos.has(r.codigo)) P.repartos.set(r.codigo, { codigo: r.codigo, hoja: r.hoja, tipos: {}, resumen: resumenVacio(), estado: null, viajes: [] as number[] });
+            const R = P.repartos.get(r.codigo);
+            sumar(R.tipos, d.tipos);
+            contarEstado(R.resumen, d.estado);
+            // Por dia, el reparto ES ese dia: su estado y sus viajes
+            if (agrupar === 'dia') { R.estado = d.estado; R.viajes = d.viajes; }
+        }
+    }
+    return [...periodos.values()]
+        .sort((a, b) => a.periodo.localeCompare(b.periodo))
+        .map((p) => ({
+            ...p,
+            repartos: [...p.repartos.values()].sort((a, b) => ordenReparto(a.codigo) - ordenReparto(b.codigo) || a.codigo.localeCompare(b.codigo))
+        }));
 }

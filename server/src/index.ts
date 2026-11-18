@@ -31,7 +31,7 @@ import { armarLibroViajes } from './libroViajes';
 import { presupuestoDelAnio } from './presupuestoViajes';
 import { metricasDelMes } from './metricasDashboard';
 import { subirArchivo, bajarArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnosticoSharepoint, limpiarTokenSharepoint } from './sharepoint';
-import { leerPlanillaCajones, compararCajones, repartoDeViaje, MovimientoApp, TipoPlanilla } from './planillaCajones';
+import { leerPlanillaCajones, compararCajones, agruparPorPeriodo, repartoDeViaje, MovimientoApp, TipoPlanilla } from './planillaCajones';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
@@ -7112,6 +7112,19 @@ app.get('/api/v1/cajones/planilla-vs-app', sesionOClave, async (req: any, res: a
             if (!algo && ((Number(s.cratesDelivered) || 0) || (Number(s.cratesRecovered) || 0))) sinTipo++;
         }
         const comp = compararCajones(lectura.filas, movs, lectura.hojas);
+        // ?agrupar=dia|mes|anio: los totales por periodo, sin el detalle de cada
+        // dia de cada reparto (con un año entero seria mucho para nada).
+        const agrupar = String(req.query.agrupar || '');
+        if (agrupar === 'dia' || agrupar === 'mes' || agrupar === 'anio') {
+            const periodos = agruparPorPeriodo(comp.repartos, agrupar);
+            return res.json({
+                desde, hasta, agrupar,
+                planilla: { nombre: pl.nombre, url: pl.url, modificado: pl.modificado, leida: new Date(pl.leida).toISOString(), hojas: lectura.hojas, ignoradas: lectura.ignoradas },
+                paradasSinTipo: sinTipo, tipos: comp.tipos,
+                repartos: comp.repartos.map((r) => ({ codigo: r.codigo, hoja: r.hoja, resumen: r.resumen })),
+                periodos
+            });
+        }
         res.json({
             desde, hasta,
             planilla: {
