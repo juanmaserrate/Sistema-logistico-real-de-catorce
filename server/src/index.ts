@@ -6384,6 +6384,19 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
             sumarTipos(est.porTipoDeEnvase, s);
             if (fecha && (!est.ultimaVisita || new Date(fecha) > new Date(est.ultimaVisita))) est.ultimaVisita = new Date(fecha).toISOString();
             porEstab.set(ke, est);
+
+            // El mismo establecimiento, pero dentro de ESTE reparto: lo que le
+            // dejo y le retiro este reparto, no la suma de todos los que pasan.
+            if (!rep.ests) rep.ests = new Map<string, any>();
+            const re = rep.ests.get(ke) || {
+                clientId: s.client?.id || null, establecimiento: s.client?.name || '-', direccion: s.client?.address || null,
+                dejados: 0, recuperados: 0, visitas: 0, ultimaVisita: null as any, tardias: 0, porTipoDeEnvase: porTipoVacio()
+            };
+            re.dejados += d; re.recuperados += r; re.visitas++;
+            if (tardia) re.tardias++;
+            sumarTipos(re.porTipoDeEnvase, s);
+            if (fecha && (!re.ultimaVisita || new Date(fecha) > new Date(re.ultimaVisita))) re.ultimaVisita = new Date(fecha).toISOString();
+            rep.ests.set(ke, re);
         }
 
         const conSaldo = (x: any) => ({
@@ -6396,7 +6409,12 @@ app.get('/api/v1/crates/summary', async (req: any, res: any) => {
             tiposDeEnvase: TIPOS_DE_ENVASE.map((p) => ({ clave: p.clave, nombre: p.nombre })),
             totales: conSaldo(tot),
             porReparto: [...porReparto.values()]
-                .map((x) => conSaldo({ ...x, usuarios: [...x.usuarios] }))
+                .map(({ ests, ...x }) => conSaldo({
+                    ...x, usuarios: [...x.usuarios],
+                    // Sus establecimientos, los de mas saldo primero
+                    establecimientos: [...(ests?.values() || [])].map(conSaldo)
+                        .sort((a: any, b: any) => b.saldo - a.saldo || a.establecimiento.localeCompare(b.establecimiento, 'es'))
+                }))
                 .sort((a, b) => a.reparto.localeCompare(b.reparto, 'es', { numeric: true })),
             porEstablecimiento: [...porEstab.values()]
                 .map((x) => conSaldo({ ...x, repartos: [...x.repartos] }))
