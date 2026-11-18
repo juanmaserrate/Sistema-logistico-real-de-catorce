@@ -763,9 +763,9 @@
                         <div id="summary-terc-pct" class="text-[11px] text-[#A3AED0] mt-0.5 truncate">&nbsp;</div>
                     </div>
                     <div class="card-dark px-4 py-3 sm:px-5 sm:py-4 min-w-0">
-                        <div class="text-[11px] font-semibold text-[#A3AED0] truncate">Cargados</div>
+                        <div class="text-[11px] font-semibold text-[#A3AED0] truncate" title="Todos los viajes de la fecha elegida, sin el buscador ni los demás filtros">Del período</div>
                         <div id="summary-total-trips" class="mt-1 text-xl sm:text-2xl font-extrabold text-[#1B2559] tabular-nums">0</div>
-                        <div class="text-[11px] text-[#A3AED0] mt-0.5 truncate">En el período traído</div>
+                        <div id="summary-total-sub" class="text-[11px] text-[#A3AED0] mt-0.5 truncate">&nbsp;</div>
                     </div>
                     <!-- Estados: el mismo criterio que la columna Estado -->
                     <div class="card-dark px-4 py-3 sm:px-5 sm:py-4 min-w-0" title="Todavía no arrancaron">
@@ -18490,7 +18490,10 @@
             }
 
             // Actualizar resumen
-            document.getElementById('summary-total-trips').innerText = (planningData || data).length.toLocaleString('es-AR');
+            // Del periodo: la fecha elegida, sin los demas filtros
+            const _per = __resumenPeriodo || { n: (planningData || data).length, etiqueta: '' };
+            document.getElementById('summary-total-trips').innerText = _per.n.toLocaleString('es-AR');
+            const _perSub = document.getElementById('summary-total-sub'); if (_perSub) _perSub.innerText = _per.etiqueta || ' ';
             document.getElementById('summary-filtered-count').innerText = data.length.toLocaleString('es-AR');
             const _contrato = (t) => String(t.contractType || '').toLowerCase();
             const _nProp = data.filter((t) => _contrato(t) === 'propio').length;
@@ -20951,14 +20954,6 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             // TODOS los viajes cargados, sin importar el dia o el mes elegido:
             // quien busca el 10063 quiere ese viaje, no el de hoy.
             const nroViaje = (query.trim().match(/^(?:#|n[°º]\s*|viaje\s*)?(\d{3,})$/) || [])[1] || null;
-            if (nroViaje) {
-                filteredPlanning = applyWeeklySort(planningData.filter(t => String(t.id).startsWith(nroViaje)));
-                renderPlanningTable(filteredPlanning);
-                try { _updateSortIndicators(); } catch(_) {}
-                // No esta cargado (es de otro mes): se lo pide al servidor
-                if (!filteredPlanning.some(t => String(t.id) === nroViaje)) _traerViajePorNumero(nroViaje);
-                return;
-            }
 
             const matchesSearch = (t) =>
                 (t.driver || '').toLowerCase().includes(query) ||
@@ -21071,12 +21066,53 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 return true;
             };
 
+            // La tarjeta "Del periodo": los viajes de la fecha elegida, sin el
+            // buscador ni los demas filtros. Antes decia "Cargados" y contaba
+            // todo lo que la pantalla tenia en memoria (el mes entero y los
+            // meses traidos por el Panel): 480 con un solo dia elegido.
+            __resumenPeriodo = { n: planningData.filter(matchesDate).length, etiqueta: _etiquetaDelPeriodo(mode) };
+
+            if (nroViaje) {
+                filteredPlanning = applyWeeklySort(planningData.filter(t => String(t.id).startsWith(nroViaje)));
+                renderPlanningTable(filteredPlanning);
+                try { _updateSortIndicators(); } catch(_) {}
+                // No esta cargado (es de otro mes): se lo pide al servidor
+                if (!filteredPlanning.some(t => String(t.id) === nroViaje)) _traerViajePorNumero(nroViaje);
+                return;
+            }
+
             filteredPlanning = planningData.filter(t => matchesSearch(t) && matchesContract(t) && matchesDate(t) && matchesColumnFilters(t));
             // Aplica orden activo (si lo hay) antes de renderizar
             filteredPlanning = applyWeeklySort(filteredPlanning);
             renderPlanningTable(filteredPlanning);
             // Refrescar flechita ↑/↓ en el header (se redibuja tras cada render)
             try { _updateSortIndicators(); } catch(_) {}
+        }
+
+        /** Lo que cuenta la tarjeta "Del periodo" (lo arma filterWeeklyData). */
+        // var (no let): la tabla puede dibujarse antes de que el script llegue a esta linea
+        var __resumenPeriodo = null;
+
+        /** Como se llama la fecha elegida: "Hoy", "Noviembre", "18/11/2026"... */
+        function _etiquetaDelPeriodo(mode) {
+            const lindo = (ymd) => ymd ? ymd.split('-').reverse().join('/') : '';
+            if (mode === 'hoy') return 'Hoy';
+            if (mode === 'mes') {
+                const m = document.getElementById('planning-month-select')?.value || '';
+                return m ? m.charAt(0).toUpperCase() + m.slice(1) : 'El mes';
+            }
+            if (mode === 'dia') {
+                const d = document.getElementById('filter-single-date')?.value;
+                return d ? 'El ' + lindo(d) : 'Elegí un día';
+            }
+            if (mode === 'rango') {
+                const a = document.getElementById('filter-range-from')?.value, b = document.getElementById('filter-range-to')?.value;
+                if (a && b) return `Del ${lindo(a).slice(0, 5)} al ${lindo(b)}`;
+                if (a) return 'Desde el ' + lindo(a);
+                if (b) return 'Hasta el ' + lindo(b);
+                return 'Todo lo traído';
+            }
+            return '';
         }
 
         /** Trae un viaje por su numero cuando no esta entre los cargados y lo
