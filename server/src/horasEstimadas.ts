@@ -173,3 +173,188 @@ export function estimarHorasDeParadas(
     }));
     return { cambios, pendientesQueQuedan };
 }
+
+// ════════════════════════════════════════════════════════════════════════════
+// Con la base: se usa al cerrar un viaje (cualquier camino), al corregir sus
+// horarios, en un barrido periodico y desde /api/admin/estimar-horas-paradas.
+// ════════════════════════════════════════════════════════════════════════════
+
+/** El deposito de Real de 14 (la vuelta). "DEPOSITO TOLOSA" no: es el
+ *  deposito de un cliente, una entrega como cualquier otra. */
+function esNuestroDeposito(s: { isReturnToBase?: boolean | null; client?: { name?: string | null } | null }): boolean {
+    if (s?.isReturnToBase) return true;
+    const n = String(s?.client?.name ?? '').normalize('NFD').replace(/[̀-ͯ]/g, '').toUpperCase().trim();
+    return /^(REAL\s*(DE\s*)?(14|CATORCE)|R\s*14)\b/.test(n);
+}
+
+const aFecha = (v: any): Date | null => {
+    if (!v) return null;
+    const d = v instanceof Date ? v : new Date(v);
+    return Number.isFinite(d.getTime()) ? d : null;
+};
+
+/** Entre que horas tienen que caer las paradas. Lo que muestra la
+ *  planificacion como salida y llegada (exitTime / returnTime) y la ventana
+ *  del recorrido pueden diferir: se toma la parte en comun, asi las horas
+ *  estimadas quedan adentro de las dos. Si no se pisan, manda la que tenga
+ *  sentido (al menos 5 minutos). */
+export function ventanaParaEstimar(
+    ruta: { actualStartTime?: any; actualEndTime?: any },
+    viaje: { exitTime?: any; returnTime?: any; startedAt?: any; completedAt?: any } | null
+): { inicio: Date | null; fin: Date | null; de: 'comun' | 'recorrido' | 'viaje' | 'incompleta' } {
+    const rI = aFecha(ruta.actualStartTime) || aFecha(viaje?.startedAt);
+    const rF = aFecha(ruta.actualEndTime) || aFecha(viaje?.completedAt);
+    const tI = aFecha(viaje?.exitTime), tF = aFecha(viaje?.returnTime);
+    const sirve = (a: Date | null, b: Date | null) => !!(a && b && b.getTime() - a.getTime() >= 5 * MIN);
+    const masTarde = (a: Date | null, b: Date | null) => (a && b ? (a > b ? a : b) : a || b);
+    const masTemprano = (a: Date | null, b: Date | null) => (a && b ? (a < b ? a : b) : a || b);
+    const cI = masTarde(rI, tI), cF = masTemprano(rF, tF);
+    if (sirve(cI, cF)) return { inicio: cI, fin: cF, de: 'comun' };
+    if (sirve(rI, rF)) return { inicio: rI, fin: rF, de: 'recorrido' };
+    if (sirve(tI, tF)) return { inicio: tI, fin: tF, de: 'viaje' };
+    return { inicio: rI || tI, fin: rF || tF, de: 'incompleta' };
+}
+
+export interface ResultadoHorasDelViaje {
+    tripId: number | null;
+    routeId: number;
+    fecha: string | null;
+    reparto: string | null;
+    ventana: { inicio: string | null; fin: string | null; de: string };
+    puntosGps: number;
+    cambios: { stopId: number; nombre: string; llegada: string; salida: string; como: 'GPS' | 'repartida'; pasaAEntregada: boolean }[];
+    salteado: string | null;
+    pendientesQueQuedan: number;
+    guardado: boolean;
+}
+
+export const NOTA_GPS = 'Hora estimada por GPS: el viaje se cerró sin marcar esta parada.';
+export const NOTA_REPARTIDA = 'Hora estimada (repartida entre la salida y la llegada del viaje): el viaje se cerró sin marcar esta parada.';
+
+/** Completa las horas de un viaje cerrado. No hace nada si el viaje esta
+ *  abierto o si todas sus paradas ya tienen hora. Devuelve null si no hay
+ *  ruta. */
+export async function completarHorasDelViaje(
+    prisma: any,
+    ref: { tripId?: number; routeId?: number },
+    opciones: { dryRun?: boolean; quien?: string } = {}
+): Promise<ResultadoHorasDelViaje | null> {
+    const route = await prisma.route.findFirst({
+        where: ref.routeId ? { id: ref.routeId } : { tripId: ref.tripId },
+        select: {
+            id: true, tripId: true, status: true, actualStartTime: true, actualEndTime: true,
+            trip: { select: { id: true, date: true, reparto: true, status: true, startedAt: true, completedAt: true, exitTime: true, returnTime: true } },
+            stops: {
+                orderBy: { sequence: 'asc' },
+                select: {
+                    id: true, sequence: true, status: true, isReturnToBase: true, observations: true,
+                    actualArrival: true, actualDeparture: true,
+                    client: { select: { name: true, latitude: true, longitude: true } }
+                }
+            }
+        }
+    });
+    if (!route) return null;
+    const trip = route.trip || null;
+    const ventana = ventanaParaEstimar(route, trip);
+    const res: ResultadoHorasDelViaje = {
+        tripId: route.tripId ?? null, routeId: route.id,
+        fecha: trip?.date ? new Date(trip.date).toISOString().slice(0, 10) : null,
+        reparto: trip?.reparto ?? null,
+        ventana: { inicio: ventana.inicio?.toISOString() ?? null, fin: ventana.fin?.toISOString() ?? null, de: ventana.de },
+        puntosGps: 0, cambios: [], salteado: null, pendientesQueQuedan: 0, guardado: false
+    };
+    const cerrado = !!route.actualEndTime || String(route.status || '').toUpperCase() === 'COMPLETED'
+        || String(trip?.status || '').toUpperCase() === 'COMPLETED';
+    if (!cerrado) { res.salteado = 'el viaje no esta finalizado'; return res; }
+
+    const paradas: ParadaParaEstimar[] = route.stops.map((s: any) => ({
+        id: s.id, sequence: s.sequence, status: s.status, deposito: esNuestroDeposito(s),
+        llegada: s.actualArrival, salida: s.actualDeparture,
+        lat: s.client?.latitude ?? null, lng: s.client?.longitude ?? null
+    }));
+    // Nada que completar: ni se busca el GPS
+    if (!paradas.some((p) => !p.deposito && !p.llegada && !p.salida)) return res;
+
+    const gps = (await prisma.deviceLocation.findMany({
+        where: { routeId: route.id },
+        select: { latitude: true, longitude: true, capturedAt: true, timestamp: true },
+        orderBy: { timestamp: 'asc' }, take: 50000
+    })).map((g: any) => ({ lat: g.latitude, lng: g.longitude, t: new Date(g.capturedAt || g.timestamp).getTime() }));
+    res.puntosGps = gps.length;
+
+    const est = estimarHorasDeParadas(paradas, ventana.inicio, ventana.fin, gps);
+    res.salteado = est.salteado || null;
+    res.pendientesQueQuedan = est.pendientesQueQuedan;
+    const porId = new Map<number, any>(route.stops.map((s: any) => [s.id, s]));
+    res.cambios = est.cambios.map((c) => ({
+        stopId: c.id, nombre: porId.get(c.id)?.client?.name || '',
+        llegada: c.llegada.toISOString(), salida: c.salida.toISOString(), como: c.como, pasaAEntregada: c.marcarEntregada
+    }));
+    if (opciones.dryRun || !est.cambios.length) return res;
+
+    const antes = est.cambios.map((c) => {
+        const s = porId.get(c.id);
+        return {
+            stopId: c.id, status: s.status,
+            actualArrival: aFecha(s.actualArrival)?.toISOString() ?? null,
+            actualDeparture: aFecha(s.actualDeparture)?.toISOString() ?? null,
+            observations: s.observations ?? null
+        };
+    });
+    await prisma.$transaction(est.cambios.map((c) => {
+        const s = porId.get(c.id);
+        const nota = c.como === 'GPS' ? NOTA_GPS : NOTA_REPARTIDA;
+        return prisma.stop.update({
+            // routeId en el where: si la parada cambio de ruta en el medio, falla en vez de pisar otra
+            where: { id: c.id, routeId: route.id },
+            data: {
+                actualArrival: c.llegada, actualDeparture: c.salida,
+                ...(c.marcarEntregada ? { status: 'COMPLETED' } : {}),
+                observations: s.observations ? `${s.observations} · ${nota}` : nota
+            }
+        });
+    }));
+    await prisma.auditLog.create({
+        data: {
+            userName: opciones.quien || 'Sistema (horas estimadas)', action: 'UPDATE', entity: 'Trip',
+            entityId: String(route.tripId ?? route.id), entityName: `Horas de parada estimadas (${est.cambios.length})`,
+            before: JSON.stringify({ paradas: antes }), after: JSON.stringify({ ventana: res.ventana, paradas: res.cambios })
+        }
+    }).catch(() => { /* la auditoria nunca frena */ });
+    res.guardado = true;
+    return res;
+}
+
+/** Lo mismo, para llamar al final de un cierre: nunca tira ni frena. */
+export async function completarHorasAlCerrar(prisma: any, ref: { tripId?: number; routeId?: number }): Promise<void> {
+    try {
+        const r = await completarHorasDelViaje(prisma, ref);
+        if (r?.guardado) console.log(`[horas estimadas] viaje ${r.tripId}: ${r.cambios.length} parada(s)`);
+    } catch (e: any) {
+        console.warn('[horas estimadas] ' + JSON.stringify(ref) + ':', e?.message || e);
+    }
+}
+
+/** Repasa los viajes finalizados de los ultimos dias que tienen paradas sin
+ *  hora. Atrapa cualquier camino de cierre que no llame a lo de arriba. */
+export async function barrerViajesSinHoras(prisma: any, dias = 10): Promise<ResultadoHorasDelViaje[]> {
+    const desde = new Date(Date.now() - dias * 86400000);
+    const viajes = await prisma.trip.findMany({
+        where: {
+            status: 'COMPLETED', date: { gte: desde },
+            linkedRoute: { stops: { some: { isReturnToBase: false, actualArrival: null, actualDeparture: null, status: { notIn: ['UNDELIVERABLE', 'FAILED'] } } } }
+        },
+        select: { id: true }, take: 300
+    });
+    const hechos: ResultadoHorasDelViaje[] = [];
+    for (const v of viajes) {
+        try {
+            const r = await completarHorasDelViaje(prisma, { tripId: v.id });
+            if (r?.guardado) hechos.push(r);
+        } catch (e: any) {
+            console.warn('[horas estimadas] viaje ' + v.id + ':', e?.message || e);
+        }
+    }
+    return hechos;
+}

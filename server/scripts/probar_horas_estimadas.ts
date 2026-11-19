@@ -2,7 +2,7 @@
  * Prueba src/horasEstimadas.ts
  *   cd server && npx ts-node --transpile-only scripts/probar_horas_estimadas.ts
  */
-import { estimarHorasDeParadas, ParadaParaEstimar } from '../src/horasEstimadas';
+import { estimarHorasDeParadas, ventanaParaEstimar, ParadaParaEstimar } from '../src/horasEstimadas';
 
 let todo = true;
 const esperar = (que: string, ok: boolean, detalle?: any) => {
@@ -86,6 +86,22 @@ console.log('\n4. Viajes que no se pueden estimar');
     esperar('ya tiene todo: no cambia nada', r2.cambios.length === 0 && !r2.salteado, r2);
     const r3 = estimarHorasDeParadas([p(1, { status: 'UNDELIVERABLE' }), p(2)], H('08:00'), H('12:00'));
     esperar('una no entregada cuenta como marcada: la pendiente no se toca', r3.cambios.length === 0 && r3.pendientesQueQuedan === 1, r3);
+}
+
+console.log('\n5. La ventana: siempre adentro de la salida y la llegada');
+{
+    // Planificacion dice 08:00-12:00 y el recorrido 08:20-12:30: la parte en comun
+    const v = ventanaParaEstimar({ actualStartTime: H('08:20'), actualEndTime: H('12:30') }, { exitTime: H('08:00'), returnTime: H('12:00') });
+    esperar('parte en comun 08:20-12:00', v.de === 'comun' && hm(v.inicio!) === '08:20' && hm(v.fin!) === '12:00', v);
+    // Iniciar y Finalizar de corrido (3 segundos) pero con salida y llegada cargadas: manda la planificacion
+    const v2 = ventanaParaEstimar({ actualStartTime: H('13:14'), actualEndTime: new Date(H('13:14').getTime() + 3000) }, { exitTime: H('10:00'), returnTime: H('14:00') });
+    esperar('recorrido de segundos: usa salida y llegada del viaje', v2.de === 'viaje' && hm(v2.inicio!) === '10:00', v2);
+    const v3 = ventanaParaEstimar({ actualStartTime: H('13:14'), actualEndTime: new Date(H('13:14').getTime() + 3000) }, { exitTime: H('13:14'), returnTime: new Date(H('13:14').getTime() + 3000) });
+    esperar('sin nada que sirva: queda incompleta y no se estima', v3.de === 'incompleta' && estimarHorasDeParadas([p(1)], v3.inicio, v3.fin).cambios.length === 0, v3);
+    const r = estimarHorasDeParadas([p(1), p(2), p(3), p(4)], v.inicio, v.fin);
+    const adentro = r.cambios.every((c) => c.llegada >= v.inicio! && c.salida <= v.fin! && c.llegada < c.salida);
+    const enOrden = r.cambios.every((c, i) => i === 0 || c.llegada >= r.cambios[i - 1].salida);
+    esperar('todas adentro, en orden y sin pisarse', adentro && enOrden, r.cambios.map((c) => hm(c.llegada) + '-' + hm(c.salida)));
 }
 
 console.log(todo ? '\nTODO OK\n' : '\nHAY ERRORES\n');

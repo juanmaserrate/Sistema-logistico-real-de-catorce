@@ -18395,7 +18395,7 @@
                                         <td class="px-2 py-2 text-center"><span class="status-badge ${lbl.cls} text-[9px]">${lbl.txt}</span></td>
                                         <td class="px-2 py-2 text-center text-[10px] text-[#2B3674] hover:bg-indigo-50 cursor-pointer"
                                             ondblclick="editStopTime(this, ${tripId}, ${m.stopId || 'null'}, 'actualArrival')"
-                                            title="Doble click para corregir la hora de llegada">${fmtTime(m.actualArrival)}</td>
+                                            title="${/Hora estimada/.test(m.observations || '') ? 'Hora estimada: el viaje se cerró sin marcar esta parada. ' : ''}Doble click para corregir la hora de llegada">${fmtTime(m.actualArrival)}${/Hora estimada/.test(m.observations || '') ? '<span class="block text-[8px] font-black uppercase tracking-wider text-amber-600">estimada</span>' : ''}</td>
                                         <td class="px-2 py-2 text-center text-[10px] text-[#2B3674] hover:bg-indigo-50 cursor-pointer"
                                             ondblclick="editStopTime(this, ${tripId}, ${m.stopId || 'null'}, 'actualDeparture')"
                                             title="Doble click para corregir la hora de salida">${fmtTime(m.actualDeparture)}</td>

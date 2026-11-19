@@ -17,7 +17,9 @@
  *      va siempre ultimo, tenga hora o no.
  *   2. Cierra las paradas que tienen llegada Y salida. Una sin hora no se
  *      toca: PENDING sin hora es una que no se visito, y marcarla entregada
- *      seria mentir.
+ *      seria mentir. Excepcion (19-nov-2026): si el viaje se cerro sin
+ *      NINGUNA parada marcada, antes de todo esto se les pone hora estimada
+ *      (GPS o repartida entre salida y llegada) y quedan entregadas.
  *   3. Ajusta la ventana del viaje a sus paradas. El fin se mueve hasta el
  *      deposito o la ultima entregada, NUNCA hasta una UNDELIVERABLE (en
  *      octubre eso le sumo tres horas fantasma a un viaje).
@@ -32,6 +34,7 @@
  * ========================================================================= */
 import type { PrismaClient } from '@prisma/client';
 import { esVueltaAlDeposito } from './unidadesDelViaje';
+import { completarHorasAlCerrar } from './horasEstimadas';
 
 /** Menos que esto en una escuela no es una entrega: el chofer toco "llegue"
  *  y "sali" de corrido. Se avisa, no se corrige. */
@@ -155,6 +158,13 @@ export async function normalizarViajeAlCerrar(
     opciones: { dryRun?: boolean; mantenerVentana?: boolean } = {}
 ): Promise<InformeDeCierre> {
     const dryRun = !!opciones.dryRun;
+
+    // Un viaje que se cerro sin NINGUNA parada marcada (LIBRE cargado a mano,
+    // chofer que no uso la app): sus paradas reciben hora estimada adentro de
+    // la salida y la llegada (ver horasEstimadas.ts). Va antes de leer la ruta
+    // para que el orden y la ventana se calculen con esas horas. Pedido de
+    // juanma, 19-nov-2026. No hace nada en un viaje abierto.
+    if (!dryRun) await completarHorasAlCerrar(prisma, { routeId });
 
     const route = await prisma.route.findUnique({
         where: { id: routeId },
