@@ -39,6 +39,19 @@ console.log('\n2. Entregadas sin hora entre otras con hora (restaurados)');
     esperar('la pendiente queda', r.pendientesQueQuedan === 1, r);
 }
 
+console.log('\n2b. Las de alrededor estan fuera de orden (restaurados con la lista de otro dia)');
+{
+    const r = estimarHorasDeParadas([
+        p(1, { status: 'COMPLETED', llegada: H('09:00'), salida: H('09:10') }),
+        p(2, { status: 'COMPLETED', llegada: H('09:30'), salida: H('09:40') }),
+        p(3, { status: 'COMPLETED' }),                                          // entre 09:40 y 09:05: imposible
+        p(4, { status: 'COMPLETED', llegada: H('09:05'), salida: H('09:08') }),
+        p(5, { status: 'COMPLETED', llegada: H('10:00'), salida: H('10:10') })
+    ], H('08:00'), H('12:00'));
+    const c = r.cambios[0];
+    esperar('va al hueco mas grande (10:10 a 12:00): sale 11:05', c && hm(c.salida) === '11:05' && hm(c.llegada) === '10:55', c && [hm(c.llegada), hm(c.salida)]);
+}
+
 console.log('\n3. Con GPS');
 {
     const lat = -34.8, lng = -58.4;

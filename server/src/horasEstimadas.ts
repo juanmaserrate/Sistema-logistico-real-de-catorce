@@ -112,12 +112,30 @@ export function estimarHorasDeParadas(
     const antesDe = (i: number) => { for (let j = i - 1; j >= 0; j--) if (linea[j].salida != null) return linea[j].salida!; return t0; };
     const despuesDe = (i: number) => { for (let j = i + 1; j < linea.length; j++) if (linea[j].llegada != null) return linea[j].llegada!; return t1; };
 
+    /** El hueco libre mas largo del viaje: entre la salida de una parada con
+     *  hora y la llegada a la siguiente (o el arranque / el cierre). Se usa
+     *  cuando las paradas con hora no siguen el orden de la lista y entonces
+     *  "entre la anterior y la siguiente" no es un intervalo. */
+    const mayorHueco = (): [number, number] => {
+        const ocupado = linea.filter((x) => x.llegada != null)
+            .map((x) => [x.llegada!, x.salida!] as [number, number])
+            .sort((a, b) => a[0] - b[0]);
+        let mejor: [number, number] = [t0, t1], largo = -1, cursor = t0;
+        for (const [ll, sa] of [...ocupado, [t1, t1] as [number, number]]) {
+            if (ll - cursor > largo) { largo = ll - cursor; mejor = [cursor, ll]; }
+            cursor = Math.max(cursor, sa);
+        }
+        return mejor;
+    };
+
     // 1. GPS, en orden: cada parada encontrada pasa a ser punto fijo de las siguientes
     if (gps.length) {
         const puntos = [...gps].sort((a, b) => a.t - b.t);
         linea.forEach((x, i) => {
             if (x.llegada != null || x.p.lat == null || x.p.lng == null) return;
-            const e = estadiaGps(puntos, x.p.lat, x.p.lng, antesDe(i), despuesDe(i));
+            let desde = antesDe(i), hasta = despuesDe(i);
+            if (hasta <= desde) { desde = t0; hasta = t1; }
+            const e = estadiaGps(puntos, x.p.lat, x.p.lng, desde, hasta);
             if (e) { x.llegada = e.ini; x.salida = e.fin; x.como = 'GPS'; }
         });
     }
@@ -129,8 +147,11 @@ export function estimarHorasDeParadas(
         if (linea[i].llegada != null) continue;
         let j = i;
         while (j < linea.length && linea[j].llegada == null) j++;
-        const desde = antesDe(i), hasta = despuesDe(j - 1);
         const k = j - i;
+        let desde = antesDe(i), hasta = despuesDe(j - 1);
+        // Las de alrededor estan fuera de orden (o pegadas): no hay lugar
+        // entre ellas, se van al hueco mas grande del viaje.
+        if (hasta - desde < k * 4 * MIN) [desde, hasta] = mayorHueco();
         const paso = Math.max(0, hasta - desde) / (k + 1);
         const espera = Math.min(10 * MIN, paso * 0.4);
         for (let n = 1; n <= k; n++) {
