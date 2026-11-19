@@ -32,6 +32,7 @@ import { presupuestoDelAnio } from './presupuestoViajes';
 import { metricasDelMes } from './metricasDashboard';
 import { subirArchivo, bajarArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnosticoSharepoint, limpiarTokenSharepoint } from './sharepoint';
 import { leerPlanillaCajones, compararCajones, agruparPorPeriodo, repartoDeViaje, MovimientoApp, TipoPlanilla } from './planillaCajones';
+import { estimarHorasDeParadas } from './horasEstimadas';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
@@ -10587,6 +10588,94 @@ app.post('/api/admin/restaurar-viajes', async (req: any, res: any) => {
                 { restaurado: true, paradas: paradas.length, ...hecho });
             io.emit('trip:updated', { tripId: id });
             resultado.push({ id, restaurado: true, paradas: paradas.length, ...hecho });
+        } catch (e: any) {
+            resultado.push({ id, error: e?.message || String(e) });
+        }
+    }
+    res.json({ dryRun: !!dryRun, resultado });
+});
+
+/** Les pone hora a las paradas de viajes que se cerraron sin marcarlas
+ *  (ver src/horasEstimadas.ts): del GPS si lo hay, si no repartida en la
+ *  duracion del viaje. Cada parada lo dice en sus observaciones y el antes
+ *  queda en Auditoria para poder volver atras.
+ *  POST /api/admin/estimar-horas-paradas { key, dryRun?, ids: [...] } */
+app.post('/api/admin/estimar-horas-paradas', async (req: any, res: any) => {
+    const { key, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter((n: number) => Number.isInteger(n) && n > 0);
+    if (!ids.length || ids.length > 500) return res.status(400).json({ error: 'Mandá entre 1 y 500 viajes' });
+    const fmt = (d: Date | null) => (d ? d.toISOString() : null);
+    const resultado: any[] = [];
+    for (const id of ids) {
+        try {
+            const t: any = await prisma.trip.findUnique({
+                where: { id },
+                select: {
+                    id: true, date: true, reparto: true, status: true, startedAt: true, completedAt: true, exitTime: true, returnTime: true,
+                    linkedRoute: {
+                        select: {
+                            id: true, actualStartTime: true, actualEndTime: true,
+                            stops: {
+                                orderBy: { sequence: 'asc' },
+                                select: {
+                                    id: true, sequence: true, status: true, isReturnToBase: true, observations: true,
+                                    actualArrival: true, actualDeparture: true,
+                                    client: { select: { name: true, latitude: true, longitude: true } }
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+            if (!t) { resultado.push({ id, salteado: 'no existe' }); continue; }
+            const r = t.linkedRoute;
+            if (!r) { resultado.push({ id, salteado: 'no tiene recorrido' }); continue; }
+            if (String(t.status).toUpperCase() !== 'COMPLETED' && !r.actualEndTime) { resultado.push({ id, salteado: 'no esta finalizado' }); continue; }
+            const inicio = r.actualStartTime || t.startedAt || t.exitTime || null;
+            const fin = r.actualEndTime || t.completedAt || t.returnTime || null;
+            const gps = (await prisma.deviceLocation.findMany({
+                where: { routeId: r.id },
+                select: { latitude: true, longitude: true, capturedAt: true, timestamp: true },
+                orderBy: { timestamp: 'asc' }, take: 50000
+            })).map((g: any) => ({ lat: g.latitude, lng: g.longitude, t: new Date(g.capturedAt || g.timestamp).getTime() }));
+            const est = estimarHorasDeParadas(r.stops.map((s: any) => ({
+                id: s.id, sequence: s.sequence, status: s.status, deposito: !!s.isReturnToBase,
+                llegada: s.actualArrival, salida: s.actualDeparture,
+                lat: s.client?.latitude ?? null, lng: s.client?.longitude ?? null
+            })), inicio, fin, gps);
+            const porId = new Map(r.stops.map((s: any) => [s.id, s]));
+            const detalle = est.cambios.map((c) => ({
+                stopId: c.id, nombre: (porId.get(c.id) as any)?.client?.name || '',
+                llegada: c.llegada.toISOString(), salida: c.salida.toISOString(), como: c.como, pasaAEntregada: c.marcarEntregada
+            }));
+            const fila: any = {
+                id, fecha: new Date(t.date).toISOString().slice(0, 10), reparto: t.reparto, puntosGps: gps.length,
+                cambios: detalle, salteado: est.salteado || null, pendientesQueQuedan: est.pendientesQueQuedan
+            };
+            if (dryRun || !est.cambios.length) { resultado.push(fila); continue; }
+
+            const antes = est.cambios.map((c) => {
+                const s: any = porId.get(c.id);
+                return { stopId: c.id, status: s.status, actualArrival: fmt(s.actualArrival), actualDeparture: fmt(s.actualDeparture), observations: s.observations ?? null };
+            });
+            await prisma.$transaction(est.cambios.map((c) => {
+                const s: any = porId.get(c.id);
+                const nota = c.como === 'GPS'
+                    ? 'Hora estimada por GPS: el viaje se cerró sin marcar esta parada.'
+                    : 'Hora estimada (repartida en la duración del viaje): el viaje se cerró sin marcar esta parada.';
+                return prisma.stop.update({
+                    where: { id: c.id },
+                    data: {
+                        actualArrival: c.llegada, actualDeparture: c.salida,
+                        ...(c.marcarEntregada ? { status: 'COMPLETED' } : {}),
+                        observations: s.observations ? `${s.observations} · ${nota}` : nota
+                    }
+                });
+            }));
+            await logAction(req, 'UPDATE', 'Trip', id, `Horas de parada estimadas (${est.cambios.length})`, { paradas: antes }, { paradas: detalle });
+            io.emit('trip:updated', { tripId: id });
+            resultado.push({ ...fila, guardado: true });
         } catch (e: any) {
             resultado.push({ id, error: e?.message || String(e) });
         }
