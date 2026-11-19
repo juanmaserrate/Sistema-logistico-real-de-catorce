@@ -50,6 +50,16 @@ console.log('\n2b. Las de alrededor estan fuera de orden (restaurados con la lis
     ], H('08:00'), H('12:00'));
     const c = r.cambios[0];
     esperar('va al hueco mas grande (10:10 a 12:00): sale 11:05', c && hm(c.salida) === '11:05' && hm(c.llegada) === '10:55', c && [hm(c.llegada), hm(c.salida)]);
+
+    // Entre la 1 y la 3 por orden hay lugar (09:10 a 10:00), pero la 4 (09:30) cae adentro
+    const r2 = estimarHorasDeParadas([
+        p(1, { status: 'COMPLETED', llegada: H('09:00'), salida: H('09:10') }),
+        p(2, { status: 'COMPLETED' }),
+        p(3, { status: 'COMPLETED', llegada: H('10:00'), salida: H('10:10') }),
+        p(4, { status: 'COMPLETED', llegada: H('09:20'), salida: H('09:50') })
+    ], H('08:00'), H('12:00'));
+    const c2 = r2.cambios[0];
+    esperar('no pisa a otra parada: va al hueco 10:10 a 12:00', c2 && hm(c2.salida) === '11:05', c2 && [hm(c2.llegada), hm(c2.salida)]);
 }
 
 console.log('\n3. Con GPS');

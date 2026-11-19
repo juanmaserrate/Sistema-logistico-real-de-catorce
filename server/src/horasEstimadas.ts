@@ -151,7 +151,8 @@ export function estimarHorasDeParadas(
         let desde = antesDe(i), hasta = despuesDe(j - 1);
         // Las de alrededor estan fuera de orden (o pegadas): no hay lugar
         // entre ellas, se van al hueco mas grande del viaje.
-        if (hasta - desde < k * 4 * MIN) [desde, hasta] = mayorHueco();
+        const pisaOtra = linea.some((x) => x.llegada != null && x.salida! > desde && x.llegada! < hasta);
+        if (hasta - desde < k * 4 * MIN || pisaOtra) [desde, hasta] = mayorHueco();
         const paso = Math.max(0, hasta - desde) / (k + 1);
         const espera = Math.min(10 * MIN, paso * 0.4);
         for (let n = 1; n <= k; n++) {
