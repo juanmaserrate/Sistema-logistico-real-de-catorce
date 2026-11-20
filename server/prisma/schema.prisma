@@ -605,6 +605,8 @@ model DeviceLocation {
   @@index([deviceId, timestamp])
   @@index([timestamp])
   @@index([routeId, timestamp])
+  /// A que viaje va cada punto: el del chofer en curso a esa hora (gpsDeViaje.ts)
+  @@index([driverId, timestamp])
   @@index([driverId])
   @@index([isActive, timestamp])
 }

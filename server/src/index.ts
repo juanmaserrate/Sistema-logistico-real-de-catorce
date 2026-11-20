@@ -34,6 +34,7 @@ import { subirArchivo, bajarArchivo, sharepointConfigurado, faltanVariablesShare
 import { leerPlanillaCajones, compararCajones, agruparPorPeriodo, repartoDeViaje, MovimientoApp, TipoPlanilla } from './planillaCajones';
 import { completarHorasDelViaje, completarHorasAlCerrar, barrerViajesSinHoras } from './horasEstimadas';
 import { ralearGpsViejo, GPS_SEGUNDOS_RALEO } from './gpsRaleo';
+import { rutasDeLosPuntos, reasignarGpsDeRutas } from './gpsDeViaje';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
@@ -2763,8 +2764,14 @@ app.post('/api/v1/tracking/lote', trackingLimiter, async (req: any, res: any) =>
         const { buenos, descartados } = limpiarLote(points, anterior, new Date());
         if (!buenos.length) return res.json({ ok: true, guardados: 0, descartados });
 
+        // Cada punto va al viaje que ESTE chofer tenia en curso a esa hora, no
+        // al que tiene elegido el celular: con dos o tres viajes en el dia, el
+        // celular seguia mandando con el primero (ver gpsDeViaje.ts).
+        const rutaDe = new Map<typeof buenos[number], number | null>();
+        const rutas = await rutasDeLosPuntos(prisma, did, buenos.map((p) => p.t), rid).catch(() => buenos.map(() => rid));
+        buenos.forEach((p, i) => rutaDe.set(p, rutas[i]));
         const fila = (p: typeof buenos[number]) => ({
-            deviceId: dev, deviceLabel: label, driverId: did, routeId: rid,
+            deviceId: dev, deviceLabel: label, driverId: did, routeId: rutaDe.get(p) ?? rid,
             latitude: p.lat, longitude: p.lng,
             accuracy: p.acc, speed: p.spd, heading: p.hdg,
             capturedAt: p.horaDelServidor ? null : p.t,
@@ -2782,10 +2789,11 @@ app.post('/api/v1/tracking/lote', trackingLimiter, async (req: any, res: any) =>
         avisarPosicionEnVivo(record);
         res.json({ ok: true, guardados: buenos.length, descartados });
 
-        if (rid != null) {
+        const ridUltimo = rutaDe.get(ultimo) ?? rid;
+        if (ridUltimo != null) {
             setImmediate(async () => {
                 try {
-                    const poly = await getRoutePolylinePointsCachedOrBuild(rid);
+                    const poly = await getRoutePolylinePointsCachedOrBuild(ridUltimo);
                     if (poly && poly.length >= 2) {
                         const meters = minDistanceToPolylineMeters(ultimo.lat, ultimo.lng, poly);
                         await prisma.deviceLocation.update({ where: { id: record.id }, data: { offRouteMeters: meters } }).catch(() => {});
@@ -3792,7 +3800,9 @@ async function construirRecorrido(routeId: number) {
         },
         orderBy: { timestamp: 'asc' },
         select: { latitude: true, longitude: true, timestamp: true, accuracy: true },
-        take: 30000
+        // A 1 punto por segundo (desde 20-nov-2026), 30.000 cortaba un viaje
+        // de mas de 8 horas. 100.000 son mas de 27 horas.
+        take: 100000
     });
     const puntos = prepararPuntos(
         filas.map((f) => ({ lat: f.latitude, lng: f.longitude, t: f.timestamp, acc: f.accuracy })),
@@ -3862,6 +3872,41 @@ async function barrerRecorridos() {
     }
 }
 setTimeout(() => { void barrerRecorridos(); setInterval(() => void barrerRecorridos(), 5 * 60000); }, 2 * 60000);
+
+/** Cada 30 min: los puntos de las ultimas 26 h que quedaron en otro viaje del
+ *  mismo chofer (o en ninguno) pasan al viaje que estaba en curso a esa hora.
+ *  Cubre los viajes que se iniciaron despues de que llegaron sus puntos y los
+ *  puntos viejos que el celular mando al recuperar señal. */
+async function repasarGpsDeViajes() {
+    try {
+        const ahora = new Date();
+        const r = await reasignarGpsDeRutas(prisma, new Date(ahora.getTime() - 26 * 3600 * 1000), ahora);
+        if (r.puntosMovidos) console.log(`[gps] ${r.puntosMovidos} puntos pasados a su viaje (${r.porRuta.map((x) => 'ruta ' + x.routeId).join(', ')})`);
+    } catch (e: any) {
+        console.warn('[gps] repaso de viajes:', e?.message || e);
+    }
+}
+setTimeout(() => { void repasarGpsDeViajes(); setInterval(() => void repasarGpsDeViajes(), 30 * 60000); }, 4 * 60000);
+
+/** Pasa a cada viaje los puntos de su chofer guardados con otro viaje.
+ *  POST /api/admin/reasignar-gps { key, desde: 'AAAA-MM-DD', hasta: 'AAAA-MM-DD', dryRun? } */
+app.post('/api/admin/reasignar-gps', async (req: any, res: any) => {
+    const { key, desde, hasta, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const d = /^\d{4}-\d{2}-\d{2}$/.test(String(desde || '')) ? utcDayRange(String(desde)).start : null;
+    const h = /^\d{4}-\d{2}-\d{2}$/.test(String(hasta || '')) ? utcDayRange(String(hasta)).end : null;
+    if (!d || !h || h < d) return res.status(400).json({ error: 'desde y hasta (AAAA-MM-DD)' });
+    try {
+        const r = await reasignarGpsDeRutas(prisma, d, h, { dryRun: !!dryRun });
+        if (!dryRun && r.puntosMovidos) {
+            await logAction(req, 'UPDATE', 'settings', 0, `GPS reasignado a su viaje (${desde} a ${hasta})`, null,
+                { puntos: r.puntosMovidos, rutas: r.porRuta.map((x) => x.routeId) });
+        }
+        res.json({ dryRun: !!dryRun, ...r });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
 
 /** Arma el recorrido ahora (la hoja de ruta lo pide si todavia no esta).
  *  Viaje cerrado: lo guarda. En curso: lo devuelve sin guardar.
