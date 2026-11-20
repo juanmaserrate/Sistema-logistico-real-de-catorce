@@ -25,6 +25,9 @@ const esperar = (que: string, ok: boolean, detalle?: any) => {
     esperar('10:45 (se pisan) -> el que arranco ultimo, 2', rutaEnHora(rutas, H('10:45')) === 2);
     esperar('13:30 (entre viajes) -> ninguno', rutaEnHora(rutas, H('13:30')) === null);
     esperar('15:00 con el 3 abierto -> 3', rutaEnHora(rutas, H('15:00'), H('16:00')) === 3);
+    const viejoAbierto = [{ id: 9, ini: new Date('2031-01-20T08:00:00Z'), fin: null }];
+    esperar('un viaje abierto hace dias no se lleva los puntos de hoy', rutaEnHora(viejoAbierto, H('09:00'), H('10:00')) === null);
+    esperar('pero si los de sus primeras 16 horas', rutaEnHora(viejoAbierto, new Date('2031-01-20T20:00:00Z'), H('10:00')) === 9);
 
     console.log('\n2. Contra la base: un chofer con dos viajes, el celular mandaba todo al primero');
     const user = await prisma.user.create({ data: { username: 'prueba-gps-viaje-' + Date.now(), password: 'x', fullName: 'PRUEBA GPS', role: 'DRIVER', tenantId: 'default-tenant' } as any });

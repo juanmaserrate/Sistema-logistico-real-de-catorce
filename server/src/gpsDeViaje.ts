@@ -18,11 +18,21 @@
 
 export interface VentanaDeRuta { id: number; ini: Date; fin: Date | null }
 
+/** Ningun viaje dura mas que esto. Un viaje que quedo abierto (o se cerro dias
+ *  despues) no se lleva los puntos de los dias siguientes. */
+export const DURACION_MAXIMA_MS = 16 * 3600 * 1000;
+
+function finEfectivo(ini: Date, fin: Date | null, ahora: Date): Date {
+    const f = fin ?? ahora;
+    const tope = new Date(ini.getTime() + DURACION_MAXIMA_MS);
+    return f < tope ? f : tope;
+}
+
 /** El viaje que el chofer tenia en curso a la hora `t`, o null. */
 export function rutaEnHora(rutas: VentanaDeRuta[], t: Date, ahora: Date = new Date()): number | null {
     let mejor: VentanaDeRuta | null = null;
     for (const r of rutas) {
-        const fin = r.fin ?? ahora;
+        const fin = finEfectivo(r.ini, r.fin, ahora);
         if (t < r.ini || t > fin) continue;
         if (!mejor || r.ini > mejor.ini || (r.ini.getTime() === mejor.ini.getTime() && r.id > mejor.id)) mejor = r;
     }
@@ -98,7 +108,7 @@ export async function reasignarGpsDeRutas(prisma: any, desde: Date, hasta: Date,
         // guardar): este viaje llega hasta ahi, sin incluirlo. Asi una segunda
         // pasada no mueve nada.
         const ini = new Date(r.actualStartTime);
-        let fin = r.actualEndTime ? new Date(r.actualEndTime) : ahora;
+        let fin = finEfectivo(ini, r.actualEndTime ? new Date(r.actualEndTime) : null, ahora);
         let finAbierto = false;
         for (const o of rutas) {
             if (o.id === r.id || o.driverId !== r.driverId) continue;
