@@ -30254,6 +30254,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (valInp) valInp.value = '';
             const provInp = document.getElementById('new-trip-provider');
             if (provInp) provInp.value = '';
+            const patTerc = document.getElementById('new-trip-vehicle-terc');
+            if (patTerc) patTerc.value = '';
             toggleVehicleTypeField(); // Hide vehicle + proveedor + valor cuando es Propio
 
             document.getElementById('new-trip-loc').value = '';
@@ -30459,6 +30461,16 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (typeof toggleVehicleTypeField === 'function') toggleVehicleTypeField();
         }
 
+        /** La patente del viaje. Propio: la elegida de la flota. Tercerizado:
+         *  la que se escribio a mano (sin espacios, en mayuscula). */
+        function ntPatente() {
+            const terc = (document.getElementById('new-trip-contract')?.value || 'Propio') !== 'Propio';
+            const v = terc
+                ? document.getElementById('new-trip-vehicle-terc')?.value
+                : document.getElementById('new-trip-vehicle')?.value;
+            return String(v || '').replace(/\s+/g, '').toUpperCase() || null;
+        }
+
         function toggleVehicleTypeField() {
             const contract = document.getElementById('new-trip-contract').value;
             const container = document.getElementById('new-trip-vehicle-container');
@@ -30468,6 +30480,18 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             // El coche se muestra siempre. Antes se escondia justo en los
             // propios, que son los unicos que andan con la flota de la empresa.
             if (container) container.classList.remove('hidden');
+            // Tercerizado: el coche no es de la flota, asi que no se ofrecen sus
+            // patentes ni se sugiere la del chofer: se escribe a mano.
+            const selPatente = document.getElementById('new-trip-vehicle');
+            const inpPatente = document.getElementById('new-trip-vehicle-terc');
+            if (selPatente && inpPatente) {
+                selPatente.classList.toggle('hidden', isTerc);
+                inpPatente.classList.toggle('hidden', !isTerc);
+                if (isTerc) {
+                    const avisoPatente = document.getElementById('new-trip-vehicle-hint');
+                    if (avisoPatente) { avisoPatente.textContent = ''; avisoPatente.classList.add('hidden'); }
+                }
+            }
             if (providerContainer) {
                 if (isTerc) providerContainer.classList.remove('hidden');
                 else {
@@ -30541,6 +30565,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             onNewTripModoChange();
             refrescarAvisoChoferNuevo((trip.driver || '').trim().toUpperCase());
             document.getElementById('new-trip-vehicle').value = trip.vehicle || '';
+            const patTercEdit = document.getElementById('new-trip-vehicle-terc');
+            if (patTercEdit) patTercEdit.value = trip.vehicle || '';
             document.getElementById('new-trip-aux1').value = trip.auxiliar || '';
             document.getElementById('new-trip-aux2').value = trip.auxiliar2 || '';
             document.getElementById('new-trip-aux3').value = trip.auxiliar3 || '';
@@ -30695,9 +30721,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 driver: (document.getElementById('new-trip-driver').value || '').trim().toUpperCase(),
                 // La patente del coche. El tipo (VAN, Ducato...) se toma de
                 // Flota: se carga una sola vez por vehiculo y no en cada viaje.
-                vehicle: document.getElementById('new-trip-vehicle').value || null,
+                vehicle: ntPatente(),
                 vehicleType: (() => {
-                    const p = document.getElementById('new-trip-vehicle').value;
+                    const p = ntPatente();
                     const v = p ? (allVehicles || []).find(x => x.plate === p) : null;
                     return v?.vehicleType || null;
                 })(),
@@ -32424,6 +32450,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                         <div id="new-trip-vehicle-container">
                             <label class="text-[10px] font-bold text-[#A3AED0] uppercase block mb-1">Coche / Patente</label>
                             <select id="new-trip-vehicle" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500"></select>
+                            <!-- Tercerizado: el coche no es de la flota. Se escribe la patente, sin sugerencias. -->
+                            <input type="text" id="new-trip-vehicle-terc" placeholder="Escribí la patente (ej. AB123CD)" maxlength="12"
+                                   autocomplete="off" autocorrect="off" autocapitalize="characters" spellcheck="false"
+                                   oninput="this.value = this.value.toUpperCase()"
+                                   class="nt-campo hidden w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500 uppercase">
                             <p id="new-trip-vehicle-hint" class="hidden mt-1 text-[10px] font-bold text-indigo-600"></p>
                         </div>
                         <div>
