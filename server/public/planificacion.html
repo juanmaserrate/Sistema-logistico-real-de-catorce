@@ -17761,6 +17761,39 @@
             return unidadDeRuta(ruta) || null;
         }
 
+        // ── Cada unidad del viaje tiene que tener al menos una parada ─────
+        // Pedido de juanma (20-nov-2026). Una unidad agregada al viaje sin
+        // ninguna parada suya sale con 0 horas en el Excel (sus horas van a la
+        // otra unidad): en noviembre eran 22 filas, casi todas REPOSICION y
+        // RETIRO en viajes LIBRE.
+
+        /** De que unidad es una parada: la de su ruta predefinida, la que se
+         *  eligio a mano, o la unica que tiene el viaje. null = no se sabe. */
+        function unidadDeLaParada(row, unidadesViaje) {
+            if (!row || esParadaDeposito(row.name)) return null;
+            const deRuta = unidadPorPlantilla(row);
+            if (deRuta) return normalizeBusinessUnit(deRuta);
+            const elegida = normalizeBusinessUnit(row.ruta || row.unidad || '');
+            if (elegida && unidadesViaje.includes(elegida)) return elegida;
+            return unidadesViaje.length === 1 ? unidadesViaje[0] : null;
+        }
+
+        /** Las unidades del viaje que no tienen ninguna parada. */
+        function unidadesSinParadas(unidadesViaje, filas) {
+            const usadas = new Set((filas || []).map(f => unidadDeLaParada(f, unidadesViaje)).filter(Boolean));
+            return (unidadesViaje || []).filter(u => !usadas.has(u));
+        }
+
+        /** El aviso cuando falta: que unidad y que hacer. */
+        function avisoUnidadesSinParadas(faltan) {
+            const lista = faltan.join(', ');
+            return (faltan.length === 1
+                ? `La unidad de negocio ${lista} no tiene ninguna parada.`
+                : `Estas unidades de negocio no tienen ninguna parada: ${lista}.`)
+                + String.fromCharCode(10, 10)
+                + 'Cada unidad del viaje tiene que tener al menos una parada: asignásela a una parada (en la lista de paradas, la columna Unidad) o sacala del viaje.';
+        }
+
         /** De que unidad es una parada de un viaje LIBRE. null = no lo dice. */
         function unidadDeParadaLibre(row, conocidas) {
             if (!row || esParadaDeposito(row.name)) return null;
@@ -18164,6 +18197,9 @@
                 const agregar = usadas.filter(u => !delViaje.includes(u));
                 if (agregar.length) unidadesNuevas = [...delViaje, ...agregar].join(', ');
             }
+            // Todos los viajes: cada unidad, al menos una parada
+            const sinParadasChevron = unidadesSinParadas(unidadesDeNegocio(unidadesNuevas || trip?.businessUnit), rows);
+            if (sinParadasChevron.length) return alert(avisoUnidadesSinParadas(sinParadasChevron));
             try {
                 const guardado = await putTripDeliveryStops(
                     tripId,
@@ -28717,6 +28753,18 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             return esRepartoLibre(document.getElementById('new-trip-reparto')?.value);
         }
 
+        /** Se elige la unidad de cada parada: siempre en un LIBRE, y en
+         *  cualquier viaje con mas de una unidad (si no, no habria forma de
+         *  darle una parada a la segunda). */
+        function ntPideUnidadPorParada() {
+            return ntEsLibre() || unidadesDeNegocio(document.getElementById('new-trip-bu')?.value || '').length > 1;
+        }
+
+        /** Las unidades del viaje del formulario que no tienen ninguna parada. */
+        function ntUnidadesSinParadas() {
+            return unidadesSinParadas(unidadesDeNegocio(document.getElementById('new-trip-bu')?.value || ''), tripDeliveryRows);
+        }
+
         /** Paradas del viaje LIBRE que todavia no dicen su unidad. */
         function ntParadasSinUnidad() {
             if (!ntEsLibre()) return [];
@@ -28739,7 +28787,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         function renderTripDeliveryList() {
             if (typeof ntActualizarTabParadas === 'function') ntActualizarTabParadas();
-            const pedirUnidad = ntEsLibre();
+            const pedirUnidad = ntPideUnidadPorParada();
             const unidadesViaje = unidadesDeNegocio(document.getElementById('new-trip-bu')?.value || '');
             const opcionesUnidad = pedirUnidad ? unidadesParaElegir(unidadesViaje) : [];
             const cab = document.getElementById('td-cabecera');
@@ -28748,10 +28796,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 cab.querySelector('.td-unidad-cab')?.classList.toggle('hidden', !pedirUnidad);
             }
             const faltan = ntParadasSinUnidad().length;
+            const unidadesSinParada = ntUnidadesSinParadas();
             const aviso = document.getElementById('td-faltan-unidad');
             if (aviso) {
-                aviso.classList.toggle('hidden', faltan === 0);
-                aviso.textContent = faltan === 1 ? 'falta 1 unidad' : `faltan ${faltan} unidades`;
+                aviso.classList.toggle('hidden', faltan === 0 && unidadesSinParada.length === 0);
+                aviso.textContent = faltan > 0
+                    ? (faltan === 1 ? 'falta 1 unidad' : `faltan ${faltan} unidades`)
+                    : `${unidadesSinParada.join(', ')} sin parada`;
             }
             const celdaUnidad = (row, i) => {
                 if (!pedirUnidad) return '';
@@ -29318,7 +29369,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const s = allSchools.find((x) => x.id === id);
             if (!s) return;
             if (tripDeliveryRows.some((r) => r.clientId === id)) return;
-            const sugerida = ntEsLibre()
+            const sugerida = ntPideUnidadPorParada()
                 ? sugerirUnidadDeParada(s.id, s.name, unidadesDeNegocio(document.getElementById('new-trip-bu')?.value || ''))
                 : null;
             agregarParadaAntesDelDeposito(tripDeliveryRows, { clientId: s.id, name: s.name || s.id, address: s.address || '', ruta: sugerida });
@@ -30674,6 +30725,13 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 return alert('Es un viaje LIBRE: elegí de qué unidad de negocio es cada parada.'
                     + String.fromCharCode(10, 10)
                     + (sinUnidad.length === 1 ? 'Falta 1: ' : `Faltan ${sinUnidad.length}: `) + nombres);
+            }
+            // Todos los viajes: cada unidad de negocio, al menos una parada
+            const unidadesSinParada = ntUnidadesSinParadas();
+            if (unidadesSinParada.length) {
+                ntTab('paradas');
+                renderTripDeliveryList();
+                return alert(avisoUnidadesSinParadas(unidadesSinParada));
             }
             // El reparto tambien. De 960 viajes cargados, 31 quedaron sin el, y
             // esos caen en "(sin reparto)" en todos los reportes y se quedan sin
