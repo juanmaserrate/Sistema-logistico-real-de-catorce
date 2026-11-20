@@ -35,6 +35,7 @@ import { leerPlanillaCajones, compararCajones, agruparPorPeriodo, repartoDeViaje
 import { completarHorasDelViaje, completarHorasAlCerrar, barrerViajesSinHoras } from './horasEstimadas';
 import { ralearGpsViejo, ralearVentana, GPS_SEGUNDOS_RALEO } from './gpsRaleo';
 import { rutasDeLosPuntos, reasignarGpsDeRutas } from './gpsDeViaje';
+import { corregirSalidaDelViaje } from './salidaReal';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
@@ -3967,6 +3968,28 @@ app.post('/api/admin/ralear-gps', async (req: any, res: any) => {
     } catch (e: any) {
         res.status(500).json({ error: e?.message || 'Error' });
     }
+});
+
+/** La salida real (GPS del deposito) de viajes que tomaron como salida la
+ *  hora de su primera parada. Ver salidaReal.ts.
+ *  POST /api/admin/corregir-salidas { key, ids: [...], dryRun? } */
+app.post('/api/admin/corregir-salidas', async (req: any, res: any) => {
+    const { key, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const ids = (Array.isArray(req.body?.ids) ? req.body.ids : []).map(Number).filter((n: number) => Number.isInteger(n) && n > 0);
+    if (!ids.length || ids.length > 500) return res.status(400).json({ error: 'Mandá entre 1 y 500 viajes' });
+    const quien = String(req.headers['x-actor-name'] || '').trim() || undefined;
+    const resultado: any[] = [];
+    for (const id of ids) {
+        try {
+            const r = await corregirSalidaDelViaje(prisma, { tripId: id }, { dryRun: !!dryRun, quien });
+            if (r?.guardado) io.emit('trip:updated', { tripId: id });
+            resultado.push(r ? { id, ...r } : { id, motivo: 'no tiene recorrido' });
+        } catch (e: any) {
+            resultado.push({ id, error: e?.message || String(e) });
+        }
+    }
+    res.json({ dryRun: !!dryRun, resultado });
 });
 
 /** Pasa a cada viaje los puntos de su chofer guardados con otro viaje.
