@@ -19,6 +19,8 @@ export const RADIO_DEPOSITO_M = 300;
 /** Si el camion estuvo en el deposito hasta menos que esto antes de la primera
  *  parada, no es una salida: es el mismo lugar (o un dato raro). */
 const MINIMO_ANTES_MS = 3 * 60 * 1000;
+/** Hasta cuanto se corrige solo. */
+export const MAXIMO_MIN_SOLO = 90;
 /** Hasta cuanto antes de la primera parada se busca, si no hubo viaje anterior. */
 const VENTANA_MS = 4 * 3600 * 1000;
 
@@ -54,7 +56,7 @@ export interface ResultadoSalida {
 export async function corregirSalidaDelViaje(
     prisma: any,
     ref: { routeId?: number; tripId?: number },
-    opciones: { dryRun?: boolean; quien?: string } = {}
+    opciones: { dryRun?: boolean; quien?: string; maximoMin?: number } = {}
 ): Promise<ResultadoSalida | null> {
     const route = await prisma.route.findFirst({
         where: ref.routeId ? { id: ref.routeId } : { tripId: ref.tripId },
@@ -99,6 +101,14 @@ export async function corregirSalidaDelViaje(
     res.salidaNueva = new Date(salida).toISOString();
     res.minutosSumados = Math.round((ini.getTime() - salida) / 60000);
     res.motivo = 'salida del deposito segun el GPS';
+    // Mas de hora y media entre el deposito y la primera parada puede ser real
+    // o que el camion hizo otra cosa en el medio: eso lo mira una persona.
+    const maximo = opciones.maximoMin ?? MAXIMO_MIN_SOLO;
+    if (res.minutosSumados > maximo) {
+        res.motivo = `mas de ${maximo} min entre el deposito y la primera parada: revisar a mano`;
+        res.salidaNueva = null;
+        return res;
+    }
     if (opciones.dryRun) return res;
 
     const nueva = new Date(salida);
@@ -123,4 +133,14 @@ export async function corregirSalidaDelViaje(
     }).catch(() => {});
     res.guardado = true;
     return res;
+}
+
+/** Para el cierre del viaje: nunca tira ni frena. */
+export async function corregirSalidaAlCerrar(prisma: any, ref: { routeId?: number; tripId?: number }): Promise<void> {
+    try {
+        const r = await corregirSalidaDelViaje(prisma, ref);
+        if (r?.guardado) console.log(`[salida real] viaje ${r.tripId}: +${r.minutosSumados} min (GPS del deposito)`);
+    } catch (e: any) {
+        console.warn('[salida real] ' + JSON.stringify(ref) + ':', e?.message || e);
+    }
 }

@@ -3982,7 +3982,8 @@ app.post('/api/admin/corregir-salidas', async (req: any, res: any) => {
     const resultado: any[] = [];
     for (const id of ids) {
         try {
-            const r = await corregirSalidaDelViaje(prisma, { tripId: id }, { dryRun: !!dryRun, quien });
+            const maximoMin = Number(req.body?.maximoMin) > 0 ? Number(req.body.maximoMin) : undefined;
+            const r = await corregirSalidaDelViaje(prisma, { tripId: id }, { dryRun: !!dryRun, quien, maximoMin });
             if (r?.guardado) io.emit('trip:updated', { tripId: id });
             resultado.push(r ? { id, ...r } : { id, motivo: 'no tiene recorrido' });
         } catch (e: any) {

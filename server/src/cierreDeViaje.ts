@@ -35,6 +35,7 @@
 import type { PrismaClient } from '@prisma/client';
 import { esVueltaAlDeposito } from './unidadesDelViaje';
 import { completarHorasAlCerrar } from './horasEstimadas';
+import { corregirSalidaAlCerrar } from './salidaReal';
 
 /** Menos que esto en una escuela no es una entrega: el chofer toco "llegue"
  *  y "sali" de corrido. Se avisa, no se corrige. */
@@ -164,6 +165,10 @@ export async function normalizarViajeAlCerrar(
     // la salida y la llegada (ver horasEstimadas.ts). Va antes de leer la ruta
     // para que el orden y la ventana se calculen con esas horas. Pedido de
     // juanma, 19-nov-2026. No hace nada en un viaje abierto.
+    // Viaje que nadie inicio: su salida es la hora de la primera parada y se
+    // pierde el viaje desde el deposito. Si el GPS muestra cuando salio del
+    // deposito, esa es la salida (ver salidaReal.ts, 20-nov-2026).
+    if (!dryRun) await corregirSalidaAlCerrar(prisma, { routeId });
     if (!dryRun) await completarHorasAlCerrar(prisma, { routeId });
 
     const route = await prisma.route.findUnique({
