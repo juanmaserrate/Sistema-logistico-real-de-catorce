@@ -247,7 +247,9 @@ export function repartirHoras(
                 const u = unidadDeParada(p, unidadPorRuta, unidades);
                 entregadas[u] = (entregadas[u] || 0) + 1;
             }
-            const quedanEnCero = Object.keys(entregadas).some((u) => !(horas[u] > 0));
+            // Menos de un minuto por parada entregada es lo mismo que 0: el
+            // #10156 tenia RETIRO marcado 3 segundos despues de la salida.
+            const quedanEnCero = Object.keys(entregadas).some((u) => !(horas[u] >= entregadas[u] / 60));
             if (!quedanEnCero) return { horas, paradas, total, metodo: 'por horario de cada parada' };
             const totalEntregadas = Object.values(entregadas).reduce((a, b) => a + b, 0);
             for (const u of Object.keys(horas)) delete horas[u];

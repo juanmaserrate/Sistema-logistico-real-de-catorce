@@ -160,7 +160,7 @@ console.log('\n(20-nov-2026) Una unidad con paradas entregadas no queda en 0');
     const r = repartirHoras({
         businessUnit: 'RETIRO, EVENTO',
         stops: [
-            { sequence: 1, ruta: 'RETIRO', client: { name: 'MAXICONSUMO S A' }, status: 'COMPLETED', actualArrival: '2026-11-18T12:37:00Z', actualDeparture: '2026-11-18T12:37:00Z' },
+            { sequence: 1, ruta: 'RETIRO', client: { name: 'MAXICONSUMO S A' }, status: 'COMPLETED', actualArrival: '2026-11-18T12:37:00Z', actualDeparture: '2026-11-18T12:37:03Z' },   // 3 s despues de la salida, como el real
             { sequence: 2, ruta: 'EVENTO', client: { name: 'EVENTO MOLINA ARRTEA' }, status: 'COMPLETED', actualArrival: '2026-11-18T12:52:00Z', actualDeparture: '2026-11-18T13:11:00Z' },
             { sequence: 3, isReturnToBase: true, client: { name: 'REAL DE CATORCE' }, status: 'COMPLETED', actualArrival: '2026-11-18T13:40:00Z' }
         ] as any,
