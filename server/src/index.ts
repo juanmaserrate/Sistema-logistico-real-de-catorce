@@ -33,7 +33,7 @@ import { metricasDelMes } from './metricasDashboard';
 import { subirArchivo, bajarArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnosticoSharepoint, limpiarTokenSharepoint } from './sharepoint';
 import { leerPlanillaCajones, compararCajones, agruparPorPeriodo, repartoDeViaje, MovimientoApp, TipoPlanilla } from './planillaCajones';
 import { completarHorasDelViaje, completarHorasAlCerrar, barrerViajesSinHoras } from './horasEstimadas';
-import { ralearGpsViejo, GPS_SEGUNDOS_RALEO } from './gpsRaleo';
+import { ralearGpsViejo, ralearVentana, GPS_SEGUNDOS_RALEO } from './gpsRaleo';
 import { rutasDeLosPuntos, reasignarGpsDeRutas } from './gpsDeViaje';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
@@ -48,7 +48,7 @@ import dotenv from 'dotenv';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
-import { limpiarLote, distanciaMetros } from './gpsLotes';
+import { limpiarLote, distanciaMetros, SEPARACION_MINIMA_MS } from './gpsLotes';
 import { usarCuotaMapbox, mesActual, TOPE_MENSUAL } from './mapboxCuota';
 import { prepararPuntos, armarRecorrido, PuntoGps, Coord, Recorrido } from './recorridoReal';
 import helmet from 'helmet';
@@ -2761,7 +2761,29 @@ app.post('/api/v1/tracking/lote', trackingLimiter, async (req: any, res: any) =>
             });
             if (u) anterior = { lat: u.latitude, lng: u.longitude, t: u.timestamp };
         }
-        const { buenos, descartados } = limpiarLote(points, anterior, new Date());
+        const limpio = limpiarLote(points, anterior, new Date());
+        const descartados = limpio.descartados;
+        let buenos = limpio.buenos;
+        // Un lote reenviado (el celular no recibio la respuesta a tiempo y lo
+        // vuelve a mandar) trae puntos que YA estan guardados: los anteriores al
+        // ultimo punto de este celular se comparan con la base y no se repiten.
+        if (anterior && buenos.some((p) => p.t <= anterior!.t)) {
+            const viejos = buenos.filter((p) => p.t <= anterior!.t);
+            const existentes = await prisma.deviceLocation.findMany({
+                where: {
+                    deviceId: dev,
+                    timestamp: {
+                        gte: new Date(viejos[0].t.getTime() - SEPARACION_MINIMA_MS),
+                        lte: new Date(viejos[viejos.length - 1].t.getTime() + SEPARACION_MINIMA_MS)
+                    }
+                },
+                select: { timestamp: true }, take: 20000
+            });
+            const ya = existentes.map((e) => e.timestamp.getTime());
+            const antes = buenos.length;
+            buenos = buenos.filter((p) => p.t > anterior!.t || !ya.some((x) => Math.abs(x - p.t.getTime()) < SEPARACION_MINIMA_MS));
+            descartados.repetidos += antes - buenos.length;
+        }
         if (!buenos.length) return res.json({ ok: true, guardados: 0, descartados });
 
         // Cada punto va al viaje que ESTE chofer tenia en curso a esa hora, no
@@ -3887,6 +3909,27 @@ async function repasarGpsDeViajes() {
     }
 }
 setTimeout(() => { void repasarGpsDeViajes(); setInterval(() => void repasarGpsDeViajes(), 30 * 60000); }, 4 * 60000);
+
+/** Deja como mucho un punto cada N segundos por celular en una ventana.
+ *  POST /api/admin/ralear-gps { key, desde: ISO, hasta: ISO, segundos?: 1, dryRun? } */
+app.post('/api/admin/ralear-gps', async (req: any, res: any) => {
+    const { key, desde, hasta, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const d = new Date(String(desde || '')), h = new Date(String(hasta || ''));
+    const seg = Math.max(1, Math.min(60, Math.round(Number(req.body?.segundos) || 1)));
+    if (!Number.isFinite(d.getTime()) || !Number.isFinite(h.getTime()) || h <= d || h.getTime() - d.getTime() > 3 * 86400000) {
+        return res.status(400).json({ error: 'desde y hasta (ISO), hasta 3 dias' });
+    }
+    try {
+        const n = await ralearVentana(prisma, d, h, seg, !!dryRun);
+        if (!dryRun && n) {
+            await logAction(req, 'UPDATE', 'settings', 0, `GPS raleado a 1 cada ${seg} s`, null, { desde: d.toISOString(), hasta: h.toISOString(), sacados: n });
+        }
+        res.json({ dryRun: !!dryRun, segundos: seg, puntos: n });
+    } catch (e: any) {
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
 
 /** Pasa a cada viaje los puntos de su chofer guardados con otro viaje.
  *  POST /api/admin/reasignar-gps { key, desde: 'AAAA-MM-DD', hasta: 'AAAA-MM-DD', dryRun? } */

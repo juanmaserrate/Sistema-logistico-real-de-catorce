@@ -52,3 +52,42 @@ export async function ralearGpsViejo(prisma: any, ahora: Date = new Date()): Pro
     }
     return sacados;
 }
+
+/** Deja como mucho un punto cada `segundos` por celular entre desde y hasta,
+ *  de a una hora por vez. Con dryRun solo cuenta lo que sacaria. */
+export async function ralearVentana(prisma: any, desde: Date, hasta: Date, segundos: number, dryRun = false): Promise<number> {
+    const paso = 3600 * 1000;
+    let total = 0;
+    for (let t = desde.getTime(); t < hasta.getTime(); t += paso) {
+        const d = new Date(t).toISOString();
+        const h = new Date(Math.min(t + paso, hasta.getTime())).toISOString();
+        if (dryRun) {
+            const filas = await prisma.$queryRaw`
+                SELECT COUNT(*)::int AS n FROM (
+                    SELECT ROW_NUMBER() OVER (
+                        PARTITION BY "deviceId", floor(extract(epoch from COALESCE("capturedAt", "timestamp")) / ${segundos})
+                        ORDER BY COALESCE("capturedAt", "timestamp"), id
+                    ) AS rn
+                    FROM "DeviceLocation"
+                    WHERE "timestamp" >= (${d}::timestamptz AT TIME ZONE 'UTC')
+                      AND "timestamp" <  (${h}::timestamptz AT TIME ZONE 'UTC')
+                ) x WHERE x.rn > 1`;
+            total += Number(filas?.[0]?.n) || 0;
+            continue;
+        }
+        const n = await prisma.$executeRaw`
+            DELETE FROM "DeviceLocation" d
+            USING (
+                SELECT id, ROW_NUMBER() OVER (
+                    PARTITION BY "deviceId", floor(extract(epoch from COALESCE("capturedAt", "timestamp")) / ${segundos})
+                    ORDER BY COALESCE("capturedAt", "timestamp"), id
+                ) AS rn
+                FROM "DeviceLocation"
+                WHERE "timestamp" >= (${d}::timestamptz AT TIME ZONE 'UTC')
+                  AND "timestamp" <  (${h}::timestamptz AT TIME ZONE 'UTC')
+            ) x
+            WHERE d.id = x.id AND x.rn > 1`;
+        total += Number(n) || 0;
+    }
+    return total;
+}

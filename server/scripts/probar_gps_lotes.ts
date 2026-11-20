@@ -71,5 +71,17 @@ console.log('\n8. Distancia y mes');
     esperar('mes de Buenos Aires (2:00 UTC del 1 de dic = 30 de nov)', mesActual(new Date('2026-12-01T02:00:00Z')) === '2026-11', mesActual(new Date('2026-12-01T02:00:00Z')));
 }
 
+console.log('\n9. Un navegador abierto: varias ubicaciones por segundo -> una por segundo');
+{
+    // 10 por segundo durante 5 segundos, moviendose de a poco
+    const muchos = Array.from({ length: 50 }, (_, i) => ({ lat: -34.8 + i * 0.000005, lng: -58.4, acc: 5, t: new Date(ahora.getTime() - 60000 + i * 100).toISOString() }));
+    const r = limpiarLote(muchos, null, ahora);
+    esperar('de 50 quedan 6 (uno cada 0,9 s como minimo)', r.buenos.length === 6, r.buenos.length);
+    esperar('el resto cuenta como repetido', r.descartados.repetidos === 44, r.descartados);
+    // A 1 por segundo con un poco de desfase (999 ms) no se pierde ninguno
+    const justos = Array.from({ length: 10 }, (_, i) => ({ lat: -34.8, lng: -58.4, acc: 5, t: new Date(ahora.getTime() - 60000 + i * 999).toISOString() }));
+    esperar('a 1 por segundo (999 ms) quedan los 10', limpiarLote(justos, null, ahora).buenos.length === 10);
+}
+
 console.log(todo ? '\nTODO OK\n' : '\nHAY ERRORES\n');
 process.exit(todo ? 0 : 1);

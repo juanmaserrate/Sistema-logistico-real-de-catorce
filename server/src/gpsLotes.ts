@@ -34,6 +34,12 @@ export interface ResultadoLote {
 }
 
 export const PRECISION_MAXIMA_M = 100;
+/** Como mucho un punto por segundo por celular. Con la toma "cada 1 s, aunque
+ *  no se mueva" (20-nov-2026), un celular con un navegador abierto (Waze, Maps,
+ *  el de la app) recibe varias ubicaciones por segundo y las mandaba todas:
+ *  hubo viajes con 700 puntos por minuto. 900 ms y no 1000: el GPS a 1 por
+ *  segundo a veces entrega a 999 ms y se perderia uno de cada dos. */
+export const SEPARACION_MINIMA_MS = 900;
 export const VELOCIDAD_MAXIMA_KMH = 150;
 /** Por debajo de esta distancia nunca es un salto: el GPS tiembla unos metros. */
 const DISTANCIA_MINIMA_SALTO_M = 300;
@@ -97,8 +103,8 @@ export function limpiarLote(puntos: PuntoCrudo[], anterior: { lat: number; lng: 
     let pendientes: PuntoLimpio[] = [];
     for (const p of validos) {
         const ult = buenos[buenos.length - 1];
-        if (ult && ult.t.getTime() === p.t.getTime()) { descartados.repetidos++; continue; }
-        if (anterior && !buenos.length && p.t.getTime() === anterior.t.getTime()) { descartados.repetidos++; continue; }
+        if (ult && p.t.getTime() - ult.t.getTime() < SEPARACION_MINIMA_MS) { descartados.repetidos++; continue; }
+        if (anterior && !buenos.length && Math.abs(p.t.getTime() - anterior.t.getTime()) < SEPARACION_MINIMA_MS) { descartados.repetidos++; continue; }
         if (!ancla) { buenos.push(p); ancla = p; continue; }
         if (esSalto(ancla, p)) {
             // Puede ser un rebote... o que el raro sea el ancla. Se espera a ver
