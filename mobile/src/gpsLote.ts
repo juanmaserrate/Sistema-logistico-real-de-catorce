@@ -81,54 +81,127 @@ async function sendLote(
   }
 }
 
-// Sin señal, cada envio espera 10 s antes de rendirse; con un punto cada 2 s se
-// apilarian. Despues de un fallo, por 15 s los puntos solo se guardan.
-let _ultimoFallo = 0;
-// Nunca dos envios a la vez: los dos leerian la misma cola y el segundo pisaria
-// lo que guardo el primero.
-let _cadena: Promise<unknown> = Promise.resolve();
+// ── La cola vive en memoria y se guarda cada 10 s ───────────────────────────
+// 20-nov-2026: la app del R19 dejo de responder 3 horas. Antes, CADA punto del
+// GPS (uno por segundo ese dia) leia la cola entera del celular (hasta 6.000
+// puntos), la volvia a escribir y encadenaba otro envio atras del anterior.
+// Con mala señal cada envio tarda hasta 10 s, asi que se apilaban cientos de
+// envios esperando y el celular no daba abasto. Ahora:
+//   - la cola se lee del celular UNA vez y se mantiene en memoria;
+//   - se guarda como mucho cada 10 s (y siempre al terminar un envio);
+//   - hay UN solo envio a la vez: si llega un punto mientras se manda, se suma
+//     a la cola y el envio en curso lo lleva al terminar. Nada se apila.
 
-export function enviarEnLotes(
-  apiBase: string,
-  quien: { deviceId: string; deviceLabel: string; driverId: string },
-  nuevos: PuntoLote[],
-): Promise<boolean> {
-  const p = _cadena.then(() => enviarEnLotesAhora(apiBase, quien, nuevos));
-  _cadena = p.catch(() => {});
-  return p;
+/** Despues de un fallo, por 15 s los puntos solo se guardan (sin señal cada
+ *  intento espera 10 s; reintentar con cada punto apilaria esperas). */
+const PAUSA_TRAS_FALLO_MS = 15000;
+/** Cada cuanto se escribe la cola en el celular, como mucho. */
+const GUARDAR_CADA_MS = 10000;
+
+let _cola: PuntoLote[] | null = null;      // espejo en memoria de lo guardado
+let _guardadaVacia = true;                  // lo que hay en el celular ahora
+let _cambios = false;                       // la memoria difiere de lo guardado
+let _ultimaEscritura = 0;
+let _ultimoFallo = 0;
+let _enviando = false;
+
+let _cargando: Promise<PuntoLote[]> | null = null;
+
+/** La cola en memoria. Se lee del celular una sola vez: si llegan dos puntos
+ *  juntos al abrir la app, los dos esperan la MISMA lectura (si no, cada uno
+ *  tendria su copia y se perderian puntos). */
+async function colaEnMemoria(): Promise<PuntoLote[]> {
+  if (_cola) return _cola;
+  if (!_cargando) {
+    _cargando = readLoteQueue().then((c) => {
+      _cola = c;
+      _guardadaVacia = c.length === 0;
+      _cambios = false;
+      _cargando = null;
+      return c;
+    });
+  }
+  return _cargando;
 }
 
-/** Manda la cola + los puntos nuevos. Devuelve true si hubo red. */
-async function enviarEnLotesAhora(
+/** Lo de mas de un dia no sirve (el servidor no lo podria ubicar en hora) y
+ *  la cola no pasa del tope: se van los mas viejos. */
+function podar(c: PuntoLote[]): void {
+  const limite = Date.now() - 24 * 3600 * 1000;
+  let i = 0;
+  while (i < c.length && !(Date.parse(c[i].t) > limite)) i++;
+  if (c.length - i > MAX_LOTE_QUEUE) i = c.length - MAX_LOTE_QUEUE;
+  if (i > 0) { c.splice(0, i); _cambios = true; }
+}
+
+async function guardar(ya = false): Promise<void> {
+  const c = _cola;
+  if (!c || !_cambios) return;
+  if (!ya && Date.now() - _ultimaEscritura < GUARDAR_CADA_MS) return;
+  _ultimaEscritura = Date.now();
+  _cambios = false;
+  if (!c.length) {
+    if (!_guardadaVacia) { await writeLoteQueue([]); _guardadaVacia = true; }
+    return;
+  }
+  await writeLoteQueue(c);
+  _guardadaVacia = false;
+}
+
+/** Suma los puntos nuevos y, si no hay otro envio en curso, manda la cola.
+ *  Devuelve true si hubo red. */
+export async function enviarEnLotes(
   apiBase: string,
   quien: { deviceId: string; deviceLabel: string; driverId: string },
   nuevos: PuntoLote[],
 ): Promise<boolean> {
-  const pendientes = await readLoteQueue();
-  // Lo de mas de un dia ya no sirve (el servidor no lo podria ubicar en hora)
-  const limite = Date.now() - 24 * 3600 * 1000;
-  let restantes = pendientes.concat(nuevos).filter((x) => Date.parse(x.t) > limite);
-  if (Date.now() - _ultimoFallo < 15000) {
-    await writeLoteQueue(restantes);
-    return false;
-  }
+  const c = await colaEnMemoria();
+  if (nuevos.length) { c.push(...nuevos); _cambios = true; }
+  // Con un envio en curso no se poda: correria las posiciones que esta mandando
+  if (_enviando) { await guardar(); return false; }
+  podar(c);
+  if (Date.now() - _ultimoFallo < PAUSA_TRAS_FALLO_MS) { await guardar(); return false; }
+
+  _enviando = true;
   let huboRed = false;
-  while (restantes.length) {
-    // Del final (lo mas nuevo) hacia atras; un pedido por ruta
-    const ultimo = restantes[restantes.length - 1];
-    let desde = restantes.length - 1;
-    while (desde > 0 && restantes.length - desde < PUNTOS_POR_PEDIDO && restantes[desde - 1].r === ultimo.r) desde--;
-    const pedaso = restantes.slice(desde);
-    const r = await sendLote(apiBase, quien, ultimo.r, pedaso);
-    if (r === 'reintentar') { _ultimoFallo = Date.now(); break; }
-    huboRed = true;
-    restantes = restantes.slice(0, desde);
-  }
-  // Solo se escribe si algo cambio respecto de lo que habia guardado
-  if (restantes.length !== pendientes.length || nuevos.length) {
-    if (!(restantes.length === 0 && pendientes.length === 0)) await writeLoteQueue(restantes);
+  try {
+    while (c.length) {
+      // Del final (lo mas nuevo) hacia atras; un pedido por ruta. Lo que llega
+      // mientras se manda queda al final y sale en la vuelta siguiente.
+      const ultimo = c[c.length - 1];
+      let desde = c.length - 1;
+      while (desde > 0 && c.length - desde < PUNTOS_POR_PEDIDO && c[desde - 1].r === ultimo.r) desde--;
+      const largo = c.length - desde;
+      const r = await sendLote(apiBase, quien, ultimo.r, c.slice(desde));
+      if (r === 'reintentar') { _ultimoFallo = Date.now(); break; }
+      huboRed = true;
+      c.splice(desde, largo);
+      _cambios = true;
+    }
+  } finally {
+    _enviando = false;
+    podar(c);
+    await guardar(true);
   }
   return huboRed;
+}
+
+/** Cuantos puntos esperan para salir (memoria incluida). */
+export async function puntosEnCola(): Promise<number> {
+  return (await colaEnMemoria()).length;
+}
+
+/** Para «Destrabar»: corta la espera tras un fallo, olvida un envio colgado y
+ *  achica la cola a lo ultimo (`maximo` puntos, lo mas nuevo). Lo que queda se
+ *  guarda en el celular en el momento. */
+export async function soltarEnvios(maximo = 1500): Promise<{ antes: number; despues: number }> {
+  const c = await colaEnMemoria();
+  const antes = c.length;
+  if (c.length > maximo) { c.splice(0, c.length - maximo); _cambios = true; }
+  _ultimoFallo = 0;
+  _enviando = false;
+  await guardar(true);
+  return { antes, despues: c.length };
 }
 
 export function aPuntoLote(loc: Location.LocationObject, routeId: number | null): PuntoLote {
@@ -154,5 +227,9 @@ export function aPuntoLote(loc: Location.LocationObject, routeId: number | null)
 /** Solo para las pruebas: vuelve a empezar como recien abierta la app. */
 export function _reiniciarParaPruebas(): void {
   _ultimoFallo = 0;
-  _cadena = Promise.resolve();
+  _enviando = false;
+  _cola = null;
+  _cargando = null;
+  _cambios = false;
+  _ultimaEscritura = 0;
 }

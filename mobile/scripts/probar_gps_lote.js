@@ -77,7 +77,8 @@ const reset = () => { almacen.clear(); pedidos.length = 0; escrituras = 0; red =
         red = 'ok';
         await g.enviarEnLotes('https://x', quien, [punto()]);
         esperar('dentro de los 15 s no pide (aunque haya vuelto la red)', pedidos.length === 0, pedidos.length);
-        esperar('quedan 3 guardados', cola().length === 3, cola().length);
+        esperar('quedan 3 esperando (en memoria)', (await g.puntosEnCola()) === 3, await g.puntosEnCola());
+        esperar('no reescribe la cola con cada punto (se guarda cada 10 s)', cola().length === 2, cola().length);
     }
 
     console.log('\n3. Vuelve la señal con 450 atrasados de dos rutas: primero lo nuevo, de a 200, una ruta por pedido');
@@ -125,6 +126,47 @@ const reset = () => { almacen.clear(); pedidos.length = 0; escrituras = 0; red =
         const ts_ = pedidos.flatMap(p => p.points.map(x => x.t));
         esperar('3 puntos, sin repetidos', ts_.length === 3 && new Set(ts_).size === 3, ts_);
         esperar('la cola queda vacia', !almacen.has('cola'), cola().length);
+    }
+
+    console.log('\n6b. Llegan puntos mientras se manda: no se apilan envios y salen todos');
+    {
+        reset();
+        let soltar;
+        const lento = new Promise((r) => { soltar = r; });
+        const fetchViejo = global.fetch;
+        let enVuelo = 0, maxEnVuelo = 0, primeroLargo = true;
+        global.fetch = async (url, opts) => {
+            enVuelo++; maxEnVuelo = Math.max(maxEnVuelo, enVuelo);
+            if (primeroLargo) { primeroLargo = false; await lento; }   // el primer envio tarda
+            const r = await fetchViejo(url, opts);
+            enVuelo--;
+            return r;
+        };
+        const primero = g.enviarEnLotes('https://x', quien, [punto()]);
+        const otros = [];
+        for (let i = 0; i < 20; i++) otros.push(await g.enviarEnLotes('https://x', quien, [punto()]));
+        esperar('los 20 que llegan mientras tanto vuelven enseguida (sin esperar)', otros.every((x) => x === false), otros);
+        soltar();
+        await primero;
+        global.fetch = fetchViejo;
+        const ts_ = pedidos.flatMap((p) => p.points.map((x) => x.t));
+        esperar('un solo envio a la vez', maxEnVuelo === 1, maxEnVuelo);
+        esperar('salen los 21, sin repetidos', ts_.length === 21 && new Set(ts_).size === 21, ts_.length);
+        esperar('la cola queda vacia', (await g.puntosEnCola()) === 0 && !almacen.has('cola'), cola().length);
+    }
+
+    console.log('\n6c. Destrabar: corta la espera y achica la cola a lo ultimo');
+    {
+        reset();
+        red = 'caida';
+        const muchos = [];
+        for (let i = 0; i < 3000; i++) muchos.push(punto());
+        await g.enviarEnLotes('https://x', quien, muchos);
+        const r = await g.soltarEnvios(1500);
+        esperar('de 3000 quedan los 1500 mas nuevos', r.antes === 3000 && r.despues === 1500 && cola()[1499].t === muchos[2999].t, r);
+        red = 'ok';
+        await g.enviarEnLotes('https://x', quien, []);
+        esperar('sin esperar los 15 s: sale todo enseguida', pedidos.reduce((a, p) => a + p.points.length, 0) === 1500, pedidos.length);
     }
 
     console.log('\n7. Tope de la cola: 6000 puntos (los mas viejos se van)');

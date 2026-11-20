@@ -61,6 +61,7 @@ import {
 } from '../sessionStorage';
 import { BACKGROUND_LOCATION_TASK } from '../locationTask';
 import { decidirGpsAlAbrir } from '../gpsAuto';
+import { soltarTodo, ordenPendiente, marcarOrdenAplicada } from '../destrabar';
 import { API_BASE, STORAGE_KEYS } from '../config';
 import { colors, font, radius, spacing, shadow } from '../theme';
 
@@ -139,6 +140,9 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   const [routeChangedToast, setRouteChangedToast] = useState(false);
   // Búsqueda de paradas
   const [stopSearch, setStopSearch] = useState('');
+  // «Destrabar»: lo usan el boton 🔧 y la orden de la oficina (socket o config)
+  const [destrabando, setDestrabando] = useState(false);
+  const destrabarRef = useRef<((origen: 'chofer' | 'oficina') => Promise<void>) | null>(null);
 
   const selected = useMemo(
     () => (selId != null ? routes.find((r) => r.id === selId) ?? null : null),
@@ -146,6 +150,12 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
   );
   /** Viaje seleccionado ya concluido: se ve todo, pero sin botones de acción. */
   const selConcluded = selected ? isConcluded(selected) : false;
+  /** Paradas que quedaron sin marcar en un viaje ya cerrado (lo cerro la
+   *  oficina): se le explica al chofer por que no puede marcarlas. */
+  const sinMarcarAlCerrar = useMemo(() => {
+    if (!selected || !selConcluded) return 0;
+    return (selected.stops || []).filter((s) => !isBaseStop(s) && ['PENDING', 'ARRIVED', 'RETRY'].includes(String(s.status || '').toUpperCase())).length;
+  }, [selected, selConcluded]);
 
   /** Primera parada PENDING con cliente (Maps, navegación embebida, registro). */
   const firstPendingStop = useMemo(() => {
@@ -564,6 +574,20 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
       socket.on('stop:updated', () => {
         loadRoutes({ silent: true });
       });
+      // DESTRABAR desde la oficina (Usuarios > «Destrabar app»): suelta el GPS y
+      // las colas trabadas, reintenta lo pendiente y recarga el viaje.
+      socket.on('app:destrabar', (payload: any) => {
+        const target = payload?.driverId;
+        if (target && target !== session.id) return;
+        void (async () => {
+          const orden = typeof payload?.at === 'string' ? payload.at : null;
+          if (orden) {
+            if (!(await ordenPendiente(orden))) return;   // ya aplicada (por la config)
+            await marcarOrdenAplicada(orden);
+          }
+          await destrabarRef.current?.('oficina');
+        })();
+      });
       // FORCE REFRESH desde la web admin: limpia el cache local y vuelve a pedir
       // todo fresco al server. Solo actua si el driverId del evento coincide con el
       // de esta sesion (o si el evento no trae driverId = es broadcast general).
@@ -765,6 +789,54 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     void pedirSacarDelAhorroDeBateria();
   };
 
+  /** DESTRABAR: suelta el GPS y las colas, manda lo pendiente, recarga el
+   *  viaje y vuelve a prender el GPS si estaba prendido. No borra nada que el
+   *  chofer haya marcado (ver destrabar.ts). */
+  const destrabar = async (origen: 'chofer' | 'oficina') => {
+    if (destrabandoRef.current) return;
+    destrabandoRef.current = true;
+    setDestrabando(true);
+    try {
+      const s = await soltarTodo();
+      await flushPunchQueue().catch(() => 0);
+      await flushTramoQueue().catch(() => 0);
+      await flushRetryQueue().catch(() => 0);
+      await flushStopQueue().catch(() => 0);
+      await flushIncidentQueue().catch(() => {});
+      await flushPhotoQueue().catch(() => {});
+      await loadRoutes({ silent: true });
+      if (s.gpsEstabaPrendido) {
+        try {
+          const cfg = await cargarConfigGps(session.id, deviceIdRef.current || '');
+          await arrancarGpsDeFondo(cfg);
+        } catch { /* queda «Fichar entrada» para prenderlo a mano */ }
+      }
+      getPendingTotalCount().then(setPendingOffline).catch(() => {});
+      Alert.alert(
+        'App destrabada',
+        origen === 'oficina'
+          ? 'La oficina destrabó tu app. Ya podés seguir marcando.'
+          : 'Listo, ya podés seguir. Si sigue sin responder, cerrá la app del todo y volvé a abrirla: no se pierde nada de lo que marcaste.'
+      );
+    } finally {
+      destrabandoRef.current = false;
+      setDestrabando(false);
+    }
+  };
+  const destrabandoRef = useRef(false);
+  destrabarRef.current = destrabar;
+
+  const onDestrabar = () => {
+    Alert.alert(
+      'Destrabar la app',
+      'Usalo si la app no te deja marcar, no se actualiza o el GPS se cortó. Reinicia el GPS y vuelve a cargar tu viaje. No se borra nada de lo que marcaste.',
+      [
+        { text: 'Cancelar', style: 'cancel' },
+        { text: 'Destrabar', onPress: () => { void destrabar('chofer'); } },
+      ]
+    );
+  };
+
   /** Prende el GPS de fondo (o lo reinicia si cambio el intervalo). Lo usan
    *  «Fichar entrada» y la apertura de la app. Tira error si no arranca. */
   const arrancarGpsDeFondo = async (cfg: { intervaloMs: number; distanciaM: number }) => {
@@ -808,6 +880,13 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
     autoEnCurso.current = true;
     try {
       const cfg = await cargarConfigGps(session.id, deviceIdRef.current || '');
+      // Orden de destrabar de la oficina que no llego por el socket: se aplica
+      // al terminar esto (destrabar vuelve a pasar por aca y no se repite)
+      const orden = await ordenPendiente(cfg.destrabar);
+      if (orden) {
+        await marcarOrdenAplicada(orden);
+        setTimeout(() => { void destrabarRef.current?.('oficina'); }, 0);
+      }
       const corriendo = await Location.hasStartedLocationUpdatesAsync(BACKGROUND_LOCATION_TASK);
       const prendidoSolo = (await AsyncStorage.getItem(STORAGE_KEYS.gpsAutoIniciado).catch(() => null)) === '1';
       const abierta = lista.find((r) => !isConcluded(r)) || null;
@@ -1090,6 +1169,9 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
             </Text>
             <Text style={styles.panelSub}>{session.fullName}</Text>
           </View>
+          <BotonToque style={styles.iconBtn} onPress={onDestrabar} accessibilityLabel="Destrabar la app">
+            <Text style={styles.iconBtnTxt}>{destrabando ? '⏳' : '🔧'}</Text>
+          </BotonToque>
           <BotonToque style={styles.iconBtn} onPress={() => navigation.navigate('History')}>
             <Text style={styles.iconBtnTxt}>📋</Text>
           </BotonToque>
@@ -1193,6 +1275,11 @@ export default function TrackScreen({ session, onLogout, navigation }: Props) {
           {selected && selConcluded ? (
             <Golpe style={styles.viajeFinalizadoCard}>
               <Text style={styles.viajeFinalizadoTxt}>VIAJE FINALIZADO</Text>
+              {sinMarcarAlCerrar > 0 ? (
+                <Text style={styles.viajeFinalizadoAviso}>
+                  {`La oficina cerró este viaje con ${sinMarcarAlCerrar} parada${sinMarcarAlCerrar === 1 ? '' : 's'} sin marcar. Si las hiciste, avisale a la oficina para que las cargue.`}
+                </Text>
+              ) : null}
             </Golpe>
           ) : null}
 
@@ -1992,6 +2079,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   viajeFinalizadoTxt: { fontWeight: font.black, color: colors.success, fontSize: font['2xl'], letterSpacing: 1 },
+  viajeFinalizadoAviso: { color: colors.textSecondary, fontSize: font.sm, marginTop: spacing.sm, textAlign: 'center' },
 
   /* ── Offline / incident ────────────────────────── */
   offlineBanner: {

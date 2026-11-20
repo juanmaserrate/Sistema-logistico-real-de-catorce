@@ -2683,12 +2683,15 @@ app.get('/api/v1/tracking/config', async (req: any, res: any) => {
     const deviceId = String(req.query.deviceId || '').trim();
     const incluye = (l: ListaGps) => l === 'todos' || (Array.isArray(l) && (l.includes(driverId) || l.includes(deviceId)));
     const enLotes = incluye(cfg.lotes);
+    // La orden de destrabar de la oficina, si hay (la app la aplica una vez)
+    const destrabar = driverId ? ((await ordenesDestrabar())[driverId] || null) : null;
     // Lo rapido va con el modo lotes: el camino viejo no da abasto cada 2 s
     res.json({
         ...(enLotes
             ? { lotes: true, intervaloMs: cfg.intervaloMs, distanciaM: cfg.distanciaM }
             : { lotes: false, intervaloMs: 5000, distanciaM: 15 }),
-        autoInicio: incluye(cfg.autoInicio)
+        autoInicio: incluye(cfg.autoInicio),
+        destrabar
     });
 });
 
@@ -3031,6 +3034,32 @@ app.get('/api/v1/admin/diagnose-driver/:driverId', async (req, res) => {
     }
 });
 
+/** Ordenes de destrabar por chofer (driverId -> hora ISO). En memoria y en
+ *  appSettings, asi sobreviven a un reinicio del servidor. */
+let _ordenesDestrabar: Record<string, string> | null = null;
+async function ordenesDestrabar(): Promise<Record<string, string>> {
+    if (_ordenesDestrabar) return _ordenesDestrabar;
+    try {
+        const fila = await prisma.appSettings.findUnique({ where: { key: 'app_destrabar' } });
+        _ordenesDestrabar = fila ? JSON.parse(fila.value) || {} : {};
+    } catch {
+        _ordenesDestrabar = {};
+    }
+    return _ordenesDestrabar!;
+}
+async function guardarOrdenDestrabar(driverId: string, at: string) {
+    const o = await ordenesDestrabar();
+    o[driverId] = at;
+    // Solo lo del ultimo dia: lo viejo ya no se aplica
+    const limite = Date.now() - 24 * 3600 * 1000;
+    for (const [k, v] of Object.entries(o)) if (!(Date.parse(v) > limite)) delete o[k];
+    await prisma.appSettings.upsert({
+        where: { key: 'app_destrabar' },
+        create: { key: 'app_destrabar', value: JSON.stringify(o) },
+        update: { value: JSON.stringify(o) }
+    });
+}
+
 /** B1) ENDPOINT FORCE REFRESH
  *  POST /api/v1/admin/force-refresh/:driverId
  *  Emite un evento socket `cache:invalidate` al chofer especifico para que su app
@@ -3044,8 +3073,17 @@ app.post('/api/v1/admin/force-refresh/:driverId', async (req, res) => {
         // Emitir al room del chofer y tambien broadcast (por compatibilidad si el chofer no joineo)
         io.to(`driver:${driverId}`).emit('cache:invalidate', { driverId, ts: Date.now() });
         io.emit('cache:invalidate', { driverId, ts: Date.now() });
-        console.log(`[admin] cache:invalidate emitido para driver ${driverId}`);
-        res.json({ ok: true, driverId, emittedAt: new Date().toISOString() });
+        // DESTRABAR (20-nov-2026): la app nueva suelta el GPS y las colas,
+        // reintenta lo pendiente y recarga el viaje. Llega al instante si el
+        // celular esta conectado; si no, la orden queda guardada y la app la
+        // toma la proxima vez que consulta la configuracion (vale 30 min).
+        const at = new Date().toISOString();
+        await guardarOrdenDestrabar(driverId, at);
+        io.to(`driver:${driverId}`).emit('app:destrabar', { driverId, at });
+        io.emit('app:destrabar', { driverId, at });
+        await logAction(req as any, 'UPDATE', 'user', driverId, 'Destrabar app del chofer', null, { at });
+        console.log(`[admin] destrabar emitido para driver ${driverId}`);
+        res.json({ ok: true, driverId, emittedAt: at });
     } catch (e: any) {
         console.error('POST /admin/force-refresh:', e);
         res.status(500).json({ error: e?.message || 'Error' });

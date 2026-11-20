@@ -166,6 +166,12 @@ async function flushPendingDataQueues(): Promise<void> {
 
 // ─── Tarea en segundo plano ──────────────────────────────────────────────────
 
+/** Las entregas y fichajes sin mandar se reintentan desde aca como mucho cada
+ *  30 s. Antes era con CADA punto del GPS (uno por segundo el 20-nov-2026), y
+ *  con mala señal se apilaban pedidos (ver gpsLote.ts). */
+let _ultimoVaciado = 0;
+const VACIAR_CADA_MS = 30000;
+
 TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
   if (error) return;
 
@@ -208,7 +214,8 @@ TaskManager.defineTask(BACKGROUND_LOCATION_TASK, async ({ data, error }) => {
       const quien = { deviceId, deviceLabel: map[STORAGE_KEYS.driverName] || 'Chofer', driverId };
       const huboRed = await enviarEnLotes(apiBase, quien, locations.map((l) => aPuntoLote(l, routeId)));
       // Lo que quedo en la cola vieja (de antes de prender el modo) sale igual
-      if (huboRed) {
+      if (huboRed && Date.now() - _ultimoVaciado > VACIAR_CADA_MS) {
+        _ultimoVaciado = Date.now();
         await flushQueue(apiBase);
         await flushPendingDataQueues();
       }

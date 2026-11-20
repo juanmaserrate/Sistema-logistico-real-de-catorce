@@ -472,7 +472,11 @@ async function ubicacionRapida(): Promise<UbicacionDeMarca | null> {
 
 /** Como tiene que mandar el GPS este celular (lo decide el servidor). Se
  *  guarda para la tarea de fondo; si no hay señal, queda lo ultimo que se supo. */
-export interface ConfigGps { lotes: boolean; intervaloMs: number; distanciaM: number; autoInicio: boolean }
+export interface ConfigGps {
+  lotes: boolean; intervaloMs: number; distanciaM: number; autoInicio: boolean;
+  /** Hora (ISO) en que la oficina pidio destrabar esta app, o null. */
+  destrabar?: string | null;
+}
 export async function cargarConfigGps(driverId: string, deviceId: string): Promise<ConfigGps> {
   const porDefecto: ConfigGps = { lotes: false, intervaloMs: 5000, distanciaM: 15, autoInicio: false };
   try {
@@ -485,6 +489,7 @@ export async function cargarConfigGps(driverId: string, deviceId: string): Promi
       intervaloMs: Math.min(30000, Math.max(1000, Number(d.intervaloMs) || 5000)),
       distanciaM: Math.min(100, Math.max(0, Number.isFinite(Number(d.distanciaM)) ? Number(d.distanciaM) : 15)),
       autoInicio: !!d.autoInicio,
+      destrabar: typeof (d as any).destrabar === 'string' ? (d as any).destrabar : null,
     };
     await AsyncStorage.setItem(STORAGE_KEYS.gpsConfig, JSON.stringify(cfg));
     return cfg;

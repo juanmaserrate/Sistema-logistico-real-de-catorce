@@ -8179,8 +8179,8 @@
                             Guardar contraseña
                         </button>
                         ${String(u.role || '').toUpperCase() === 'DRIVER' ? `
-                        <button onclick="forceRefreshDriverApp('${u.id}', '${(u.fullName || u.username || '').replace(/'/g, "\\'")}')" class="ml-2 px-4 py-2 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-bold hover:bg-emerald-200 transition-all" title="Limpia el cache local de la app del chofer y la fuerza a recargar las rutas desde el server">
-                            Forzar refresh app
+                        <button onclick="forceRefreshDriverApp('${u.id}', '${(u.fullName || u.username || '').replace(/'/g, "\\'")}')" class="ml-2 px-4 py-2 rounded-xl bg-emerald-100 text-emerald-800 text-xs font-bold hover:bg-emerald-200 transition-all" title="Destraba la app del chofer: reinicia el GPS, manda lo que tenga pendiente y recarga el viaje. No borra nada de lo marcado">
+                            Destrabar app
                         </button>
                         <button onclick="diagnoseDriver('${u.id}', '${(u.fullName || u.username || '').replace(/'/g, "\\'")}')" class="ml-2 px-4 py-2 rounded-xl bg-sky-100 text-sky-800 text-xs font-bold hover:bg-sky-200 transition-all" title="Ver qué rutas tiene asignadas y cuáles está recibiendo la app">
                             Diagnóstico
@@ -8304,7 +8304,7 @@
         /** Fuerza al chofer a limpiar su cache local y refrescar las rutas.
          *  Emite un evento socket `cache:invalidate` que la app movil escucha. */
         async function forceRefreshDriverApp(driverId, driverName) {
-            if (!confirm(`¿Forzar a la app de "${driverName}" a refrescar sus rutas?\n\nEsto va a limpiar el cache local del celular y volver a pedir todo al servidor. Útil cuando la app muestra viajes que ya no deberían estar.`)) return;
+            if (!confirm(`¿Destrabar la app de "${driverName}"?\n\nLa app reinicia el GPS, manda lo que tenga pendiente y vuelve a cargar el viaje. No se borra nada de lo que el chofer marcó.\n\nSi el celular está conectado se destraba en segundos; si no, apenas vuelva a conectarse (la orden vale 30 minutos).`)) return;
             try {
                 const res = await fetch(`${API_URL}/admin/force-refresh/${driverId}`, {
                     method: 'POST',
@@ -8312,7 +8312,7 @@
                 });
                 const data = await res.json().catch(() => ({}));
                 if (!res.ok) throw new Error(data?.error || 'No se pudo enviar la orden');
-                notifyUsers(`Orden de refresh enviada a "${driverName}". La app se actualiza en 1-2 seg si esta abierta.`, 'success');
+                notifyUsers(`Orden de destrabar enviada a "${driverName}". Si sigue trabada en 1 minuto: que cierre la app del todo y la vuelva a abrir.`, 'success');
             } catch (e) {
                 notifyUsers(`Error al forzar refresh: ${e?.message || e}`, 'warning');
             }
@@ -29785,7 +29785,28 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             // chofer no reporto senial) se muestra DESPUES como notificacion no
             // intrusiva — asi el operador finaliza sin fricción pero igual se entera.
             if (action === 'end') {
-                if (!confirm(`Finalizar el viaje #${tripId} en el sistema?`)) return;
+                // 20-nov-2026 (#9804, R19): se cerro desde la web un minuto y medio
+                // despues de que el chofer marco una llegada, y la app ya no le dejo
+                // marcar las paradas que faltaban. Si el chofer esta usando la app y
+                // le quedan paradas, se avisa antes de cerrar.
+                let aviso = '';
+                try {
+                    const t = getWeeklyTripById(tripId);
+                    const ymd = t?.date ? new Date(t.date).toISOString().slice(0, 10) : '';
+                    const r = await fetch(`${API_URL}/control/driver-status${ymd ? '?date=' + ymd : ''}`, { headers: getActorHeaders() });
+                    const d = r.ok ? await r.json() : null;
+                    const it = (d?.drivers || []).find(x => String(x.tripId) === String(tripId));
+                    if (it) {
+                        const hace = (iso) => iso ? Math.round((Date.now() - new Date(iso).getTime()) / 60000) : null;
+                        const minMarca = hace(it.lastStopAt), minGps = hace(it.lastPingAt);
+                        const faltan = Math.max(0, Number(it.stopsTotal || 0) - Number(it.stopsDone || 0) - (it.hasBaseStop ? 1 : 0));
+                        const usando = (minMarca != null && minMarca <= 20) || (minGps != null && minGps <= 10);
+                        if (usando && faltan > 0) {
+                            aviso = `\n\n⚠ El chofer está usando la app (${minMarca != null && minMarca <= 20 ? 'marcó una parada hace ' + minMarca + ' min' : 'mandó su ubicación hace ' + minGps + ' min'}) y le quedan ${faltan} parada(s) sin marcar. Si finalizás ahora, la app no le va a dejar marcarlas. Mejor llamalo antes.`;
+                        }
+                    }
+                } catch (_) { /* sin el dato, el aviso de siempre */ }
+                if (!confirm(`Finalizar el viaje #${tripId} en el sistema?${aviso}`)) return;
             } else {
                 if (!confirm(`${verb} el viaje #${tripId} en el sistema? El chofer verá la primera entrega al iniciar.`)) return;
             }
