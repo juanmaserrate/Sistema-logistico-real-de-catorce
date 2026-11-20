@@ -33,6 +33,7 @@ import { metricasDelMes } from './metricasDashboard';
 import { subirArchivo, bajarArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnosticoSharepoint, limpiarTokenSharepoint } from './sharepoint';
 import { leerPlanillaCajones, compararCajones, agruparPorPeriodo, repartoDeViaje, MovimientoApp, TipoPlanilla } from './planillaCajones';
 import { completarHorasDelViaje, completarHorasAlCerrar, barrerViajesSinHoras } from './horasEstimadas';
+import { ralearGpsViejo, GPS_SEGUNDOS_RALEO } from './gpsRaleo';
 import { createServer } from 'http';
 import { Server as SocketIOServer } from 'socket.io';
 import cors from 'cors';
@@ -18288,9 +18289,11 @@ async function cleanupOldData() {
     const thirtyDaysAgo  = new Date(now - 30 * 24 * 60 * 60 * 1000);
     const ninetyDaysAgo  = new Date(now - 90 * 24 * 60 * 60 * 1000);
 
+    // El GPS ya no se borra: los ultimos 60 dias quedan segundo a segundo y
+    // lo mas viejo se ralea a un punto cada 10 s (ver gpsRaleo.ts, 20-nov-2026).
     try {
-        const r = await prisma.deviceLocation.deleteMany({ where: { timestamp: { lt: thirtyDaysAgo } } });
-        if (r.count > 0) console.log(`[cleanup] GPS: ${r.count} registros borrados`);
+        const n = await ralearGpsViejo(prisma);
+        if (n > 0) console.log(`[cleanup] GPS: ${n} puntos raleados (quedan uno cada ${GPS_SEGUNDOS_RALEO} s)`);
     } catch (e) { console.error('[cleanup] Error GPS:', e); }
 
     try {
@@ -18323,7 +18326,7 @@ async function cleanupOldData() {
 function startCleanupJob() {
     cleanupOldData().catch(e => console.error('[cleanup] Error inicial:', e));
     setInterval(() => cleanupOldData().catch(e => console.error('[cleanup] Error periódico:', e)), 24 * 60 * 60 * 1000);
-    console.log('[cleanup] Job iniciado — limpia GPS/Audit/Alerts/Fotos cada 24h');
+    console.log('[cleanup] Job iniciado — ralea GPS viejo, limpia Audit/Alerts/Fotos cada 24h');
 }
 
 async function bootstrapData() {
