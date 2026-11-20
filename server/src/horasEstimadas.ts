@@ -174,6 +174,22 @@ export function estimarHorasDeParadas(
     return { cambios, pendientesQueQuedan };
 }
 
+/** Paradas PENDIENTES de un viaje en el que el chofer marco otras: solo se
+ *  dan por entregadas si el GPS muestra al camion parado ahi (al menos un
+ *  minuto) dentro del horario del viaje. Sin esa prueba no se tocan. Es para
+ *  usar a mano (los CDI del R22 que nunca se marcan), no al cerrar. */
+export function pendientesConGps(paradas: ParadaParaEstimar[], inicio: Date | null, fin: Date | null, gps: PuntoGps[]): HoraEstimada[] {
+    if (!inicio || !fin || !gps.length) return [];
+    const puntos = [...gps].sort((a, b) => a.t - b.t);
+    const salida: HoraEstimada[] = [];
+    for (const p of paradas) {
+        if (p.deposito || tieneHora(p) || MARCADA.has(estado(p)) || p.lat == null || p.lng == null) continue;
+        const e = estadiaGps(puntos, p.lat, p.lng, inicio.getTime(), fin.getTime());
+        if (e) salida.push({ id: p.id, llegada: new Date(e.ini), salida: new Date(e.fin), como: 'GPS', marcarEntregada: true });
+    }
+    return salida;
+}
+
 // ════════════════════════════════════════════════════════════════════════════
 // Con la base: se usa al cerrar un viaje (cualquier camino), al corregir sus
 // horarios, en un barrido periodico y desde /api/admin/estimar-horas-paradas.
@@ -237,7 +253,7 @@ export const NOTA_REPARTIDA = 'Hora estimada (repartida entre la salida y la lle
 export async function completarHorasDelViaje(
     prisma: any,
     ref: { tripId?: number; routeId?: number },
-    opciones: { dryRun?: boolean; quien?: string } = {}
+    opciones: { dryRun?: boolean; quien?: string; pendientesConGps?: boolean } = {}
 ): Promise<ResultadoHorasDelViaje | null> {
     const route = await prisma.route.findFirst({
         where: ref.routeId ? { id: ref.routeId } : { tripId: ref.tripId },
@@ -284,6 +300,12 @@ export async function completarHorasDelViaje(
     res.puntosGps = gps.length;
 
     const est = estimarHorasDeParadas(paradas, ventana.inicio, ventana.fin, gps);
+    if (opciones.pendientesConGps) {
+        const ya = new Set(est.cambios.map((c) => c.id));
+        const conGps = pendientesConGps(paradas, ventana.inicio, ventana.fin, gps).filter((c) => !ya.has(c.id));
+        est.cambios.push(...conGps);
+        est.pendientesQueQuedan = Math.max(0, est.pendientesQueQuedan - conGps.length);
+    }
     res.salteado = est.salteado || null;
     res.pendientesQueQuedan = est.pendientesQueQuedan;
     const porId = new Map<number, any>(route.stops.map((s: any) => [s.id, s]));

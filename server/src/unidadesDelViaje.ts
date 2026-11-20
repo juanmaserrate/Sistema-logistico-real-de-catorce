@@ -32,6 +32,8 @@ export interface ParadaParaReparto {
     ruta?: string | null;
     actualArrival?: Date | string | null;
     actualDeparture?: Date | string | null;
+    /** 'COMPLETED' = entregada. Opcional: sin el, no se usa el respaldo de abajo. */
+    status?: string | null;
 }
 
 /** Un tramo del viaje: una ruta con su hora de inicio y de cierre. Es lo que
@@ -234,7 +236,23 @@ export function repartirHoras(
             // se reparte en la misma proporcion, para que la suma de exacta.
             const factor = total / repartido;
             for (const u of Object.keys(crudas)) horas[u] = crudas[u] * factor;
-            return { horas, paradas, total, metodo: 'por horario de cada parada' };
+            // Una unidad con paradas ENTREGADAS no puede quedar en 0: pasa
+            // cuando su parada se marco a la misma hora que la salida (o
+            // antes, o despues del cierre), y el horario no le deja tramo
+            // (18-nov-2026, #10156: RETIRO marcado 09:37 con salida 09:37).
+            // Ahi se reparte por cantidad de paradas entregadas.
+            const entregadas: Record<string, number> = {};
+            for (const p of stops) {
+                if (esVueltaAlDeposito(p) || String(p.status || '').toUpperCase() !== 'COMPLETED') continue;
+                const u = unidadDeParada(p, unidadPorRuta, unidades);
+                entregadas[u] = (entregadas[u] || 0) + 1;
+            }
+            const quedanEnCero = Object.keys(entregadas).some((u) => !(horas[u] > 0));
+            if (!quedanEnCero) return { horas, paradas, total, metodo: 'por horario de cada parada' };
+            const totalEntregadas = Object.values(entregadas).reduce((a, b) => a + b, 0);
+            for (const u of Object.keys(horas)) delete horas[u];
+            for (const u of Object.keys(entregadas)) horas[u] = total * (entregadas[u] / totalEntregadas);
+            return { horas, paradas, total, metodo: 'por cantidad de paradas' };
         }
     }
 

@@ -154,5 +154,32 @@ esperar('reparte las tres', Object.keys(tres.horas).length === 3);
 esperar('la vuelta al deposito se prorratea', Math.abs(suma(tres.horas) - 4.5) < 0.0001, suma(tres.horas));
 esperar('  y le toca mas al que mas hizo', tres.horas['SAE BROWN'] > tres.horas['RETIRO'], tres.horas);
 
+console.log('\n(20-nov-2026) Una unidad con paradas entregadas no queda en 0');
+{
+    // #10156: RETIRO marcado a la misma hora que la salida; EVENTO despues
+    const r = repartirHoras({
+        businessUnit: 'RETIRO, EVENTO',
+        stops: [
+            { sequence: 1, ruta: 'RETIRO', client: { name: 'MAXICONSUMO S A' }, status: 'COMPLETED', actualArrival: '2026-11-18T12:37:00Z', actualDeparture: '2026-11-18T12:37:00Z' },
+            { sequence: 2, ruta: 'EVENTO', client: { name: 'EVENTO MOLINA ARRTEA' }, status: 'COMPLETED', actualArrival: '2026-11-18T12:52:00Z', actualDeparture: '2026-11-18T13:11:00Z' },
+            { sequence: 3, isReturnToBase: true, client: { name: 'REAL DE CATORCE' }, status: 'COMPLETED', actualArrival: '2026-11-18T13:40:00Z' }
+        ] as any,
+        inicio: '2026-11-18T12:37:00Z', fin: '2026-11-18T13:40:00Z'
+    }, new Map(), 1.05);
+    esperar('RETIRO y EVENTO mitad y mitad (1 parada cada uno)', Math.abs(r.horas['RETIRO'] - 0.525) < 0.001 && Math.abs(r.horas['EVENTO'] - 0.525) < 0.001, r);
+    esperar('suman la duracion', Math.abs(suma(r.horas) - 1.05) < 0.001, r.horas);
+    // CDI con paradas sin entregar: sigue en 0 (no se inventa)
+    const cdi = repartirHoras({
+        businessUnit: 'SAE BROWN, CDI',
+        stops: [
+            { sequence: 1, ruta: 'R6', client: { name: 'EP 1' }, status: 'COMPLETED', actualArrival: '2026-11-18T09:30:00Z', actualDeparture: '2026-11-18T09:40:00Z' },
+            { sequence: 2, ruta: 'R6', client: { name: 'EP 2' }, status: 'COMPLETED', actualArrival: '2026-11-18T10:30:00Z', actualDeparture: '2026-11-18T10:40:00Z' },
+            { sequence: 3, ruta: 'CDI', client: { name: 'CDI X' }, status: 'PENDING' }
+        ] as any,
+        inicio: '2026-11-18T09:00:00Z', fin: '2026-11-18T11:00:00Z'
+    }, mapaU, 2);
+    esperar('CDI sin entregar sigue en 0 y SAE BROWN se lleva todo', !(cdi.horas['CDI'] > 0) && Math.abs(cdi.horas['SAE BROWN'] - 2) < 0.001, cdi);
+}
+
 console.log('\n' + (todo ? 'TODO BIEN' : '*** HAY FALLAS ***'));
 process.exit(todo ? 0 : 1);

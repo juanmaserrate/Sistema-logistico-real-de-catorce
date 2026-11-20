@@ -9227,7 +9227,7 @@ app.get('/api/v1/costs/unidades-anual', async (req: any, res: any) => {
                 linkedRoute: {
                     select: {
                         actualStartTime: true, actualEndTime: true,
-                        stops: { select: { sequence: true, ruta: true, actualArrival: true, actualDeparture: true, isReturnToBase: true } }
+                        stops: { select: { sequence: true, ruta: true, actualArrival: true, actualDeparture: true, isReturnToBase: true, status: true } }
                     }
                 },
                 // Los tramos que cerro el chofer: son los que mandan al repartir
@@ -9287,7 +9287,7 @@ app.get('/api/admin/panel-coherencia', async (req: any, res: any) => {
                 linkedRoute: {
                     select: {
                         actualStartTime: true, actualEndTime: true,
-                        stops: { select: { sequence: true, ruta: true, actualArrival: true, actualDeparture: true, isReturnToBase: true } }
+                        stops: { select: { sequence: true, ruta: true, actualArrival: true, actualDeparture: true, isReturnToBase: true, status: true } }
                     }
                 },
                 // Los tramos que cerro el chofer: son los que mandan al repartir
@@ -9477,7 +9477,7 @@ app.get('/api/v1/costs/unidades', async (req: any, res: any) => {
                 linkedRoute: {
                     select: {
                         actualStartTime: true, actualEndTime: true,
-                        stops: { select: { sequence: true, ruta: true, actualArrival: true, actualDeparture: true, isReturnToBase: true } }
+                        stops: { select: { sequence: true, ruta: true, actualArrival: true, actualDeparture: true, isReturnToBase: true, status: true } }
                     }
                 },
                 // Los tramos que cerro el chofer: son los que mandan al repartir
@@ -10698,7 +10698,7 @@ app.post('/api/admin/estimar-horas-paradas', async (req: any, res: any) => {
     const resultado: any[] = [];
     for (const id of ids) {
         try {
-            const r = await completarHorasDelViaje(prisma, { tripId: id }, { dryRun: !!dryRun, quien });
+            const r = await completarHorasDelViaje(prisma, { tripId: id }, { dryRun: !!dryRun, quien, pendientesConGps: !!req.body?.pendientesConGps });
             if (!r) { resultado.push({ id, salteado: 'no tiene recorrido' }); continue; }
             if (r.guardado) io.emit('trip:updated', { tripId: id });
             resultado.push({ id, ...r });
@@ -15336,7 +15336,7 @@ async function correrMotorDeCostos(
                         stops: {
                             select: {
                                 sequence: true, ruta: true,
-                                actualArrival: true, actualDeparture: true
+                                actualArrival: true, actualDeparture: true, status: true
                             }
                         }
                     }
@@ -15642,9 +15642,9 @@ app.get('/api/v1/trips/:tripId/delivery-stops', async (req, res) => {
  *  solos. El costo del viaje entero no cambia: no depende de la unidad.
  *
  *  PATCH /api/v1/trips/:tripId/unidades-de-paradas { cambios: [{ stopId, unidad }] } */
-app.patch('/api/v1/trips/:tripId/unidades-de-paradas', async (req: any, res: any) => {
+const cambiarUnidadesDeParadas = async (req: any, res: any) => {
     try {
-        const tripId = parseInt(req.params.tripId, 10);
+        const tripId = parseInt(req.params?.tripId ?? req.body?.tripId, 10);
         if (!Number.isFinite(tripId)) return res.status(400).json({ error: 'ID inválido' });
         const cambios = (Array.isArray(req.body?.cambios) ? req.body.cambios : [])
             .map((c: any) => ({ stopId: Number(c?.stopId), unidad: c?.unidad == null ? null : String(c.unidad).trim().slice(0, 80) || null }))
@@ -15701,6 +15701,14 @@ app.patch('/api/v1/trips/:tripId/unidades-de-paradas', async (req: any, res: any
         console.error('PATCH unidades-de-paradas:', e);
         res.status(500).json({ error: e?.message || 'Error' });
     }
+};
+app.patch('/api/v1/trips/:tripId/unidades-de-paradas', cambiarUnidadesDeParadas);
+
+/** Lo mismo con la clave de servicio, para arreglos de datos.
+ *  POST /api/admin/unidades-de-paradas { key, tripId, cambios: [{ stopId, unidad }] } */
+app.post('/api/admin/unidades-de-paradas', (req: any, res: any) => {
+    if (req.body?.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    return cambiarUnidadesDeParadas(req, res);
 });
 
 /** Reemplaza el orden de paradas del Route ligado al viaje (crea la ruta si no existe). */

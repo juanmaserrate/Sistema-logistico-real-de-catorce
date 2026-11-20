@@ -2,7 +2,7 @@
  * Prueba src/horasEstimadas.ts
  *   cd server && npx ts-node --transpile-only scripts/probar_horas_estimadas.ts
  */
-import { estimarHorasDeParadas, ventanaParaEstimar, ParadaParaEstimar } from '../src/horasEstimadas';
+import { estimarHorasDeParadas, ventanaParaEstimar, pendientesConGps, ParadaParaEstimar } from '../src/horasEstimadas';
 
 let todo = true;
 const esperar = (que: string, ok: boolean, detalle?: any) => {
@@ -102,6 +102,24 @@ console.log('\n5. La ventana: siempre adentro de la salida y la llegada');
     const adentro = r.cambios.every((c) => c.llegada >= v.inicio! && c.salida <= v.fin! && c.llegada < c.salida);
     const enOrden = r.cambios.every((c, i) => i === 0 || c.llegada >= r.cambios[i - 1].salida);
     esperar('todas adentro, en orden y sin pisarse', adentro && enOrden, r.cambios.map((c) => hm(c.llegada) + '-' + hm(c.salida)));
+}
+
+console.log('\n6. Pendientes con GPS (a mano): solo si el camion estuvo parado ahi');
+{
+    const lat = -34.85, lng = -58.38;
+    const gps = [] as { lat: number; lng: number; t: number }[];
+    for (let m = 0; m <= 180; m++) {
+        const cerca = m >= 100 && m <= 108;   // 09:40 a 09:48 en el CDI
+        gps.push({ lat: cerca ? lat : lat + 0.05, lng, t: H('08:00').getTime() + m * 60000 });
+    }
+    const paradas = [
+        p(1, { status: 'COMPLETED', llegada: H('08:30'), salida: H('08:40') }),
+        p(2, { status: 'PENDING', lat, lng }),                    // el CDI, con GPS
+        p(3, { status: 'PENDING', lat: -34.9, lng: -58.5 })        // otro CDI, sin GPS cerca
+    ];
+    const c = pendientesConGps(paradas, H('08:00'), H('11:00'), gps);
+    esperar('solo la que tiene GPS: 09:40 a 09:48, entregada', c.length === 1 && c[0].id === 2 && hm(c[0].llegada) === '09:40' && hm(c[0].salida) === '09:48' && c[0].marcarEntregada, c);
+    esperar('sin GPS no hay nada', pendientesConGps(paradas, H('08:00'), H('11:00'), []).length === 0);
 }
 
 console.log(todo ? '\nTODO OK\n' : '\nHAY ERRORES\n');
