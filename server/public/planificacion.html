@@ -18120,7 +18120,7 @@
             const already = weeklyTripStopsBuffers[tripId].some(r => String(r.clientId) === String(s.id));
             if (!already) {
                 const tripL = getWeeklyTripById(tripId);
-                const sugerida = esRepartoLibre(tripL?.reparto || tripL?.tripType)
+                const sugerida = (esRepartoLibre(tripL?.reparto || tripL?.tripType) && unidadesDeNegocio(tripL?.businessUnit).length > 1)
                     ? sugerirUnidadDeParada(s.id, s.name, unidadesDeNegocio(tripL?.businessUnit))
                     : null;
                 agregarParadaAntesDelDeposito(weeklyTripStopsBuffers[tripId], {
@@ -18146,20 +18146,14 @@
 
         async function weeklyStopsSave(tripId) {
             const rows = weeklyTripStopsBuffers[tripId] || [];
-            // LIBRE: no se guarda con paradas sin unidad, y las unidades que se
-            // eligieron y el viaje no tenia se le suman.
+            // LIBRE: se guarda como cualquier viaje, sin exigir la unidad de cada
+            // parada (19-nov-2026). Las unidades que se eligieron y el viaje no
+            // tenia se le suman.
             const trip = getWeeklyTripById(tripId);
             let unidadesNuevas = null;
             if (esRepartoLibre(trip?.reparto || trip?.tripType)) {
                 const delViaje = unidadesDeNegocio(trip?.businessUnit);
                 const conocidas = unidadesParaElegir(delViaje);
-                const faltan = rows.filter(r => !esParadaDeposito(r.name) && !unidadDeParadaLibre(r, conocidas));
-                if (faltan.length) {
-                    const nombres = faltan.slice(0, 3).map(r => r.name).join(', ') + (faltan.length > 3 ? '…' : '');
-                    return alert('Es un viaje LIBRE: elegí de qué unidad de negocio es cada parada.'
-                        + String.fromCharCode(10, 10)
-                        + (faltan.length === 1 ? 'Falta 1: ' : `Faltan ${faltan.length}: `) + nombres);
-                }
                 const usadas = [...new Set(rows.map(r => unidadDeParadaLibre(r, conocidas)).filter(Boolean))];
                 const agregar = usadas.filter(u => !delViaje.includes(u));
                 if (agregar.length) unidadesNuevas = [...delViaje, ...agregar].join(', ');
@@ -18547,8 +18541,9 @@
          *  hay nada que elegir y la parada hereda la del viaje. */
         function _weeklySelectorDeUnidad(tripId, row, i) {
             const trip = typeof getWeeklyTripById === 'function' ? getWeeklyTripById(tripId) : null;
-            // LIBRE: siempre se pregunta, con todas las unidades para elegir
-            if (esRepartoLibre(trip?.reparto || trip?.tripType)) {
+            // LIBRE con varias unidades: se puede elegir entre todas (y sumar una).
+            // Con una sola, como los otros viajes: no aparece y la parada la hereda.
+            if (esRepartoLibre(trip?.reparto || trip?.tripType) && unidadesDeNegocio(trip?.businessUnit).length > 1) {
                 const deRuta = unidadPorPlantilla(row);
                 if (deRuta) return `<span class="shrink-0 max-w-[30%] truncate text-[10px] font-bold text-[#707EAE]" title="Sale de la ruta ${escapeHtmlWeekly(row.ruta)}">${escapeHtmlWeekly(deRuta)}</span>`;
                 const opciones = unidadesParaElegir(unidadesDeNegocio(trip?.businessUnit));
@@ -28717,9 +28712,16 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             return esRepartoLibre(document.getElementById('new-trip-reparto')?.value);
         }
 
-        /** Paradas del viaje LIBRE que todavia no dicen su unidad. */
+        /** Un LIBRE funciona como los otros viajes (pedido de juanma, 19-nov-2026):
+         *  con una sola unidad las paradas la heredan y no se pregunta nada; con
+         *  varias aparece el selector de unidad, pero no frena el guardado. */
+        function ntPideUnidad() {
+            return ntEsLibre() && unidadesDeNegocio(document.getElementById('new-trip-bu')?.value || '').length > 1;
+        }
+
+        /** Paradas del viaje LIBRE (con varias unidades) que todavia no dicen su unidad. */
         function ntParadasSinUnidad() {
-            if (!ntEsLibre()) return [];
+            if (!ntPideUnidad()) return [];
             const conocidas = unidadesParaElegir(unidadesDeNegocio(document.getElementById('new-trip-bu')?.value || ''));
             return (tripDeliveryRows || []).filter(r => !esParadaDeposito(r.name) && !unidadDeParadaLibre(r, conocidas));
         }
@@ -28739,7 +28741,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         function renderTripDeliveryList() {
             if (typeof ntActualizarTabParadas === 'function') ntActualizarTabParadas();
-            const pedirUnidad = ntEsLibre();
+            const pedirUnidad = ntPideUnidad();
             const unidadesViaje = unidadesDeNegocio(document.getElementById('new-trip-bu')?.value || '');
             const opcionesUnidad = pedirUnidad ? unidadesParaElegir(unidadesViaje) : [];
             const cab = document.getElementById('td-cabecera');
@@ -29318,7 +29320,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             const s = allSchools.find((x) => x.id === id);
             if (!s) return;
             if (tripDeliveryRows.some((r) => r.clientId === id)) return;
-            const sugerida = ntEsLibre()
+            const sugerida = ntPideUnidad()
                 ? sugerirUnidadDeParada(s.id, s.name, unidadesDeNegocio(document.getElementById('new-trip-bu')?.value || ''))
                 : null;
             agregarParadaAntesDelDeposito(tripDeliveryRows, { clientId: s.id, name: s.name || s.id, address: s.address || '', ruta: sugerida });
@@ -30638,17 +30640,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 ntTab('datos');
                 return alert('Elegí la unidad de negocio del viaje.');
             }
-            // LIBRE: cada parada tiene que decir de que unidad es (ver
-            // esRepartoLibre). Si no, sus horas van a SIN UNIDAD en el Excel.
-            const sinUnidad = ntParadasSinUnidad();
-            if (sinUnidad.length) {
-                ntTab('paradas');
-                renderTripDeliveryList();
-                const nombres = sinUnidad.slice(0, 3).map(r => r.name).join(', ') + (sinUnidad.length > 3 ? '…' : '');
-                return alert('Es un viaje LIBRE: elegí de qué unidad de negocio es cada parada.'
-                    + String.fromCharCode(10, 10)
-                    + (sinUnidad.length === 1 ? 'Falta 1: ' : `Faltan ${sinUnidad.length}: `) + nombres);
-            }
+            // LIBRE: ya no se exige la unidad en cada parada (19-nov-2026). Se
+            // guarda como cualquier viaje; la parada sin unidad de un viaje con
+            // varias va a SIN UNIDAD en el Excel, igual que en los otros.
             // El reparto tambien. De 960 viajes cargados, 31 quedaron sin el, y
             // esos caen en "(sin reparto)" en todos los reportes y se quedan sin
             // subzona, que sale justamente del reparto. Cuando el viaje no tiene
