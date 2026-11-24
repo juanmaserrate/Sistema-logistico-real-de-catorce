@@ -11306,6 +11306,48 @@ app.post('/api/admin/fusionar-viajes', async (req: any, res: any) => {
     }
 });
 
+/** Borra paradas sueltas de un viaje (por ejemplo, una entrega cargada dos
+ *  veces). Las demas se renumeran sin cambiar su orden. Cada parada borrada
+ *  queda completa en la auditoria. No borra la vuelta al deposito ni deja el
+ *  viaje sin paradas.
+ *
+ *  POST /api/admin/borrar-paradas { key, tripId, stopIds: [..], dryRun? } */
+app.post('/api/admin/borrar-paradas', async (req: any, res: any) => {
+    const { key, tripId, stopIds, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const id = Number(tripId);
+    const ids = Array.isArray(stopIds) ? [...new Set(stopIds.map(Number).filter(Number.isFinite))] : [];
+    if (!Number.isFinite(id) || !ids.length) return res.status(400).json({ error: 'Faltan tripId y stopIds' });
+    try {
+        const trip: any = await prisma.trip.findUnique({
+            where: { id },
+            select: { id: true, reparto: true, linkedRoute: { select: { id: true, stops: { orderBy: { sequence: 'asc' } } } } }
+        });
+        if (!trip?.linkedRoute) return res.status(404).json({ error: 'El viaje no existe o no tiene ruta' });
+        const paradas: any[] = trip.linkedRoute.stops;
+        const ajenas = ids.filter((s) => !paradas.some((p) => p.id === s));
+        if (ajenas.length) return res.status(400).json({ error: `No son de este viaje: ${ajenas.join(', ')}` });
+        const seBorran = paradas.filter((p) => ids.includes(p.id));
+        if (seBorran.some((p) => p.isReturnToBase)) return res.status(400).json({ error: 'No se borra la vuelta al deposito' });
+        const quedan = paradas.filter((p) => !ids.includes(p.id));
+        if (!quedan.length) return res.status(400).json({ error: 'El viaje quedaria sin paradas' });
+        const orden = quedan.map((p, i) => ({ id: p.id, antes: p.sequence, sequence: i + 1 }));
+        const plan = { tripId: id, seBorran: seBorran.map((p) => ({ id: p.id, sequence: p.sequence, clientId: p.clientId, ruta: p.ruta, status: p.status })), orden };
+        if (dryRun) return res.json({ dryRun: true, plan });
+
+        await prisma.$transaction([
+            prisma.stop.deleteMany({ where: { id: { in: ids }, routeId: trip.linkedRoute.id } }),
+            ...orden.filter((o) => o.antes !== o.sequence).map((o) => prisma.stop.update({ where: { id: o.id }, data: { sequence: o.sequence } }))
+        ]);
+        await logAction(req, 'DELETE', 'Stop', ids.join(','),
+            `${ids.length} parada(s) borrada(s) del viaje ${id}`, seBorran, plan);
+        res.json({ borradas: ids.length, plan });
+    } catch (e: any) {
+        console.error('borrar-paradas:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** La unidad de negocio de varias rutas predefinidas, de una.
  *  POST /api/admin/rutas-set-bu { key, cambios: [{ruta, businessUnit}], dryRun? } */
 app.post('/api/admin/rutas-set-bu', async (req: any, res: any) => {
