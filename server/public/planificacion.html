@@ -18497,28 +18497,25 @@
                                     const m = meta[row.clientId] || {};
                                     const lbl = statusLabel(m.status);
                                     // Un viaje puede repartir para varias unidades (R16 es
-                                    // SAE LANUS y SAM 1 LUNES R16 es SAM). La lista es una
-                                    // sola, pero con un renglon que separa cada bloque y
-                                    // dice de quien es. Con una sola unidad no aparece nada.
+                                    // SAE LANUS y SAM 1 LUNES R16 es SAM). Cada parada dice
+                                    // la suya debajo del nombre. Antes iba un renglon que
+                                    // abria cada bloque, pero quedaba pegado a la parada de
+                                    // ARRIBA y se leia como si fuera de esa (24-nov-2026:
+                                    // TEC.1 de Longchamps "parecia" REPOSICION SAE LOMAS).
+                                    // Con una sola unidad no aparece nada.
                                     const uMia = String(m.unidad || '').trim();
-                                    const uAnt = i > 0 ? String((meta[rows[i-1].clientId] || {}).unidad || '').trim() : null;
-                                    const abre = uMia && uMia !== uAnt
-                                        && rows.some(x => String((meta[x.clientId] || {}).unidad || '').trim() !== uMia);
-                                    const encabezado = abre ? `
-                                    <tr class="bg-indigo-50/70">
-                                        <td colspan="7" class="px-2 py-1.5">
-                                            <span class="inline-block px-2.5 py-1 rounded-full bg-indigo-600 text-white text-[9px] font-black uppercase tracking-widest">
-                                                ${escapeHtmlWeekly(uMia)}
-                                            </span>
-                                        </td>
-                                    </tr>` : '';
+                                    const variasUnidades = rows.some(x => String((meta[x.clientId] || {}).unidad || '').trim() !== uMia);
+                                    const etiquetaUnidad = (uMia && variasUnidades && !esParadaDeposito(row.name))
+                                        ? `<span class="block mt-1"><span class="inline-block px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 text-[9px] font-black uppercase tracking-wider">${escapeHtmlWeekly(uMia)}</span></span>`
+                                        : '';
+                                    const encabezado = '';
                                     const photo = m.proofPhotoUrl
                                         ? `<a href="${m.proofPhotoUrl}" target="_blank" title="Ver foto"><i data-lucide="image" class="w-3.5 h-3.5 text-emerald-600 inline-block"></i></a>`
                                         : '—';
                                     return `${encabezado}
                                     <tr class="border-t border-[#F4F7FE] hover:bg-[#F8FAFF]">
                                         <td class="px-2 py-2 text-[#A3AED0] font-bold">${i + 1}</td>
-                                        <td class="px-2 py-2 font-bold text-[#2B3674]">${escapeHtmlWeekly(row.name)}${esParadaDeposito(row.name) ? '' : lineaDireccionParada(row, 'semana-' + tripId)}${esParadaDeposito(row.name) ? '' : avisoMarcaLejos(m)}</td>
+                                        <td class="px-2 py-2 font-bold text-[#2B3674]">${escapeHtmlWeekly(row.name)}${esParadaDeposito(row.name) ? '' : lineaDireccionParada(row, 'semana-' + tripId)}${etiquetaUnidad}${esParadaDeposito(row.name) ? '' : avisoMarcaLejos(m)}</td>
                                         <td class="px-2 py-2 text-center"><span class="status-badge ${lbl.cls} text-[9px]">${lbl.txt}</span></td>
                                         <td class="px-2 py-2 text-center text-[10px] text-[#2B3674] hover:bg-indigo-50 cursor-pointer"
                                             ondblclick="editStopTime(this, ${tripId}, ${m.stopId || 'null'}, 'actualArrival')"
