@@ -21445,6 +21445,11 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     let matches = false;
 
                     switch(columnId) {
+                        case 'vuelta':
+                        case 'costo':
+                        case 'unidad':
+                            matches = selectedValues.has(valorDeFiltroWeekly(t, columnId));
+                            break;
                         case 'chofer':
                             tripValue = t.driver || 'N/A';
                             matches = selectedValues.has(tripValue);
@@ -21760,11 +21765,34 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             return val.charAt(0).toUpperCase() + val.slice(1).toLowerCase();
         }
 
+        /** Vuelta, Costo y Unidad se filtran por lo mismo que muestra la celda:
+         *  "1ª", "$ 170.000" o "Propio", la patente. */
+        function valorDeFiltroWeekly(t, columnId) {
+            if (columnId === 'vuelta') return formatVueltaLabel(t);
+            if (columnId === 'unidad') return resolveTripPlate(t) || 'S/D';
+            if (columnId === 'costo') {
+                if (t.contractType === 'Propio') return 'Propio';
+                const cost = (typeof getTripCalculatedCost === 'function') ? getTripCalculatedCost(t) : (Number(t.value) || 0);
+                return '$ ' + Number(cost || 0).toLocaleString('es-AR');
+            }
+            return '';
+        }
+        /** "$ 9.500" antes que "$ 170.000" (por numero, no por texto); "Propio" primero */
+        function _ordenCosto(a, b) {
+            const n = (s) => s === 'Propio' ? -1 : Number(String(s).replace(/[^0-9,]/g, '').replace(',', '.')) || 0;
+            return n(a) - n(b);
+        }
+
         function getUniqueValuesForColumn(columnId) {
             const values = new Set();
             planningData.forEach(trip => {
                 let val = '';
                 switch(columnId) {
+                    case 'vuelta':
+                    case 'costo':
+                    case 'unidad':
+                        val = valorDeFiltroWeekly(trip, columnId);
+                        break;
                     case 'chofer':
                         val = (trip.driver || 'N/A').trim();
                         break;
@@ -21797,12 +21825,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 }
                 if (val) values.add(val);
             });
-            return Array.from(values).sort();
+            return Array.from(values).sort(columnId === 'costo' ? _ordenCosto : undefined);
         }
 
         function openColumnFilterModal(columnId) {
             const column = weeklyColumns.find(c => c.id === columnId);
-            if (!column || ['checkbox', 'id-fecha', 'acciones', 'costo', 'unidad', 'recorrido', 'vuelta'].includes(columnId)) {
+            if (!column || ['checkbox', 'id-fecha', 'acciones', 'recorrido'].includes(columnId)) {
                 return; // No filter for these columns
             }
 
@@ -21868,7 +21896,7 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         function renderFilterPanel() {
             const list = document.getElementById('weekly-filters-list');
-            const filterableColumns = weeklyColumns.filter(c => !['checkbox', 'id-fecha', 'acciones', 'costo', 'unidad', 'recorrido', 'vuelta'].includes(c.id));
+            const filterableColumns = weeklyColumns.filter(c => !['checkbox', 'id-fecha', 'acciones', 'recorrido'].includes(c.id));
 
             list.innerHTML = filterableColumns.map(col => {
                 const currentFilters = weeklyColumnFilters[col.id] || new Set();
