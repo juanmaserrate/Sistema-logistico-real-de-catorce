@@ -11390,12 +11390,15 @@ app.post('/api/admin/rutas-set-bu', async (req: any, res: any) => {
 app.get('/api/admin/auditoria', async (req: any, res: any) => {
     if (req.query.key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
     try {
-        const horas = Math.min(Number(req.query.hours) || 24, 24 * 30);
+        const horas = Math.min(Number(req.query.hours) || 24, 24 * 120);
         const entity = String(req.query.entity || '').trim();
+        // ids=1,2,3 -> solo el historial de esos registros (por ejemplo, viajes)
+        const ids = String(req.query.ids || '').split(',').map((s) => s.trim()).filter(Boolean);
         const logs = await prisma.auditLog.findMany({
             where: {
                 createdAt: { gte: new Date(Date.now() - horas * 3600000) },
-                ...(entity ? { entity: { equals: entity, mode: 'insensitive' } } : {})
+                ...(entity ? { entity: { equals: entity, mode: 'insensitive' } } : {}),
+                ...(ids.length ? { entityId: { in: ids } } : {})
             },
             orderBy: { createdAt: 'desc' },
             take: Math.min(Number(req.query.limit) || 40, 200)
