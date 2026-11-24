@@ -2829,6 +2829,15 @@
                             Ver todos
                         </button>
                     </div>
+                    <!-- Como se lee el mapa: el color dice de que reparto es; el relleno, como quedo -->
+                    <div id="control-map-leyenda" class="px-5 py-2 border-b border-[#F4F7FE] bg-white flex items-center gap-x-4 gap-y-1.5 flex-wrap text-[10px] font-bold text-[#2B3674]">
+                        <span class="flex items-center gap-1.5"><span class="r14-ley" style="background:#fff;border:2.5px solid #2563eb;color:#2563eb">3</span>Por hacer (color del reparto)</span>
+                        <span class="flex items-center gap-1.5"><span class="r14-ley" style="background:#d97706;border:2px solid #fde68a;color:#fff">4</span>La que sigue</span>
+                        <span class="flex items-center gap-1.5"><span class="r14-ley" style="background:#16a34a;border:2px solid #fff;box-shadow:0 0 0 2px #2563eb;color:#fff">&#10003;</span>Entregada</span>
+                        <span class="flex items-center gap-1.5"><span class="r14-ley" style="background:#dc2626;border:2px solid #fff;box-shadow:0 0 0 2px #2563eb;color:#fff">&#10005;</span>No entregada</span>
+                        <span class="flex items-center gap-1.5"><span class="r14-ley-camion" style="background:#2563eb">R7</span>Camión con su reparto</span>
+                        <span class="flex items-center gap-1.5"><span class="r14-ley-camion" style="background:#2563eb">R7 · 12 min</span>Camión gris: sin señal hace más de 30 s (dice hace cuánto)</span>
+                    </div>
                     <div id="control-live-map" class="w-full" style="height: calc(100vh - 320px); min-height: 480px; max-height: 800px;"></div>
                 </div>
 
@@ -8739,6 +8748,43 @@
             clearControlLiveMarkers();
         }
 
+        /* ── Un color por reparto ───────────────────────────────────
+         * El mismo en el chip, el camion y las paradas, para saber de un
+         * vistazo que es de quien. Sin verde, rojo ni ambar: esos dicen como
+         * quedo cada parada (entregada, no entregada, la que sigue). Antes
+         * habia tres paletas distintas y una parada pendiente del 2do reparto
+         * salia roja, como si no se hubiera entregado. */
+        const CONTROL_COLORES_REPARTO = ['#2563eb', '#7c3aed', '#0891b2', '#db2777', '#475569', '#a21caf', '#1e3a8a', '#0d9488'];
+        const CONTROL_COLOR_SIN_VIAJE = '#94a3b8';
+        const _controlColorPorRuta = new Map();
+        function controlColorDeRuta(routeId) {
+            if (routeId == null || routeId === '' || !Number.isFinite(Number(routeId))) return CONTROL_COLOR_SIN_VIAJE;
+            const k = Number(routeId);
+            if (!_controlColorPorRuta.has(k)) {
+                const usados = new Set(_controlColorPorRuta.values());
+                const libre = CONTROL_COLORES_REPARTO.find((c) => !usados.has(c));
+                _controlColorPorRuta.set(k, libre || CONTROL_COLORES_REPARTO[_controlColorPorRuta.size % CONTROL_COLORES_REPARTO.length]);
+            }
+            return _controlColorPorRuta.get(k);
+        }
+        /** Nombre corto del reparto para el chip y el camion. "GPS" es un
+         *  celular que no se pudo cruzar con ningun viaje de hoy. */
+        function controlNombreReparto(it) {
+            const r = String((it && it.reparto) || '').trim();
+            if (r && r.toUpperCase() !== 'GPS') {
+                // LIBRE se repite: se le suma el chofer
+                if (r.toUpperCase() === 'LIBRE' && it.driver) return 'LIBRE ' + String(it.driver).split(/\s+/)[0];
+                return r.replace(/\s+LANUS$/i, ' Lanús');
+            }
+            return (it && (it.deviceLabel || it.driver)) || 'SIN REPARTO';
+        }
+        /** Colores en orden de reparto (R7, R8, R9...), asi no cambian de un refresco al otro */
+        function controlAsignarColores(items) {
+            const conRuta = (items || []).filter((it) => it && it.plannedRouteId != null && Number.isFinite(Number(it.plannedRouteId)));
+            conRuta.sort((a, b) => controlNombreReparto(a).localeCompare(controlNombreReparto(b), undefined, { numeric: true }));
+            conRuta.forEach((it) => controlColorDeRuta(it.plannedRouteId));
+        }
+
         /* ── Filtro de choferes en mapa ──────────────────────────── */
         function controlIsTripVisible(tripId) {
             if (!controlVisibleTrips) return true; // null = mostrar todos
@@ -8760,7 +8806,7 @@
             }
             if (filterBar) filterBar.classList.remove('hidden');
             items = activeItems;
-            const colors = ['#2563eb', '#dc2626', '#16a34a', '#ca8a04', '#7c3aed', '#db2777', '#0891b2', '#ea580c'];
+            controlAsignarColores(items);
             // Construir meta para cada trip
             items.forEach((it, idx) => {
                 const tid = String(it.tripId);
@@ -8769,7 +8815,7 @@
                     vehicle: it.vehicle || 'S/D',
                     reparto: it.reparto || '--',
                     routeId: it.plannedRouteId,
-                    color: colors[idx % colors.length]
+                    color: controlColorDeRuta(it.plannedRouteId)
                 });
             });
 
@@ -8783,14 +8829,9 @@
                 const tid = String(it.tripId);
                 const isVisible = controlVisibleTrips.has(tid);
                 const enfocado = hayFoco && isVisible;
-                const color = colors[idx % colors.length];
-                // "GPS" es el nombre que le pone el servidor a un telefono que no
-                // pudo cruzar con ninguna ruta de hoy. No es un reparto: se usa
-                // como ultimo recurso el nombre con el que el celular se anuncia.
+                const color = controlColorDeRuta(it.plannedRouteId);
                 const repartoReal = String(it.reparto || '').trim();
-                const reparto = (repartoReal && repartoReal.toUpperCase() !== 'GPS')
-                    ? repartoReal
-                    : (it.deviceLabel || it.driver || 'SIN REPARTO');
+                const reparto = controlNombreReparto(it) + ((repartoReal && repartoReal.toUpperCase() !== 'GPS') ? '' : ' (sin viaje)');
                 const chofer = it.driver || '';
                 const hechas = Number(it.stopsDone);
                 const total = Number(it.stopsTotal);
@@ -8958,20 +8999,23 @@
                 const entregada = estado === 'COMPLETED';
                 const fallada = estado === 'UNDELIVERABLE';
 
-                // Una parada se lee de un vistazo por su color:
-                //   verde = entregada . rojo = no se pudo . ambar grande = la
-                //   que sigue . color del reparto = todavia por hacer
-                let fillCol = color, borde = '2px solid #ffffff', size = 22, dentro = String(seq);
-                let rotulo = `${seq}. ${st.name || 'Parada'}`;
+                // El BORDE (y el numero) dice de que reparto es; el RELLENO, como quedo:
+                //   blanco = por hacer . verde = entregada . rojo = no se pudo .
+                //   ambar grande = la que sigue
+                const fila = (items || []).find((it) => Number(it.plannedRouteId) === Number(routeId));
+                const deQuien = fila ? controlNombreReparto(fila) + ' \u00b7 ' : '';
+                let fillCol = '#ffffff', letra = color, borde = `3px solid ${color}`, size = 24, dentro = String(seq);
+                let anilloReparto = '';
+                let rotulo = `${deQuien}${seq}. ${st.name || 'Parada'} \u2014 por hacer`;
                 if (entregada) {
-                    fillCol = '#16a34a'; dentro = '\u2713';
-                    rotulo = `${seq}. ${st.name || 'Parada'} \u2014 entregada`;
+                    fillCol = '#16a34a'; letra = '#ffffff'; borde = '2px solid #ffffff'; anilloReparto = `0 0 0 2px ${color}, `; size = 20; dentro = '\u2713';
+                    rotulo = `${deQuien}${seq}. ${st.name || 'Parada'} \u2014 entregada`;
                 } else if (fallada) {
-                    fillCol = '#dc2626'; dentro = '\u2715';
-                    rotulo = `${seq}. ${st.name || 'Parada'} \u2014 no se pudo entregar`;
+                    fillCol = '#dc2626'; letra = '#ffffff'; borde = '2px solid #ffffff'; anilloReparto = `0 0 0 2px ${color}, `; size = 20; dentro = '\u2715';
+                    rotulo = `${deQuien}${seq}. ${st.name || 'Parada'} \u2014 no se pudo entregar`;
                 } else if (isNext) {
-                    fillCol = '#d97706'; size = 30; borde = '3px solid #fde68a';
-                    rotulo = `PRÓXIMA \u2014 ${seq}. ${st.name || 'Parada'}`;
+                    fillCol = '#d97706'; letra = '#ffffff'; size = 30; borde = '3px solid #fde68a';
+                    rotulo = `PRÓXIMA \u2014 ${deQuien}${seq}. ${st.name || 'Parada'}`;
                 }
                 const title = rotulo;
 
@@ -8982,16 +9026,17 @@
                 el.style.height = size + 'px';
                 el.style.borderRadius = '50%';
                 el.style.background = fillCol;
-                el.style.color = '#ffffff';
+                el.style.color = letra;
                 el.style.border = borde;
-                el.style.boxShadow = '0 2px 6px rgba(0,0,0,0.35)';
+                el.style.boxShadow = anilloReparto + '0 2px 6px rgba(0,0,0,0.35)';
                 el.style.display = 'flex';
                 el.style.alignItems = 'center';
                 el.style.justifyContent = 'center';
                 el.style.fontSize = isNext ? '13px' : '11px';
                 el.style.fontWeight = '700';
                 el.style.cursor = 'pointer';
-                el.style.opacity = entregada ? '0.75' : '1';
+                el.style.opacity = (entregada || fallada) ? '0.8' : '1';
+                el.style.boxSizing = 'border-box';
                 el.title = title;
                 el.textContent = dentro;
                 // La parada que sigue late, para encontrarla sin buscarla. Late
@@ -9073,7 +9118,12 @@
 
             const idsKey = ids.join(',');
             const samePlan = idsKey === controlLastPlannedIdsKey && controlPlannedPolylines.length > 0;
-            const nextStopsKey = computeFleetNextStopsKey(items, ids);
+            // Tambien cambia cuando se marca una parada (antes solo miraba cual
+            // era la proxima, y al repintar perdia si estaba entregada o no)
+            controlAsignarColores(items);
+            const nextStopsKey = computeFleetNextStopsKey(items, ids) + '#' + ids
+                .map((rid) => paradasDeLaRuta(rid).map((s) => s.stopId + ':' + s.status).join(','))
+                .join('|');
             if (samePlan && nextStopsKey === controlLastFleetNextStopsKey) {
                 return;
             }
@@ -9083,13 +9133,15 @@
             if (samePlan) {
                 controlLastFleetNextStopsKey = nextStopsKey;
                 clearControlPlannedStopMarkers();
-                const colors = ['#2563eb', '#dc2626', '#16a34a', '#ca8a04', '#7c3aed'];
                 for (let idx = 0; idx < ids.length; idx++) {
                     const routeId = ids[idx];
                     const meta = controlPlannedStopsMetaByRouteId.get(routeId);
-                    if (!meta || !meta.stops?.length) continue;
-                    const color = meta.color || colors[idx % colors.length];
-                    const stops = [...meta.stops].sort((a, b) => Number(a.sequence) - Number(b.sequence));
+                    // Con el estado de ahora (las guardadas no lo tienen)
+                    const frescas = paradasDeLaRuta(routeId);
+                    const base = frescas.length ? frescas : (meta?.stops || []);
+                    if (!base.length) continue;
+                    const color = controlColorDeRuta(routeId);
+                    const stops = [...base].sort((a, b) => Number(a.sequence) - Number(b.sequence));
                     appendControlPlannedStopMarkers(routeId, color, stops, items);
                 }
                 controlUpdatePlannedVisibility();
@@ -9103,14 +9155,13 @@
                 controlLastPlannedIdsKey = idsKey;
                 controlLastFleetNextStopsKey = nextStopsKey;
 
-                const colors = ['#2563eb', '#dc2626', '#16a34a', '#ca8a04', '#7c3aed'];
                 const allBoundsPoints = [];
                 const maxPts = 480;
 
                 for (let idx = 0; idx < ids.length; idx++) {
                     if (token !== controlPlannedRoutesToken) return;
                     const routeId = ids[idx];
-                    const color = colors[idx % colors.length];
+                    const color = controlColorDeRuta(routeId);
                     try {
                         // Las paradas (nombre, coordenadas y estado) ya vienen con
                         // las rutas activas. Antes se las pedia a Google Directions,
@@ -9299,7 +9350,12 @@
 
         /** Genera SVG del camion. Para Mapbox devolvemos el SVG como string
          *  para inyectar en un elemento HTML. */
+        // Cada camion con su propia sombra: con el mismo id en todos, al
+        // enfocar un reparto (los demas ocultos) el elegido tomaba la sombra de
+        // un camion oculto y no se dibujaba.
+        let _truckSvgSeq = 0;
         function makeTruckIconSvg(bearingDeg) {
+            const fid = 'r14sh' + (++_truckSvgSeq);
             const truckW = 72;
             const truckH = 36;
             const w = truckW;
@@ -9314,13 +9370,13 @@
 
             return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">
   <defs>
-    <filter id="sh" x="-10%" y="-10%" width="120%" height="130%">
+    <filter id="${fid}" x="-10%" y="-10%" width="120%" height="130%">
       <feDropShadow dx="0" dy="1.5" stdDeviation="1.5" flood-color="#0f172a" flood-opacity="0.35"/>
     </filter>
   </defs>
   ${truckImgUrl
-    ? `<image href="${truckImgUrl}" x="0" y="0" width="${w}" height="${h}" filter="url(#sh)" ${flipTransform ? `transform="${flipTransform}"` : ''}/>`
-    : `<g transform="translate(8,8)" fill="none" stroke="#1d4ed8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#sh)">
+    ? `<image href="${truckImgUrl}" x="0" y="0" width="${w}" height="${h}" filter="url(#${fid})" ${flipTransform ? `transform="${flipTransform}"` : ''}/>`
+    : `<g transform="translate(8,8)" fill="none" stroke="#1d4ed8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" filter="url(#${fid})">
         <path d="M40 24V8a1 1 0 0 0-1-1H2v17"/>
         <path d="M40 12h10l8 8v4h-18"/>
         <circle cx="12" cy="24" r="3.5"/>
@@ -9372,9 +9428,43 @@
                 const t = _controlUltimoPunto.get(String(tid));
                 const el = m.getElement && m.getElement();
                 if (el) el.classList.toggle('r14-camion-viejo', !t || ahora - t > 30000);
+                const cartel = el && el.querySelector('.r14-camion-cartel');
+                if (cartel) controlPintarCartel(cartel);
             }
         }
         setInterval(_controlPintarFrescura, 1000);
+
+        /** Arma (o actualiza) el camion: dibujo + cartel con el reparto abajo.
+         *  El dibujo va en un hijo, asi al girarlo no se borra el cartel. */
+        function controlPintarCamion(el, it, bearing) {
+            let dibujo = el.querySelector('.r14-camion-dibujo');
+            let cartel = el.querySelector('.r14-camion-cartel');
+            if (!dibujo) {
+                el.innerHTML = '';
+                dibujo = document.createElement('div');
+                dibujo.className = 'r14-camion-dibujo';
+                cartel = document.createElement('div');
+                cartel.className = 'r14-camion-cartel';
+                cartel.innerHTML = '<span class="r14-camion-nombre"></span><span class="r14-camion-hace"></span>';
+                el.appendChild(dibujo);
+                el.appendChild(cartel);
+            }
+            dibujo.innerHTML = makeTruckIconSvg(bearing);
+            const sinViaje = !(it && it.plannedRouteId != null && Number.isFinite(Number(it.plannedRouteId)));
+            cartel.querySelector('.r14-camion-nombre').textContent = controlNombreReparto(it) + (sinViaje ? ' \u00b7 sin viaje' : '');
+            cartel.dataset.color = controlColorDeRuta(it && it.plannedRouteId);
+            cartel.dataset.tid = String(it && it.tripId);
+            controlPintarCartel(cartel);
+        }
+        /** El cartel siempre con el color del reparto (si no, sin señal no se
+         *  sabe de quien es); lo gris es el dibujo. Dice hace cuanto del ultimo punto. */
+        function controlPintarCartel(cartel) {
+            const t = _controlUltimoPunto.get(cartel.dataset.tid);
+            const seg = t ? Math.max(0, Math.round((Date.now() - t) / 1000)) : null;
+            cartel.style.background = cartel.dataset.color || CONTROL_COLOR_SIN_VIAJE;
+            const hace = cartel.querySelector('.r14-camion-hace');
+            if (hace) hace.textContent = seg == null ? ' \u00b7 sin se\u00f1al' : seg < 60 ? '' : seg < 3600 ? ` \u00b7 ${Math.floor(seg / 60)} min` : ` \u00b7 ${Math.floor(seg / 3600)} h`;
+        }
 
         function animateControlMarker(marker, lng, lat, durationMs) {
             if (!marker) return;
@@ -9412,6 +9502,7 @@
         /** Ubicaciones GPS: actualizar posicion sin borrar markers. MAPBOX VERSION. */
         function renderControlMap(items) {
             if (!controlMap) return;
+            controlAsignarColores(items);
             // Actualizar chips de filtro con los datos actuales
             controlBuildDriverChips(items);
             const seen = new Set();
@@ -9466,8 +9557,8 @@
                         // Deslizamiento suave hasta la nueva posición (en vez de teletransporte
                         // diagonal). 2.5s cubre el ritmo de pings (5-8s) sin quedar atrasado.
                         animateControlMarker(marker, lng, lat, 2500);
-                        // Actualizar SVG del camion con nuevo bearing
-                        if (el) el.innerHTML = makeTruckIconSvg(bearing);
+                        // Actualizar SVG del camion con nuevo bearing (y su cartel)
+                        if (el) controlPintarCamion(el, it, bearing);
                         marker.__lastPos = pos;
                         if (bearing != null) marker.__lastBearing = bearing;
                         if (Number.isFinite(tsConsulta)) marker.__lastTs = tsConsulta;
@@ -9484,7 +9575,7 @@
                     el.style.cursor = 'pointer';
                     el.style.display = isVisible ? '' : 'none';
                     el.title = `${ctrlData.driver} . ${ctrlData.vehicle} . ${ctrlData.reparto}`;
-                    el.innerHTML = makeTruckIconSvg(bearing);
+                    controlPintarCamion(el, it, bearing);
 
                     // Popup con detalles del chofer
                     const popup = new mapboxgl.Popup({ offset: 25, closeButton: true });
@@ -10119,7 +10210,7 @@
                 const { rid, rec } = results[idx];
                 if (!controlMap || !rec) continue;
                 seen.add(rid);
-                const color = CONTROL_TRAIL_COLORS[routeIds.indexOf(rid) % CONTROL_TRAIL_COLORS.length];
+                const color = controlColorDeRuta(rid);
                 const layerId = `trail-${rid}`;
                 try {
                     controlPintarTraza(layerId, color, rec);
