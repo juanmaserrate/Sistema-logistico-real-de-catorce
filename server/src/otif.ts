@@ -191,7 +191,8 @@ export function calcularOtif(entregas: EntregaOtif[], incidencias: IncidenciaOti
         const incs = incPorEntrega.get(e) || [];
         const aTiempo = lim ? entregada && !!hora && hora <= lim : entregada;
         const completa = entregada && !incs.length;
-        const esFuera = fuera.has(un);
+        // "REPOSICION SAE BROWN" y las demas reposiciones quedan fuera como REPOSICION
+        const esFuera = fuera.has(un) || [...fuera].some((f) => un.startsWith(f + ' '));
         let motivo: string | null = null;
         if (!esFuera && !(aTiempo && completa)) {
             if (!entregada) motivo = String(e.estado).toUpperCase() === 'UNDELIVERABLE' ? 'No entregada' : 'Sin marcar';

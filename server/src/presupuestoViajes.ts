@@ -18,6 +18,8 @@
  *    las mismas del Panel logistico: si se cambian ahi, cambian aca.
  *  - Las reposiciones de Brown van en la fila "Reposiciones" de SAE BROWN, las
  *    de Lomas en la de LOMAS JARDINES, y las demas en el bloque REPOSICION.
+ *    "REPOSICION SAE BROWN" / "REPOSICION SAE LOMAS" van a su fila sin mirar
+ *    la localidad; las otras "REPOSICION ..." al bloque REPOSICION.
  *  - Nada desaparece: lo que no entra en una categoria va a "Otras
  *    localidades" / "Otros repartos", y las unidades que no estan en la
  *    planilla van al bloque OTRAS UNIDADES.
@@ -195,7 +197,16 @@ export function contarPresupuesto(viajesCrudos: ViajeParaPresupuesto[], cfg: any
                 sumar('SAE_LANUS', contrato, porReparto(R.zonasLanus) || 'Otros repartos', mes);
             } else if (u === 'SAE LOMAS') {
                 sumar('LOMAS_JARDINES', contrato, porReparto(R.repartosLJ) || 'Otros repartos', mes);
+            } else if (u === 'REPOSICION SAE BROWN') {
+                // Las reposiciones con unidad propia (nov 2026) ya dicen de quien son
+                sumar('SAE_BROWN', contrato, 'Reposiciones', mes);
+            } else if (u === 'REPOSICION SAE LOMAS') {
+                sumar('LOMAS_JARDINES', contrato, 'Reposiciones', mes);
+            } else if (u.startsWith('REPOSICION ')) {
+                // Lanus, Sistemas Alternativos, CDI, Colonias: bloque REPOSICION
+                sumar('REPOSICION', '', contrato, mes);
             } else if (R.unidadesRepo.has(u)) {
+                // La REPOSICION a secas: de quien es sale de la localidad
                 if (R.repoBrown.has(localidad)) sumar('SAE_BROWN', contrato, 'Reposiciones', mes);
                 else if (R.repoLomas.has(localidad)) sumar('LOMAS_JARDINES', contrato, 'Reposiciones', mes);
                 else sumar('REPOSICION', '', contrato, mes);

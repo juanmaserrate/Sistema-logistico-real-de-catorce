@@ -109,6 +109,29 @@ esperar('el orden de bloques es el de la planilla',
 esperar('cada bloque suma sus filas',
     inf.bloques.every((b) => b.total === b.filas.reduce((a, f) => a + f.total, 0)));
 
+// ── Reposiciones con unidad propia (nov 2026) ──
+console.log('\n5b. Reposiciones con unidad propia');
+{
+    const rv = [
+        v('10-20', 'Propio', 'REPOSICION SAE BROWN', { zone: 'LANUS' }),           // la unidad gana a la localidad
+        v('10-20', 'Tercerizado', 'REPOSICION SAE LOMAS', { zone: 'LONGCHAMPS' }),
+        v('10-21', 'Propio', 'REPOSICION SAE LANUS', { zone: 'LANUS' }),
+        v('10-21', 'Propio', 'REPOSICIÓN SISTEMAS ALTERNATIVOS'),                  // con tilde igual
+        v('10-21', 'Tercerizado', 'REPOSICION CDI, CDI'),
+        v('10-22', 'Propio', 'REPOSICION COLONIAS'),
+        v('10-22', 'Propio', 'REPOSICION', { zone: 'LONGCHAMPS' }),               // la de siempre, por localidad
+    ];
+    const r = contarPresupuesto(rv, cfg, 2026);
+    const c = (clave: string, contrato: string | null, fila: string) =>
+        r.bloques.find((b) => b.clave === clave && b.contrato === contrato)?.filas.find((f) => f.nombre === fila)?.meses[OCT] ?? 0;
+    esperar('REPOSICION SAE BROWN -> Reposiciones de Brown (aunque sea de Lanus) + la de siempre de Longchamps',
+        c('SAE_BROWN', 'Propio', 'Reposiciones') === 2, c('SAE_BROWN', 'Propio', 'Reposiciones'));
+    esperar('REPOSICION SAE LOMAS -> Reposiciones de Lomas Jardines', c('LOMAS_JARDINES', 'Tercerizado', 'Reposiciones') === 1);
+    esperar('Lanus, Sist. Alt. y Colonias -> bloque REPOSICION propio (3)', c('REPOSICION', null, 'Propio') === 3, c('REPOSICION', null, 'Propio'));
+    esperar('REPOSICION CDI -> bloque REPOSICION tercerizado, y CDI aparte', c('REPOSICION', null, 'Tercerizado') === 1 && c('CDI', null, 'Tercerizado') === 1);
+    esperar('ninguna va a OTRAS UNIDADES', !r.bloques.some((b) => b.clave === 'OTRAS'), r.bloques.filter((b) => b.clave === 'OTRAS').map((b) => b.filas.map((f) => f.nombre)));
+}
+
 // ── Con los viajes reales de octubre, si estan ──
 const real = path.join(__dirname, '..', '..', 'respaldos', 'viajes_oct_para_presupuesto.json');
 if (fs.existsSync(real)) {

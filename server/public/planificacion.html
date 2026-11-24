@@ -28105,7 +28105,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                     if (!_matchesContract(t, contractType)) return;
                     if (!_isReposicion(t, cfg)) return;
                     const zone = _norm(t.zone);
-                    if (repoLocs.some(z => _norm(z) === zone)) {
+                    const deRegion = _regionDeLaReposicion(t);
+                    if (deRegion ? deRegion === regionKey : repoLocs.some(z => _norm(z) === zone)) {
                         const m = _getTripMonthIdx(t);
                         if (m >= 0) { initRow('Reposiciones')[m] += 1; marcar(t, 'Reposiciones'); }
                     }
@@ -28132,6 +28133,17 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
 
         function _isMaeOrMesa(trip, cfg) {
             return _matchesAny(trip.businessUnit, cfg.businessUnits_MESA || []);
+        }
+
+        /** "REPOSICION SAE BROWN" ya dice de que region es: va a esa fila de
+         *  Reposiciones (sin mirar la localidad) y a ninguna otra. Las otras
+         *  "REPOSICION ..." (CDI, COLONIAS, SISTEMAS ALTERNATIVOS) no son de
+         *  ninguna region SAE. La REPOSICION a secas sigue por localidad (null). */
+        const _REPO_REGION = { 'REPOSICION SAE BROWN': 'SAE_BROWN', 'REPOSICION SAE LOMAS': 'SAE_LOMAS', 'REPOSICION SAE LANUS': 'SAE_LANUS' };
+        function _regionDeLaReposicion(trip) {
+            const us = (typeof unidadesDeNegocio === 'function' ? unidadesDeNegocio(trip.businessUnit) : [trip.businessUnit]).map(_norm);
+            for (const u of us) if (_REPO_REGION[u]) return _REPO_REGION[u];
+            return us.some(u => u.startsWith('REPOSICION ')) ? 'NINGUNA' : null;
         }
 
         function _isReposicion(trip, cfg) {

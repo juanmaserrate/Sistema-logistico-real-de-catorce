@@ -190,8 +190,9 @@ const COLUMNAS_HORAS = [
  *  septiembre de 2026 da igual): cada fila de la hoja Viajes es un viaje de
  *  esa unidad, y un viaje que reparte para dos cuenta en las dos con SUS
  *  horas. Solo entran las filas con horario: un viaje sin cerrar no tiene
- *  duracion y bajaria el promedio. La reposicion va por partido (REPOSICION
- *  · ALMIRANTE BROWN, · LANUS...), igual que en esa tabla. */
+ *  duracion y bajaria el promedio. La REPOSICION a secas va por partido
+ *  (REPOSICION · ALMIRANTE BROWN, · LANUS...), igual que en esa tabla; las
+ *  que tienen unidad propia (REPOSICION SAE BROWN...) van con su nombre. */
 function armarHojaHoras(filas: any[], estiloEntero: number, estiloDecimal: number, estiloComun: number, estiloTitulo: number): string {
     type Acum = { viajes: number; horas: number };
     type Linea = { propio: Acum; terc: Acum; total: Acum };
@@ -209,7 +210,8 @@ function armarHojaHoras(filas: any[], estiloEntero: number, estiloDecimal: numbe
 
         let unidad = String(f['Unidad de negocio'] || '').trim().toUpperCase() || 'SIN UNIDAD';
         const partido = String(f['Partido'] || '').trim().toUpperCase();
-        if (unidad.startsWith('REPOSICION') && partido) unidad = `REPOSICION · ${partido}`;
+        // Las nuevas ("REPOSICION SAE BROWN"...) ya dicen de quien son: van con su nombre
+        if (unidad === 'REPOSICION' && partido) unidad = `REPOSICION · ${partido}`;
         if (!m.unidades.has(unidad)) m.unidades.set(unidad, nueva());
         const linea = m.unidades.get(unidad)!;
 
