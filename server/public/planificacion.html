@@ -1217,6 +1217,58 @@
                     </div>
                 </div>
 
+                <!-- HORAS TRABAJADAS: ranking de choferes y auxiliares -->
+                <div id="dash-horas-personal" class="card-dark p-6 md:p-8">
+                    <div class="mb-6">
+                        <h4 class="text-sm font-black text-[#1B2559] uppercase tracking-widest">Horas trabajadas · choferes y auxiliares</h4>
+                        <p class="text-xs text-[#A3AED0] font-medium mt-1">
+                            Cada persona suma lo que duró cada viaje en que fue, de la salida a la vuelta al depósito.
+                            Por eso un viaje de 7 h con 3 auxiliares son 21 h de auxiliares.
+                        </p>
+                    </div>
+                    <div class="grid grid-cols-1 xl:grid-cols-2 gap-6">
+                        <div class="bg-[#FAFBFF] rounded-2xl p-5">
+                            <div class="flex items-baseline justify-between gap-3 mb-3">
+                                <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-widest">Choferes</h5>
+                                <span id="dash-horas-choferes-total" class="text-xs font-black text-indigo-700 tabular-nums"></span>
+                            </div>
+                            <div class="max-h-[460px] overflow-y-auto custom-scrollbar">
+                                <table class="w-full text-left text-sm">
+                                    <thead class="sticky top-0 bg-[#FAFBFF]">
+                                        <tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">
+                                            <th class="py-2 pr-2 w-8">#</th>
+                                            <th class="py-2 pr-2">Chofer</th>
+                                            <th class="py-2 px-2 text-right">Viajes</th>
+                                            <th class="py-2 pl-2 text-right">Horas</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dash-horas-choferes" class="divide-y divide-[#F4F7FE]"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="bg-[#FAFBFF] rounded-2xl p-5">
+                            <div class="flex items-baseline justify-between gap-3 mb-3">
+                                <h5 class="text-xs font-black text-[#1B2559] uppercase tracking-widest">Auxiliares</h5>
+                                <span id="dash-horas-auxiliares-total" class="text-xs font-black text-indigo-700 tabular-nums"></span>
+                            </div>
+                            <div class="max-h-[460px] overflow-y-auto custom-scrollbar">
+                                <table class="w-full text-left text-sm">
+                                    <thead class="sticky top-0 bg-[#FAFBFF]">
+                                        <tr class="text-[10px] font-black text-[#A3AED0] uppercase tracking-widest">
+                                            <th class="py-2 pr-2 w-8">#</th>
+                                            <th class="py-2 pr-2">Auxiliar</th>
+                                            <th class="py-2 px-2 text-right">Viajes</th>
+                                            <th class="py-2 pl-2 text-right">Horas</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="dash-horas-auxiliares" class="divide-y divide-[#F4F7FE]"></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <p id="dash-horas-nota" class="text-[11px] text-[#A3AED0] font-medium mt-4"></p>
+                </div>
+
                 <!-- COSTO POR UNIDAD DE NEGOCIO (vino del Motor de Costos) -->
                 <div class="card-dark p-5">
                     <div class="flex flex-wrap items-center justify-between gap-3 mb-4 pb-3 border-b border-[#F4F7FE]">
@@ -27936,6 +27988,92 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             _txt('dash-kpi-duracion-det', `medido en ${nro(m.duracion.viajesMedidos)} viajes`);
         }
 
+        // ─── HORAS TRABAJADAS POR PERSONA ────────────────────────────────────
+        // Cada chofer y cada auxiliar suma la duracion entera de cada viaje en
+        // que fue: un viaje de 7 h con 3 auxiliares son 21 h de auxiliares.
+        // Solo cuentan los viajes con salida y llegada; los que todavia no
+        // salieron (o quedaron sin horario) se avisan aparte, no se inventan
+        // las 8 h por defecto que usa el costo.
+        const _HORAS_NO_ES_NOMBRE = new Set(['', '-', '--', 'N/A', 'NA', 'S/D', 'SIN CHOFER', 'SIN AUXILIAR', 'SIN ASIGNAR', 'NINGUNO']);
+
+        function _horasClavePersona(nombre) {
+            return String(nombre || '').normalize('NFD').replace(/[̀-ͯ]/g, '')
+                .toUpperCase().replace(/\s+/g, ' ').trim();
+        }
+
+        function _horasEsNombre(clave) {
+            return !_HORAS_NO_ES_NOMBRE.has(clave) && /[A-Z]{2}/.test(clave);
+        }
+
+        function _horasSumar(mapa, nombre, horas, terc) {
+            const clave = _horasClavePersona(nombre);
+            if (!_horasEsNombre(clave)) return false;
+            let p = mapa.get(clave);
+            if (!p) { p = { horas: 0, viajes: 0, terc: 0, grafias: new Map() }; mapa.set(clave, p); }
+            p.horas += horas;
+            p.viajes += 1;
+            if (terc) p.terc += 1;
+            const visto = String(nombre).replace(/\s+/g, ' ').trim().toUpperCase();
+            p.grafias.set(visto, (p.grafias.get(visto) || 0) + 1);
+            return true;
+        }
+
+        function pintarHorasPersonal(trips) {
+            const choferes = new Map(), auxiliares = new Map();
+            let sinHorario = 0;
+            for (const t of (trips || [])) {
+                const horas = getTripDurationHours(t, 0);
+                if (!(horas > 0)) { sinHorario++; continue; }
+                const terc = !tripIsPropioForCost(t);
+                _horasSumar(choferes, t.driver, horas, terc);
+                // Un mismo auxiliar no cuenta dos veces en el mismo viaje
+                const enEsteViaje = new Set();
+                [t.auxiliar, t.auxiliar2, t.auxiliar3, t.assistant, t.assistant2, t.assistant3]
+                    .filter(Boolean)
+                    .flatMap((a) => String(a).split(','))
+                    .forEach((a) => {
+                        const clave = _horasClavePersona(a);
+                        if (enEsteViaje.has(clave)) return;
+                        if (_horasSumar(auxiliares, a, horas, terc)) enEsteViaje.add(clave);
+                    });
+            }
+            const nro = (n) => n.toLocaleString('es-AR', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+            const pintar = (mapa, bodyId, totalId, marcarTerc) => {
+                const filas = [...mapa.values()].map((p) => ({
+                    ...p,
+                    nombre: [...p.grafias.entries()].sort((a, b) => b[1] - a[1])[0][0]
+                })).sort((a, b) => b.horas - a.horas);
+                const total = filas.reduce((s, p) => s + p.horas, 0);
+                _txt(totalId, filas.length ? `${nro(total)} h en total` : '');
+                const tbody = document.getElementById(bodyId);
+                if (!tbody) return;
+                if (!filas.length) {
+                    tbody.innerHTML = '<tr><td colspan="4" class="py-6 text-center text-xs text-[#A3AED0] font-medium">Sin datos en el período</td></tr>';
+                    return;
+                }
+                const max = filas[0].horas || 1;
+                tbody.innerHTML = filas.map((p, i) => {
+                    const chip = marcarTerc && p.terc === p.viajes
+                        ? ' <span class="ml-1 px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-700 text-[9px] font-black uppercase tracking-wider align-middle">Terc.</span>'
+                        : '';
+                    return `<tr class="hover:bg-white transition-colors">
+                        <td class="py-2 pr-2 text-[11px] font-black text-[#A3AED0] tabular-nums">${i + 1}</td>
+                        <td class="py-2 pr-2">
+                            <span class="text-xs font-bold text-[#1B2559]">${escapeHtmlWeekly(p.nombre)}</span>${chip}
+                            <span class="block h-1 mt-1 rounded-full bg-indigo-100"><span class="block h-1 rounded-full bg-indigo-500" style="width:${Math.max(2, Math.round(100 * p.horas / max))}%"></span></span>
+                        </td>
+                        <td class="py-2 px-2 text-right text-xs font-bold text-[#A3AED0] tabular-nums">${p.viajes}</td>
+                        <td class="py-2 pl-2 text-right text-xs font-black text-[#1B2559] tabular-nums whitespace-nowrap">${nro(p.horas)} h</td>
+                    </tr>`;
+                }).join('');
+            };
+            pintar(choferes, 'dash-horas-choferes', 'dash-horas-choferes-total', true);
+            pintar(auxiliares, 'dash-horas-auxiliares', 'dash-horas-auxiliares-total', false);
+            _txt('dash-horas-nota', sinHorario
+                ? `${sinHorario.toLocaleString('es-AR')} viaje${sinHorario === 1 ? '' : 's'} del período no ${sinHorario === 1 ? 'cuenta' : 'cuentan'}: todavía no ${sinHorario === 1 ? 'salió' : 'salieron'} o no ${sinHorario === 1 ? 'tiene' : 'tienen'} salida y llegada cargadas.`
+                : '');
+        }
+
         function renderTripsBreakdownTables(trips) {
             // Dos mapas: partido y unidad de negocio -> { propio, terc }.
             // La tabla por localidad se saco del panel: el detalle que se mira
@@ -28260,6 +28398,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (kpiP) kpiP.textContent = formatDashMoney(totalPropio);
             if (kpiT) kpiT.textContent = formatDashMoney(totalTerc);
             if (kpiTot) kpiTot.textContent = formatDashMoney(totalPropio + totalTerc);
+
+            pintarHorasPersonal(trips);
 
             destroyDashboardCharts();
 
