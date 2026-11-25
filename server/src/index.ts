@@ -11314,6 +11314,51 @@ app.post('/api/admin/fusionar-viajes', async (req: any, res: any) => {
  *  viaje sin paradas.
  *
  *  POST /api/admin/borrar-paradas { key, tripId, stopIds: [..], dryRun? } */
+/** Pasa paradas de un viaje a otro, con sus marcas, fotos y firmas (es la
+ *  misma parada, cambia de ruta). Sirve para separar un viaje que quedo unido
+ *  pero lo hicieron dos personas. Las paradas que llegan van antes de la vuelta
+ *  al deposito del viaje destino; en los dos viajes se renumeran sin cambiar
+ *  el orden.
+ *  POST /api/admin/mover-paradas { key, desde, hacia, stopIds: [..], dryRun? } */
+app.post('/api/admin/mover-paradas', async (req: any, res: any) => {
+    const { key, desde, hacia, stopIds, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const idA = Number(desde), idB = Number(hacia);
+    const ids = Array.isArray(stopIds) ? [...new Set(stopIds.map(Number).filter(Number.isFinite))] : [];
+    if (!Number.isFinite(idA) || !Number.isFinite(idB) || idA === idB || !ids.length) {
+        return res.status(400).json({ error: 'Faltan desde, hacia (distintos) y stopIds' });
+    }
+    try {
+        const sel = { id: true, linkedRoute: { select: { id: true, stops: { orderBy: { sequence: 'asc' as const } } } } };
+        const A: any = await prisma.trip.findUnique({ where: { id: idA }, select: sel });
+        const B: any = await prisma.trip.findUnique({ where: { id: idB }, select: sel });
+        if (!A?.linkedRoute || !B?.linkedRoute) return res.status(404).json({ error: 'Alguno de los dos viajes no existe o no tiene ruta' });
+        const deA: any[] = A.linkedRoute.stops;
+        const ajenas = ids.filter((s) => !deA.some((p) => p.id === s));
+        if (ajenas.length) return res.status(400).json({ error: `No son del viaje ${idA}: ${ajenas.join(', ')}` });
+        const vanse = deA.filter((p) => ids.includes(p.id));
+        const quedanA = deA.filter((p) => !ids.includes(p.id));
+        const deB: any[] = B.linkedRoute.stops;
+        const ordenB = [...deB.filter((p) => !p.isReturnToBase), ...vanse, ...deB.filter((p) => p.isReturnToBase)];
+        const plan = {
+            desde: idA, hacia: idB,
+            seMueven: vanse.map((p) => ({ id: p.id, ruta: p.ruta, status: p.status })),
+            quedanEn: { [idA]: quedanA.map((p) => p.id), [idB]: ordenB.map((p) => p.id) }
+        };
+        if (dryRun) return res.json({ dryRun: true, plan });
+        await prisma.$transaction([
+            ...ordenB.map((p, i) => prisma.stop.update({ where: { id: p.id }, data: { routeId: B.linkedRoute.id, sequence: i + 1 } })),
+            ...quedanA.map((p, i) => prisma.stop.update({ where: { id: p.id }, data: { sequence: i + 1 } }))
+        ]);
+        await logAction(req, 'UPDATE', 'Stop', ids.join(','), `${ids.length} parada(s) del viaje ${idA} pasadas al ${idB}`, vanse, plan);
+        io.emit('trip:updated', { tripIds: [idA, idB] });
+        res.json({ movidas: ids.length, plan });
+    } catch (e: any) {
+        console.error('mover-paradas:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/admin/borrar-paradas', async (req: any, res: any) => {
     const { key, tripId, stopIds, dryRun } = req.body || {};
     if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
@@ -14567,7 +14612,7 @@ app.post('/api/admin/viajes-guardar', async (req: any, res: any) => {
     const PARA_CREAR = ['date', 'driver', 'provider', 'contractType', 'reparto', 'tripType', 'businessUnit', 'zone', 'locality',
         'value', 'pagaAparte', 'observations', 'notes', 'isManual', 'status', 'auxiliar', 'auxiliar2', 'auxiliar3',
         'exitTime', 'returnTime', 'rutas', 'vehicle', 'justificacion'];
-    const PARA_EDITAR = ['value', 'pagaAparte', 'observations', 'notes', 'status', 'contractType', 'provider'];
+    const PARA_EDITAR = ['value', 'pagaAparte', 'observations', 'notes', 'status', 'contractType', 'provider', 'driver', 'rutas'];
     const tomar = (o: any, campos: string[]) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => campos.includes(k)));
     try {
         const plan: any[] = [];
