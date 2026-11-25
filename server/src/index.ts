@@ -14612,7 +14612,7 @@ app.post('/api/admin/viajes-guardar', async (req: any, res: any) => {
     const PARA_CREAR = ['date', 'driver', 'provider', 'contractType', 'reparto', 'tripType', 'businessUnit', 'zone', 'locality',
         'value', 'pagaAparte', 'observations', 'notes', 'isManual', 'status', 'auxiliar', 'auxiliar2', 'auxiliar3',
         'exitTime', 'returnTime', 'rutas', 'vehicle', 'justificacion'];
-    const PARA_EDITAR = ['value', 'pagaAparte', 'observations', 'notes', 'status', 'contractType', 'provider', 'driver', 'rutas'];
+    const PARA_EDITAR = ['value', 'pagaAparte', 'observations', 'notes', 'status', 'contractType', 'provider', 'driver', 'rutas', 'businessUnit'];
     const tomar = (o: any, campos: string[]) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => campos.includes(k)));
     try {
         const plan: any[] = [];
