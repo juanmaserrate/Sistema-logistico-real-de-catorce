@@ -14551,6 +14551,69 @@ app.post('/api/admin/tarifa-del-dia', async (req: any, res: any) => {
     }
 });
 
+/** Crea viajes, o corrige la plata y el estado de viajes que ya existen, con
+ *  la clave de admin. Sirve para cargar lo que Tesoreria pago y no estaba en el
+ *  sistema (un evento, una reposicion). Los campos estan acotados. Despues
+ *  recalcula la tarifa del dia de cada chofer tocado.
+ *  POST /api/admin/viajes-guardar
+ *       { key, crear?: [{ date, driver, provider, contractType, reparto, businessUnit, zone, value, pagaAparte, observations, ... }],
+ *         editar?: [{ id, value?, pagaAparte?, observations?, status? }], dryRun? } */
+app.post('/api/admin/viajes-guardar', async (req: any, res: any) => {
+    const { key, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    const crear: any[] = Array.isArray(req.body?.crear) ? req.body.crear : [];
+    const editar: any[] = Array.isArray(req.body?.editar) ? req.body.editar : [];
+    if (!crear.length && !editar.length) return res.status(400).json({ error: 'Falta "crear" o "editar"' });
+    const PARA_CREAR = ['date', 'driver', 'provider', 'contractType', 'reparto', 'tripType', 'businessUnit', 'zone', 'locality',
+        'value', 'pagaAparte', 'observations', 'notes', 'isManual', 'status', 'auxiliar', 'auxiliar2', 'auxiliar3',
+        'exitTime', 'returnTime', 'rutas', 'vehicle', 'justificacion'];
+    const PARA_EDITAR = ['value', 'pagaAparte', 'observations', 'notes', 'status'];
+    const tomar = (o: any, campos: string[]) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => campos.includes(k)));
+    try {
+        const plan: any[] = [];
+        for (const c of crear) {
+            const datos: any = tomar(c, PARA_CREAR);
+            if (!datos.date || isNaN(new Date(datos.date).getTime()) || !String(datos.driver || '').trim()) {
+                return res.status(400).json({ error: 'Cada viaje a crear necesita date y driver', viaje: c });
+            }
+            datos.date = new Date(datos.date);
+            datos.subzona = subzonaDelViaje(datos.reparto, datos.zone || datos.locality, datos.contractType);
+            plan.push({ crear: datos });
+        }
+        for (const e of editar) {
+            const id = Number(e?.id);
+            const antes = Number.isFinite(id) ? await prisma.trip.findUnique({ where: { id } }) : null;
+            if (!antes) return res.status(404).json({ error: `No existe el viaje ${e?.id}` });
+            plan.push({ editar: id, antes: tomar(antes, PARA_EDITAR), despues: tomar(e, PARA_EDITAR), viaje: antes });
+        }
+        if (dryRun) return res.json({ dryRun: true, plan: plan.map(({ viaje, ...p }) => p) });
+
+        const tocados: any[] = [];
+        const hechos: any[] = [];
+        for (const p of plan) {
+            if (p.crear) {
+                const t = await prisma.trip.create({ data: p.crear });
+                hechos.push({ creado: t.id, driver: t.driver, date: t.date, value: Number(t.value) });
+                tocados.push(t);
+                await logAction(req, 'CREATE', 'trip', t.id, t.driver || String(t.id), null, t);
+            } else {
+                const t = await prisma.trip.update({ where: { id: p.editar }, data: p.despues });
+                hechos.push({ editado: t.id, antes: p.antes, despues: p.despues });
+                tocados.push(p.viaje, t);
+                await logAction(req, 'UPDATE', 'trip', t.id, t.driver || String(t.id), p.viaje, t);
+            }
+        }
+        await recalcularTarifasDe(req, tocados);
+        const ids = hechos.map((h) => h.creado || h.editado);
+        const finales = await prisma.trip.findMany({ where: { id: { in: ids } }, select: { id: true, value: true, pagaAparte: true } });
+        io.emit('trip:updated', { tripIds: ids });
+        res.json({ hechos, valoresFinales: finales.map((f) => ({ id: f.id, value: Number(f.value), pagaAparte: f.pagaAparte })) });
+    } catch (e: any) {
+        console.error('viajes-guardar:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Aplica las tarifas a los viajes tercerizados ya cargados de esos meses.
  *  pisar = true normaliza tambien los que tengan otro valor. */
 async function aplicarTarifasAViajes(meses: string[], pisar: boolean, aplicar: boolean) {
