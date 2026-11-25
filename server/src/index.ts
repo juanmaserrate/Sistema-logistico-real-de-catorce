@@ -14567,7 +14567,7 @@ app.post('/api/admin/viajes-guardar', async (req: any, res: any) => {
     const PARA_CREAR = ['date', 'driver', 'provider', 'contractType', 'reparto', 'tripType', 'businessUnit', 'zone', 'locality',
         'value', 'pagaAparte', 'observations', 'notes', 'isManual', 'status', 'auxiliar', 'auxiliar2', 'auxiliar3',
         'exitTime', 'returnTime', 'rutas', 'vehicle', 'justificacion'];
-    const PARA_EDITAR = ['value', 'pagaAparte', 'observations', 'notes', 'status'];
+    const PARA_EDITAR = ['value', 'pagaAparte', 'observations', 'notes', 'status', 'contractType', 'provider'];
     const tomar = (o: any, campos: string[]) => Object.fromEntries(Object.entries(o || {}).filter(([k]) => campos.includes(k)));
     try {
         const plan: any[] = [];
@@ -14584,7 +14584,12 @@ app.post('/api/admin/viajes-guardar', async (req: any, res: any) => {
             const id = Number(e?.id);
             const antes = Number.isFinite(id) ? await prisma.trip.findUnique({ where: { id } }) : null;
             if (!antes) return res.status(404).json({ error: `No existe el viaje ${e?.id}` });
-            plan.push({ editar: id, antes: tomar(antes, PARA_EDITAR), despues: tomar(e, PARA_EDITAR), viaje: antes });
+            const despues: any = tomar(e, PARA_EDITAR);
+            // Cambiar el contrato tambien mueve la subzona (igual que al editar desde la web)
+            if ('contractType' in despues) {
+                despues.subzona = subzonaDelViaje(antes.reparto, antes.zone || antes.locality, despues.contractType);
+            }
+            plan.push({ editar: id, antes: tomar(antes, [...PARA_EDITAR, 'subzona']), despues, viaje: antes });
         }
         if (dryRun) return res.json({ dryRun: true, plan: plan.map(({ viaje, ...p }) => p) });
 
