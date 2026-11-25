@@ -451,6 +451,93 @@ export async function filasCajones(prisma: Prisma, desde: Date, hasta: Date) {
     return filas;
 }
 
+/** Minutos desde medianoche de un "HH:MM" cargado a mano. null si no se entiende. */
+function minutosDeTexto(v: any): number | null {
+    const m = String(v ?? '').trim().match(/^(\d{1,2}):(\d{2})/);
+    if (!m) return null;
+    const h = Number(m[1]), min = Number(m[2]);
+    return h < 24 && min < 60 ? h * 60 + min : null;
+}
+
+/** Minutos desde medianoche de una fecha, en hora de Buenos Aires. */
+function minutosDeFecha(f: Date | null | undefined): number | null {
+    const t = hora(f);
+    return t ? minutosDeTexto(t) : null;
+}
+
+/**
+ * Una fila por parada. A diferencia del archivo de cajones -que solo trae las
+ * paradas donde se movieron envases-, este trae TODAS, con la hora real de
+ * llegada y la ventana horaria que tiene cargada el establecimiento. Con eso la
+ * Torre puede medir el cumplimiento de horario de entrega contra el compromiso
+ * de cada escuela y no contra una hora inventada.
+ */
+export async function filasParadas(prisma: Prisma, desde: Date, hasta: Date) {
+    const paradas = await prisma.stop.findMany({
+        where: { route: { date: { gte: desde, lte: hasta } } },
+        select: {
+            sequence: true, plannedSequence: true, plannedEta: true,
+            actualArrival: true, actualDeparture: true, status: true,
+            reasonCode: true, retryCount: true, isReturnToBase: true, ruta: true,
+            client: {
+                select: {
+                    name: true, localidad: true, partido: true, tipo: true,
+                    timeWindowStart: true, timeWindowEnd: true
+                }
+            },
+            route: {
+                select: {
+                    date: true, tripId: true,
+                    driver: { select: { fullName: true, username: true } },
+                    trip: { select: { reparto: true, driver: true, businessUnit: true, vuelta: true } }
+                }
+            }
+        },
+        orderBy: [{ routeId: 'asc' }, { sequence: 'asc' }]
+    });
+    return paradas
+        .filter((p: any) => !esCuentaDePrueba(p.route?.driver?.username) && !esCuentaDePrueba(p.route?.trip?.driver))
+        .map((p: any) => {
+            const llegada = minutosDeFecha(p.actualArrival);
+            const inicio = minutosDeTexto(p.client?.timeWindowStart);
+            const fin = minutosDeTexto(p.client?.timeWindowEnd);
+            // "Dentro de ventana" se decide acá, donde vive la ventana. Si al
+            // establecimiento no le cargaron horario, queda en blanco: no es un
+            // incumplimiento, es un dato que falta.
+            const dentro =
+                llegada === null || (inicio === null && fin === null)
+                    ? ''
+                    : (inicio === null || llegada >= inicio) && (fin === null || llegada <= fin)
+                      ? 'Si'
+                      : 'No';
+            return {
+                'Fecha': soloFecha(p.route?.date),
+                'ID viaje': p.route?.tripId ?? null,
+                'Reparto': p.route?.trip?.reparto || '',
+                'Unidad de negocio': p.route?.trip?.businessUnit || '',
+                'Ruta': p.ruta || '',
+                'Vuelta': numero(p.route?.trip?.vuelta),
+                'Chofer': p.route?.trip?.driver || p.route?.driver?.fullName || p.route?.driver?.username || '',
+                'Establecimiento': p.client?.name || '',
+                'Tipo de establecimiento': p.client?.tipo || '',
+                'Localidad': p.client?.localidad || '',
+                'Partido': p.client?.partido || '',
+                'Orden de parada': p.sequence,
+                'Orden planificado': p.plannedSequence ?? null,
+                'Estado': p.status || '',
+                'Ventana inicio': p.client?.timeWindowStart || '',
+                'Ventana fin': p.client?.timeWindowEnd || '',
+                'Hora planificada': hora(p.plannedEta),
+                'Hora de llegada': hora(p.actualArrival),
+                'Hora de salida': hora(p.actualDeparture),
+                'Dentro de ventana': dentro,
+                'Motivo': p.reasonCode || '',
+                'Reintentos': p.retryCount ?? 0,
+                'Vuelta al deposito': siNo(p.isReturnToBase)
+            };
+        });
+}
+
 export async function filasMantenimiento(prisma: Prisma, anio: number) {
     const regs = await prisma.maintenanceRecord.findMany({ orderBy: { date: 'asc' } });
     return regs
@@ -553,19 +640,27 @@ const COLUMNAS: Record<string, string[]> = {
         'Refrigerado', 'Combustible', 'Km actual', 'Vence VTV', 'Vence seguro', 'Vence SENASA', 'Bromatologia',
         'Vence licencia del chofer', 'Motor', 'Chasis'],
     incidencias: ['Fecha', 'Hora', 'ID viaje', 'Reparto', 'Unidad de negocio', 'Tipo', 'Descripcion', 'Chofer',
-        'Estado', 'Resolucion', 'Fecha de cierre']
+        'Estado', 'Resolucion', 'Fecha de cierre'],
+    paradas: ['Fecha', 'ID viaje', 'Reparto', 'Unidad de negocio', 'Ruta', 'Vuelta', 'Chofer', 'Establecimiento',
+        'Tipo de establecimiento', 'Localidad', 'Partido', 'Orden de parada', 'Orden planificado', 'Estado',
+        'Ventana inicio', 'Ventana fin', 'Hora planificada', 'Hora de llegada', 'Hora de salida',
+        'Dentro de ventana', 'Motivo', 'Reintentos', 'Vuelta al deposito']
 };
 
-/** Los cinco archivos del anio en curso, listos para subir. */
+/** Los seis archivos del anio en curso, listos para subir. */
 export async function armarReporte(prisma: Prisma, anio?: number): Promise<ArchivoReporte[]> {
     const a = anio || new Date().getFullYear();
     // Todo el anio: la Torre compara periodos y necesita el historial entero.
     const desde = new Date(Date.UTC(a, 0, 1, 0, 0, 0));
     const hasta = new Date(Date.UTC(a, 11, 31, 23, 59, 59));
 
-    const [viajes, cajones, mantenimiento, flota, incidencias] = await Promise.all([
+    const [viajes, cajones, paradas, mantenimiento, flota, incidencias] = await Promise.all([
         filasViajes(prisma, desde, hasta),
         filasCajones(prisma, desde, hasta),
+        // Las paradas van de a una fila cada una: un anio entero son decenas de
+        // miles y el proceso se infla al armar el Excel. Medio anio alcanza de
+        // sobra para el indicador de horario de entrega, que se mira por mes.
+        filasParadas(prisma, new Date(Math.max(desde.getTime(), Date.now() - 180 * 24 * 3600 * 1000)), hasta),
         filasMantenimiento(prisma, a),
         filasFlota(prisma),
         filasIncidencias(prisma, desde, hasta)
@@ -578,6 +673,7 @@ export async function armarReporte(prisma: Prisma, anio?: number): Promise<Archi
     return [
         armar('viajes', `TMS VIAJES ${a}.xlsx`, 'Viajes', viajes),
         armar('cajones', `TMS CAJONES ${a}.xlsx`, 'Cajones con seña', cajones),
+        armar('paradas', `TMS PARADAS ${a}.xlsx`, 'Paradas', paradas),
         armar('mantenimiento', `TMS MANTENIMIENTO ${a}.xlsx`, 'Mantenimiento', mantenimiento),
         armar('flota', `TMS FLOTA.xlsx`, 'Flota', flota),
         armar('incidencias', `TMS INCIDENCIAS ${a}.xlsx`, 'Incidencias', incidencias)
