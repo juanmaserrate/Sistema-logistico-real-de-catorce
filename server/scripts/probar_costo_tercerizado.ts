@@ -48,6 +48,17 @@ console.log('\n4. "Paga aparte": queda afuera con su valor');
     esperar('los otros dos se reparten entre ellos', m.get(1) === 217500 && m.get(2) === 72500, [...m]);
 }
 
+console.log('\n4b. La casilla "Paga aparte" hace lo mismo que escribirlo');
+{
+    const m = costoTercerizadoPorHoras([
+        v(1, { valor: 290000, horas: 3 }),
+        v(2, { valor: 0, horas: 1 }),
+        v(3, { valor: 290000, horas: 2, pagaAparte: true })
+    ]);
+    esperar('el tildado no se reparte', !m.has(3));
+    esperar('los otros dos se reparten entre ellos', m.get(1) === 217500 && m.get(2) === 72500, [...m]);
+}
+
 console.log('\n5. Sin horas todavia: partes iguales');
 {
     const m = costoTercerizadoPorHoras([v(1, { valor: 300000 }), v(2, { valor: 0 }), v(3, { valor: 0 })]);

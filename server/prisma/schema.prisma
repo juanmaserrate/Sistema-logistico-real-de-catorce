@@ -254,6 +254,10 @@ model Trip {
   exitTime           DateTime?
   returnTime         DateTime?
   value              Decimal?       @default(0)
+  /// "Paga aparte": el tercerizado cobra este viaje ademas de la tarifa del
+  /// dia (un SAM en otra salida, otro recorrido, un evento). Sin tildar, si el
+  /// chofer ya tiene otro viaje ese dia, este va en $0: la tarifa es por dia.
+  pagaAparte         Boolean        @default(false)
   paymentStatus      String?
   paymentDate        DateTime?
   observations       String?

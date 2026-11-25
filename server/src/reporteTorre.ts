@@ -191,7 +191,7 @@ async function costoDeTercerizadosConVariosViajes(prisma: Prisma, viajes: any[])
             },
             select: {
                 id: true, date: true, driver: true, contractType: true, value: true,
-                observations: true, notes: true, startedAt: true, completedAt: true,
+                observations: true, notes: true, pagaAparte: true, startedAt: true, completedAt: true,
                 linkedRoute: { select: { actualStartTime: true, actualEndTime: true } }
             }
         });
@@ -204,7 +204,8 @@ async function costoDeTercerizadosConVariosViajes(prisma: Prisma, viajes: any[])
         tercerizado: esTerc(t),
         valor: Number(t.value) || 0,
         horas: duracionHoras(t.linkedRoute?.actualStartTime || t.startedAt, t.linkedRoute?.actualEndTime || t.completedAt) || 0,
-        texto: `${t.observations || ''} ${t.notes || ''}`
+        texto: `${t.observations || ''} ${t.notes || ''}`,
+        pagaAparte: t.pagaAparte === true
     })));
 }
 

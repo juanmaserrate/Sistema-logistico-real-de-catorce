@@ -30596,6 +30596,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
             if (provInp) provInp.value = '';
             const patTerc = document.getElementById('new-trip-vehicle-terc');
             if (patTerc) patTerc.value = '';
+            const pagaAparteNew = document.getElementById('new-trip-paga-aparte');
+            if (pagaAparteNew) pagaAparteNew.checked = false;
             toggleVehicleTypeField(); // Hide vehicle + proveedor + valor cuando es Propio
 
             document.getElementById('new-trip-loc').value = '';
@@ -30890,6 +30892,9 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 const generic = ['EXTERNO', 'R14 LOG', 'PROPIO'];
                 provInpEdit.value = (p && !generic.includes(p.toUpperCase())) ? p : '';
             }
+            // "Paga aparte" se puede tildar o destildar aunque el viaje ya este finalizado
+            const pagaAparteEd = document.getElementById('new-trip-paga-aparte');
+            if (pagaAparteEd) pagaAparteEd.checked = trip.pagaAparte === true;
             // Abrir un viaje NO toca el catalogo. Antes, cada unidad del viaje
             // se volvia a agregar sola: alcanzaba con que alguien abriera un
             // viaje viejo para que reapareciera una unidad recien borrada.
@@ -31060,6 +31065,8 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                 providerValue = provRaw || 'EXTERNO';
             }
             const baseTripData = {
+                // La tarifa del tercerizado es por dia: tildado, este viaje cobra aparte.
+                pagaAparte: isTercerizado && document.getElementById('new-trip-paga-aparte')?.checked === true,
                 camposExtra: leerCamposExtra(),
                 justificacion: (document.getElementById('new-trip-justificacion')?.value || '').trim() || null,
                 observacionChofer: (document.getElementById('new-trip-obs-chofer')?.value || '').trim() || null,
@@ -32791,6 +32798,12 @@ Si solo querés sacar una parada, cancelá, abrí el viaje con Editar y tocá la
                                 <input type="number" id="new-trip-value" placeholder="Ej. 290000" min="0" step="1"
                                        oninput="ntRecalcular()" class="nt-campo w-full bg-[#F4F7FE] rounded-xl outline-none focus:ring-2 focus:ring-indigo-500">
                                 <p class="text-[10px] text-[#A3AED0] mt-1 leading-snug">Sale de la tarifa del mes. Editable.</p>
+                                <label class="mt-2.5 flex items-start gap-2 cursor-pointer select-none">
+                                    <input type="checkbox" id="new-trip-paga-aparte" class="mt-0.5 w-4 h-4 accent-indigo-600 shrink-0">
+                                    <span class="text-[11px] font-bold text-[#1B2559] leading-snug">Paga aparte
+                                        <span class="block text-[10px] font-medium text-[#A3AED0]">Se paga además de la tarifa del día: un SAM en otra salida, otro recorrido o un evento. Sin tildar, si el chofer ya tiene otro viaje ese día, este va en $0.</span>
+                                    </span>
+                                </label>
                             </div>
                         </div>
 

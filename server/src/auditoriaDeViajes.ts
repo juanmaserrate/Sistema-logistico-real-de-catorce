@@ -75,6 +75,8 @@ export interface ViajeParaAuditar {
     isManual?: boolean | null;
     observations?: string | null;
     notes?: string | null;
+    /** La casilla "Paga aparte" del viaje. */
+    pagaAparte?: boolean | null;
     exitTime?: Date | string | null;
     returnTime?: Date | string | null;
     assignedMobileUser?: string | null;
@@ -206,7 +208,7 @@ const esPropio = (v: { t: ViajeParaAuditar }) => mayus(v.t.contractType) === 'PR
 /** LIBRE y CDI se repiten de verdad en el dia: no cuentan como duplicados. */
 const repartoQueSeRepite = (reparto: any) => /^(LIBRE|CDI)\b/.test(mayus(reparto));
 /** El operador deja por escrito que ese viaje cobra aunque no sea el primero del dia. */
-const loAclaroElOperador = (v: { t: ViajeParaAuditar }) =>
+const loAclaroElOperador = (v: { t: ViajeParaAuditar }) => v.t.pagaAparte === true ||
     /PAGA\s+(APARTE|TAMBIEN)|SE\s+PAGA\s+APARTE/i.test(texto(v.t.observations) + ' ' + texto(v.t.notes));
 
 /** Distancia de edicion clasica (Levenshtein). */
@@ -530,7 +532,8 @@ export function auditarViajes(
 
     // El primer viaje del dia de cada chofer tercerizado: es el que cobra la tarifa.
     const primeroDelDia = new Set<number>();
-    for (const lista of agrupar(tercerizados, (v) => v.chofer ? `${v.dia}|${v.chofer}` : null).values()) {
+    // Se elige entre los que no pagan aparte, igual que al poner la tarifa.
+    for (const lista of agrupar(tercerizados.filter((v) => !loAclaroElOperador(v)), (v) => v.chofer ? `${v.dia}|${v.chofer}` : null).values()) {
         const orden = [...lista].sort((a, b) => (a.inicio ?? Infinity) - (b.inicio ?? Infinity) || a.id - b.id);
         primeroDelDia.add(orden[0].id);
     }
@@ -672,7 +675,7 @@ export async function auditarMes(prisma: PrismaClient, anio: number, mes: number
         select: {
             id: true, date: true, reparto: true, driver: true, provider: true, contractType: true,
             value: true, businessUnit: true, zone: true, status: true, vuelta: true, isManual: true,
-            observations: true, notes: true, exitTime: true, returnTime: true, assignedMobileUser: true,
+            observations: true, notes: true, pagaAparte: true, exitTime: true, returnTime: true, assignedMobileUser: true,
             linkedRoute: {
                 select: {
                     actualStartTime: true, actualEndTime: true,

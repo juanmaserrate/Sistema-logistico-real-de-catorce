@@ -33,6 +33,8 @@ export interface ViajeParaCostoDelDia {
     horas: number;
     /** Observaciones y notas, para ver si dice "paga aparte". */
     texto?: string | null;
+    /** La casilla "Paga aparte" del viaje. */
+    pagaAparte?: boolean | null;
 }
 
 const ZONA = 'America/Argentina/Buenos_Aires';
@@ -68,7 +70,7 @@ export function costoTercerizadoPorHoras(viajes: ViajeParaCostoDelDia[]): Map<nu
     for (const v of viajes) {
         if (!v || !v.tercerizado || vistos.has(v.id)) continue;
         vistos.add(v.id);
-        if (pagaAparte(v.texto)) continue;
+        if (v.pagaAparte === true || pagaAparte(v.texto)) continue;
         const chofer = choferDe(v.chofer);
         const dia = diaDe(v.fecha);
         if (!chofer || !dia) continue;

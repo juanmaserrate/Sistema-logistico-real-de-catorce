@@ -9220,7 +9220,8 @@ function aperturaPorUnidad(
         tercerizado: String(t?.contractType || '').trim().toLowerCase() === 'tercerizado',
         valor: costoDelViaje(t),
         horas: horasDe(t),
-        texto: `${t?.observations || ''} ${t?.notes || ''}`
+        texto: `${t?.observations || ''} ${t?.notes || ''}`,
+        pagaAparte: t?.pagaAparte === true
     })));
     for (const t of viajes) {
         const r = t?.linkedRoute;
@@ -11299,6 +11300,7 @@ app.post('/api/admin/fusionar-viajes', async (req: any, res: any) => {
 
         await logAction(req, 'DELETE', 'Trip', String(B.id),
             `viaje ${B.id} fusionado dentro del ${A.id}`, plan.respaldoDelSecundario, plan);
+        await recalcularTarifasDe(req, [A, B]);
         res.json({ fusionado: true, plan });
     } catch (e: any) {
         console.error('fusionar-viajes:', e);
@@ -14421,6 +14423,134 @@ async function tarifaDelViaje(proveedor: any, fecha: any): Promise<{ valor: numb
     return deLaTabla ? { valor: deLaTabla.valor, segun: 'proveedor' } : null;
 }
 
+/** El viaje cobra aparte de la tarifa del dia: la casilla "Paga aparte", o
+ *  (como se hacia antes de la casilla) "paga aparte" escrito en las notas. */
+function viajePagaAparte(t: any): boolean {
+    return t?.pagaAparte === true || /PAGA\s+(APARTE|TAMBIEN)|SE\s+PAGA\s+APARTE/i.test(
+        String(t?.observations || '') + ' ' + String(t?.notes || ''));
+}
+
+/** Pone bien la plata de los viajes tercerizados de UN chofer en UN dia.
+ *
+ *  La tarifa del tercerizado es por dia: el primer viaje del dia la cobra y
+ *  los demas van en $0, salvo los que tienen "Paga aparte". Se llama cada vez
+ *  que se crea, se edita o se borra un viaje, para ese chofer y ese dia:
+ *   - si se borra el viaje que tenia la tarifa, la pasa al que queda (antes
+ *     quedaba en $0 y la tarifa del dia se perdia);
+ *   - si se tilda "Paga aparte" en uno que estaba en $0, le pone la tarifa;
+ *   - si se destilda, y no es el primero del dia, vuelve a $0.
+ *  Un valor escrito a mano en el primero o en uno que paga aparte se respeta.
+ *  Devuelve los cambios hechos: [{ id, antes, despues }]. */
+async function recalcularTarifaDelDia(
+    req: any, chofer: any, fecha: any,
+    opciones: { aplicar?: boolean; pagaAparte?: Map<number, boolean> } = {}
+): Promise<{ id: number; antes: number; despues: number }[]> {
+    const aplicar = opciones.aplicar !== false;
+    const nombre = String(chofer || '').trim().toUpperCase();
+    if (!nombre || !fecha) return [];
+    const f = new Date(fecha);
+    if (isNaN(f.getTime())) return [];
+    const ZONA = 'America/Argentina/Buenos_Aires';
+    const diaDe = (d: any) => new Date(d).toLocaleDateString('en-CA', { timeZone: ZONA });
+    const dia = diaDe(f);
+    const viajes = (await prisma.trip.findMany({
+        where: {
+            date: { gte: new Date(f.getTime() - 36 * 3600000), lte: new Date(f.getTime() + 36 * 3600000) },
+            contractType: { equals: 'Tercerizado', mode: 'insensitive' }
+        },
+        select: {
+            id: true, date: true, driver: true, provider: true, value: true, exitTime: true,
+            observations: true, notes: true, pagaAparte: true,
+            linkedRoute: { select: { actualStartTime: true } }
+        }
+    }) as any[]).filter((t) => String(t.driver || '').trim().toUpperCase() === nombre && diaDe(t.date) === dia);
+    if (!viajes.length) return [];
+    // Para simular: la casilla como quedaria
+    for (const t of viajes) if (opciones.pagaAparte?.has(t.id)) t.pagaAparte = opciones.pagaAparte.get(t.id);
+
+    const arranqueDe = (t: any) => {
+        const v = t.linkedRoute?.actualStartTime || t.exitTime;
+        const n = v ? new Date(v).getTime() : NaN;
+        return Number.isFinite(n) ? n : Infinity;
+    };
+    const delDia = viajes.filter((t) => !viajePagaAparte(t))
+        .sort((a, b) => arranqueDe(a) - arranqueDe(b) || a.id - b.id);
+    const primero = delDia[0]?.id;
+
+    const cambios: { id: number; antes: number; despues: number }[] = [];
+    for (const t of viajes) {
+        const antes = Number(t.value) || 0;
+        let despues = antes;
+        if (t.id === primero || viajePagaAparte(t)) {
+            if (antes <= 0) {
+                const tar = await tarifaDeLaTabla(t.provider, t.date);
+                if (tar) despues = tar.valor;
+            }
+        } else {
+            despues = 0;
+        }
+        if (despues !== antes) {
+            if (aplicar) await prisma.trip.update({ where: { id: t.id }, data: { value: despues } });
+            cambios.push({ id: t.id, antes, despues });
+        }
+    }
+    if (cambios.length && aplicar) {
+        io.emit('trip:updated', { tripIds: cambios.map((c) => c.id) });
+        logAction(req, 'UPDATE', 'trip', 0, `tarifa del dia de ${nombre} (${dia})`, null, { chofer: nombre, dia, cambios })
+            .catch((e: any) => console.error('logAction tarifa del dia:', e?.message || e));
+    }
+    return cambios;
+}
+
+/** recalcularTarifaDelDia para varios viajes (antes y despues de un cambio),
+ *  sin repetir el mismo chofer y dia. Nunca rompe el pedido que la llama. */
+async function recalcularTarifasDe(req: any, viajes: any[]) {
+    const vistos = new Set<string>();
+    for (const t of viajes) {
+        if (!t || String(t.contractType || '').trim().toLowerCase() !== 'tercerizado') continue;
+        const k = String(t.driver || '').trim().toUpperCase() + '|' + new Date(t.date).toISOString().slice(0, 10);
+        if (vistos.has(k)) continue;
+        vistos.add(k);
+        try { await recalcularTarifaDelDia(req, t.driver, t.date); }
+        catch (e: any) { console.error('recalcularTarifaDelDia:', e?.message || e); }
+    }
+}
+
+/** Arreglo de datos: tilda o destilda "Paga aparte" en algunos viajes y
+ *  recalcula la tarifa del dia de los choferes y dias pedidos.
+ *  POST /api/admin/tarifa-del-dia
+ *       { key, pagaAparte?: { "10136": true }, dias: [{ chofer, fecha: "2026-11-16" }], dryRun? } */
+app.post('/api/admin/tarifa-del-dia', async (req: any, res: any) => {
+    const { key, dias, dryRun } = req.body || {};
+    if (key !== 'r14-basestop-2026') return res.status(403).json({ error: 'Forbidden' });
+    if (!Array.isArray(dias) || !dias.length) return res.status(400).json({ error: 'Falta "dias": [{ chofer, fecha }]' });
+    try {
+        const marcas = new Map<number, boolean>();
+        for (const [id, v] of Object.entries(req.body?.pagaAparte || {})) {
+            if (Number.isFinite(Number(id))) marcas.set(Number(id), v === true);
+        }
+        const antes: any[] = [];
+        if (marcas.size) {
+            const viajes = await prisma.trip.findMany({ where: { id: { in: [...marcas.keys()] } }, select: { id: true, pagaAparte: true, driver: true, date: true } });
+            for (const t of viajes) antes.push({ id: t.id, pagaAparte: t.pagaAparte, chofer: t.driver, fecha: t.date });
+            if (!dryRun) {
+                for (const [id, v] of marcas) await prisma.trip.update({ where: { id }, data: { pagaAparte: v } });
+                await logAction(req, 'UPDATE', 'trip', 0, `"Paga aparte" en ${marcas.size} viaje(s)`, antes, Object.fromEntries(marcas));
+            }
+        }
+        const resultado: any[] = [];
+        for (const d of dias) {
+            const fecha = new Date(String(d?.fecha || '') + 'T15:00:00.000Z');
+            const cambios = await recalcularTarifaDelDia(req, d?.chofer, fecha, { aplicar: !dryRun, pagaAparte: dryRun ? marcas : undefined });
+            resultado.push({ chofer: d?.chofer, fecha: d?.fecha, cambios });
+        }
+        res.json({ dryRun: !!dryRun, pagaAparte: antes, dias: resultado.filter((r) => r.cambios.length), sinCambios: resultado.filter((r) => !r.cambios.length).length });
+    } catch (e: any) {
+        console.error('tarifa-del-dia:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 /** Aplica las tarifas a los viajes tercerizados ya cargados de esos meses.
  *  pisar = true normaliza tambien los que tengan otro valor. */
 async function aplicarTarifasAViajes(meses: string[], pisar: boolean, aplicar: boolean) {
@@ -14447,7 +14577,7 @@ async function aplicarTarifasAViajes(meses: string[], pisar: boolean, aplicar: b
             },
             select: {
                 id: true, date: true, reparto: true, driver: true, provider: true, value: true,
-                exitTime: true, observations: true, notes: true,
+                exitTime: true, observations: true, notes: true, pagaAparte: true,
                 linkedRoute: { select: { actualStartTime: true } }
             }
         });
@@ -14466,13 +14596,14 @@ async function aplicarTarifasAViajes(meses: string[], pisar: boolean, aplicar: b
             const n = v ? new Date(v).getTime() : NaN;
             return Number.isFinite(n) ? n : Infinity;   // sin hora, al final del dia
         };
-        const loAclaroElOperador = (t: any) =>
-            /PAGA\s+(APARTE|TAMBIEN)|SE\s+PAGA\s+APARTE/i.test(
-                String(t.observations || '') + ' ' + String(t.notes || ''));
+        const loAclaroElOperador = (t: any) => viajePagaAparte(t);
 
+        // El primero del dia se elige entre los que NO pagan aparte: un evento
+        // tildado "paga aparte" a la madrugada no le saca la tarifa al recorrido.
         const primeroDelDia = new Set<number>();
         const porDiaYChofer = new Map<string, any[]>();
         for (const t of viajes as any[]) {
+            if (loAclaroElOperador(t)) continue;
             const chofer = String(t.driver || '').trim().toUpperCase();
             if (!chofer) { primeroDelDia.add(t.id); continue; }   // sin chofer no se puede agrupar
             const k = diaDe(t) + '|' + chofer;
@@ -14486,6 +14617,9 @@ async function aplicarTarifasAViajes(meses: string[], pisar: boolean, aplicar: b
 
         for (const t of viajes as any[]) {
             if (!pisar && Number(t.value) > 0) continue;
+            // El que paga aparte con un valor escrito (un evento, una reposicion)
+            // se cobra a ese valor: no se lo pisa con la tarifa del proveedor.
+            if (loAclaroElOperador(t) && Number(t.value) > 0) continue;
             if (!primeroDelDia.has(t.id) && !loAclaroElOperador(t)) {
                 // No es el primer viaje del dia de ese chofer: la tarifa del dia
                 // ya se cobra en el primero.
@@ -14677,6 +14811,16 @@ app.post('/api/v1/trips', async (req, res) => {
         // La subzona la pone el sistema, no el operador
         datos.subzona = subzonaDelViaje(datos.reparto, datos.zone || datos.locality, datos.contractType);
         const trip = await prisma.trip.create({ data: datos });
+        // La tarifa es por dia: si el chofer ya tenia otro viaje ese dia, este
+        // va en $0 (salvo "Paga aparte"). Se acomoda antes de contestar para
+        // que la pantalla muestre el valor que queda.
+        if (String(trip.contractType || '').trim().toLowerCase() === 'tercerizado') {
+            try {
+                const cambios = await recalcularTarifaDelDia(req, trip.driver, trip.date);
+                const mio = cambios.find((c) => c.id === trip.id);
+                if (mio) (trip as any).value = mio.despues;
+            } catch (e: any) { console.error('tarifa del dia (crear):', e?.message || e); }
+        }
         // Se contesta apenas el viaje esta guardado. La auditoria es otra
         // escritura a la base: esperarla le sumaba una ida y vuelta mas a algo
         // que el operador esta mirando.
@@ -14780,6 +14924,13 @@ app.put('/api/v1/trips/:id', async (req, res) => {
             body.assignedMobileUser = cuentaNueva.username;
         }
         const trip = await prisma.trip.update({ where: { id: parseInt(id) }, data: body });
+        // La tarifa del dia, para el chofer y dia de antes y los de ahora
+        // (cambiar el chofer o la fecha mueve la tarifa de un dia a otro).
+        await recalcularTarifasDe(req, [before, trip]);
+        if (String(trip.contractType || '').trim().toLowerCase() === 'tercerizado') {
+            const v = await prisma.trip.findUnique({ where: { id: trip.id }, select: { value: true } });
+            if (v) (trip as any).value = v.value;
+        }
         if (cuentaNueva) {
             const route = await prisma.route.findUnique({ where: { tripId: trip.id }, select: { id: true } });
             if (route) {
@@ -16487,6 +16638,8 @@ app.delete('/api/v1/trips/:id', async (req, res) => {
         io.emit('trip:deleted', { id });
         logAction(req, 'DELETE', 'trip', id, before?.driver || String(id), before, null)
             .catch((e: any) => console.error('logAction DELETE trip:', e?.message || e));
+        // Si este tenia la tarifa del dia, pasa al otro viaje de ese chofer.
+        recalcularTarifasDe(req, [before]).catch(() => {});
     } catch (e: any) {
         res.status(500).json({ error: e.message });
     }
@@ -16506,6 +16659,12 @@ app.post('/api/v1/trips/bulk-delete', async (req: any, res: any) => {
 
     try {
         const total = { viajes: 0, rutas: 0, paradas: 0, paradasDelViaje: 0, marcasGps: 0, ubicaciones: 0 };
+        // Los tercerizados que se van: despues hay que pasar su tarifa del dia
+        // al viaje que le quede a ese chofer.
+        const tercerizadosQueSeVan = await prisma.trip.findMany({
+            where: { id: { in: ids }, contractType: { equals: 'Tercerizado', mode: 'insensitive' } },
+            select: { id: true, driver: true, date: true, contractType: true }
+        });
         // En lotes, para no armar un IN gigante en una sola consulta.
         const LOTE = 400;
         for (let i = 0; i < ids.length; i += LOTE) {
@@ -16534,6 +16693,7 @@ app.post('/api/v1/trips/bulk-delete', async (req: any, res: any) => {
         logAction(req, 'DELETE', 'trip', 0, `${total.viajes} viajes (borrado masivo)`,
             { ids, pedidos: ids.length }, total)
             .catch((e: any) => console.error('logAction bulk-delete:', e?.message || e));
+        recalcularTarifasDe(req, tercerizadosQueSeVan).catch(() => {});
     } catch (e: any) {
         console.error('bulk-delete trips:', e);
         res.status(500).json({ error: e?.message || 'Error borrando los viajes' });
@@ -17968,6 +18128,9 @@ app.post('/api/v1/trips/bulk', async (req, res) => {
             logAction(req, 'CREATE', 'trip', 0, `${creados.length} viajes en una tanda`, null,
                       { ids: creados.map((t: any) => t.id) })
                 .catch((e: any) => console.error('logAction bulk trips:', e?.message || e));
+            // La tarifa del dia de cada chofer tercerizado de la tanda: el que
+            // ya tenia otro viaje ese dia no cobra dos veces.
+            recalcularTarifasDe(req, creados).catch(() => {});
         }
     } catch (e: any) {
         console.error('POST trips/bulk:', e);
