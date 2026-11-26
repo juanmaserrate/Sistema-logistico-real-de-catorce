@@ -9,7 +9,7 @@ import { costoTercerizadoPorHoras } from './costoTercerizado';
 import { auditarMes, filtrarInforme } from './auditoriaDeViajes';
 import { cerrarViajeAnteriorDelChofer, completarViajeCreadoParaFechaPasada, proveedoresParecidos } from './guardasDeViaje';
 import { enviarMail, plantillaMail, mailConfigurado, faltanVariablesMail, diagnosticoMail, limpiarTokenMail } from './mailer';
-import { armarReporte, filasViajesPorIds, mesDeFecha, esCuentaDePrueba, TIPOS_DE_ENVASE, sumaDeLosTipos, sinLocalidadPorUnidad, TEXTO_SIN_LOCALIDAD, sinViajesDePrueba } from './reporteTorre';
+import { armarReporte, filasViajesPorIds, filasViajesEntre, mesDeFecha, esCuentaDePrueba, TIPOS_DE_ENVASE, sumaDeLosTipos, sinLocalidadPorUnidad, TEXTO_SIN_LOCALIDAD, sinViajesDePrueba } from './reporteTorre';
 import {
     asegurarTipos as asegurarTiposDeCajon,
     fotoDelStock,
@@ -27,7 +27,7 @@ import {
     saldoAntesDe,
     AGRUPADORES
 } from './stockCajones';
-import { armarLibroViajes } from './libroViajes';
+import { armarLibroViajes, resumenHorasPorPersona } from './libroViajes';
 import { presupuestoDelAnio } from './presupuestoViajes';
 import { metricasDelMes } from './metricasDashboard';
 import { subirArchivo, bajarArchivo, sharepointConfigurado, faltanVariablesSharepoint, diagnosticoSharepoint, limpiarTokenSharepoint } from './sharepoint';
@@ -235,6 +235,7 @@ const PROTECTED_PREFIXES = [
     '/api/v1/tarifas',
     '/api/v1/panel-choferes',
     '/api/v1/presupuesto',
+    '/api/v1/horas-personas',
 ];
 app.use((req: any, res: any, next: any) => {
     // Excepcion: el export de viajes tambien acepta la clave de servicio, como
@@ -242,7 +243,9 @@ app.use((req: any, res: any, next: any) => {
     const esExportConClave = req.path.endsWith('/trips/export-xlsx') && req.body?.key === 'r14-basestop-2026';
     // Igual el conteo del Presupuesto, que solo lee
     const esPresupuestoConClave = req.method === 'GET' && req.path === '/api/v1/presupuesto' && req.query?.key === 'r14-basestop-2026';
-    if (!esExportConClave && !esPresupuestoConClave && PROTECTED_PREFIXES.some(p => req.path.startsWith(p) || (req.originalUrl || '').includes(p))) {
+    // Y las horas por persona, que tambien solo leen
+    const esHorasConClave = req.method === 'GET' && req.path === '/api/v1/horas-personas' && req.query?.key === 'r14-basestop-2026';
+    if (!esExportConClave && !esPresupuestoConClave && !esHorasConClave && PROTECTED_PREFIXES.some(p => req.path.startsWith(p) || (req.originalUrl || '').includes(p))) {
         return requireAuth(req, res, next);
     }
     next();
@@ -1824,6 +1827,28 @@ app.get('/api/v1/presupuesto', async (req: any, res: any) => {
  * que esta viendo el operador: si filtro por mes o por dia, eso baja.
  * POST /api/v1/trips/export-xlsx { ids: [...], titulo? }
  */
+/** Horas trabajadas de cada chofer propio y cada auxiliar en un mes, para el
+ *  reporte de la pantalla. Es la misma cuenta que la hoja "Horas por persona"
+ *  del Excel (resumenHorasPorPersona), sobre las mismas filas.
+ *  GET /api/v1/horas-personas?month=noviembre|11&year=2026 */
+app.get('/api/v1/horas-personas', async (req: any, res: any) => {
+    try {
+        const anio = Number(req.query.year) || new Date().getFullYear();
+        const m = String(req.query.month || '').trim().toLowerCase();
+        const nombres = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'];
+        const mes = /^\d+$/.test(m) ? Number(m) - 1 : nombres.indexOf(m);
+        if (!(mes >= 0 && mes <= 11)) return res.status(400).json({ error: 'Falta el mes (enero..diciembre o 1..12)' });
+        const desde = new Date(Date.UTC(anio, mes, 1));
+        const hasta = new Date(Date.UTC(anio, mes + 1, 0, 23, 59, 59, 999));
+        const filas = await filasViajesEntre(prisma, desde, hasta);
+        const r = resumenHorasPorPersona(filas.filter((f: any) => f._tipo !== 'hijo'));
+        res.json({ mes: nombres[mes], anio, ...r });
+    } catch (e: any) {
+        console.error('GET horas-personas:', e);
+        res.status(500).json({ error: e?.message || 'Error' });
+    }
+});
+
 app.post('/api/v1/trips/export-xlsx', async (req: any, res: any) => {
     try {
         // La web entra con su sesion. La clave de servicio se acepta igual que en

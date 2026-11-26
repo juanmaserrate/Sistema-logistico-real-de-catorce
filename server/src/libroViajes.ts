@@ -265,23 +265,26 @@ const COLUMNAS_PERSONAS = [
 ];
 const NO_ES_PERSONA = new Set(['', '-', '--', 'N/A', 'NA', 'S/A', 'S/D', 'SIN AUXILIAR', 'SIN CHOFER', 'SIN ASIGNAR', 'NINGUNO']);
 
-/** La hoja "Horas por persona": las horas que trabajo cada chofer propio y
- *  cada auxiliar en el mes.
+export type ViajeDeLaPersona = { id: number; fecha: any; reparto: string; contrato: string; chofer: string; horas: number };
+export type HorasDePersona = { nombre: string; viajes: number; propio: number; terc: number; total: number; detalle: ViajeDeLaPersona[] };
+
+/** Las horas que trabajo cada chofer propio y cada auxiliar en esos viajes.
+ *  Es la UNICA cuenta: la usan la hoja "Horas por persona" del Excel y el
+ *  reporte de la pantalla, asi que siempre dan lo mismo.
  *
  *  Cada persona suma la duracion ENTERA de cada viaje en que fue: un viaje de
  *  7 h con 3 auxiliares son 7 h para cada uno (21 h de auxiliares). Los
  *  choferes suman solo sus viajes propios; los auxiliares, los propios y los
  *  tercerizados por separado (son de la empresa y tambien van en camiones de
- *  terceros). Sale de una fila por viaje, no de las partes por unidad: si no,
- *  un viaje de dos unidades contaria dos veces. Los viajes sin salida o
- *  llegada no tienen duracion y no suman; se dice cuantos son. */
-function armarHojaPersonas(viajes: any[], estiloEntero: number, estiloDecimal: number, estiloComun: number, estiloTitulo: number): string {
+ *  terceros). Recibe una fila por viaje, no las partes por unidad: si no, un
+ *  viaje de dos unidades contaria dos veces. Los viajes sin salida o llegada
+ *  no tienen duracion y no suman; se dice cuantos son. */
+export function resumenHorasPorPersona(viajes: any[]): { choferes: HorasDePersona[]; auxiliares: HorasDePersona[]; sinHoras: number; conHoras: number } {
     const limpio = (s: any) => String(s ?? '').replace(/\s+/g, ' ').trim().toUpperCase();
     const clave = (s: any) => limpio(s).normalize('NFD').replace(/[̀-ͯ]/g, '');
     const esPersona = (k: string) => !NO_ES_PERSONA.has(k) && /[A-Z]{2}/.test(k);
-    type Acum = { viajes: number; propio: number; terc: number };
-    type Mes = { orden: number; choferes: Map<string, Acum>; auxiliares: Map<string, Acum>; sinHoras: number };
-    const meses = new Map<string, Mes>();
+    const choferes = new Map<string, HorasDePersona>();
+    const auxiliares = new Map<string, HorasDePersona>();
     // Un solo nombre por persona: la forma mas usada ("IVAN  BONETTI" = "IVAN BONETTI")
     const grafias = new Map<string, Map<string, number>>();
     const anotar = (n: string) => {
@@ -291,39 +294,56 @@ function armarHojaPersonas(viajes: any[], estiloEntero: number, estiloDecimal: n
         g.set(limpio(n), (g.get(limpio(n)) || 0) + 1);
         return k;
     };
-    const sumar = (m: Map<string, Acum>, k: string, horas: number, propio: boolean) => {
-        if (!m.has(k)) m.set(k, { viajes: 0, propio: 0, terc: 0 });
+    const sumar = (m: Map<string, HorasDePersona>, k: string, horas: number, propio: boolean, v: ViajeDeLaPersona) => {
+        if (!m.has(k)) m.set(k, { nombre: k, viajes: 0, propio: 0, terc: 0, total: 0, detalle: [] });
         const a = m.get(k)!;
         a.viajes++;
         if (propio) a.propio += horas; else a.terc += horas;
+        a.total += horas;
+        a.detalle.push(v);
     };
-
+    let sinHoras = 0, conHoras = 0;
     for (const f of viajes) {
-        const mes = String(f['Mes'] || '') || 'SIN FECHA';
-        const fecha = f['Fecha'] ? new Date(f['Fecha']).getTime() : 0;
-        if (!meses.has(mes)) meses.set(mes, { orden: fecha, choferes: new Map(), auxiliares: new Map(), sinHoras: 0 });
-        const m = meses.get(mes)!;
-        if (fecha && fecha < m.orden) m.orden = fecha;
         const horas = Number(f['Duracion horas']);
-        if (!(horas > 0)) { m.sinHoras++; continue; }
-        const contrato = String(f['Contrato'] || '').trim().toLowerCase();
-        const propio = contrato === 'propio';
-        const chofer = clave(f['Chofer']);
-        if (propio && esPersona(chofer)) sumar(m.choferes, anotar(f['Chofer']), horas, true);
+        if (!(horas > 0)) { sinHoras++; continue; }
+        conHoras++;
+        const contrato = String(f['Contrato'] || '').trim();
+        const propio = contrato.toLowerCase() === 'propio';
+        const v: ViajeDeLaPersona = { id: Number(f['ID viaje']), fecha: f['Fecha'], reparto: String(f['Reparto'] || ''),
+            contrato, chofer: limpio(f['Chofer']), horas };
+        if (propio && esPersona(clave(f['Chofer']))) sumar(choferes, anotar(f['Chofer']), horas, true, v);
         const enEsteViaje = new Set<string>();
         for (const col of ['Auxiliar 1', 'Auxiliar 2', 'Auxiliar 3']) {
             for (const parte of String(f[col] ?? '').split(/[\/,]/)) {
                 const k = clave(parte);
                 if (!esPersona(k) || enEsteViaje.has(k)) continue;
                 enEsteViaje.add(k);
-                sumar(m.auxiliares, anotar(parte), horas, propio);
+                sumar(auxiliares, anotar(parte), horas, propio, v);
             }
         }
     }
-    const nombreDe = (k: string) => [...(grafias.get(k) || new Map()).entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || k;
-
     const dos = (n: number) => Math.round(n * 100) / 100;
-    const linea = (mes: string, puesto: string, persona: string, a: Acum, estiloTexto: number) => [
+    const nombreDe = (k: string) => [...(grafias.get(k) || new Map()).entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || k;
+    const lista = (m: Map<string, HorasDePersona>) => [...m.entries()]
+        .map(([k, a]) => ({ ...a, nombre: nombreDe(k), propio: dos(a.propio), terc: dos(a.terc), total: dos(a.total),
+            detalle: a.detalle.sort((x, y) => new Date(x.fecha).getTime() - new Date(y.fecha).getTime() || x.id - y.id) }))
+        .sort((a, b) => b.total - a.total || a.nombre.localeCompare(b.nombre));
+    return { choferes: lista(choferes), auxiliares: lista(auxiliares), sinHoras, conHoras };
+}
+
+/** La hoja "Horas por persona": resumenHorasPorPersona, un bloque por mes. */
+function armarHojaPersonas(viajes: any[], estiloEntero: number, estiloDecimal: number, estiloComun: number, estiloTitulo: number): string {
+    const meses = new Map<string, { orden: number; viajes: any[] }>();
+    for (const f of viajes) {
+        const mes = String(f['Mes'] || '') || 'SIN FECHA';
+        const fecha = f['Fecha'] ? new Date(f['Fecha']).getTime() : 0;
+        if (!meses.has(mes)) meses.set(mes, { orden: fecha, viajes: [] });
+        const m = meses.get(mes)!;
+        if (fecha && fecha < m.orden) m.orden = fecha;
+        m.viajes.push(f);
+    }
+    const dos = (n: number) => Math.round(n * 100) / 100;
+    const linea = (mes: string, puesto: string, persona: string, a: { viajes: number; propio: number; terc: number }, estiloTexto: number) => [
         { valor: mes, estilo: estiloTexto }, { valor: puesto, estilo: estiloTexto }, { valor: persona, estilo: estiloTexto },
         { valor: a.viajes, estilo: estiloEntero },
         { valor: dos(a.propio), estilo: estiloDecimal },
@@ -333,18 +353,18 @@ function armarHojaPersonas(viajes: any[], estiloEntero: number, estiloDecimal: n
     const filasXml: string[] = [filaXml(1, COLUMNAS_PERSONAS.map((n) => ({ valor: n, estilo: estiloTitulo })))];
     let nro = 2;
     for (const [mes, m] of [...meses.entries()].sort((a, b) => a[1].orden - b[1].orden)) {
-        for (const [puesto, mapa] of [['Chofer propio', m.choferes], ['Auxiliar', m.auxiliares]] as [string, Map<string, Acum>][]) {
-            const total: Acum = { viajes: 0, propio: 0, terc: 0 };
-            const orden = [...mapa.entries()].sort((a, b) => (b[1].propio + b[1].terc) - (a[1].propio + a[1].terc));
-            for (const [k, a] of orden) {
-                filasXml.push(filaXml(nro++, linea(mes, puesto, nombreDe(k), a, estiloComun)));
+        const r = resumenHorasPorPersona(m.viajes);
+        for (const [puesto, personas] of [['Chofer propio', r.choferes], ['Auxiliar', r.auxiliares]] as [string, HorasDePersona[]][]) {
+            const total = { viajes: 0, propio: 0, terc: 0 };
+            for (const a of personas) {
+                filasXml.push(filaXml(nro++, linea(mes, puesto, a.nombre, a, estiloComun)));
                 total.viajes += a.viajes; total.propio += a.propio; total.terc += a.terc;
             }
-            if (orden.length) filasXml.push(filaXml(nro++, linea(mes, puesto, puesto === 'Auxiliar' ? 'TOTAL AUXILIARES' : 'TOTAL CHOFERES PROPIOS', total, estiloTitulo)));
+            if (personas.length) filasXml.push(filaXml(nro++, linea(mes, puesto, puesto === 'Auxiliar' ? 'TOTAL AUXILIARES' : 'TOTAL CHOFERES PROPIOS', total, estiloTitulo)));
         }
-        if (m.sinHoras) {
+        if (r.sinHoras) {
             filasXml.push(filaXml(nro++, [{ valor: mes, estilo: estiloComun }, { valor: 'Aviso', estilo: estiloComun },
-                { valor: `${m.sinHoras} viaje(s) sin salida o llegada cargada: no suman horas`, estilo: estiloComun }]));
+                { valor: `${r.sinHoras} viaje(s) sin salida o llegada cargada: no suman horas`, estilo: estiloComun }]));
         }
     }
     nro++;

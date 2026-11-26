@@ -108,6 +108,11 @@ export async function filasViajes(prisma: Prisma, desde: Date, hasta: Date) {
  *  que manda exactamente los que el operador tiene en pantalla. */
 /** Las filas para el exportable: ademas de las partes por unidad, la fila del
  *  viaje entero, que es la que se ve en planificacion. */
+/** Las mismas filas que el Excel de viajes, para los viajes entre dos fechas. */
+export async function filasViajesEntre(prisma: Prisma, desde: Date, hasta: Date) {
+    return filasViajesDe(prisma, { date: { gte: desde, lte: hasta } }, true);
+}
+
 export async function filasViajesPorIds(prisma: Prisma, ids: number[]) {
     if (!ids.length) return [];
     return filasViajesDe(prisma, { id: { in: ids } }, true);
