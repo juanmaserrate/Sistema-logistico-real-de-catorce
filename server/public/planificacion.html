@@ -8173,7 +8173,7 @@
                 kpi('users', 'indigo', 'Horas auxiliares', h(sum(ax, 'total')), `${ax.length} auxiliares`) +
                 kpi('building', 'emerald', 'Auxiliares en propios', h(sum(ax, 'propio')), 'horas') +
                 kpi('handshake', 'amber', 'Auxiliares en tercerizados', h(sum(ax, 'terc')), 'horas') +
-                `<p class="sm:col-span-2 lg:col-span-4 text-[11px] text-[#A3AED0] font-medium -mt-2">Cada persona suma la duraci\u00f3n completa de cada viaje en que fue, de la salida a la llegada al dep\u00f3sito: un viaje de 7 h con 3 auxiliares son 7 h para cada uno. Horas en decimales (7,50 = 7 h 30 min).${d.sinHoras ? ` ${d.sinHoras} viaje(s) del mes no tienen salida o llegada cargada y no suman.` : ''} Toc\u00e1 una persona para ver sus viajes.</p>`;
+                `<p class="sm:col-span-2 lg:col-span-4 text-[11px] text-[#A3AED0] font-medium -mt-2">Cada persona suma la duraci\u00f3n completa de cada viaje en que fue, de la salida a la llegada al dep\u00f3sito: un viaje de 7 h con 3 auxiliares son 7 h para cada uno. Horas en decimales (7,50 = 7 h 30 min).${d.sinHoras ? ` ${d.sinHoras} viaje(s) del mes todavía no suman: no se hicieron o no tienen salida y llegada cargadas.` : ''} Toc\u00e1 una persona para ver sus viajes.</p>`;
 
             const th = (t, cls = '') => `<th class="px-6 py-4 text-[11px] font-bold text-[#A3AED0] uppercase tracking-widest ${cls}">${t}</th>`;
             thead.innerHTML = `<tr>${th('Persona')}${th('Puesto')}${th('Viajes', 'text-center')}${th('Horas en viajes propios', 'text-right')}${th('Horas en viajes tercerizados', 'text-right')}${th('Total horas', 'text-right')}</tr>`;
