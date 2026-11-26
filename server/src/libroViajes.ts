@@ -42,6 +42,8 @@ const HOJA_BASE_NOMBRE = 'Base dinámica';
 const HOJA_VIAJES_VISIBLE = { archivo: 'xl/worksheets/sheet6.xml', nombre: 'Viajes', sheetId: 6, rel: 'rId9' };
 // Horas promedio por unidad de negocio, propios y tercerizados (nov 2026).
 const HOJA_HORAS = { archivo: 'xl/worksheets/sheet7.xml', nombre: 'Horas promedio', sheetId: 7, rel: 'rId10' };
+// Horas trabajadas de cada chofer propio y cada auxiliar (nov 2026).
+const HOJA_PERSONAS = { archivo: 'xl/worksheets/sheet8.xml', nombre: 'Horas por persona', sheetId: 8, rel: 'rId11' };
 
 // AG y no AF: entro "Horas por ruta" al final. Va al final y nunca en el medio
 // porque la tabla dinamica de la plantilla referencia los campos por numero de
@@ -258,6 +260,113 @@ function armarHojaHoras(filas: any[], estiloEntero: number, estiloDecimal: numbe
         + '</worksheet>';
 }
 
+const COLUMNAS_PERSONAS = [
+    'Mes', 'Puesto', 'Persona', 'Viajes', 'Horas en viajes propios', 'Horas en viajes tercerizados', 'Total horas'
+];
+const NO_ES_PERSONA = new Set(['', '-', '--', 'N/A', 'NA', 'S/A', 'S/D', 'SIN AUXILIAR', 'SIN CHOFER', 'SIN ASIGNAR', 'NINGUNO']);
+
+/** La hoja "Horas por persona": las horas que trabajo cada chofer propio y
+ *  cada auxiliar en el mes.
+ *
+ *  Cada persona suma la duracion ENTERA de cada viaje en que fue: un viaje de
+ *  7 h con 3 auxiliares son 7 h para cada uno (21 h de auxiliares). Los
+ *  choferes suman solo sus viajes propios; los auxiliares, los propios y los
+ *  tercerizados por separado (son de la empresa y tambien van en camiones de
+ *  terceros). Sale de una fila por viaje, no de las partes por unidad: si no,
+ *  un viaje de dos unidades contaria dos veces. Los viajes sin salida o
+ *  llegada no tienen duracion y no suman; se dice cuantos son. */
+function armarHojaPersonas(viajes: any[], estiloEntero: number, estiloDecimal: number, estiloComun: number, estiloTitulo: number): string {
+    const limpio = (s: any) => String(s ?? '').replace(/\s+/g, ' ').trim().toUpperCase();
+    const clave = (s: any) => limpio(s).normalize('NFD').replace(/[̀-ͯ]/g, '');
+    const esPersona = (k: string) => !NO_ES_PERSONA.has(k) && /[A-Z]{2}/.test(k);
+    type Acum = { viajes: number; propio: number; terc: number };
+    type Mes = { orden: number; choferes: Map<string, Acum>; auxiliares: Map<string, Acum>; sinHoras: number };
+    const meses = new Map<string, Mes>();
+    // Un solo nombre por persona: la forma mas usada ("IVAN  BONETTI" = "IVAN BONETTI")
+    const grafias = new Map<string, Map<string, number>>();
+    const anotar = (n: string) => {
+        const k = clave(n);
+        if (!grafias.has(k)) grafias.set(k, new Map());
+        const g = grafias.get(k)!;
+        g.set(limpio(n), (g.get(limpio(n)) || 0) + 1);
+        return k;
+    };
+    const sumar = (m: Map<string, Acum>, k: string, horas: number, propio: boolean) => {
+        if (!m.has(k)) m.set(k, { viajes: 0, propio: 0, terc: 0 });
+        const a = m.get(k)!;
+        a.viajes++;
+        if (propio) a.propio += horas; else a.terc += horas;
+    };
+
+    for (const f of viajes) {
+        const mes = String(f['Mes'] || '') || 'SIN FECHA';
+        const fecha = f['Fecha'] ? new Date(f['Fecha']).getTime() : 0;
+        if (!meses.has(mes)) meses.set(mes, { orden: fecha, choferes: new Map(), auxiliares: new Map(), sinHoras: 0 });
+        const m = meses.get(mes)!;
+        if (fecha && fecha < m.orden) m.orden = fecha;
+        const horas = Number(f['Duracion horas']);
+        if (!(horas > 0)) { m.sinHoras++; continue; }
+        const contrato = String(f['Contrato'] || '').trim().toLowerCase();
+        const propio = contrato === 'propio';
+        const chofer = clave(f['Chofer']);
+        if (propio && esPersona(chofer)) sumar(m.choferes, anotar(f['Chofer']), horas, true);
+        const enEsteViaje = new Set<string>();
+        for (const col of ['Auxiliar 1', 'Auxiliar 2', 'Auxiliar 3']) {
+            for (const parte of String(f[col] ?? '').split(/[\/,]/)) {
+                const k = clave(parte);
+                if (!esPersona(k) || enEsteViaje.has(k)) continue;
+                enEsteViaje.add(k);
+                sumar(m.auxiliares, anotar(parte), horas, propio);
+            }
+        }
+    }
+    const nombreDe = (k: string) => [...(grafias.get(k) || new Map()).entries()].sort((a, b) => b[1] - a[1])[0]?.[0] || k;
+
+    const dos = (n: number) => Math.round(n * 100) / 100;
+    const linea = (mes: string, puesto: string, persona: string, a: Acum, estiloTexto: number) => [
+        { valor: mes, estilo: estiloTexto }, { valor: puesto, estilo: estiloTexto }, { valor: persona, estilo: estiloTexto },
+        { valor: a.viajes, estilo: estiloEntero },
+        { valor: dos(a.propio), estilo: estiloDecimal },
+        { valor: puesto.startsWith('Chofer') ? '' : dos(a.terc), estilo: estiloDecimal },
+        { valor: dos(a.propio + a.terc), estilo: estiloDecimal }
+    ];
+    const filasXml: string[] = [filaXml(1, COLUMNAS_PERSONAS.map((n) => ({ valor: n, estilo: estiloTitulo })))];
+    let nro = 2;
+    for (const [mes, m] of [...meses.entries()].sort((a, b) => a[1].orden - b[1].orden)) {
+        for (const [puesto, mapa] of [['Chofer propio', m.choferes], ['Auxiliar', m.auxiliares]] as [string, Map<string, Acum>][]) {
+            const total: Acum = { viajes: 0, propio: 0, terc: 0 };
+            const orden = [...mapa.entries()].sort((a, b) => (b[1].propio + b[1].terc) - (a[1].propio + a[1].terc));
+            for (const [k, a] of orden) {
+                filasXml.push(filaXml(nro++, linea(mes, puesto, nombreDe(k), a, estiloComun)));
+                total.viajes += a.viajes; total.propio += a.propio; total.terc += a.terc;
+            }
+            if (orden.length) filasXml.push(filaXml(nro++, linea(mes, puesto, puesto === 'Auxiliar' ? 'TOTAL AUXILIARES' : 'TOTAL CHOFERES PROPIOS', total, estiloTitulo)));
+        }
+        if (m.sinHoras) {
+            filasXml.push(filaXml(nro++, [{ valor: mes, estilo: estiloComun }, { valor: 'Aviso', estilo: estiloComun },
+                { valor: `${m.sinHoras} viaje(s) sin salida o llegada cargada: no suman horas`, estilo: estiloComun }]));
+        }
+    }
+    nro++;
+    filasXml.push(filaXml(nro++, [{ valor: 'Cada persona suma la duracion completa de cada viaje en que fue (de la salida a la llegada al deposito). '
+        + 'Un viaje de 7 h con 3 auxiliares son 7 h para cada uno y 21 h de auxiliares. Horas en decimales: 7,50 = 7 h 30 min.', estilo: estiloComun }]));
+
+    const ultima = letra(COLUMNAS_PERSONAS.length);
+    const rango = `A1:${ultima}${Math.max(nro - 3, 2)}`;
+    return '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
+        + '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
+        + `<dimension ref="A1:${ultima}${nro - 1}"/>`
+        + '<sheetViews><sheetView workbookViewId="0">'
+        + '<pane ySplit="1" topLeftCell="A2" activePane="bottomLeft" state="frozen"/></sheetView></sheetViews>'
+        + '<sheetFormatPr defaultRowHeight="15"/>'
+        + '<cols><col min="1" max="1" width="14" customWidth="1"/><col min="2" max="2" width="15" customWidth="1"/>'
+        + '<col min="3" max="3" width="30" customWidth="1"/>'
+        + `<col min="4" max="${COLUMNAS_PERSONAS.length}" width="16" customWidth="1"/></cols>`
+        + `<sheetData>${filasXml.join('')}</sheetData>`
+        + `<autoFilter ref="${rango}"/>`
+        + '</worksheet>';
+}
+
 /** Deja las hojas nuevas anotadas donde Excel las busca: la lista de hojas del
  *  libro, sus relaciones y los tipos de contenido del zip. */
 function registrarHojas(zip: Record<string, Uint8Array>, dec: TextDecoder, enc: TextEncoder): void {
@@ -280,7 +389,7 @@ function registrarHojas(zip: Record<string, Uint8Array>, dec: TextDecoder, enc: 
             `<Override PartName="/${v.archivo}" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/></Types>`);
     }
 
-    for (const h of [...HOJAS_POR_CONTRATO, HOJA_HORAS]) {
+    for (const h of [...HOJAS_POR_CONTRATO, HOJA_HORAS, HOJA_PERSONAS]) {
         if (!wb.includes(`name="${h.nombre}"`)) {
             wb = wb.replace('</sheets>',
                 `<sheet xmlns:r="${R}" name="${h.nombre}" sheetId="${h.sheetId}" state="visible" r:id="${h.rel}"/></sheets>`);
@@ -449,6 +558,12 @@ export function armarLibroViajes(filas: any[], titulo?: string, analisis?: FilaC
     const estiloDeColumna = (nombre: string) => estilos[COLUMNAS_LIBRO.indexOf(nombre) + 1] ?? estiloComun;
     zip[HOJA_HORAS.archivo] = enc.encode(armarHojaHoras(
         soloPartes, estiloDeColumna('Paradas planificadas'), estiloDeColumna('Duracion horas'), estiloComun, estiloTitulo));
+    // ── Hoja "Horas por persona" ───────────────────────────────────────────
+    // Una fila por viaje (como «Propios» y «Tercerizados»): con las partes, un
+    // viaje de dos unidades le sumaria sus horas dos veces a cada persona.
+    zip[HOJA_PERSONAS.archivo] = enc.encode(armarHojaPersonas(
+        filas.filter((f: any) => f._tipo !== 'hijo'),
+        estiloDeColumna('Paradas planificadas'), estiloDeColumna('Duracion horas'), estiloComun, estiloTitulo));
     registrarHojas(zip as any, dec, enc);
 
     // ── Titulo del resumen ─────────────────────────────────────────────────
